@@ -189,7 +189,7 @@ function tearPatch(ctx: Ctx, x: number, y: number, z: number, r: number, bone: n
 }
 
 /** Gown / coat shell: torso from the neckline down over the hips to `yHem`, flaring; the skirt follows the legs partially. */
-function skirtShell(ctx: Ctx, yTop: number, yHem: number, color: THREE.Color, flare: number, jag: number, seed: number, wide: number): void {
+export function skirtShell(ctx: Ctx, yTop: number, yHem: number, color: THREE.Color, flare: number, jag: number, seed: number, wide: number): void {
   const { acc, D } = ctx;
   const k = D.k;
   const w = torsoWeights(D);

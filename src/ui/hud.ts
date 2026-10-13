@@ -16,7 +16,7 @@ import {
   ScreenFx,
 } from './hudFx';
 import { ObjectivesView, PlateRing, PromptView, StationView, VitalsView, WeaponView } from './hudPanels';
-import { BossView, ClockView, CompassView, HazardView, RegionView } from './hudTop';
+import { BossView, CardReveal, ClockView, CompassView, HazardView, RegionView } from './hudTop';
 import type { HudApi, HudEvent, HudState, MapData, MapDynamic } from './hudTypes';
 import { Minimap, TacticalMap } from './mapView';
 import { setReducedMotionSetting } from './prefs';
@@ -45,6 +45,7 @@ class Hud implements HudApi {
   private clocks!: ClockView;
   private hazard!: HazardView;
   private boss!: BossView;
+  private card!: CardReveal;
   private region!: RegionView;
   private minimap!: Minimap;
   private tacMap!: TacticalMap;
@@ -80,6 +81,7 @@ class Hud implements HudApi {
     this.hazard = new HazardView(tc);
     this.boss = new BossView(tc);
     this.banner = new BannerView(hud);
+    this.card = new CardReveal(hud);
 
     // ---- right column: objectives + station panel ----
     const right = el('div', 'ds-right', hud);
@@ -171,6 +173,7 @@ class Hud implements HudApi {
     }
 
     this.banner.update(dt);
+    this.card.update(dt);
     this.feed.update(dt);
     this.radio.update(dt);
 
@@ -208,6 +211,9 @@ class Hud implements HudApi {
       case 'cash':
         this.cashDeltas.pop(e.amount);
         break;
+      case 'card':
+        this.card.show(e);
+        break;
     }
   }
 
@@ -244,6 +250,7 @@ class Hud implements HudApi {
     this.hitMarker.reset();
     this.arcs.reset();
     this.banner.reset();
+    this.card.reset();
     this.feed.reset();
     this.radio.reset();
     this.cashDeltas.reset();

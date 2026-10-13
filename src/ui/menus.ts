@@ -5,9 +5,9 @@
  */
 import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS } from '../config';
-import type { BestRun, MissionStats, Settings } from '../types';
+import type { BestRun, GameMode, MissionStats, Settings } from '../types';
 import { el, fmtClock, fmtInt, fmtMoney } from './dom';
-import type { MenuCallbacks, MenusApi } from './hudTypes';
+import type { MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
@@ -32,6 +32,18 @@ const BRIEF: { tag: string; title: string; text: string }[] = [
   },
 ];
 
+const CARD_BRIEF = {
+  tag: 'SIDE CONTRACT',
+  title: 'RECOVER THE CARDS',
+  text: 'Five carriers walk the district. They cannot be killed: put one down, purge the signal, take the card.',
+};
+
+const MODES: { id: GameMode; label: string; note: string }[] = [
+  { id: 'standard', label: 'STANDARD', note: 'The operation as briefed.' },
+  { id: 'cards', label: 'CARD RECOVERY', note: 'The same operation, with five card carriers to put down, purge and collect.' },
+  { id: 'roam', label: 'FREE ROAM', note: 'No mission and no damage. Fly anywhere and look around.' },
+];
+
 class Menus implements MenusApi {
   private root: HTMLElement | null = null;
   private layer!: HTMLElement;
@@ -44,6 +56,8 @@ class Menus implements MenusApi {
   private readonly panels = new Set<SettingsPanel>();
   private deployStamp = 0;
   private touch = false;
+  private info: ModeInfo = { mode: 'standard', cards: [] };
+  private lastBest: BestRun | null = null;
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -84,6 +98,11 @@ class Menus implements MenusApi {
 
   setTouchMode(touch: boolean): void {
     this.touch = touch;
+  }
+
+  setModeInfo(info: ModeInfo): void {
+    this.info = info;
+    if (this.kind === 'title') this.showTitle(this.lastBest);
   }
 
   private pushSetting(patch: Partial<Settings>): void {
@@ -198,6 +217,8 @@ class Menus implements MenusApi {
 
   showTitle(best: BestRun | null): void {
     this.clearScreen();
+    this.lastBest = best;
+    const mode = this.info.mode;
     const root = el('div', '');
     el('div', 'ds-shade', root);
     el('div', 'ds-scanlines', root);
@@ -220,9 +241,23 @@ class Menus implements MenusApi {
       'The district has been sealed for nine days. Insert at the checkpoint, clear two contracts, call the bird, and get out before the surge takes the landing zone.',
     );
 
+    // ---- what DEPLOY starts ----
+    const modes = el('div', 'modes', main);
+    el('span', 'lbl', modes, 'MODE');
+    const seg = el('div', 'seg', modes);
+    seg.setAttribute('role', 'radiogroup');
+    for (const m of MODES) {
+      const b = this.button(seg, m.label, m.id === mode ? 'on' : '', () => {
+        if (m.id !== this.info.mode) this.cb.onModeChange(m.id);
+      });
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', m.id === mode ? 'true' : 'false');
+    }
+    el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
+
     const actions = el('div', 'actions', main);
-    const deployBtn = this.button(actions, 'DEPLOY', 'primary big', () => this.deploy());
-    deployBtn.setAttribute('aria-label', 'Deploy into the exclusion zone');
+    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
+    deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
     let showTab: (w: 'controls' | 'settings') => void = () => {};
     this.button(actions, 'SETTINGS', '', () => showTab('settings'));
     this.button(actions, 'CONTROLS', '', () => showTab('controls'));
@@ -249,8 +284,9 @@ class Menus implements MenusApi {
     const bh = el('div', 'ds-panel-head', brief);
     el('span', '', bh, 'OPERATION BRIEF');
     el('span', 'aux', bh, 'PRIORITY ALPHA');
-    for (let i = 0; i < BRIEF.length; i++) {
-      const item = BRIEF[i]!;
+    const briefRows = mode === 'cards' ? [BRIEF[0]!, BRIEF[1]!, CARD_BRIEF, BRIEF[2]!] : BRIEF;
+    for (let i = 0; i < briefRows.length; i++) {
+      const item = briefRows[i]!;
       const row = el('div', 'row', brief);
       el('span', 'n', row, String(i + 1));
       const body = el('div', 'body', row);
@@ -259,7 +295,24 @@ class Menus implements MenusApi {
       el('span', 'title', tt, item.title);
       el('div', 'text', body, item.text);
     }
-    el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
+    if (mode === 'cards' && this.info.cards.length > 0) {
+      // the collection: recovered cards in full, the rest as dark blanks
+      const owned = this.info.cards.filter((c) => c.owned).length;
+      const coll = el('div', 'cards', brief);
+      el('div', 'lbl', coll, `ARCHIVE  ${owned} / ${this.info.cards.length} RECOVERED`);
+      const strip = el('div', 'strip', coll);
+      for (const c of this.info.cards) {
+        const slot = el('div', c.owned ? 'card owned' : 'card', strip);
+        slot.style.setProperty('--cc', c.accent);
+        slot.title = c.owned ? `${c.name} - ${c.series}` : 'Not recovered yet';
+        const img = el('img', '', slot);
+        img.src = c.image;
+        img.alt = c.owned ? c.name : 'Unrecovered card';
+        img.draggable = false;
+      }
+    } else {
+      el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
+    }
 
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
     showTab = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
@@ -291,7 +344,7 @@ class Menus implements MenusApi {
     resume.focus({ preventScroll: true });
   }
 
-  showResumePrompt(reason: string): void {
+  showResumePrompt(reason: string, withMenu = false): void {
     this.clearScreen();
     const root = el('div', '');
     el('div', 'ds-scrim light', root);
@@ -299,9 +352,10 @@ class Menus implements MenusApi {
     el('div', 'ttl', box, 'SIGNAL INTERRUPTED');
     el('div', 'why', box, reason);
     const btn = this.button(box, this.touch ? 'TAP TO RESUME' : 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
+    const menu = withMenu ? this.button(box, 'SETTINGS AND OPTIONS', '', () => this.showPause()) : null;
     el('div', 'note', box, 'The simulation is frozen until you resume.');
     root.addEventListener('click', (e) => {
-      if (e.target !== btn) this.cb.onResume();
+      if (e.target !== btn && e.target !== menu) this.cb.onResume();
     });
     this.setScreen('resume', root);
     btn.focus({ preventScroll: true });
@@ -340,6 +394,7 @@ class Menus implements MenusApi {
     cell('HEADSHOTS', `${fmtInt(stats.headshots)}${hsPct}`);
     cell('ACCURACY', `${accuracy}   ${fmtInt(stats.shotsHit)} / ${fmtInt(stats.shotsFired)}`);
     cell('CONTRACTS', `${stats.contractsCompleted} / ${stats.contractsTotal}`, stats.contractsCompleted >= stats.contractsTotal ? 'good' : '');
+    if (stats.cardsTotal > 0) cell('CARDS RECOVERED', `${stats.cardsRecovered} / ${stats.cardsTotal}`, stats.cardsRecovered >= stats.cardsTotal ? 'good' : '');
     cell('SUPPLY CACHES', fmtInt(stats.cratesOpened));
     cell('CASH EARNED', fmtMoney(stats.cashEarned));
     cell('CASH SPENT', fmtMoney(stats.cashSpent));

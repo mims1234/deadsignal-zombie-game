@@ -695,6 +695,35 @@ export const ECONOMY = {
 } as const;
 
 // ---------------------------------------------------------------------------------------------
+// Card recovery (optional mode) and free roam
+// ---------------------------------------------------------------------------------------------
+
+export const CARD_MODE = {
+  /** Distance at which a carrier's signal is identified. */
+  revealRange: 32,
+  /** Seconds a knocked-down carrier stays down before it gets back up. */
+  downTime: 24,
+  /** Health fraction it gets back up with. */
+  reviveHp: 0.45,
+  /** Hold time and reach for administering the counter-agent. */
+  cureHold: 1.6,
+  cureReach: 2.6,
+  pickupRadius: 1.4,
+  /** Cash per recovered card, and the bonus for the full set. */
+  reward: 350,
+  allBonus: 1500,
+  /** Carriers are placed at least this far from the insertion point. */
+  minStartDistance: 45,
+} as const;
+
+export const FREE_ROAM = {
+  speed: 9,
+  fastSpeed: 26,
+  /** Flight ceiling above the ground, metres. */
+  ceiling: 120,
+} as const;
+
+// ---------------------------------------------------------------------------------------------
 // Mission
 // ---------------------------------------------------------------------------------------------
 

@@ -119,6 +119,10 @@ export class Input {
     return this.held('Space');
   }
 
+  get crouchHeld(): boolean {
+    return this.held('KeyC');
+  }
+
   get fire(): boolean {
     return this.enabled && this.fireHeld && !this.fireSuppressed;
   }

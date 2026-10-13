@@ -2,7 +2,7 @@
  * HUD / menu contract. The game builds a plain `HudState` + `MapDynamic` every frame (cheap object reuse is fine) and
  * pushes discrete `HudEvent`s; the UI layer (HTML/CSS + canvas maps) renders them. The UI never reads game internals.
  */
-import type { BestRun, MissionStats, Region, Settings, WeaponId } from '../types';
+import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
 
 export interface HudWeaponInfo {
   id: WeaponId;
@@ -125,8 +125,8 @@ export interface HudState {
     message: string | null;
   };
 
-  /** Elite target health bar. */
-  boss: { name: string; fraction: number; enraged: boolean } | null;
+  /** Elite target health bar. A card carrier adds its card (`portrait`, an image address), a colour and a status note. */
+  boss: { name: string; fraction: number; enraged: boolean; portrait?: string; accent?: string; note?: string } | null;
 
   /** null when FPS display is off. */
   fps: number | null;
@@ -150,7 +150,25 @@ export type HudEvent =
   | { type: 'radio'; speaker: string; text: string; duration?: number }
   | { type: 'flash'; color: string; strength: number }
   /** Cash gained/spent floating next to the cash counter. */
-  | { type: 'cash'; amount: number };
+  | { type: 'cash'; amount: number }
+  /** A card was recovered: show it. `image` is an image address, `accent` a CSS colour. */
+  | { type: 'card'; name: string; series: string; image: string; accent: string; count: number; total: number };
+
+/** One card of the collection, for the title screen. */
+export interface CardCollectionEntry {
+  id: string;
+  name: string;
+  series: string;
+  image: string;
+  accent: string;
+  /** Recovered in some earlier (or the current) run. */
+  owned: boolean;
+}
+
+export interface ModeInfo {
+  mode: GameMode;
+  cards: CardCollectionEntry[];
+}
 
 export type MapMarkerKind =
   | 'objective'
@@ -242,6 +260,8 @@ export interface MenuCallbacks {
   onRestart(): void;
   onQuitToTitle(): void;
   onSettingsChange(settings: Settings): void;
+  /** The player picked what DEPLOY starts (title screen only). */
+  onModeChange(mode: GameMode): void;
 }
 
 export interface MenusApi {
@@ -251,7 +271,7 @@ export interface MenusApi {
   /** Pause menu: resume, settings, restart, quit to title, controls list. */
   showPause(): void;
   /** Small "click to resume" overlay after pointer lock was lost without an explicit pause. */
-  showResumePrompt(reason: string): void;
+  showResumePrompt(reason: string, withMenu?: boolean): void;
   /** Victory / defeat results with real mission data. */
   showResults(stats: MissionStats, best: BestRun | null, isNewBest: boolean): void;
   showLoading(fraction: number, text: string): void;
@@ -261,6 +281,8 @@ export interface MenusApi {
   setSettings(settings: Settings): void;
   /** Word the menus for on-screen controls instead of keyboard and mouse. Call before showing a screen. */
   setTouchMode(touch: boolean): void;
+  /** Current mode and card collection; redraws the title screen if it is showing. */
+  setModeInfo(info: ModeInfo): void;
   readonly visible: boolean;
   dispose(): void;
 }

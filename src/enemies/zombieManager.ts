@@ -3,7 +3,7 @@
  * separation, noise / alert propagation, hit detection (head sphere + body cylinder), explosions and corpse cleanup.
  */
 import * as THREE from 'three';
-import { MISSION, SPAWN, ZOMBIES, ZOMBIE_AI } from '../config';
+import { MISSION, SPAWN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
 import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
 import type { Rng } from '../logic/rng';
 import type { QualityLevel, Region, ZombieType } from '../types';
@@ -131,24 +131,43 @@ export class ZombieManager {
 
   private releaseZombie(z: Zombie): void {
     z.rig.setVisible(false);
-    let pool = this.pools.get(z.type);
-    if (!pool) {
-      pool = [];
-      this.pools.set(z.type, pool);
+    if (z.ownsRig) {
+      let pool = this.pools.get(z.type);
+      if (!pool) {
+        pool = [];
+        this.pools.set(z.type, pool);
+      }
+      pool.push(z.rig);
     }
-    pool.push(z.rig);
     if (this.boss === z) this.boss = null;
     const i = this.zombies.indexOf(z);
     if (i >= 0) this.zombies.splice(i, 1);
   }
 
-  spawn(type: ZombieType, x: number, z: number, rng: Rng, opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number } = {}): Zombie {
-    const rig = this.acquireRig(type);
+  /**
+   * `rig` + `def` place a one-off enemy (a card carrier) that animates as `type` but brings its own model and stats;
+   * its rig stays with the caller and is never pooled.
+   */
+  spawn(
+    type: ZombieType,
+    x: number,
+    z: number,
+    rng: Rng,
+    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean } = {},
+  ): Zombie {
+    const rig = opts.rig ?? this.acquireRig(type);
+    if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
     const zz = new Zombie(this.nextId++, type, rig);
+    zz.ownsRig = !opts.rig;
     zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, opts);
     this.zombies.push(zz);
     this.totalSpawned++;
     return zz;
+  }
+
+  /** Take one enemy out of the world immediately (a purged carrier). */
+  remove(z: Zombie): void {
+    this.releaseZombie(z);
   }
 
   /** Remove everything (restart). Rigs go back to the pools. */
@@ -179,7 +198,7 @@ export class ZombieManager {
   /** Active (awake, alive) enemy count used against the director cap. */
   get activeCount(): number {
     let n = 0;
-    for (const z of this.zombies) if (z.alive && !z.dormant && !z.isBoss) n++;
+    for (const z of this.zombies) if (z.alive && !z.dormant && !z.isBoss && !z.curable) n++;
     return n;
   }
 
@@ -192,7 +211,7 @@ export class ZombieManager {
     const p = env.player;
     // spatial hash of living zombies
     this.grid.clear();
-    for (const z of this.zombies) if (z.alive && !z.dormant) this.grid.insert(z);
+    for (const z of this.zombies) if (z.active && !z.dormant) this.grid.insert(z);
 
     // LOD every 0.4 s
     this.lodTimer -= dt;
@@ -203,7 +222,7 @@ export class ZombieManager {
         if (z.dormant && d2 < 78 * 78) {
           z.dormant = false;
           z.rig.setVisible(true);
-        } else if (!z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss) {
+        } else if (!z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss && !z.curable) {
           z.dormant = true;
           z.rig.setVisible(false);
         }
@@ -222,7 +241,7 @@ export class ZombieManager {
         z.update(dt, { ...env, player: { ...env.player, alive: false } }, this.nearby);
         continue;
       }
-      if (z.alive) this.grid.query(z.x, z.z, this.nearby);
+      if (z.active) this.grid.query(z.x, z.z, this.nearby);
       else this.nearby.length = 0;
       z.update(dt, env, this.nearby);
     }
@@ -250,7 +269,7 @@ export class ZombieManager {
     out.z = 0;
     this.grid.query(px, pz, this.nearby);
     for (const z of this.nearby) {
-      if (!z.alive) continue;
+      if (!z.active) continue;
       const dx = px - z.x;
       const dz = pz - z.z;
       const d = Math.hypot(dx, dz);
@@ -304,7 +323,7 @@ export class ZombieManager {
     let best: ZombieHit | null = null;
     let bestT = maxT;
     for (const z of this.zombies) {
-      if (!z.alive || z.dormant) continue;
+      if (!z.active || z.dormant) continue;
       // cheap reject: distance from the ray to the zombie's column
       const cx = z.x - ox;
       const cz = z.z - oz;
@@ -339,7 +358,7 @@ export class ZombieManager {
   explode(cx: number, cy: number, cz: number, radius: number, centerDamage: number, edgeDamage: number, coverMul: number, env: ZombieEnv, knock: number): number {
     let kills = 0;
     for (const z of this.zombies) {
-      if (!z.alive || z.dormant) continue;
+      if (!z.active || z.dormant) continue;
       const dx = z.x - cx;
       const dz = z.z - cz;
       const d = Math.hypot(dx, dz);

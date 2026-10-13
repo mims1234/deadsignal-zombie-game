@@ -289,6 +289,7 @@ const menus = createMenus({
   onResume: () => calls.push('resume'),
   onRestart: () => calls.push('restart'),
   onQuitToTitle: () => calls.push('title'),
+  onModeChange: (m) => calls.push(`mode:${m}`),
   onSettingsChange: (s) => {
     settings = s;
     calls.push(`settings:${JSON.stringify(s)}`);
@@ -542,6 +543,8 @@ const stats = (win: boolean): MissionStats => ({
   headshots: 41,
   contractsCompleted: win ? 2 : 1,
   contractsTotal: 2,
+  cardsRecovered: 0,
+  cardsTotal: 0,
   cratesOpened: 9,
   cashEarned: 14020,
   cashSpent: 9350,

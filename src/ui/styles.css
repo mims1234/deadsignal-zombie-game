@@ -2429,3 +2429,181 @@ html.ds-rm .ds-menus {
 .ds-bottomcenter {
   z-index: 2;
 }
+
+/* ---- mode picker (title) ---- */
+.ds-title-main .modes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 1em;
+  margin-bottom: 0.5em;
+}
+.ds-title-main .modes .lbl {
+  font-size: max(9px, 0.7em);
+  letter-spacing: 0.26em;
+  color: var(--ds-amber);
+}
+.ds-title-main .modes .seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+}
+.ds-title-main .modes .ds-btn {
+  padding: 0.5em 0.9em;
+  font-size: max(10px, 0.78em);
+}
+.ds-title-main .modes .ds-btn.on {
+  color: #17130a;
+  background: var(--ds-amber);
+  border-color: var(--ds-amber);
+  text-shadow: none;
+}
+.ds-title-main .modenote {
+  min-height: 1.4em;
+  margin-bottom: 1em;
+  font-size: max(10px, 0.8em);
+  letter-spacing: 0.06em;
+  color: var(--ds-ink-dim);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* ---- card collection (title brief) ---- */
+.ds-brief .cards {
+  padding: 0.7em 0.9em 0.9em;
+  border-top: 1px solid var(--ds-line);
+}
+.ds-brief .cards .lbl {
+  margin-bottom: 0.6em;
+  font-size: max(9px, 0.66em);
+  letter-spacing: 0.22em;
+  color: var(--ds-amber);
+}
+.ds-brief .cards .strip {
+  display: grid;
+  grid-template-columns: repeat(5, 3em);
+  justify-content: space-between;
+  gap: 0.4em;
+}
+.ds-brief .cards .card {
+  aspect-ratio: 5 / 7;
+  filter: brightness(0) drop-shadow(0 0 1px var(--ds-line-strong));
+  opacity: 0.55;
+}
+.ds-brief .cards .card.owned {
+  filter: drop-shadow(0 0 0.35em var(--cc));
+  opacity: 1;
+}
+.ds-brief .cards img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ---- carrier target bar: the card beside the health bar ---- */
+.ds-boss[data-card='1'] {
+  position: relative;
+  padding-left: 3.4em;
+  min-height: 4.2em;
+}
+.ds-boss .portrait {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 4.2em;
+  filter: drop-shadow(0 0 0.4em var(--bc, transparent));
+}
+.ds-boss[data-card='1'] .top {
+  color: #f4f7ea;
+}
+.ds-boss[data-card='1'] .ic {
+  color: var(--bc);
+}
+.ds-boss[data-card='1'] .bar {
+  border-color: var(--bc);
+}
+.ds-boss[data-card='1'] .fill {
+  background: var(--bc);
+}
+.ds-boss .note {
+  margin-left: auto;
+  font-size: 0.85em;
+  letter-spacing: 0.16em;
+  color: var(--ds-green);
+}
+.ds-boss .note:empty {
+  display: none;
+}
+
+/* ---- recovered card reveal ---- */
+.ds-cardreveal {
+  position: absolute;
+  right: 4vw;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  gap: 1.1em;
+  margin-top: -9em;
+  perspective: 60em;
+  pointer-events: none;
+}
+.ds-cardreveal img {
+  height: 18em;
+  filter: drop-shadow(0 0 1.2em var(--cc)) drop-shadow(0 0.4em 0.8em rgba(0, 0, 0, 0.7));
+}
+.ds-cardreveal .text {
+  order: -1;
+  text-align: right;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+}
+.ds-cardreveal .kick {
+  font-size: 0.8em;
+  letter-spacing: 0.3em;
+  color: var(--ds-green);
+}
+.ds-cardreveal .name {
+  margin-top: 0.2em;
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #f4f7ea;
+}
+.ds-cardreveal .series {
+  font-size: 0.85em;
+  letter-spacing: 0.12em;
+  color: var(--ds-ink-dim);
+}
+.ds-cardreveal .count {
+  margin-top: 0.5em;
+  font: 700 1.2em var(--ds-font-num);
+  color: var(--cc);
+}
+
+/* ---- free roam ---- */
+.ds-roam-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: max(0.9em, env(safe-area-inset-top));
+  text-align: center;
+  font: 600 max(10px, 0.78em) / 1.4 var(--ds-font-label, sans-serif);
+  letter-spacing: 0.2em;
+  color: rgba(230, 236, 220, 0.78);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+.ds-resume-box .ds-btn + .ds-btn {
+  margin-top: 0.7em;
+}
+
+@media (max-height: 660px) {
+  .ds-cardreveal img {
+    height: 12em;
+  }
+  .ds-cardreveal {
+    margin-top: -6em;
+  }
+  .ds-title-main .modenote {
+    margin-bottom: 0.5em;
+  }
+}

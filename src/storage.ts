@@ -1,9 +1,11 @@
 /** Local persistence for settings and the best successful run. Every access is guarded: storage failure never blocks play. */
 import { DEFAULT_SETTINGS } from './config';
-import type { BestRun, QualityLevel, Settings } from './types';
+import type { BestRun, GameMode, QualityLevel, Settings } from './types';
 
 const KEY_SETTINGS = 'deadsignal.settings.v1';
 const KEY_BEST = 'deadsignal.best.v1';
+const KEY_MODE = 'deadsignal.mode.v1';
+const KEY_CARDS = 'deadsignal.cards.v1';
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -92,4 +94,40 @@ export function isBetterRun(candidate: BestRun, best: BestRun | null): boolean {
   if (!best) return true;
   if (candidate.time < best.time - 0.5) return true;
   return Math.abs(candidate.time - best.time) <= 0.5 && candidate.kills > best.kills;
+}
+
+export function loadMode(): GameMode {
+  try {
+    const m = window.localStorage.getItem(KEY_MODE);
+    return m === 'cards' || m === 'roam' ? m : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+export function saveMode(mode: GameMode): void {
+  try {
+    window.localStorage.setItem(KEY_MODE, mode);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Ids of the cards recovered across every run. Unknown or duplicate ids are dropped. */
+export function loadCards(known: readonly string[]): string[] {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(KEY_CARDS) ?? '[]');
+    if (!Array.isArray(raw)) return [];
+    return known.filter((id) => raw.includes(id));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCards(ids: readonly string[]): void {
+  try {
+    window.localStorage.setItem(KEY_CARDS, JSON.stringify(ids));
+  } catch {
+    /* ignore */
+  }
 }

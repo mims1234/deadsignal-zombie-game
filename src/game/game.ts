@@ -7,11 +7,12 @@
 import * as THREE from 'three';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
-import { DEFAULT_SETTINGS, GRENADE, PLAYER, QUALITY, REGIONS, RENDER, ZOMBIE_AI } from '../config';
+import { CardRuntime } from '../cards/cardRuntime';
+import { createEmblemDecor } from '../cards/emblems';
+import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, REGIONS, RENDER, ZOMBIE_AI } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
-import { createZombieFactory } from '../enemies/zombieRig';
-import type { ZombieFactory } from '../enemies/zombieRigTypes';
+import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
 import { createFx } from '../fx/fx';
 import type { FxApi } from '../fx/fxTypes';
 import { applyDamageToPlayer, regenHealth } from '../logic/damage';
@@ -24,8 +25,8 @@ import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { hasStoredSettings, isBetterRun, loadBest, loadSettings, saveBest, saveSettings } from '../storage';
-import type { BestRun, MissionStats, Region, Settings } from '../types';
+import { hasStoredSettings, isBetterRun, loadBest, loadMode, loadSettings, saveBest, saveMode, saveSettings } from '../storage';
+import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
@@ -74,7 +75,10 @@ export class Game implements GameCtx {
   mission!: MissionRuntime;
   interaction!: Interaction;
   viewmodels!: ViewmodelSet;
-  zombieFactory!: ZombieFactory;
+  zombieFactory!: ZombieFactoryExt;
+  cards!: CardRuntime;
+  /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
+  mode: GameMode = 'standard';
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
   session: Session = newSession();
@@ -93,6 +97,7 @@ export class Game implements GameCtx {
   private pendingLock: 'none' | 'start' | 'resume' = 'none';
   private dirty = false;
   private fadeEl!: HTMLDivElement;
+  private roamHint!: HTMLDivElement;
   private noLock = false;
   /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
   private readonly touchMode = isTouchDevice();
@@ -157,6 +162,7 @@ export class Game implements GameCtx {
     // Phones start on the lightest preset; once the player has saved settings their choice is respected.
     if (this.touchMode && !hasStoredSettings()) this.settings.quality = 'low';
     this.best = loadBest();
+    this.mode = loadMode();
     if (this.touchMode) document.documentElement.classList.add('ds-touch');
 
     this.menus = createMenus({
@@ -165,6 +171,7 @@ export class Game implements GameCtx {
       onRestart: () => this.requestStart(true),
       onQuitToTitle: () => this.quitToTitle(),
       onSettingsChange: (s) => this.applySettings(s, true),
+      onModeChange: (m) => this.setMode(m),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -204,7 +211,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    (this.zombieFactory as { prewarm?: () => void }).prewarm?.();
+    this.zombieFactory.prewarm();
     this.viewmodels = createViewmodels();
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
@@ -229,6 +236,10 @@ export class Game implements GameCtx {
     this.zombies = new ZombieManager(this.zombieFactory, this.level);
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
+    this.cards = new CardRuntime(this, this.zombieFactory.material, () => this.zenv);
+    await this.cards.load();
+    const emblems = await createEmblemDecor(this.level);
+    if (emblems) this.worldRoot.add(emblems);
 
     this.grenades = new GrenadeSystem(
       {
@@ -282,7 +293,7 @@ export class Game implements GameCtx {
 
     this.entities = new Entities(this);
     this.mission = new MissionRuntime(this, this.entities);
-    this.interaction = new Interaction(this, this.entities, this.mission);
+    this.interaction = new Interaction(this, this.entities, this.mission, this.cards);
 
     this.hud = createHud();
     this.hud.mount(uiRoot);
@@ -296,6 +307,14 @@ export class Game implements GameCtx {
         onInterrupt: () => this.pause('lost'),
       });
     }
+
+    this.roamHint = document.createElement('div');
+    this.roamHint.className = 'ds-roam-hint';
+    this.roamHint.textContent = this.touchMode
+      ? 'FREE ROAM  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  II = MENU'
+      : 'FREE ROAM  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
+    this.roamHint.hidden = true;
+    uiRoot.appendChild(this.roamHint);
 
     this.fadeEl = document.createElement('div');
     this.fadeEl.style.cssText = 'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:5';
@@ -313,6 +332,7 @@ export class Game implements GameCtx {
     this.menus.hideLoading();
     this.state = 'title';
     this.hud.setVisible(false);
+    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
     this.menus.showTitle(this.best);
     this.lastT = 0;
     this.raf = requestAnimationFrame(this.frame);
@@ -365,6 +385,15 @@ export class Game implements GameCtx {
       this.fx.setQuality(q.particleScale, q.decalScale);
     }
     this.menus.setSettings(this.settings);
+  }
+
+  /** Title screen only: switch what DEPLOY starts. The backdrop is a pristine run, so only the carriers change. */
+  setMode(mode: GameMode): void {
+    if (this.state !== 'title') return;
+    this.mode = mode;
+    saveMode(mode);
+    this.cards.reset(mode !== 'standard', mode === 'roam');
+    this.menus.setModeInfo({ mode, cards: this.cards.collection() });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -477,7 +506,7 @@ export class Game implements GameCtx {
     if (this.state === 'playing') return;
     if (this.state === 'title' || this.state === 'paused') {
       this.state = this.state === 'title' && !this.dirty ? 'title' : 'paused';
-      this.menus.showResumePrompt('POINTER LOCK WAS BLOCKED - CLICK TO TRY AGAIN');
+      this.menus.showResumePrompt('POINTER LOCK WAS BLOCKED - CLICK TO TRY AGAIN', this.state === 'paused');
     }
   };
 
@@ -503,8 +532,11 @@ export class Game implements GameCtx {
     const wasTitle = this.state === 'title';
     this.state = 'playing';
     this.playingSince = performance.now();
+    const roam = this.mode === 'roam';
     this.menus.hide();
-    this.hud.setVisible(true);
+    this.hud.setVisible(!roam);
+    this.roamHint.hidden = !roam;
+    this.weapons.hidden = roam;
     this.input.clear();
     this.input.setEnabled(true);
     this.input.fireSuppressed = false;
@@ -513,7 +545,8 @@ export class Game implements GameCtx {
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
       if (!this.ambience || !this.ambience.active) this.ambience = this.audio.startLoop('ambience', { volume: 0.8, fadeIn: 2 });
-      this.banner('OPERATION DEAD SIGNAL', 'Contain the outbreak. Restore the relay. Kill the Warden. Extract.', 'info', 4.5);
+      if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Extract.', 'info', 4.5);
+      else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Contain the outbreak. Restore the relay. Kill the Warden. Extract.', 'info', 4.5);
     }
   }
 
@@ -524,8 +557,10 @@ export class Game implements GameCtx {
     this.weapons.cancelActions();
     this.interaction.closePanel(false);
     this.audio.suspend();
-    if (reason === 'menu') this.menus.showPause();
-    else this.menus.showResumePrompt(this.touchMode ? 'PAUSED - TAP TO RESUME' : 'PAUSED - CLICK TO RESUME');
+    // Desktop always gets the full menu: Esc does not reliably reach the page while the pointer is locked, and a
+    // bare "click to resume" left no way to reach the settings.
+    if (reason === 'menu' || !this.touchMode) this.menus.showPause();
+    else this.menus.showResumePrompt('PAUSED - TAP TO RESUME', true);
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
 
@@ -535,10 +570,12 @@ export class Game implements GameCtx {
     this.state = 'title';
     this.pendingLock = 'none';
     this.hud.setVisible(false);
+    this.roamHint.hidden = true;
     this.audio.stopAll();
     this.audio.resume();
     this.ambience = null;
     this.heartbeat = null;
+    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
     this.menus.showTitle(this.best);
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
@@ -581,6 +618,8 @@ export class Game implements GameCtx {
     this.player.staminaExhausted = false;
     this.weapons.reset();
     this.zombies.populate(this.rng);
+    this.cards.reset(this.mode !== 'standard', this.mode === 'roam');
+    this.weapons.hidden = this.mode === 'roam';
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
     this.hud.reset();
@@ -677,6 +716,7 @@ export class Game implements GameCtx {
     this.zenv.time = this.time;
     this.zenv.player.alive = false;
     this.zombies.update(dt, this.zenv, false);
+    this.cards.update(dt);
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
     this.fx.update(dt, this.renderer.camera);
     this.entities.update(dt, this.time);
@@ -700,6 +740,10 @@ export class Game implements GameCtx {
     const s = this.session;
     const alive = this.playerAlive();
     const edges = edgesOverride ?? this.input.consume(dt);
+    if (this.mode === 'roam') {
+      this.simulateRoam(dt, edges);
+      return;
+    }
     this.time += dt;
 
     // ---- toggles ----
@@ -769,6 +813,7 @@ export class Game implements GameCtx {
 
     // ---- enemies ----
     this.updateEnemies(dt, alive);
+    this.cards.update(dt);
 
     // ---- world ----
     this.grenades.update(dt);
@@ -783,6 +828,46 @@ export class Game implements GameCtx {
   }
 
   /**
+   * Free roam: fly through the district with nothing at stake. No collision, no damage, no clock; the infected
+   * only idle. Movement follows the view, so looking up and pushing forward climbs.
+   */
+  private simulateRoam(dt: number, edges: Edges): void {
+    this.time += dt;
+    const p = this.player;
+    const sens = this.settings.sensitivity;
+    p.look(mouseToRadians(edges.mouseDX, sens, 1), mouseToRadians(edges.mouseDY, sens, 1) * (this.settings.invertY ? -1 : 1));
+    const speed = (this.input.sprint ? FREE_ROAM.fastSpeed : FREE_ROAM.speed) * dt;
+    const f = this.input.forward;
+    const st = this.input.strafe;
+    const cp = Math.cos(p.pitch);
+    const lift = (this.input.jumpHeld ? 1 : 0) - (this.input.crouchHeld ? 1 : 0);
+    p.x += (-Math.sin(p.yaw) * cp * f + Math.cos(p.yaw) * st) * speed;
+    p.z += (-Math.cos(p.yaw) * cp * f - Math.sin(p.yaw) * st) * speed;
+    p.y = Math.max(0, Math.min(FREE_ROAM.ceiling, p.y + (Math.sin(p.pitch) * f + lift) * speed));
+    p.vx = p.vy = p.vz = 0;
+    p.onGround = false;
+    this.clampToBounds();
+
+    const z = this.zenv;
+    z.time = this.time;
+    z.player.x = p.x;
+    z.player.y = p.y;
+    z.player.z = p.z;
+    z.player.eyeY = p.eyeY();
+    z.player.alive = false;
+    this.zombies.update(dt, z, false);
+    this.cards.update(dt);
+    this.mission.update(0, this.renderer.camera, this.time); // dt = 0: the clock never starts
+    this.entities.update(dt, this.time);
+    this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
+    this.fx.update(dt, this.renderer.camera);
+    this.weapons.update(dt, EMPTY_WEAPON_INPUT);
+    this.updateCamera(dt);
+    this.updateAudio(dt, true);
+    this.touch?.update({ canUse: false, panelOpen: false, mapOpen: false });
+  }
+
+  /**
    * Touch play: find the infected nearest the crosshair and, if it is in plain view, turn the view a little toward
    * it. Returns the factor to slow the player's own look input by (1 = no change).
    */
@@ -793,7 +878,7 @@ export class Game implements GameCtx {
     const targets = this.assistTargets;
     let n = 0;
     for (const z of this.zombies.zombies) {
-      if (!z.alive || z.dormant) continue;
+      if (!z.active || z.dormant) continue;
       const dx = z.x - p.x;
       const dz = z.z - p.z;
       if (dx * dx + dz * dz > range * range) continue;
@@ -940,7 +1025,7 @@ export class Game implements GameCtx {
   }
 
   hurtPlayer(amount: number, srcX: number | null, srcZ: number | null, opts: { ignoreArmor?: boolean; toxic?: boolean } = {}): void {
-    if (!this.playerAlive() || this.endingKind === 'board') return;
+    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam') return;
     const s = this.session;
     const mul = opts.toxic ? 1 : REGIONS[this.playerRegion()].damageMul;
     const res = applyDamageToPlayer(s.vitals, amount * mul, { ignoreArmor: opts.ignoreArmor });
@@ -1064,6 +1149,7 @@ export class Game implements GameCtx {
     const boarding = this.endingKind === 'board';
     // the world keeps moving: enemies, fx, helicopter
     this.updateEnemies(dt, this.playerAlive() && !boarding);
+    this.cards.update(dt);
     if (boarding) this.mission.update(dt, this.renderer.camera, this.time);
     this.grenades.update(dt);
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
@@ -1083,6 +1169,7 @@ export class Game implements GameCtx {
     const pr = this.pendingResults!;
     this.pendingResults = null;
     this.state = 'results';
+    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
     this.hud.setVisible(false);
     this.hud.toggleTacticalMap(false);
     this.audio.stopAll();
@@ -1193,8 +1280,8 @@ export class Game implements GameCtx {
 
   private updateHud(dt: number): void {
     const show = this.settings.showFps ? this.fps : null;
-    const st = buildHudState(this, this.mission, this.io, show);
-    const md = buildMapDynamic(this, this.mission, this.markers);
+    const st = buildHudState(this, this.mission, this.cards, this.io, show);
+    const md = buildMapDynamic(this, this.mission, this.cards, this.markers);
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

@@ -5,8 +5,9 @@ import type { HudState, MapDynamic, MapMarker } from '../ui/hudTypes';
 import type { GameCtx } from './ctx';
 import type { InteractionOutput } from './interaction';
 import type { MissionRuntime } from './missionRuntime';
+import type { CardRuntime } from '../cards/cardRuntime';
 
-export function buildHudState(ctx: GameCtx, mission: MissionRuntime, io: InteractionOutput, fps: number | null): HudState {
+export function buildHudState(ctx: GameCtx, mission: MissionRuntime, cards: CardRuntime, io: InteractionOutput, fps: number | null): HudState {
   const s = ctx.session;
   const inv = s.inv;
   const w = ctx.weapons;
@@ -21,6 +22,8 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, io: Interac
   const lowAmmo = !!cur && cur.mag <= Math.max(2, Math.floor(cur.magSize * 0.25)) && !cur.reloading;
   const outOfAmmo = !!cur && cur.mag === 0 && cur.reserve === 0;
   const hp = s.vitals.health;
+  const objectives = mission.objectives();
+  cards.objectives(objectives);
   return {
     health: s.vitals.health,
     maxHealth: PLAYER.maxHealth,
@@ -41,7 +44,7 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, io: Interac
     regionColor: def.color,
     timer,
     subTimer,
-    objectives: mission.objectives(),
+    objectives,
     prompt: io.prompt,
     panel: io.panel,
     crosshair: {
@@ -57,7 +60,7 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, io: Interac
       inside: mission.insideHazard,
       message: mission.hazardRadiusNow > 0 ? (mission.insideHazard ? 'TOXIC EXPOSURE - LEAVE THE ZONE' : 'CONTAMINATION SURGE - REACH EXTRACTION') : null,
     },
-    boss: bossVisible ? { name: 'THE WARDEN', fraction: Math.max(0, boss!.hp / boss!.maxHp), enraged: boss!.enraged } : null,
+    boss: bossVisible ? { name: 'THE WARDEN', fraction: Math.max(0, boss!.hp / boss!.maxHp), enraged: boss!.enraged } : cards.bossInfo(),
     fps,
     compassYaw: ctx.player.yaw,
     vignette: hp < 40 ? Math.min(1, (40 - hp) / 40) : 0,
@@ -65,17 +68,18 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, io: Interac
   };
 }
 
-export function buildMapDynamic(ctx: GameCtx, mission: MissionRuntime, markers: MapMarker[]): MapDynamic {
+export function buildMapDynamic(ctx: GameCtx, mission: MissionRuntime, cards: CardRuntime, markers: MapMarker[]): MapDynamic {
   const p = ctx.player;
   const enemies: MapDynamic['enemies'] = [];
   for (const z of ctx.zombies.zombies as Zombie[]) {
-    if (!z.alive || z.dormant) continue;
+    if (!z.active || z.dormant) continue;
     const dx = z.x - p.x;
     const dz = z.z - p.z;
     if (dx * dx + dz * dz > 48 * 48) continue;
     enemies.push({ x: z.x, z: z.z, type: z.type, alerted: z.chasing });
   }
   mission.markers(markers);
+  cards.markers(markers);
   const h = ctx.level.data.hazardCenter;
   return {
     player: { x: p.x, z: p.z, yaw: p.yaw },

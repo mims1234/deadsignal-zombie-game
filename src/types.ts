@@ -19,6 +19,12 @@ export type SurfaceKind = 'concrete' | 'metal' | 'wood' | 'dirt' | 'flesh' | 'gl
 
 export type QualityLevel = 'low' | 'medium' | 'high';
 
+/**
+ * What DEPLOY starts: the standard operation, the same operation with the card carriers and their side contract,
+ * or a free flight around the district with nothing at stake.
+ */
+export type GameMode = 'standard' | 'cards' | 'roam';
+
 export interface Vec3Like {
   x: number;
   y: number;
@@ -80,4 +86,7 @@ export interface MissionStats {
   shotsHit: number;
   /** Highest threat region reached. */
   highestRegion: Region;
+  /** Card recovery: cards picked up this run, out of how many carriers were in the district (0 = not that mode). */
+  cardsRecovered: number;
+  cardsTotal: number;
 }

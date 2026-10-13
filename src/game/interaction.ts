@@ -2,7 +2,7 @@
  * Contextual interactions: crates, stations (number-key panels), the transmitter console, the extraction terminal and the
  * helicopter door. Produces the HUD prompt / station panel each frame and executes actions exactly once.
  */
-import { ECONOMY, MISSION, PLAYER, WEAPONS } from '../config';
+import { CARD_MODE, ECONOMY, MISSION, PLAYER, WEAPONS } from '../config';
 import { buyMenu, purchaseBuy, purchaseUpgrade, upgradeMenu, type BuyItemId, type StationItem } from '../logic/economy';
 import type { Edges } from '../player/input';
 import type { HudPrompt, StationPanel } from '../ui/hudTypes';
@@ -20,6 +20,12 @@ export interface MissionApi {
   heliDoorPos(): { x: number; z: number } | null;
   canBoard(): boolean;
   board(): boolean;
+}
+
+/** Card recovery: purging a downed carrier. */
+export interface CureApi {
+  cureTarget(): { id: string; name: string; dist: number } | null;
+  cure(id: string): void;
 }
 
 interface Target {
@@ -51,6 +57,7 @@ export class Interaction {
     private readonly ctx: GameCtx,
     private readonly entities: Entities,
     private readonly mission: MissionApi,
+    private readonly cards: CureApi,
   ) {}
 
   reset(): void {
@@ -223,6 +230,20 @@ export class Interaction {
           });
         }
       }
+    }
+    // downed card carrier
+    const down = this.cards.cureTarget();
+    if (down) {
+      targets.push({
+        id: `cure:${down.id}`,
+        dist: down.dist,
+        text: 'PURGE THE SIGNAL',
+        sub: `${down.name} - administer the counter-agent`,
+        tone: 'good',
+        hold: CARD_MODE.cureHold,
+        enabled: true,
+        onUse: () => this.cards.cure(down.id),
+      });
     }
     // helicopter door
     const door = this.mission.heliDoorPos();

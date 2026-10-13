@@ -11,7 +11,8 @@ import type { CollisionWorld } from '../world/collision';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieRig } from './zombieRigTypes';
 
-export type ZombieState = 'idle' | 'alert' | 'chase' | 'attack' | 'stagger' | 'dead';
+/** `downed`: a curable carrier at zero health, lying helpless until it is purged or gets back up. */
+export type ZombieState = 'idle' | 'alert' | 'chase' | 'attack' | 'stagger' | 'downed' | 'dead';
 export type AttackKind = 'melee' | 'slam' | 'charge';
 
 export interface PlayerRef {
@@ -63,6 +64,10 @@ export class Zombie {
   dormant = false;
   isBoss = false;
   isAmbient = false;
+  /** Card carriers: cannot be killed (zero health knocks them down instead) and never go dormant. */
+  curable = false;
+  /** False when the rig belongs to someone else and must not be returned to the shared pools. */
+  ownsRig = true;
   homeX = 0;
   homeZ = 0;
   speedScale = 1;
@@ -136,7 +141,9 @@ export class Zombie {
   }
 
   /** (Re)initialise for a fresh life. */
-  init(x: number, z: number, yaw: number, rng: Rng, opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number } = {}): void {
+  init(x: number, z: number, yaw: number, rng: Rng, opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; def?: ZombieDef; curable?: boolean } = {}): void {
+    if (opts.def) this.def = opts.def;
+    this.curable = opts.curable ?? false;
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
     this.yaw = yaw;
@@ -185,6 +192,11 @@ export class Zombie {
     return this.state !== 'dead';
   }
 
+  /** Alive and on its feet: a threat, a target and an obstacle. */
+  get active(): boolean {
+    return this.state !== 'dead' && this.state !== 'downed';
+  }
+
   get chasing(): boolean {
     return this.state === 'chase' || this.state === 'attack' || this.state === 'alert';
   }
@@ -220,7 +232,7 @@ export class Zombie {
 
   /** Force this zombie to hunt the player (director spawns). */
   aggro(px: number, pz: number): void {
-    if (this.state === 'dead') return;
+    if (!this.active) return;
     this.lastKnownX = px;
     this.lastKnownZ = pz;
     this.memory = 0;
@@ -238,7 +250,7 @@ export class Zombie {
 
   /** Apply already-computed damage. Returns true if this killed the zombie. */
   takeDamage(amount: number, head: boolean, env: ZombieEnv, hitDirYaw: number, impulse = 1): boolean {
-    if (this.state === 'dead' || amount <= 0) return false;
+    if (!this.active || amount <= 0) return false;
     this.hp -= amount;
     this.hitKick = 1;
     if (this.state === 'idle') {
@@ -248,6 +260,10 @@ export class Zombie {
       this.alertDelay = 0.05;
     }
     if (this.hp <= 0) {
+      if (this.curable) {
+        this.knockDown(env, hitDirYaw);
+        return false;
+      }
       this.die(head, env, hitDirYaw);
       return true;
     }
@@ -265,7 +281,7 @@ export class Zombie {
   }
 
   stagger(duration: number, env: ZombieEnv): void {
-    if (this.state === 'dead') return;
+    if (!this.active) return;
     this.enterState('stagger');
     this.staggerT = 0;
     this.staggerDur = duration;
@@ -274,17 +290,46 @@ export class Zombie {
     env.audio.play('zombie_hurt', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.8, priority: 1 });
   }
 
+  private fallStyle(env: ZombieEnv, hitDirYaw: number): void {
+    // fall away from the shot direction relative to facing: shot from the front -> fall backwards
+    const rel = Math.abs(wrap(hitDirYaw - this.yaw));
+    this.deathStyle = rel > Math.PI * 0.6 ? 0 : rel < Math.PI * 0.3 ? 1 : 2;
+    if (env.rng.chance(0.25)) this.deathStyle = 2;
+  }
+
   private die(head: boolean, env: ZombieEnv, hitDirYaw: number): void {
     this.enterState('dead');
     this.hp = 0;
     this.deathT = 0;
     this.headshotDeath = head;
     this.vx = this.vz = 0;
-    // fall away from the shot direction relative to facing: shot from the front -> fall backwards
-    const rel = Math.abs(wrap(hitDirYaw - this.yaw));
-    this.deathStyle = rel > Math.PI * 0.6 ? 0 : rel < Math.PI * 0.3 ? 1 : 2;
-    if (env.rng.chance(0.25)) this.deathStyle = 2;
+    this.fallStyle(env, hitDirYaw);
     env.audio.play('zombie_death', { pos: { x: this.x, y: 1.2, z: this.z }, volume: this.isBoss ? 1.3 : 1, priority: 2 });
+  }
+
+  private knockDown(env: ZombieEnv, hitDirYaw: number): void {
+    this.enterState('downed');
+    this.hp = 0;
+    this.deathT = 0;
+    this.headshotDeath = false;
+    this.vx = this.vz = 0;
+    this.fallStyle(env, hitDirYaw);
+    env.audio.play('zombie_hurt', { pos: { x: this.x, y: 1.2, z: this.z }, volume: 1, priority: 2 });
+  }
+
+  /** A downed carrier gets back up with part of its health. */
+  revive(hpFraction: number, env: ZombieEnv): void {
+    if (this.state !== 'downed') return;
+    this.hp = Math.max(1, this.maxHp * hpFraction);
+    this.poise = 0;
+    this.rig.reset(this.id * 7919);
+    this.enterState('stagger');
+    this.staggerT = 0;
+    this.staggerDur = 0.8;
+    this.lastKnownX = env.player.x;
+    this.lastKnownZ = env.player.z;
+    this.memory = 0;
+    env.audio.play('zombie_alert', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 1, priority: 2 });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -300,7 +345,7 @@ export class Zombie {
     if (this.slamCd > 0) this.slamCd -= dt;
     if (this.chargeCd > 0) this.chargeCd -= dt;
 
-    if (this.state === 'dead') {
+    if (this.state === 'dead' || this.state === 'downed') {
       this.deathT += dt;
       this.pose(env, 0);
       return;
@@ -347,7 +392,7 @@ export class Zombie {
     const R = ZOMBIE_AI.separationRadius;
     for (let i = 0; i < neighbors.length; i++) {
       const o = neighbors[i]!;
-      if (o === this || o.state === 'dead') continue;
+      if (o === this || !o.active) continue;
       const ox = this.x - o.x;
       const oz = this.z - o.z;
       const d2 = ox * ox + oz * oz;
@@ -775,6 +820,7 @@ export class Zombie {
     a.aggro = this.state === 'idle' ? 0.1 : this.state === 'alert' ? 0.7 : 1;
     switch (this.state) {
       case 'dead':
+      case 'downed':
         a.mode = 'death';
         break;
       case 'stagger':

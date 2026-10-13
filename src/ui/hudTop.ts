@@ -6,6 +6,7 @@ import { NumCell, TextCell, clamp01, el, fmtClock, fmtDist, setAttr, setHidden, 
 import type { HudState, HudTimer, MapDynamic, MapMarkerKind } from './hudTypes';
 import { icon } from './icons';
 import { MARKER_COLOR } from './mapView';
+import { reducedMotion } from './prefs';
 
 // ---------------------------------------------------------------------------------------------
 // compass
@@ -193,15 +194,23 @@ export class BossView {
   private readonly fill: HTMLElement;
   private readonly ghost: HTMLElement;
   private readonly tag: HTMLElement;
+  private readonly portrait: HTMLImageElement;
+  private readonly note: TextCell;
   private readonly cell = new NumCell(0.002);
   private enraged = false;
+  private portraitSrc = '';
+  private accent = '';
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'ds-boss', parent);
     this.root.hidden = true;
+    this.portrait = el('img', 'portrait', this.root);
+    this.portrait.alt = '';
+    this.portrait.hidden = true;
     const top = el('div', 'top', this.root);
     el('span', 'ic', top).appendChild(icon('target'));
     this.name = new TextCell(el('span', 'name', top));
+    this.note = new TextCell(el('span', 'note', top));
     this.tag = el('span', 'tag', top, 'ENRAGED');
     this.tag.hidden = true;
     const bar = el('div', 'bar', this.root);
@@ -213,6 +222,20 @@ export class BossView {
     setHidden(this.root, !b);
     if (!b) return;
     this.name.set(b.name);
+    this.note.set(b.note ?? '');
+    const src = b.portrait ?? '';
+    if (src !== this.portraitSrc) {
+      this.portraitSrc = src;
+      this.portrait.hidden = src === '';
+      if (src) this.portrait.src = src;
+      this.root.dataset.card = src ? '1' : '0';
+    }
+    const accent = b.accent ?? '';
+    if (accent !== this.accent) {
+      this.accent = accent;
+      if (accent) this.root.style.setProperty('--bc', accent);
+      else this.root.style.removeProperty('--bc');
+    }
     const f = clamp01(b.fraction);
     if (this.cell.changed(f)) {
       const t = `scaleX(${f.toFixed(4)})`;
@@ -259,5 +282,65 @@ export class RegionView {
       this.color = color;
       this.root.style.setProperty('--rc', color);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// recovered card reveal
+// ---------------------------------------------------------------------------------------------
+
+/** Shows the card the player just picked up: it turns in from the right, holds, and fades. */
+export class CardReveal {
+  private readonly root: HTMLElement;
+  private readonly img: HTMLImageElement;
+  private readonly name: HTMLElement;
+  private readonly series: HTMLElement;
+  private readonly count: HTMLElement;
+  private left = 0;
+  private anim: Animation | null = null;
+
+  constructor(parent: HTMLElement) {
+    this.root = el('div', 'ds-cardreveal', parent);
+    this.root.hidden = true;
+    this.root.setAttribute('role', 'status');
+    this.img = el('img', '', this.root);
+    this.img.alt = '';
+    const text = el('div', 'text', this.root);
+    el('div', 'kick', text, 'CARD RECOVERED');
+    this.name = el('div', 'name', text);
+    this.series = el('div', 'series', text);
+    this.count = el('div', 'count', text);
+  }
+
+  show(e: { name: string; series: string; image: string; accent: string; count: number; total: number }): void {
+    this.img.src = e.image;
+    this.name.textContent = e.name;
+    this.series.textContent = e.series;
+    this.count.textContent = `${e.count} / ${e.total}`;
+    this.root.style.setProperty('--cc', e.accent);
+    this.root.hidden = false;
+    this.left = 4.2;
+    this.anim?.cancel();
+    this.anim = reducedMotion()
+      ? this.root.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200 })
+      : this.root.animate(
+          [
+            { opacity: 0, transform: 'translateX(3em) rotateY(-70deg)' },
+            { opacity: 1, transform: 'translateX(0) rotateY(0deg)' },
+          ],
+          { duration: 520, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
+        );
+  }
+
+  update(dt: number): void {
+    if (this.left <= 0) return;
+    this.left -= dt;
+    if (this.left <= 0) this.reset();
+  }
+
+  reset(): void {
+    this.left = 0;
+    this.anim?.cancel();
+    this.root.hidden = true;
   }
 }

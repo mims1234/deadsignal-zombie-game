@@ -1,5 +1,6 @@
 /** Per-run mission state (everything that resets on restart). */
 import { MISSION } from '../config';
+import { recoveredCount, type CarrierState } from '../logic/carriers';
 import { createDefense, createHunt, type DefenseContract, type HuntContract } from '../logic/contracts';
 import { createInventory, type Inventory } from '../logic/economy';
 import { createExtraction, type ExtractionState } from '../logic/extraction';
@@ -16,6 +17,8 @@ export interface Session {
   defense: DefenseContract;
   hunt: HuntContract;
   extraction: ExtractionState;
+  /** Card recovery side contract: one entry per carrier in the district (empty outside that mode). */
+  carriers: CarrierState[];
   stats: {
     kills: number;
     headshots: number;
@@ -38,6 +41,7 @@ export function newSession(): Session {
     defense: createDefense(),
     hunt: createHunt(),
     extraction: createExtraction(),
+    carriers: [],
     stats: { kills: 0, headshots: 0, cratesOpened: 0, shotsFired: 0, shotsHit: 0, highestRegion: 'low' },
     flags: new Set(),
     ended: null,
@@ -66,5 +70,7 @@ export function buildStats(s: Session, outcome: 'victory' | 'defeat', reason: st
     shotsFired: s.stats.shotsFired,
     shotsHit: s.stats.shotsHit,
     highestRegion: s.stats.highestRegion,
+    cardsRecovered: recoveredCount(s.carriers),
+    cardsTotal: s.carriers.length,
   };
 }

@@ -30,6 +30,20 @@ Each contract pays out once. Tougher zombies and better loot wait in the higher-
 cages and the armory bench. At 7:30 a contamination surge spreads out from the compound, and the district is sealed at 12:00.
 You lose if you die, if the district seals before you call extraction, or if the helicopter leaves without you.
 
+## Modes
+
+Pick one on the title screen before you deploy. The choice is remembered.
+
+- **Standard** — the operation above.
+- **Card recovery** — the same operation with a side contract. Five card carriers walk the district, each with its
+  card floating over its head. A carrier cannot be killed: empty its health and it drops, then get close and hold `E`
+  to purge the signal before it gets back up (24 seconds). The card is left on the ground; walk into it to take it.
+  Each card pays $350, the full set pays a $1,500 bonus, and recovered cards stay in the archive on the title screen
+  across runs. The side contract is optional: you can extract without it.
+- **Free roam** — no mission, no clock and no damage. Fly anywhere, through anything, and look around.
+  `W A S D` moves along the view, `Space` climbs, `C` descends, `Shift` goes fast. On touch, look where you want to
+  go and push the stick.
+
 ## Controls
 
 | Key | Action | Key | Action |
@@ -39,7 +53,7 @@ You lose if you die, if the district seals before you call extraction, or if the
 | Left / right mouse | Fire / aim down sights | `G` | Throw frag grenade |
 | `R` | Reload | `Q` | Apply armor plate |
 | `Shift` | Sprint | `M` | Tactical map |
-| `Space` / `C` | Jump / crouch (toggle) | `Esc` | Pause |
+| `Space` / `C` | Jump / crouch (toggle) | `Esc` | Pause (settings, restart, quit) |
 
 At a supply cage or the armory bench, press `E` to open it and `1`–`6` to buy.
 
