@@ -51,15 +51,22 @@ Hold the device sideways; **DEPLOY** goes fullscreen where the browser allows it
 | Control | Action |
 | --- | --- |
 | Left thumb, anywhere on the left | Move. Push the stick all the way forward to sprint |
-| Drag on the right | Look |
-| `FIRE` | Hold to shoot. Keep dragging on it to aim while shooting |
+| Slide up onto `RUN`, then let go | Lock the sprint on and keep running hands-free. Touch the stick to stop |
+| Drag on the right | Look. Slow drags are fine, fast flicks turn further |
+| `FIRE` (right) | Hold to shoot. Keep dragging on it to aim while shooting |
+| `FIRE` (left) | Shoot with the left thumb so the right one can stay on the aim |
 | `AIM` | Sights on / off |
 | `RELOAD`, `JUMP`, `CROUCH` | As labelled |
 | `USE` | Interact. Hold it when the prompt shows a ring. At a station it becomes `CLOSE` |
-| `SWAP`, `NADE`, `PLATE` | Switch weapon, throw a grenade, apply an armor plate |
+| `SWAP`, `NADE`, `PLATE` | Switch weapon (or tap the weapon readout), throw a grenade, apply an armor plate |
 | `MAP`, `II` | Tactical map, pause |
 
 At a supply cage or the armory bench, tap `USE`, then tap the item you want.
+
+Two aiming helpers live in Settings on touch devices. **Aim assist** (on by default) slows the view as the crosshair
+crosses an infected and steadies it toward them while you are aiming or firing; it never works through walls and
+never moves the view while you are idle. **Auto fire** (off by default) shoots for you while the crosshair is on an
+infected in plain view.
 
 Add `?touch=1` to the URL to try the touch layout on a desktop, or `?touch=0` to force keyboard and mouse.
 

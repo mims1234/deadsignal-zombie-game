@@ -16,6 +16,16 @@ export const TOUCH = {
    * far as a comfortable mouse movement does.
    */
   lookScale: 2.4,
+  /**
+   * Look acceleration: a slow drag turns less than its distance and a fast flick turns more, so the same thumb
+   * can both line up a head and spin round. Gains apply below / above these finger speeds (CSS px per ms).
+   */
+  lookSlowGain: 0.8,
+  lookFastGain: 1.55,
+  lookSlowSpeed: 0.25,
+  lookFastSpeed: 1.8,
+  /** How far above the stick centre (in stick radii) the thumb must slide to lock the sprint on. */
+  sprintLockAt: 2.0,
 } as const;
 
 export interface StickState {
@@ -52,6 +62,26 @@ export function stick(dx: number, dy: number, radius: number): StickState {
     knobX,
     knobY,
   };
+}
+
+/**
+ * How many "mouse pixels" one CSS pixel of look drag is worth, given how fast the finger is moving.
+ * `distPx` is the distance covered since the last event and `dtMs` the time it took.
+ */
+export function lookGain(distPx: number, dtMs: number): number {
+  if (!(dtMs > 0) || !(distPx > 0) || !Number.isFinite(distPx / dtMs)) return TOUCH.lookScale * TOUCH.lookSlowGain;
+  const speed = distPx / dtMs;
+  const k = Math.max(0, Math.min(1, (speed - TOUCH.lookSlowSpeed) / (TOUCH.lookFastSpeed - TOUCH.lookSlowSpeed)));
+  return TOUCH.lookScale * (TOUCH.lookSlowGain + (TOUCH.lookFastGain - TOUCH.lookSlowGain) * k);
+}
+
+/**
+ * Whether the thumb has slid far enough straight up from the stick to lock the sprint on, so the player keeps
+ * running with the thumb lifted. Offsets are from the stick centre in pixels, y down.
+ */
+export function wantsSprintLock(dx: number, dy: number, radius: number): boolean {
+  if (!(radius > 0)) return false;
+  return -dy >= radius * TOUCH.sprintLockAt && Math.abs(dx) <= radius * 0.9;
 }
 
 /**

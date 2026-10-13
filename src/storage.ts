@@ -22,6 +22,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     reducedMotion: typeof r.reducedMotion === 'boolean' ? r.reducedMotion : DEFAULT_SETTINGS.reducedMotion,
     invertY: typeof r.invertY === 'boolean' ? r.invertY : DEFAULT_SETTINGS.invertY,
     showFps: typeof r.showFps === 'boolean' ? r.showFps : DEFAULT_SETTINGS.showFps,
+    aimAssist: typeof r.aimAssist === 'boolean' ? r.aimAssist : DEFAULT_SETTINGS.aimAssist,
+    autoFire: typeof r.autoFire === 'boolean' ? r.autoFire : DEFAULT_SETTINGS.autoFire,
   };
 }
 

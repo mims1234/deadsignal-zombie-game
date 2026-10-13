@@ -19,6 +19,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
+import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
@@ -97,6 +98,14 @@ export class Game implements GameCtx {
   private readonly touchMode = isTouchDevice();
   private touch: TouchControlsApi | null = null;
   private playingSince = 0;
+  // aim assist / auto fire scratch (touch play); reused every frame so nothing is allocated while playing
+  private readonly assistTargets: AssistTarget[] = [];
+  private readonly assistView: AssistView = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
+  private readonly assistPick: AssistPick = { index: -1, yawErr: 0, pitchErr: 0, angle: 0, dist: 0 };
+  private readonly assistOut: AssistResult = { slow: 1, dyaw: 0, dpitch: 0 };
+  private sinceLook = 1;
+  private autoOnTarget = 0;
+  private autoPulse = 0;
   private escAt = 0;
   private shakeAmt = 0;
   private roll = 0;
@@ -700,9 +709,10 @@ export class Game implements GameCtx {
     if (alive) {
       const zoomScale = Math.tan((this.renderer.camera.fov * Math.PI) / 360) / Math.tan(((this.renderer.hFov > 0 ? 60 : 60) * Math.PI) / 360);
       const sens = this.settings.sensitivity;
+      const slow = this.touchMode && this.settings.aimAssist ? this.aimAssist(dt, edges) : 1;
       this.player.look(
-        mouseToRadians(edges.mouseDX, sens, Math.min(1, zoomScale)),
-        mouseToRadians(edges.mouseDY, sens, Math.min(1, zoomScale)) * (this.settings.invertY ? -1 : 1),
+        mouseToRadians(edges.mouseDX * slow, sens, Math.min(1, zoomScale)),
+        mouseToRadians(edges.mouseDY * slow, sens, Math.min(1, zoomScale)) * (this.settings.invertY ? -1 : 1),
       );
     }
 
@@ -731,9 +741,10 @@ export class Game implements GameCtx {
     this.clampToBounds();
 
     // ---- weapons ----
+    const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen ? this.autoFire(dt) : 0;
     const winput: WeaponInput = {
-      fire: this.input.fire,
-      firePressed: edges.firePressed,
+      fire: this.input.fire || auto > 0,
+      firePressed: edges.firePressed || auto > 1,
       ads: this.input.ads,
       reloadPressed: edges.reload,
       slot: this.interaction.panelOpen ? null : edges.slot1 ? 0 : edges.slot2 ? 1 : null,
@@ -769,6 +780,85 @@ export class Game implements GameCtx {
     this.updateCamera(dt);
     this.updateAudio(dt, alive);
     this.updateHud(dt);
+  }
+
+  /**
+   * Touch play: find the infected nearest the crosshair and, if it is in plain view, turn the view a little toward
+   * it. Returns the factor to slow the player's own look input by (1 = no change).
+   */
+  private aimAssist(dt: number, edges: Edges): number {
+    const p = this.player;
+    this.sinceLook = edges.mouseDX !== 0 || edges.mouseDY !== 0 ? 0 : this.sinceLook + dt;
+    const range = Math.min(AIM_ASSIST.range, this.weapons.def?.maxRange ?? AIM_ASSIST.range);
+    const targets = this.assistTargets;
+    let n = 0;
+    for (const z of this.zombies.zombies) {
+      if (!z.alive || z.dormant) continue;
+      const dx = z.x - p.x;
+      const dz = z.z - p.z;
+      if (dx * dx + dz * dz > range * range) continue;
+      let t = targets[n];
+      if (!t) {
+        t = { x: 0, y: 0, z: 0, r: 0 };
+        targets[n] = t;
+      }
+      // upper chest: a safe centre of mass that still leaves the head for the player to find
+      t.x = z.x;
+      t.y = z.def.height * 0.68;
+      t.z = z.z;
+      t.r = z.def.radius;
+      n++;
+    }
+    if (n === 0) return 1;
+    const view = this.assistView;
+    view.x = p.x;
+    view.y = p.eyeY();
+    view.z = p.z;
+    view.yaw = p.yaw;
+    view.pitch = p.pitch;
+    const pick = pickTarget(view, targets, n, range, this.assistPick);
+    if (pick.index < 0) return 1;
+    const t = targets[pick.index]!;
+    // never help the player aim at something behind a wall
+    if (this.level.world.segmentBlocked(view.x, view.y, view.z, t.x, t.y, t.z, 'shots')) return 1;
+    const engaged = this.input.fire || this.sinceLook < 0.4 || this.input.forward !== 0 || this.input.strafe !== 0;
+    const a = assistFor(pick, t.r, view.pitch, dt, engaged, this.input.fire, this.assistOut);
+    if (a.dyaw !== 0 || a.dpitch !== 0) {
+      p.yaw = wrapAngle(p.yaw + a.dyaw);
+      p.pitch = Math.max(-Math.PI / 2 + 0.02, Math.min(Math.PI / 2 - 0.02, p.pitch + a.dpitch));
+    }
+    return a.slow;
+  }
+
+  /**
+   * Touch play, when the player has turned it on: is the crosshair resting on an infected in plain view?
+   * Returns 0 for no, 1 to hold the trigger, 2 to also pull it afresh this frame (single-shot weapons).
+   */
+  private autoFire(dt: number): number {
+    const p = this.player;
+    const cp = Math.cos(p.pitch);
+    const dx = -Math.sin(p.yaw) * cp;
+    const dy = Math.sin(p.pitch);
+    const dz = -Math.cos(p.yaw) * cp;
+    const ex = p.x;
+    const ey = p.eyeY();
+    const ez = p.z;
+    const range = Math.min(55, this.weapons.def?.maxRange ?? 55);
+    const hit = this.zombies.raycast(ex, ey, ez, dx, dy, dz, range);
+    const clear = hit !== null && !this.level.world.segmentBlocked(ex, ey, ez, hit.x, hit.y, hit.z, 'shots');
+    this.autoPulse -= dt;
+    if (!clear) {
+      this.autoOnTarget = 0;
+      return 0;
+    }
+    // a short beat on target first, so sweeping past an enemy does not waste a round
+    this.autoOnTarget += dt;
+    if (this.autoOnTarget < 0.09) return 0;
+    if (this.autoPulse <= 0) {
+      this.autoPulse = 0.16;
+      return 2;
+    }
+    return 1;
   }
 
   private clampToBounds(): void {

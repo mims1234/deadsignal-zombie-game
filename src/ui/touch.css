@@ -87,6 +87,49 @@ html.ds-touch body {
   border: 1px solid rgba(0, 0, 0, 0.5);
 }
 
+/* While the sprint is locked the stick is not in use, so its resting ring steps aside for the RUNNING badge. */
+.ds-touch-layer .stick.idle-hidden {
+  opacity: 0;
+}
+
+/* RUN: appears above the stick once it is sprinting. Slide the thumb up onto it and let go to keep running. */
+.ds-touch-layer .runlock {
+  position: absolute;
+  left: calc(var(--sl) + var(--u) * 2);
+  top: calc(100% - var(--sb) - var(--u) * 1.75);
+  width: calc(var(--u) * 1.05);
+  height: calc(var(--u) * 1.05);
+  margin: calc(var(--u) * -0.525) 0 0 calc(var(--u) * -0.525);
+  display: none;
+  place-items: center;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(230, 236, 220, 0.6);
+  background: rgba(8, 11, 9, 0.35);
+  color: #e6ecdc;
+  font-size: 0.86em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+.ds-touch-layer .runlock.show,
+.ds-touch-layer .runlock.locked {
+  display: grid;
+}
+.ds-touch-layer .runlock.armed {
+  border-style: solid;
+  border-color: #e2b04a;
+  background: rgba(226, 176, 74, 0.45);
+  transform: scale(1.12);
+}
+.ds-touch-layer .runlock.locked {
+  width: calc(var(--u) * 1.5);
+  height: calc(var(--u) * 1.5);
+  margin: calc(var(--u) * -0.75) 0 0 calc(var(--u) * -0.75);
+  border-style: solid;
+  border-color: #e2b04a;
+  background: rgba(226, 176, 74, 0.3);
+  color: #e2b04a;
+}
+
 .ds-touch-layer .tb {
   position: absolute;
   display: grid;
@@ -125,6 +168,18 @@ html.ds-touch body {
   border-color: rgba(229, 82, 63, 0.9);
 }
 .ds-touch-layer .tb.fire.down {
+  background: rgba(229, 82, 63, 0.7);
+}
+/* a second trigger for the left thumb: shoot with it and keep the right thumb on the aim */
+.ds-touch-layer .tb.fire-left {
+  width: calc(var(--u) * 1.1);
+  height: calc(var(--u) * 1.1);
+  left: calc(var(--sl) + var(--u) * 0.3);
+  bottom: calc(var(--sb) + var(--u) * 3.25);
+  background: rgba(229, 82, 63, 0.26);
+  border-color: rgba(229, 82, 63, 0.75);
+}
+.ds-touch-layer .tb.fire-left.down {
   background: rgba(229, 82, 63, 0.7);
 }
 .ds-touch-layer .tb.ads {
@@ -203,7 +258,8 @@ html.ds-touch body {
 
 /* With the tactical map up, a tap anywhere closes it: only MAP (now CLOSE) and pause stay. */
 .ds-touch-layer.map-open .tb:not(.map):not(.pause),
-.ds-touch-layer.map-open .stick {
+.ds-touch-layer.map-open .stick,
+.ds-touch-layer.map-open .runlock {
   display: none;
 }
 /* A station menu sits over the right-hand buttons, so only the ones you still need stay. */

@@ -86,9 +86,14 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
   const rm = toggle(root, 'REDUCED MOTION', (v) => change({ reducedMotion: v }));
   const inv = toggle(root, 'INVERT Y-AXIS', (v) => change({ invertY: v }));
   const fps = toggle(root, 'SHOW FPS COUNTER', (v) => change({ showFps: v }));
+  // Aiming helpers only make sense for thumbs; a mouse is already precise.
+  const assist = touch ? toggle(root, 'AIM ASSIST', (v) => change({ aimAssist: v })) : null;
+  const auto = touch ? toggle(root, 'AUTO FIRE WHEN ON TARGET', (v) => change({ autoFire: v })) : null;
 
   const hint = el('div', 'ds-set-hint', root);
-  hint.textContent = 'Medium is the smooth default (no shadows or bloom). High turns nearby shadows back on. Reduced motion cuts camera bob, sway and screen shake.';
+  hint.textContent = touch
+    ? 'Low is the smooth default on phones. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
+    : 'Medium is the smooth default (no shadows or bloom). High turns nearby shadows back on. Reduced motion cuts camera bob, sway and screen shake.';
 
   const paintOf = (r: SliderRow): void => (r.input as HTMLInputElement & { _paint?: () => void })._paint?.();
 
@@ -109,6 +114,8 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
       rm.checked = s.reducedMotion;
       inv.checked = s.invertY;
       fps.checked = s.showFps;
+      if (assist) assist.checked = s.aimAssist;
+      if (auto) auto.checked = s.autoFire;
     },
   };
 }
@@ -132,13 +139,14 @@ const CONTROLS: { keys: string[]; action: string }[] = [
 
 const TOUCH_CONTROLS: { keys: string[]; action: string }[] = [
   { keys: ['LEFT THUMB'], action: 'MOVE - PUSH FAR FORWARD TO SPRINT' },
+  { keys: ['RUN'], action: 'SLIDE UP AND LET GO TO KEEP SPRINTING' },
   { keys: ['RIGHT DRAG'], action: 'LOOK' },
-  { keys: ['FIRE'], action: 'HOLD TO SHOOT, DRAG TO AIM' },
+  { keys: ['FIRE'], action: 'HOLD TO SHOOT, DRAG TO AIM - ONE PER THUMB' },
   { keys: ['AIM'], action: 'SIGHTS ON / OFF' },
   { keys: ['RELOAD'], action: 'RELOAD' },
   { keys: ['JUMP', 'CROUCH'], action: 'JUMP / CROUCH' },
   { keys: ['USE'], action: 'INTERACT - HOLD WHEN A RING FILLS' },
-  { keys: ['SWAP'], action: 'SWITCH WEAPON' },
+  { keys: ['SWAP'], action: 'SWITCH WEAPON - OR TAP THE WEAPON' },
   { keys: ['NADE'], action: 'THROW GRENADE' },
   { keys: ['PLATE'], action: 'ARMOR PLATE' },
   { keys: ['MAP'], action: 'TACTICAL MAP' },

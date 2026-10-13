@@ -835,6 +835,8 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
   invertY: false,
   showFps: false,
+  aimAssist: true,
+  autoFire: false,
 };
 
 export const RENDER = {

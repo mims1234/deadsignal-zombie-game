@@ -42,6 +42,10 @@ export interface Settings {
   reducedMotion: boolean;
   invertY: boolean;
   showFps: boolean;
+  /** Touch play only: slow and gently pull the view toward a target near the crosshair. */
+  aimAssist: boolean;
+  /** Touch play only: shoot automatically while the crosshair is on an enemy. */
+  autoFire: boolean;
 }
 
 /** Best successful-run statistics persisted to localStorage. */
