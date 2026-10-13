@@ -1,6 +1,7 @@
 /**
- * Keyboard / mouse input. Held state + one-shot edges that the game consumes each frame. Everything is cleared when
- * input is disabled, on blur, and on visibility changes, so no key or button can stay "stuck" after pausing.
+ * Keyboard / mouse input, plus the virtual controls a touchscreen drives. Held state + one-shot edges that the game
+ * consumes each frame. Everything is cleared when input is disabled, on blur, and on visibility changes, so no key
+ * or button can stay "stuck" after pausing.
  */
 export interface Edges {
   jump: boolean;
@@ -22,6 +23,17 @@ export interface Edges {
   mouseDY: number;
 }
 
+/** One-shot actions an on-screen button can trigger. */
+export type TapAction = 'jump' | 'reload' | 'grenade' | 'plate' | 'map' | 'crouch' | 'swap';
+
+/**
+ * After a finger lifts, browsers replay the tap as mouse events ("compatibility" events) up to roughly 300 ms later.
+ * Left alone those would fire the weapon on every tap, so mouse buttons are ignored for this long after a touch.
+ */
+const TOUCH_MOUSE_GUARD_MS = 800;
+
+const clampUnit = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
+
 const GAME_KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC', 'KeyE', 'KeyR', 'KeyG', 'KeyQ', 'KeyM',
   'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'ControlLeft', 'Tab',
@@ -39,6 +51,11 @@ export class Input {
   private wheelAcc = 0;
   private wheelCooldown = 0;
   private skipNextMove = 0;
+  // Virtual stick (touch). Added to the keyboard axes, so both can be used together.
+  private stickForward = 0;
+  private stickStrafe = 0;
+  private stickSprint = false;
+  private lastTouchAt = -1e9;
 
   constructor(private readonly canvas: HTMLElement) {
     document.addEventListener('keydown', this.onKeyDown);
@@ -48,6 +65,8 @@ export class Input {
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('wheel', this.onWheel, { passive: false });
     document.addEventListener('contextmenu', this.onContextMenu);
+    document.addEventListener('touchstart', this.onTouch, { passive: true, capture: true });
+    document.addEventListener('touchend', this.onTouch, { passive: true, capture: true });
     window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onBlur);
   }
@@ -73,6 +92,9 @@ export class Input {
     this.interactHeld = false;
     this.edges = this.freshEdges();
     this.wheelAcc = 0;
+    this.stickForward = 0;
+    this.stickStrafe = 0;
+    this.stickSprint = false;
   }
 
   held(code: string): boolean {
@@ -80,15 +102,17 @@ export class Input {
   }
 
   get forward(): number {
-    return (this.held('KeyW') ? 1 : 0) - (this.held('KeyS') ? 1 : 0);
+    const keys = (this.held('KeyW') ? 1 : 0) - (this.held('KeyS') ? 1 : 0);
+    return this.enabled ? clampUnit(keys + this.stickForward) : 0;
   }
 
   get strafe(): number {
-    return (this.held('KeyD') ? 1 : 0) - (this.held('KeyA') ? 1 : 0);
+    const keys = (this.held('KeyD') ? 1 : 0) - (this.held('KeyA') ? 1 : 0);
+    return this.enabled ? clampUnit(keys + this.stickStrafe) : 0;
   }
 
   get sprint(): boolean {
-    return this.held('ShiftLeft') || this.held('ShiftRight');
+    return this.held('ShiftLeft') || this.held('ShiftRight') || (this.enabled && this.stickSprint);
   }
 
   get jumpHeld(): boolean {
@@ -102,6 +126,84 @@ export class Input {
   get ads(): boolean {
     return this.enabled && this.adsHeld;
   }
+
+  // ---- virtual controls (touch). Each is a no-op while input is disabled, exactly like the keyboard. ----
+
+  /** Virtual stick position: strafe and forward in -1..1, and whether it is pushed far enough to sprint. */
+  setStick(strafe: number, forward: number, sprint: boolean): void {
+    if (!this.enabled) return;
+    this.stickStrafe = clampUnit(strafe);
+    this.stickForward = clampUnit(forward);
+    this.stickSprint = sprint;
+  }
+
+  /** Turn the view by a drag, in the same "mouse pixel" units the mouse reports. */
+  addLook(dx: number, dy: number): void {
+    if (!this.enabled || !Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    this.edges.mouseDX += Math.max(-250, Math.min(250, dx));
+    this.edges.mouseDY += Math.max(-250, Math.min(250, dy));
+  }
+
+  setFire(held: boolean): void {
+    if (held) {
+      if (!this.enabled) return;
+      if (!this.fireHeld) this.edges.firePressed = true;
+      this.fireHeld = true;
+    } else {
+      this.fireHeld = false;
+      this.fireSuppressed = false;
+    }
+  }
+
+  setAds(held: boolean): void {
+    if (held) {
+      if (!this.enabled) return;
+      if (!this.adsHeld) this.edges.adsPressed = true;
+      this.adsHeld = true;
+    } else {
+      this.adsHeld = false;
+    }
+  }
+
+  setInteract(held: boolean): void {
+    if (held) {
+      if (!this.enabled || this.interactHeld) return;
+      this.edges.interactPressed = true;
+      this.interactHeld = true;
+    } else if (this.interactHeld) {
+      this.edges.interactReleased = true;
+      this.interactHeld = false;
+    }
+  }
+
+  tap(action: TapAction): void {
+    if (!this.enabled) return;
+    switch (action) {
+      case 'jump': this.edges.jump = true; break;
+      case 'reload': this.edges.reload = true; break;
+      case 'grenade': this.edges.grenade = true; break;
+      case 'plate': this.edges.plate = true; break;
+      case 'map': this.edges.map = true; break;
+      case 'crouch': this.edges.crouch = true; break;
+      // the weapon system swaps slots on any wheel movement
+      case 'swap': this.edges.wheel += 1; break;
+      default: break;
+    }
+  }
+
+  /** A station-menu choice (1..6), as if that number key had been pressed. */
+  digit(n: number): void {
+    if (!this.enabled || !Number.isInteger(n) || n < 1 || n > 6) return;
+    this.edges.digits.push(n);
+  }
+
+  private fromTouch(): boolean {
+    return performance.now() - this.lastTouchAt < TOUCH_MOUSE_GUARD_MS;
+  }
+
+  private readonly onTouch = (): void => {
+    this.lastTouchAt = performance.now();
+  };
 
   /** Returns the pending edges and resets them. */
   consume(dt: number): Edges {
@@ -146,7 +248,7 @@ export class Input {
   };
 
   private readonly onMouseDown = (ev: MouseEvent): void => {
-    if (!this.enabled) return;
+    if (!this.enabled || this.fromTouch()) return;
     if (ev.button === 0) {
       if (!this.fireHeld) this.edges.firePressed = true;
       this.fireHeld = true;
@@ -157,6 +259,7 @@ export class Input {
   };
 
   private readonly onMouseUp = (ev: MouseEvent): void => {
+    if (this.fromTouch()) return;
     if (ev.button === 0) {
       this.fireHeld = false;
       this.fireSuppressed = false;
@@ -204,6 +307,8 @@ export class Input {
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('wheel', this.onWheel);
     document.removeEventListener('contextmenu', this.onContextMenu);
+    document.removeEventListener('touchstart', this.onTouch, { capture: true });
+    document.removeEventListener('touchend', this.onTouch, { capture: true });
     window.removeEventListener('blur', this.onBlur);
     document.removeEventListener('visibilitychange', this.onBlur);
   }

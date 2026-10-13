@@ -259,6 +259,8 @@ export interface MenusApi {
   showError(title: string, message: string, details?: string): void;
   hide(): void;
   setSettings(settings: Settings): void;
+  /** Word the menus for on-screen controls instead of keyboard and mouse. Call before showing a screen. */
+  setTouchMode(touch: boolean): void;
   readonly visible: boolean;
   dispose(): void;
 }

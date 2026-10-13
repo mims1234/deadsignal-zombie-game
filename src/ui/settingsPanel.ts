@@ -62,10 +62,10 @@ function toggle(parent: HTMLElement, label: string, onChange: (v: boolean) => vo
 
 const QUALITIES: QualityLevel[] = ['low', 'medium', 'high'];
 
-export function buildSettingsPanel(change: (patch: Partial<Settings>) => void): SettingsPanel {
+export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, touch = false): SettingsPanel {
   const root = el('div', 'ds-settings');
 
-  const sens = slider(root, 'MOUSE SENSITIVITY', 0.2, 3, 0.05, (v) => v.toFixed(2), (v) => change({ sensitivity: v }));
+  const sens = slider(root, touch ? 'LOOK SENSITIVITY' : 'MOUSE SENSITIVITY', 0.2, 3, 0.05, (v) => v.toFixed(2), (v) => change({ sensitivity: v }));
   const fov = slider(root, 'FIELD OF VIEW', 70, 110, 1, (v) => `${Math.round(v)}°`, (v) => change({ fov: Math.round(v) }));
   const vol = slider(root, 'MASTER VOLUME', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`, (v) => change({ masterVolume: v }));
 
@@ -130,9 +130,24 @@ const CONTROLS: { keys: string[]; action: string }[] = [
   { keys: ['ESC'], action: 'PAUSE' },
 ];
 
-export function buildControlsPanel(): HTMLElement {
+const TOUCH_CONTROLS: { keys: string[]; action: string }[] = [
+  { keys: ['LEFT THUMB'], action: 'MOVE - PUSH FAR FORWARD TO SPRINT' },
+  { keys: ['RIGHT DRAG'], action: 'LOOK' },
+  { keys: ['FIRE'], action: 'HOLD TO SHOOT, DRAG TO AIM' },
+  { keys: ['AIM'], action: 'SIGHTS ON / OFF' },
+  { keys: ['RELOAD'], action: 'RELOAD' },
+  { keys: ['JUMP', 'CROUCH'], action: 'JUMP / CROUCH' },
+  { keys: ['USE'], action: 'INTERACT - HOLD WHEN A RING FILLS' },
+  { keys: ['SWAP'], action: 'SWITCH WEAPON' },
+  { keys: ['NADE'], action: 'THROW GRENADE' },
+  { keys: ['PLATE'], action: 'ARMOR PLATE' },
+  { keys: ['MAP'], action: 'TACTICAL MAP' },
+  { keys: ['II'], action: 'PAUSE' },
+];
+
+export function buildControlsPanel(touch = false): HTMLElement {
   const root = el('div', 'ds-controls');
-  for (const c of CONTROLS) {
+  for (const c of touch ? TOUCH_CONTROLS : CONTROLS) {
     const row = el('div', 'ds-ctl-row', root);
     const keys = el('span', 'keys', row);
     for (const k of c.keys) el('kbd', k.length > 2 ? 'key wide' : 'key', keys, k);

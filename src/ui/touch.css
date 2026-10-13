@@ -1,0 +1,356 @@
+/* =============================================================================================
+   DEAD SIGNAL - touch controls and the phone layout.
+   Everything here applies only when <html> carries .ds-touch (set at boot on touch devices), so the
+   desktop game is untouched. The HUD is sized in em, so most of the phone layout is a smaller base
+   size plus moving the corner panels out from under the thumbs.
+   ============================================================================================= */
+
+html.ds-touch,
+html.ds-touch body {
+  overscroll-behavior: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   controls
+   --------------------------------------------------------------------------------------------- */
+.ds-touch-layer {
+  /* one "unit": every control is sized and placed in multiples of it, so the cluster keeps its shape */
+  --u: clamp(38px, 13.2vh, 62px);
+  --sl: env(safe-area-inset-left, 0px);
+  --sr: env(safe-area-inset-right, 0px);
+  --sb: env(safe-area-inset-bottom, 0px);
+  --st: env(safe-area-inset-top, 0px);
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  touch-action: none;
+  font: 700 calc(var(--u) * 0.2) / 1 'Bahnschrift', 'DIN Alternate', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 0.06em;
+}
+.ds-touch-layer[hidden] {
+  display: none;
+}
+
+.ds-touch-layer .tz {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+.ds-touch-layer .tz.move {
+  left: 0;
+  width: 40%;
+}
+.ds-touch-layer .tz.look {
+  left: 40%;
+  right: 0;
+}
+
+/* Resting position hints where the thumb goes; once touched the stick jumps to the finger. */
+.ds-touch-layer .stick {
+  position: absolute;
+  left: calc(var(--sl) + var(--u) * 2);
+  top: calc(100% - var(--sb) - var(--u) * 1.75);
+  width: calc(var(--u) * 2.3);
+  height: calc(var(--u) * 2.3);
+  margin: calc(var(--u) * -1.15) 0 0 calc(var(--u) * -1.15);
+  border-radius: 50%;
+  border: 2px solid rgba(230, 236, 220, 0.26);
+  background: rgba(8, 11, 9, 0.2);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.ds-touch-layer .stick.live {
+  opacity: 1;
+  border-color: rgba(230, 236, 220, 0.5);
+}
+.ds-touch-layer .stick.sprint {
+  border-color: #e2b04a;
+  box-shadow: 0 0 14px rgba(226, 176, 74, 0.45);
+}
+.ds-touch-layer .stick .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44%;
+  height: 44%;
+  margin: -22% 0 0 -22%;
+  border-radius: 50%;
+  background: rgba(230, 236, 220, 0.4);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+}
+
+.ds-touch-layer .tb {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: #e6ecdc;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  background: rgba(8, 11, 9, 0.42);
+  border: 1.5px solid rgba(230, 236, 220, 0.42);
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+  outline: none;
+}
+.ds-touch-layer .tb[hidden] {
+  display: none;
+}
+.ds-touch-layer .tb.down {
+  background: rgba(226, 176, 74, 0.5);
+  border-color: #e2b04a;
+  transform: scale(0.94);
+}
+
+.ds-touch-layer .tb.fire {
+  width: calc(var(--u) * 1.45);
+  height: calc(var(--u) * 1.45);
+  right: calc(var(--sr) + var(--u) * 0.6);
+  bottom: calc(var(--sb) + var(--u) * 1.2);
+  font-size: 1.25em;
+  background: rgba(229, 82, 63, 0.34);
+  border-color: rgba(229, 82, 63, 0.9);
+}
+.ds-touch-layer .tb.fire.down {
+  background: rgba(229, 82, 63, 0.7);
+}
+.ds-touch-layer .tb.ads {
+  width: calc(var(--u) * 1.03);
+  height: calc(var(--u) * 1.03);
+  right: calc(var(--sr) + var(--u) * 2.25);
+  bottom: calc(var(--sb) + var(--u) * 0.58);
+}
+.ds-touch-layer .tb.ads.on {
+  background: rgba(110, 198, 214, 0.45);
+  border-color: #6ec6d6;
+}
+.ds-touch-layer .tb.reload {
+  width: calc(var(--u) * 0.92);
+  height: calc(var(--u) * 0.92);
+  right: calc(var(--sr) + var(--u) * 3.47);
+  bottom: calc(var(--sb) + var(--u) * 0.46);
+  font-size: 0.86em;
+}
+.ds-touch-layer .tb.jump {
+  width: var(--u);
+  height: var(--u);
+  right: calc(var(--sr) + var(--u) * 2.36);
+  bottom: calc(var(--sb) + var(--u) * 1.8);
+}
+.ds-touch-layer .tb.crouch {
+  width: calc(var(--u) * 0.88);
+  height: calc(var(--u) * 0.88);
+  right: calc(var(--sr) + var(--u) * 3.55);
+  bottom: calc(var(--sb) + var(--u) * 1.53);
+  font-size: 0.82em;
+}
+.ds-touch-layer .tb.swap,
+.ds-touch-layer .tb.grenade,
+.ds-touch-layer .tb.plate {
+  width: calc(var(--u) * 0.84);
+  height: calc(var(--u) * 0.84);
+  font-size: 0.86em;
+}
+.ds-touch-layer .tb.swap {
+  right: calc(var(--sr) + var(--u) * 0.9);
+  bottom: calc(var(--sb) + var(--u) * 2.95);
+}
+.ds-touch-layer .tb.grenade {
+  right: calc(var(--sr) + var(--u) * 0.9);
+  bottom: calc(var(--sb) + var(--u) * 3.9);
+}
+.ds-touch-layer .tb.plate {
+  right: calc(var(--sr) + var(--u) * 1.86);
+  bottom: calc(var(--sb) + var(--u) * 2.95);
+}
+.ds-touch-layer .tb.use {
+  width: calc(var(--u) * 1.15);
+  height: calc(var(--u) * 1.15);
+  right: calc(var(--sr) + var(--u) * 4.75);
+  bottom: calc(var(--sb) + var(--u) * 0.5);
+  color: #14110a;
+  text-shadow: none;
+  background: rgba(226, 176, 74, 0.82);
+  border-color: #e2b04a;
+}
+.ds-touch-layer .tb.pause,
+.ds-touch-layer .tb.map {
+  top: calc(var(--st) + 6px);
+  width: calc(var(--u) * 0.86);
+  height: calc(var(--u) * 0.62);
+  border-radius: 3px;
+  font-size: 0.86em;
+}
+.ds-touch-layer .tb.pause {
+  right: calc(var(--sr) + 8px);
+}
+.ds-touch-layer .tb.map {
+  right: calc(var(--sr) + 14px + var(--u) * 0.86);
+}
+
+/* With the tactical map up, a tap anywhere closes it: only MAP (now CLOSE) and pause stay. */
+.ds-touch-layer.map-open .tb:not(.map):not(.pause),
+.ds-touch-layer.map-open .stick {
+  display: none;
+}
+/* A station menu sits over the right-hand buttons, so only the ones you still need stay. */
+.ds-touch-layer.panel-open .tb:not(.use):not(.fire):not(.pause):not(.map) {
+  display: none;
+}
+
+.ds-rotate {
+  display: none;
+}
+@media (orientation: portrait) {
+  html.ds-touch .ds-rotate {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    text-align: center;
+    background: #05080c;
+    color: #e2b04a;
+    font: 700 18px/1.4 'Bahnschrift', 'Arial Narrow', Arial, sans-serif;
+    letter-spacing: 0.16em;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   phone HUD: smaller, and clear of the thumbs.
+   Left-bottom belongs to the stick and right-bottom to the buttons, so vitals move up beside the
+   minimap and the weapon readout moves to the bottom centre.
+   --------------------------------------------------------------------------------------------- */
+html.ds-touch .ds-hud {
+  font-size: clamp(7.5px, 2.3vh, 12px);
+}
+
+html.ds-touch .ds-topleft {
+  top: calc(0.7em + env(safe-area-inset-top, 0px));
+  left: calc(0.9em + env(safe-area-inset-left, 0px));
+  width: 9.4em;
+  gap: 0.35em;
+}
+html.ds-touch .ds-minimap {
+  width: 9.4em;
+  height: 9.4em;
+}
+
+html.ds-touch .ds-bottomleft {
+  top: calc(0.7em + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  left: calc(11.3em + env(safe-area-inset-left, 0px));
+  width: 17.2em;
+  font-size: 0.88em;
+  /* vitals first, then funds, then the feed growing downward */
+  flex-direction: column-reverse;
+}
+
+html.ds-touch .ds-compass {
+  width: 24em;
+}
+
+html.ds-touch .ds-right {
+  top: calc(4.4em + env(safe-area-inset-top, 0px));
+  right: calc(0.9em + env(safe-area-inset-right, 0px));
+  width: 17em;
+  font-size: 0.9em;
+}
+/* one line of guidance is enough on a phone: the tracked objective */
+html.ds-touch .ds-obj .ds-panel-head,
+html.ds-touch .ds-obj-row:not([data-tracked='1']) {
+  display: none;
+}
+
+html.ds-touch .ds-bottomright {
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  bottom: calc(0.5em + env(safe-area-inset-bottom, 0px));
+  width: 17.5em;
+  font-size: 0.9em;
+}
+html.ds-touch .ds-bottomcenter {
+  bottom: 11.4em;
+  max-width: 40%;
+}
+html.ds-touch .ds-prompt {
+  top: 58%;
+}
+/* the keycap says "E"; on a phone the USE button does that job, so keep only the hold ring */
+html.ds-touch .ds-prompt kbd.key {
+  visibility: hidden;
+}
+/* key hints beside plates, grenades and the holstered weapon mean nothing without a keyboard */
+html.ds-touch .ds-vitals kbd.key,
+html.ds-touch .ds-weapon kbd.key {
+  display: none;
+}
+html.ds-touch .ds-fps {
+  top: auto;
+  right: auto;
+  left: calc(0.9em + env(safe-area-inset-left, 0px));
+  bottom: 0.3em;
+}
+
+/* Station menu: lifted out of the corner, enlarged and made opaque so its rows can be read and tapped. */
+html.ds-touch .ds-station {
+  position: fixed;
+  left: 41%;
+  top: 5vh;
+  width: min(36em, 44vw);
+  max-height: 70vh;
+  overflow: hidden;
+  font-size: 1.22em;
+  background: rgba(9, 12, 10, 0.94);
+  /* above banners and radio subtitles, which would otherwise print across the rows */
+  z-index: 3;
+}
+/* it opens over the compass and clock, so those step aside while it is up */
+html.ds-touch .ds-hud:has(.ds-station:not([hidden])) .ds-topcenter {
+  visibility: hidden;
+}
+html.ds-touch .ds-station .it {
+  min-height: 2.9em;
+}
+html.ds-touch .ds-station .hint {
+  position: relative;
+  visibility: hidden;
+}
+html.ds-touch .ds-station .hint::after {
+  content: 'TAP AN ITEM  -  CLOSE OR WALK AWAY TO EXIT';
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: visible;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   menus on a short screen: smaller type, and anything taller than the screen scrolls
+   --------------------------------------------------------------------------------------------- */
+html.ds-touch .ds-menus {
+  font-size: clamp(8px, 2.7vh, 14px);
+}
+html.ds-touch .ds-title-side,
+html.ds-touch .ds-pause-panel,
+html.ds-touch .ds-results-panel {
+  max-height: calc(100vh - 1.2em);
+  max-height: calc(100dvh - 1.2em);
+  overflow-y: auto;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+}

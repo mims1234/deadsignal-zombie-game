@@ -87,7 +87,10 @@ export class Interaction {
       const s = this.panelStation;
       const d = Math.hypot(s.def.x - px, s.def.z - pz);
       if (d > ECONOMY.stationRange + 1.2 || edges.interactPressed) {
+        const byPress = edges.interactPressed;
         this.closePanel();
+        // The press that closed the menu must not fall through and reopen the same station this frame.
+        if (byPress) return out;
       } else {
         for (const digit of edges.digits) this.handleDigit(s, digit);
         out.panel = this.buildPanel(s);

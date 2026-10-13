@@ -20,13 +20,15 @@ import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
 import { Input, type Edges } from '../player/input';
+import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { isBetterRun, loadBest, loadSettings, saveBest, saveSettings } from '../storage';
+import { hasStoredSettings, isBetterRun, loadBest, loadSettings, saveBest, saveSettings } from '../storage';
 import type { BestRun, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
+import { createTouchControls, type TouchControlsApi } from '../ui/touchControls';
 import type { MenusApi } from '../ui/hudTypes';
 import { GrenadeSystem } from '../weapons/grenades';
 import { createViewmodels } from '../weapons/viewmodels';
@@ -91,6 +93,10 @@ export class Game implements GameCtx {
   private dirty = false;
   private fadeEl!: HTMLDivElement;
   private noLock = false;
+  /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
+  private readonly touchMode = isTouchDevice();
+  private touch: TouchControlsApi | null = null;
+  private playingSince = 0;
   private escAt = 0;
   private shakeAmt = 0;
   private roll = 0;
@@ -139,7 +145,10 @@ export class Game implements GameCtx {
   async init(): Promise<boolean> {
     const { canvas, uiRoot } = this.deps;
     this.settings = loadSettings();
+    // Phones start on the lightest preset; once the player has saved settings their choice is respected.
+    if (this.touchMode && !hasStoredSettings()) this.settings.quality = 'low';
     this.best = loadBest();
+    if (this.touchMode) document.documentElement.classList.add('ds-touch');
 
     this.menus = createMenus({
       onDeploy: () => this.requestStart(false),
@@ -149,11 +158,13 @@ export class Game implements GameCtx {
       onSettingsChange: (s) => this.applySettings(s, true),
     });
     this.menus.mount(uiRoot);
+    this.menus.setTouchMode(this.touchMode);
     this.menus.setSettings(this.settings);
 
-    const caps = checkCapabilities();
+    const caps = checkCapabilities(this.touchMode);
     if (!caps.ok) {
-      this.menus.showError('Unsupported browser', caps.problems.join(' '), 'DEAD SIGNAL needs WebGL 2 and the Pointer Lock API (desktop keyboard and mouse).');
+      const needs = this.touchMode ? 'DEAD SIGNAL needs WebGL 2.' : 'DEAD SIGNAL needs WebGL 2 and the Pointer Lock API (desktop keyboard and mouse).';
+      this.menus.showError('Unsupported browser', caps.problems.join(' '), needs);
       return false;
     }
 
@@ -268,6 +279,14 @@ export class Game implements GameCtx {
     this.hud.mount(uiRoot);
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
+    if (this.touchMode) {
+      this.touch = createTouchControls({
+        root: uiRoot,
+        input: this.input,
+        onPause: () => this.pause('menu'),
+        onInterrupt: () => this.pause('lost'),
+      });
+    }
 
     this.fadeEl = document.createElement('div');
     this.fadeEl.style.cssText = 'position:absolute;inset:0;background:#000;opacity:0;pointer-events:none;z-index:5';
@@ -315,6 +334,7 @@ export class Game implements GameCtx {
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('keydown', this.onKeyDownGlobal);
     this.resizeObserver?.disconnect();
+    this.touch?.dispose();
     this.input?.dispose();
     this.audio?.dispose();
   }
@@ -404,6 +424,10 @@ export class Game implements GameCtx {
     this.audio.init(); // needs the user gesture
     if (restart || this.dirty) this.resetRun(false);
     this.dirty = true;
+    if (this.touchMode) {
+      this.startWithoutLock(true);
+      return;
+    }
     this.pendingLock = 'start';
     this.state = this.state === 'title' ? 'title' : 'paused';
     this.lockPointer();
@@ -412,8 +436,20 @@ export class Game implements GameCtx {
   /** Resume button (inside a click). */
   requestResume(): void {
     this.audio.init();
+    if (this.touchMode) {
+      this.startWithoutLock(false);
+      return;
+    }
     this.pendingLock = 'resume';
     this.lockPointer();
+  }
+
+  /** Touch devices: begin (or resume) inside the tap, with fullscreen and landscape if the browser allows them. */
+  private startWithoutLock(fresh: boolean): void {
+    void enterFullscreenLandscape();
+    this.noLock = true;
+    this.pendingLock = 'none';
+    this.beginPlaying(fresh);
   }
 
   private readonly onLockChange = (): void => {
@@ -441,6 +477,8 @@ export class Game implements GameCtx {
   };
 
   private readonly onBlur = (): void => {
+    // Going fullscreen on a phone can blur the window for an instant; that is not the player leaving.
+    if (this.touchMode && performance.now() - this.playingSince < 1000) return;
     if (this.state === 'playing') this.pause('lost');
   };
 
@@ -455,6 +493,7 @@ export class Game implements GameCtx {
   private beginPlaying(fresh: boolean): void {
     const wasTitle = this.state === 'title';
     this.state = 'playing';
+    this.playingSince = performance.now();
     this.menus.hide();
     this.hud.setVisible(true);
     this.input.clear();
@@ -477,7 +516,7 @@ export class Game implements GameCtx {
     this.interaction.closePanel(false);
     this.audio.suspend();
     if (reason === 'menu') this.menus.showPause();
-    else this.menus.showResumePrompt('PAUSED - CLICK TO RESUME');
+    else this.menus.showResumePrompt(this.touchMode ? 'PAUSED - TAP TO RESUME' : 'PAUSED - CLICK TO RESUME');
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
 
@@ -611,6 +650,7 @@ export class Game implements GameCtx {
       default:
         break; // paused / results: the world is frozen, only rendering continues
     }
+    this.touch?.setActive(this.state === 'playing' && this.playerAlive());
     const t1 = performance.now();
     const shadows = QUALITY[this.settings.quality].shadows && (this.state === 'playing' || this.state === 'ending');
     this.renderer.setShadowPass(shadows);
@@ -1066,6 +1106,7 @@ export class Game implements GameCtx {
     const st = buildHudState(this, this.mission, this.io, show);
     const md = buildMapDynamic(this, this.mission, this.markers);
     this.hud.update(st, md, dt);
+    this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }
 
   // ---------------------------------------------------------------------------------------------

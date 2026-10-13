@@ -18,6 +18,8 @@ pnpm dev        # http://127.0.0.1:5173
 You need Node.js 22.12 or newer, [pnpm](https://pnpm.io/), and a desktop browser with WebGL 2 and Pointer Lock
 (developed and tested in Chrome). Click **DEPLOY** to capture the mouse; **Esc** pauses.
 
+It also runs on phones and tablets held sideways, with on-screen controls (see below).
+
 ## The mission
 
 1. **Restore the relay** — activate the transmitter, then stay inside the marked circle for 55 seconds while the infected converge on it.
@@ -40,6 +42,26 @@ You lose if you die, if the district seals before you call extraction, or if the
 | `Space` / `C` | Jump / crouch (toggle) | `Esc` | Pause |
 
 At a supply cage or the armory bench, press `E` to open it and `1`–`6` to buy.
+
+### Phones and tablets
+
+On a touch device the game switches to on-screen controls and a compact HUD, and starts on the Low graphics preset.
+Hold the device sideways; **DEPLOY** goes fullscreen where the browser allows it.
+
+| Control | Action |
+| --- | --- |
+| Left thumb, anywhere on the left | Move. Push the stick all the way forward to sprint |
+| Drag on the right | Look |
+| `FIRE` | Hold to shoot. Keep dragging on it to aim while shooting |
+| `AIM` | Sights on / off |
+| `RELOAD`, `JUMP`, `CROUCH` | As labelled |
+| `USE` | Interact. Hold it when the prompt shows a ring. At a station it becomes `CLOSE` |
+| `SWAP`, `NADE`, `PLATE` | Switch weapon, throw a grenade, apply an armor plate |
+| `MAP`, `II` | Tactical map, pause |
+
+At a supply cage or the armory bench, tap `USE`, then tap the item you want.
+
+Add `?touch=1` to the URL to try the touch layout on a desktop, or `?touch=0` to force keyboard and mouse.
 
 ## Development
 

@@ -42,6 +42,15 @@ export function loadSettings(): Settings {
   return s;
 }
 
+/** False on a first visit (or when storage is unavailable), which is when device-appropriate defaults apply. */
+export function hasStoredSettings(): boolean {
+  try {
+    return window.localStorage.getItem(KEY_SETTINGS) !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function saveSettings(s: Settings): void {
   try {
     window.localStorage.setItem(KEY_SETTINGS, JSON.stringify(s));

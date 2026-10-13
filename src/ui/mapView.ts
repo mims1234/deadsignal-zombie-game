@@ -1144,7 +1144,8 @@ export class TacticalMap {
     g.fillStyle = 'rgba(196,210,184,0.55)';
     g.font = `600 ${Math.round(clamp(L.h * 0.0155, 10, 13))}px ${LABEL_FONT}`;
     setLetterSpacing(g, 2);
-    g.fillText('PRESS  M  TO CLOSE  //  NORTH UP', L.mapX, L.mapY + L.mapH + Math.max(20, (L.h - L.mapY - L.mapH) * 0.55));
+    const touch = document.documentElement.classList.contains('ds-touch');
+    g.fillText(touch ? 'TAP ANYWHERE TO CLOSE  //  NORTH UP' : 'PRESS  M  TO CLOSE  //  NORTH UP', L.mapX, L.mapY + L.mapH + Math.max(20, (L.h - L.mapY - L.mapH) * 0.55));
     setLetterSpacing(g, 0);
   }
 

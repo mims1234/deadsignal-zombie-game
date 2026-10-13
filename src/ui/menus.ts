@@ -43,6 +43,7 @@ class Menus implements MenusApi {
   private settings: Settings = { ...DEFAULT_SETTINGS };
   private readonly panels = new Set<SettingsPanel>();
   private deployStamp = 0;
+  private touch = false;
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -81,6 +82,10 @@ class Menus implements MenusApi {
     for (const p of this.panels) p.sync(this.settings);
   }
 
+  setTouchMode(touch: boolean): void {
+    this.touch = touch;
+  }
+
   private pushSetting(patch: Partial<Settings>): void {
     this.settings = { ...this.settings, ...patch };
     if (patch.reducedMotion !== undefined) setReducedMotionSetting(patch.reducedMotion);
@@ -89,7 +94,7 @@ class Menus implements MenusApi {
   }
 
   private makeSettingsPanel(): HTMLElement {
-    const panel = buildSettingsPanel((patch) => this.pushSetting(patch));
+    const panel = buildSettingsPanel((patch) => this.pushSetting(patch), this.touch);
     panel.sync(this.settings);
     this.panels.add(panel);
     return panel.root;
@@ -221,7 +226,7 @@ class Menus implements MenusApi {
     let showTab: (w: 'controls' | 'settings') => void = () => {};
     this.button(actions, 'SETTINGS', '', () => showTab('settings'));
     this.button(actions, 'CONTROLS', '', () => showTab('controls'));
-    el('div', 'note', main, 'Deploy captures the mouse. Press ESC at any time to pause.');
+    el('div', 'note', main, this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.');
 
     const bestEl = el('div', 'best', main);
     if (best) {
@@ -257,9 +262,9 @@ class Menus implements MenusApi {
     el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
 
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
-    showTab = this.tabs(panel, buildControlsPanel(), this.makeSettingsPanel(), 'controls');
+    showTab = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
 
-    el('div', 'ds-title-foot', root, 'DEAD SIGNAL: EXCLUSION ZONE  //  SINGLE-PLAYER  //  KEYBOARD AND MOUSE');
+    el('div', 'ds-title-foot', root, `DEAD SIGNAL: EXCLUSION ZONE  //  SINGLE-PLAYER  //  ${this.touch ? 'TOUCH CONTROLS' : 'KEYBOARD AND MOUSE'}`);
 
     this.setScreen('title', root);
     deployBtn.focus({ preventScroll: true });
@@ -277,7 +282,7 @@ class Menus implements MenusApi {
     const head = el('div', 'ds-panel-head big', panel);
     el('span', '', head, 'MISSION SUSPENDED');
     el('span', 'aux', head, 'PAUSED');
-    this.tabs(panel, buildControlsPanel(), this.makeSettingsPanel(), 'controls');
+    this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
     const actions = el('div', 'actions', panel);
     const resume = this.button(actions, 'RESUME', 'primary', () => this.cb.onResume());
     this.confirmButton(actions, 'RESTART MISSION', '', () => this.cb.onRestart());
@@ -293,7 +298,7 @@ class Menus implements MenusApi {
     const box = el('div', 'ds-resume-box ds-panel ds-brk', root);
     el('div', 'ttl', box, 'SIGNAL INTERRUPTED');
     el('div', 'why', box, reason);
-    const btn = this.button(box, 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
+    const btn = this.button(box, this.touch ? 'TAP TO RESUME' : 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
     el('div', 'note', box, 'The simulation is frozen until you resume.');
     root.addEventListener('click', (e) => {
       if (e.target !== btn) this.cb.onResume();

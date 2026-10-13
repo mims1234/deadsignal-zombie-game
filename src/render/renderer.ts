@@ -19,7 +19,8 @@ export interface CapabilityReport {
 }
 
 /** Check the browser features the game needs and describe what is missing. */
-export function checkCapabilities(): CapabilityReport {
+/** `touch`: the device is played with on-screen controls, so it does not need to capture a mouse. */
+export function checkCapabilities(touch = false): CapabilityReport {
   const problems: string[] = [];
   try {
     const c = document.createElement('canvas');
@@ -28,7 +29,7 @@ export function checkCapabilities(): CapabilityReport {
   } catch {
     problems.push('WebGL 2 could not be initialised.');
   }
-  if (typeof document.documentElement.requestPointerLock !== 'function') {
+  if (!touch && typeof document.documentElement.requestPointerLock !== 'function') {
     problems.push('The Pointer Lock API is not available in this browser, so mouse look cannot work.');
   }
   return { ok: problems.length === 0, problems };
