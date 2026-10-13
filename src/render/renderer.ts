@@ -89,7 +89,8 @@ export class GameRenderer {
     const env = createEnvironment(this.renderer);
     this.scene.environment = env;
     this.scene.environmentIntensity = 0.5;
-    this.light = setupBlueHour(this.scene, 46);
+    // 22 m keeps contact shadows on nearby walls and zombies. The old 46 m box redrew most of the district every frame.
+    this.light = setupBlueHour(this.scene, 22);
     this.lightPool = new LightPool(this.scene, QUALITY.high.lightPool, QUALITY.medium.lightPool);
     this.scene.add(this.camera);
 
@@ -135,25 +136,46 @@ export class GameRenderer {
     this.viewLamp.intensity = lerp(0, 1.4);
   }
 
+  private shadowPass = true;
+
   /** Apply a quality preset (pixel ratio cap, shadows, bloom, MSAA, light pool). */
   setQuality(level: QualityLevel): void {
     this.quality = level;
     const q = QUALITY[level];
-    this.renderer.shadowMap.enabled = q.shadows;
-    this.light.setShadowQuality(q.shadows, q.shadowMapSize);
+    this.shadowPass = !q.shadows;
+    this.setShadowPass(q.shadows);
     this.lightPool.setActiveCount(q.lightPool);
     this.rebuildComposer();
     this.resize();
+  }
+
+  /** Turn the moon shadow pass on or off without rebuilding render targets. Menus leave it off. */
+  setShadowPass(on: boolean): void {
+    const q = QUALITY[this.quality];
+    const enabled = on && q.shadows;
+    if (enabled === this.shadowPass) return;
+    this.shadowPass = enabled;
+    this.renderer.shadowMap.enabled = enabled;
+    this.light.setShadowQuality(enabled, q.shadowMapSize);
   }
 
   private rebuildComposer(): void {
     const q = QUALITY[this.quality];
     this.composer?.dispose();
     this.composer = null;
+    this.worldPass = null;
+    this.viewPass = null;
+    this.bloomPass = null;
+    this.outputPass = null;
+    // Bloom and MSAA are the only reasons to leave the canvas. The direct path still tone-maps.
+    if (!q.bloom && q.msaaSamples === 0) return;
     const pr = Math.min(window.devicePixelRatio || 1, q.pixelRatioCap) * this.renderScale;
     const w = Math.max(1, Math.floor(this.canvas.clientWidth * pr));
     const h = Math.max(1, Math.floor(this.canvas.clientHeight * pr));
-    const target = new THREE.WebGLRenderTarget(w, h, { type: THREE.HalfFloatType, samples: q.msaaSamples });
+    const target = new THREE.WebGLRenderTarget(w, h, {
+      type: q.bloom ? THREE.HalfFloatType : THREE.UnsignedByteType,
+      samples: q.msaaSamples,
+    });
     const composer = new EffectComposer(this.renderer, target);
     composer.setPixelRatio(1);
     composer.setSize(w, h);
@@ -167,8 +189,6 @@ export class GameRenderer {
     if (q.bloom) {
       this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), RENDER.bloomStrength, RENDER.bloomRadius, RENDER.bloomThreshold);
       composer.addPass(this.bloomPass);
-    } else {
-      this.bloomPass = null;
     }
     this.outputPass = new OutputPass();
     composer.addPass(this.outputPass);

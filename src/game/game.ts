@@ -612,6 +612,8 @@ export class Game implements GameCtx {
         break; // paused / results: the world is frozen, only rendering continues
     }
     const t1 = performance.now();
+    const shadows = QUALITY[this.settings.quality].shadows && (this.state === 'playing' || this.state === 'ending');
+    this.renderer.setShadowPass(shadows);
     this.renderer.render(dt, this.time);
     const t2 = performance.now();
     this.perf.sim += (t1 - t0 - this.perf.sim) * 0.05;

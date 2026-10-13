@@ -88,7 +88,7 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void): 
   const fps = toggle(root, 'SHOW FPS COUNTER', (v) => change({ showFps: v }));
 
   const hint = el('div', 'ds-set-hint', root);
-  hint.textContent = 'Quality changes pixel ratio, shadow resolution and post-processing. Reduced motion cuts camera bob, sway and screen shake.';
+  hint.textContent = 'Medium is the smooth default (no shadows or bloom). High turns nearby shadows back on. Reduced motion cuts camera bob, sway and screen shake.';
 
   const paintOf = (r: SliderRow): void => (r.input as HTMLInputElement & { _paint?: () => void })._paint?.();
 

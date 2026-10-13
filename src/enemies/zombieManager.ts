@@ -216,7 +216,7 @@ export class ZombieManager {
       const dxp = z.x - p.x;
       const dzp = z.z - p.z;
       const d2p = dxp * dxp + dzp * dzp;
-      z.setShadowLod(z.isBoss ? d2p < 40 * 40 : z.shadowOn ? d2p < 30 * 30 : d2p < 26 * 26);
+      z.setShadowLod(z.isBoss ? d2p < 22 * 22 : z.shadowOn ? d2p < 18 * 18 : d2p < 14 * 14);
       if (!aiEnabled && z.alive) {
         // title screen: idle animation only
         z.update(dt, { ...env, player: { ...env.player, alive: false } }, this.nearby);
