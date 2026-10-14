@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildZoneWalls } from '../../asylum/zoneWalls';
 import { helipad, quarantineGate, spire, transmitterSite, type SpireHandle, type TransmitterHandle } from '../landmarks';
 import { bench, corpse, crateGroup, debris, deadTree, generator, barrelGroup, streetLamp, vehicle } from '../props';
 import { ceilingLight, emergencyLight, gurney, labBench, lockerRow, officeDesk } from '../interiors';
@@ -334,7 +335,7 @@ export function buildAsylum(c: Ctx): AsylumResult {
       b.collideBox(gx, gz, 0.7, 0.2, 0.9, { mapKind: 'prop', tag: 'grave', rot: tilt });
     }
   }
-  deadTree(b, { x: -44, z: -22.5, scale: 1.3, seed: 321 });
+  deadTree(b, { x: -32.5, z: -19.5, scale: 1.3, seed: 321 });
   deadTree(b, { x: -53, z: 12, scale: 1.1, seed: 322 });
 
   // ---- the boiler house (east grounds): the power contract ----
@@ -426,9 +427,12 @@ export function buildAsylum(c: Ctx): AsylumResult {
   d.crate(14, -44, 0.9, 'high');
   d.crate(52, -30, 0, 'high');
 
+  // ---- the zone walls and boarded doorways of the purchasable loop (src/asylum/zoneWalls.ts) ----
+  buildZoneWalls(b);
+
   // ---- spawn points and resident infected ----
   d.spawn('low', 'general', [[-52, 44], [52, 44], [-52, 22], [52, 22], [24, 44], [-24, 44]], 1);
-  d.spawn('medium', 'general', [[-53, -2], [-46, -22], [53, 8], [53, -6], [-40, 12], [40, 14], [0, -21]], 1);
+  d.spawn('medium', 'general', [[-53, -2], [-48.2, -20.8], [53, 8], [53, -6], [-40, 12], [40, 14], [0, -21]], 1);
   d.spawn('high', 'general', [[-52, -43], [52, -44], [-14, -44], [14, -44], [40, -28], [-40, -28]], 1.2);
   d.spawn('medium', 'defense', [[53, 0], [30, 12], [53, 14], [33, -8]], 1);
   d.spawn('low', 'lz', [[-52, 42], [-52, 22], [-22, 42], [-24, 20]], 1);

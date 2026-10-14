@@ -41,11 +41,11 @@ export function applyPlate(v: Vitals, plates: number): { plates: number; armorAd
   return { plates: plates - 1, armorAdded: v.armor - before };
 }
 
-/** Health regeneration after a delay without damage. Returns the new health. */
-export function regenHealth(health: number, timeSinceDamage: number, dt: number): number {
-  if (health <= 0 || health >= PLAYER.maxHealth) return health;
+/** Health regeneration after a delay without damage, up to `max` (a perk can raise it). Returns the new health. */
+export function regenHealth(health: number, timeSinceDamage: number, dt: number, max: number = PLAYER.maxHealth): number {
+  if (health <= 0 || health >= max) return health;
   if (timeSinceDamage < PLAYER.healthRegenDelay) return health;
-  return Math.min(PLAYER.maxHealth, health + PLAYER.healthRegenRate * dt);
+  return Math.min(max, health + PLAYER.healthRegenRate * dt);
 }
 
 /** Damage dealt by one projectile to a zombie. */

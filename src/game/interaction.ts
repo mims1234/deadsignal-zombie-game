@@ -36,7 +36,8 @@ export interface CureApi {
   cure(id: string): void;
 }
 
-interface Target {
+/** One thing the player could use right now. Map features add their own through `Interaction.sources`. */
+export interface InteractionTarget {
   id: string;
   dist: number;
   text: string;
@@ -54,7 +55,11 @@ export interface InteractionOutput {
   panelOpen: boolean;
 }
 
+type Target = InteractionTarget;
+
 export class Interaction {
+  /** Extra interactables (the Asylum's doors, perk machines, wall chalks...): each pushes its targets in reach. */
+  readonly sources: ((targets: InteractionTarget[]) => void)[] = [];
   private holdT = 0;
   private holdId = '';
   private holdLocked = false;
@@ -295,6 +300,7 @@ export class Interaction {
       const d = Math.hypot(door.x - px, door.z - pz);
       targets.push({ id: 'board', dist: d, text: 'BOARD HELICOPTER', sub: 'Extract now', tone: 'good', hold: 0, enabled: true, onUse: () => this.mission.board() });
     }
+    for (const src of this.sources) src(targets);
     if (targets.length === 0) return null;
     // prefer actionable targets, then nearest
     targets.sort((a, b) => (a.enabled === b.enabled ? a.dist - b.dist : a.enabled ? -1 : 1));

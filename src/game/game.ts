@@ -6,6 +6,7 @@
  */
 import type { MapId } from '../world/layout/data';
 import * as THREE from 'three';
+import { AsylumLoopRuntime } from '../asylum/loopRuntime';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
@@ -84,6 +85,8 @@ export class Game implements GameCtx {
   cards!: CardRuntime;
   coop!: CoopSession;
   squad!: SquadRuntime;
+  /** Asylum loop: the purchasable doors, power, perks, wall-buys and Pack-a-Punch (null on other maps). */
+  asylum: AsylumLoopRuntime | null = null;
   /** Which map was built this page load. */
   mapId: MapId = 'district';
   private coopUi!: CoopUi;
@@ -396,6 +399,8 @@ export class Game implements GameCtx {
 
     this.hud = createHud();
     this.hud.mount(uiRoot);
+    // Asylum loop: built after the HUD (it adds its perk row there)
+    if (this.mapId === 'asylum') this.asylum = new AsylumLoopRuntime(this, uiRoot);
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
     if (this.touchMode) {
@@ -863,6 +868,8 @@ export class Game implements GameCtx {
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
     this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team);
+    // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
+    this.asylum?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
@@ -1080,7 +1087,7 @@ export class Game implements GameCtx {
 
     // ---- health regeneration ----
     s.sinceDamage += dt;
-    if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt);
+    if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt, this.asylum?.maxHealth); // Asylum loop: perks raise the max
 
     // ---- mission ----
     // co-op free roam has no mission; a co-op story run shows the simulation's (the clock comes in its reports)
@@ -1095,6 +1102,7 @@ export class Game implements GameCtx {
     // ---- world ----
     this.grenades.update(dt);
     this.entities.update(dt, this.time);
+    this.asylum?.update(dt); // Asylum loop
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
     this.fx.update(dt, this.renderer.camera);
 
@@ -1292,6 +1300,12 @@ export class Game implements GameCtx {
     }
   }
 
+  /** The infected's flow field is recomputed on the next frame (a door opened or shut: Asylum loop). */
+  invalidateFlow(): void {
+    this.flowGoalX = this.flowGoalZ = 1e9;
+    this.flowTimer = 0;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // damage & kills
   // ---------------------------------------------------------------------------------------------
@@ -1338,7 +1352,7 @@ export class Game implements GameCtx {
       this.lastHurtSound = this.time;
       this.audio.play('player_hurt', { priority: 3, volume: 0.8 });
     }
-    if (res.dead) this.onPlayerDied();
+    if (res.dead && !this.asylum?.secondWind()) this.onPlayerDied(); // Asylum loop: SECOND WIND gets you up once
   }
 
   /** Caught in a blast: hurt, and shoved away from it (with a hop) in proportion to how close it was. */
@@ -1379,6 +1393,7 @@ export class Game implements GameCtx {
     cam.pitch = 0;
     cam.pitchV = -0.6 - power * 0.06;
     this.audio.play('player_death', { priority: 3 });
+    this.asylum?.onPlayerDown(); // Asylum loop: perks are lost
     this.weapons.cancelActions();
     this.interaction.closePanel(false);
     if (this.coop.live) {
@@ -1727,6 +1742,7 @@ export class Game implements GameCtx {
       this.squad.objectives(st.objectives);
       this.squad.markers(md.markers);
     }
+    this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

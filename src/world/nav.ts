@@ -4,7 +4,7 @@
  * the same field (O(1) per query), so hordes route through doorways and around buildings without per-zombie A*.
  * Steering funnels along the descent path (string-pulling with grid line of sight) for smooth, non-grid-aligned motion.
  */
-import type { CollisionWorld, WorldBoundsXZ } from './collision';
+import type { BoxCollider, CollisionWorld, WorldBoundsXZ } from './collision';
 
 export const NAV_CELL = 0.5;
 const COST_ORTH = 10;
@@ -26,6 +26,10 @@ export class NavGrid {
   /** 1 = an agent's centre cannot be here. */
   readonly blocked: Uint8Array;
 
+  /** How far colliders are grown (an agent's radius) and the playable bounds (for the edge margin). */
+  private readonly inflate: number;
+  private readonly bounds: WorldBoundsXZ;
+
   constructor(bounds: WorldBoundsXZ, world: CollisionWorld, inflate = 0.42) {
     this.minX = bounds.minX;
     this.minZ = bounds.minZ;
@@ -33,36 +37,62 @@ export class NavGrid {
     this.rows = Math.ceil((bounds.maxZ - bounds.minZ) / NAV_CELL);
     this.count = this.cols * this.rows;
     this.blocked = new Uint8Array(this.count);
-    const infl2 = inflate * inflate;
+    this.inflate = inflate;
+    this.bounds = { ...bounds };
+    for (const c of world.colliders) this.stamp(c, 0, this.cols - 1, 0, this.rows - 1);
+    this.margin(0, this.cols - 1, 0, this.rows - 1);
+  }
 
-    for (const c of world.colliders) {
-      if (!c.blocksMove) continue;
-      if (c.y1 <= 0.5 || c.y0 >= 1.7) continue;
-      const i0 = Math.max(0, Math.floor((c.minX - inflate - this.minX) / NAV_CELL));
-      const i1 = Math.min(this.cols - 1, Math.floor((c.maxX + inflate - this.minX) / NAV_CELL));
-      const j0 = Math.max(0, Math.floor((c.minZ - inflate - this.minZ) / NAV_CELL));
-      const j1 = Math.min(this.rows - 1, Math.floor((c.maxZ + inflate - this.minZ) / NAV_CELL));
-      for (let j = j0; j <= j1; j++) {
-        const z = this.minZ + (j + 0.5) * NAV_CELL;
-        for (let i = i0; i <= i1; i++) {
-          const x = this.minX + (i + 0.5) * NAV_CELL;
-          const dx = x - c.cx;
-          const dz = z - c.cz;
-          const lx = Math.abs(c.cos * dx - c.sin * dz);
-          const lz = Math.abs(c.sin * dx + c.cos * dz);
-          const qx = Math.max(lx - c.hx, 0);
-          const qz = Math.max(lz - c.hz, 0);
-          if (qx * qx + qz * qz <= infl2) this.blocked[j * this.cols + i] = 1;
-        }
+  /**
+   * Re-rasterise every cell inside a rectangle from the colliders there now: a door was opened or closed (its collider
+   * stopped or started blocking). Agents' flow fields pick the change up the next time they are computed.
+   */
+  refresh(world: CollisionWorld, x0: number, z0: number, x1: number, z1: number): void {
+    const i0 = Math.max(0, Math.floor((x0 - this.minX) / NAV_CELL));
+    const i1 = Math.min(this.cols - 1, Math.floor((x1 - this.minX) / NAV_CELL));
+    const j0 = Math.max(0, Math.floor((z0 - this.minZ) / NAV_CELL));
+    const j1 = Math.min(this.rows - 1, Math.floor((z1 - this.minZ) / NAV_CELL));
+    if (i1 < i0 || j1 < j0) return;
+    for (let j = j0; j <= j1; j++) this.blocked.fill(0, j * this.cols + i0, j * this.cols + i1 + 1);
+    const r = Math.max(x1 - x0, z1 - z0) / 2 + this.inflate + NAV_CELL;
+    world.forEachNear((x0 + x1) / 2, (z0 + z1) / 2, r, (c) => this.stamp(c, i0, i1, j0, j1));
+    this.margin(i0, i1, j0, j1);
+  }
+
+  /** Block the cells (within the given index range) an agent's centre cannot occupy because of one collider. */
+  private stamp(c: BoxCollider, ci0: number, ci1: number, cj0: number, cj1: number): void {
+    if (!c.blocksMove) return;
+    if (c.y1 <= 0.5 || c.y0 >= 1.7) return;
+    const inflate = this.inflate;
+    const infl2 = inflate * inflate;
+    const i0 = Math.max(ci0, Math.floor((c.minX - inflate - this.minX) / NAV_CELL));
+    const i1 = Math.min(ci1, Math.floor((c.maxX + inflate - this.minX) / NAV_CELL));
+    const j0 = Math.max(cj0, Math.floor((c.minZ - inflate - this.minZ) / NAV_CELL));
+    const j1 = Math.min(cj1, Math.floor((c.maxZ + inflate - this.minZ) / NAV_CELL));
+    for (let j = j0; j <= j1; j++) {
+      const z = this.minZ + (j + 0.5) * NAV_CELL;
+      for (let i = i0; i <= i1; i++) {
+        const x = this.minX + (i + 0.5) * NAV_CELL;
+        const dx = x - c.cx;
+        const dz = z - c.cz;
+        const lx = Math.abs(c.cos * dx - c.sin * dz);
+        const lz = Math.abs(c.sin * dx + c.cos * dz);
+        const qx = Math.max(lx - c.hx, 0);
+        const qz = Math.max(lz - c.hz, 0);
+        if (qx * qx + qz * qz <= infl2) this.blocked[j * this.cols + i] = 1;
       }
     }
-    // keep a margin from the map edge
+  }
+
+  /** Keep a margin from the map edge. */
+  private margin(i0: number, i1: number, j0: number, j1: number): void {
     const m = 0.6;
-    for (let j = 0; j < this.rows; j++) {
+    const b = this.bounds;
+    for (let j = j0; j <= j1; j++) {
       const z = this.minZ + (j + 0.5) * NAV_CELL;
-      for (let i = 0; i < this.cols; i++) {
+      for (let i = i0; i <= i1; i++) {
         const x = this.minX + (i + 0.5) * NAV_CELL;
-        if (x < bounds.minX + m || x > bounds.maxX - m || z < bounds.minZ + m || z > bounds.maxZ - m) {
+        if (x < b.minX + m || x > b.maxX - m || z < b.minZ + m || z > b.maxZ - m) {
           this.blocked[j * this.cols + i] = 1;
         }
       }
