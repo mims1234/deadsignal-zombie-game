@@ -192,6 +192,12 @@ app.post('/api/reports', { preHandler: player }, async (req, reply) => {
 
 app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code) ?? reply.code(404).send({ error: 'no such session' }));
 
+// Local-only health check for the deploy script: it waits for co-op sessions to finish before restarting.
+app.get('/api/health', async (req, reply) => {
+  if (req.ip !== '127.0.0.1' && req.ip !== '::1' && req.ip !== '::ffff:127.0.0.1') return reply.code(404).send({ error: 'not found' });
+  return { ok: true, ...rooms.counts() };
+});
+
 // ---- admin -------------------------------------------------------------------------------------------
 
 app.get('/admin', { preHandler: admin }, async (_req, reply) => reply.type('text/html').send(readFileSync(join(here, 'admin.html'))));
@@ -226,6 +232,13 @@ if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1
 else app.log.warn('dist/ not found: run "pnpm build" to serve the game from this server');
 
 rooms.attach(app.server);
+// pm2 restart / stop: end the sessions with a reason instead of a dropped connection
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.once(sig, () => {
+    rooms.closeAll('The server restarted for an update - start a new session');
+    setTimeout(() => process.exit(0), 400);
+  });
+}
 const port = Number(env.PORT) || 3061;
 await app.listen({ port, host: env.HOST || '0.0.0.0' });
 console.log(`DEAD SIGNAL server on ${PUBLIC_URL} (port ${port})  admins: ${ADMIN_IDS.size}  discord: ${env.DISCORD_CLIENT_ID ? 'configured' : 'NOT configured'}${DEV_LOGIN ? '  DEV LOGIN ON' : ''}`);

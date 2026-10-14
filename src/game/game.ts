@@ -391,6 +391,10 @@ export class Game implements GameCtx {
       window.location.reload();
       return true;
     }
+    if (code) {
+      // the invite has been read: drop it from the address so a later reload (a map change) does not replay it
+      window.history.replaceState(null, '', window.location.pathname);
+    }
     if (code && this.account.user) {
       this.setMode('coop');
       this.coopUi.open(code);
@@ -473,7 +477,8 @@ export class Game implements GameCtx {
     if (this.state !== 'title' || map === this.mapId) return;
     saveMap(map);
     if (map !== 'district' && this.mode === 'coop') saveMode('standard');
-    window.location.reload();
+    // a clean address: any invite or sign-in parameters belong to the page that is being left
+    window.location.assign(window.location.pathname);
   }
 
   // ---------------------------------------------------------------------------------------------

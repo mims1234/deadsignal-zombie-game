@@ -222,7 +222,7 @@
           { label: 'Player', cell: (r) => r.name },
           { label: 'Mode', cell: (r) => MODE[r.mode] || r.mode },
           { label: 'Map', cell: (r) => (r.map === 'forge' ? 'Forge' : 'District') },
-          { label: 'Result', cell: (r) => h('span', { class: `pill ${r.outcome || ''}` }, r.outcome || 'in progress') },
+          { label: 'Result', cell: (r) => h('span', { class: `pill ${r.outcome || ''}` }, r.outcome || (Date.now() / 1000 - r.started_at > 3600 ? 'no result' : 'in progress')) },
           { label: 'Detail', cell: (r) => r.reason || '' },
           { label: 'Length', num: 1, cell: (r) => clock(r.duration) },
           { label: 'Kills', num: 1, cell: (r) => (r.kills === null ? '--' : num(r.kills)) },

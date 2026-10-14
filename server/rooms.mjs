@@ -257,6 +257,16 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         watchedByAdmin: [...r.members.values()].some((x) => x.hidden),
       }));
     },
+    /** Sessions open right now and the people in them (hidden admins included). */
+    counts() {
+      let people = 0;
+      for (const r of rooms.values()) people += r.members.size;
+      return { rooms: rooms.size, people };
+    },
+    /** Shutting down: tell every session why, so nobody just sees a dropped connection. */
+    closeAll(reason) {
+      for (const r of [...rooms.values()]) closeRoom(r, reason);
+    },
     /** A banned account is dropped from whatever it is in. */
     drop(userId) {
       const m = members.get(userId);

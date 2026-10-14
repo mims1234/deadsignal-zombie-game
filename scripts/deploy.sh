@@ -36,6 +36,16 @@ pnpm install --frozen-lockfile
 echo "==> building"
 pnpm build
 
+# Co-op sessions live in the server's memory, so a restart ends them. Wait for them to finish first (up to
+# DEPLOY_WAIT_MINUTES, default 30); after that the restart goes ahead and players are told why.
+WAIT_MIN="${DEPLOY_WAIT_MINUTES:-30}"
+for i in $(seq 1 $((WAIT_MIN * 6))); do
+  OPEN=$(curl -fsS "http://127.0.0.1:$PORT/api/health" 2>/dev/null | grep -o '"rooms":[0-9]*' | cut -d: -f2 || true)
+  if [ -z "$OPEN" ] || [ "$OPEN" = "0" ]; then break; fi
+  [ $((i % 6)) -eq 1 ] && echo "    $OPEN co-op session(s) open - waiting for them to end before restarting"
+  sleep 10
+done
+
 echo "==> restarting $APP"
 if pm2 describe "$APP" > /dev/null 2>&1; then
   pm2 restart "$APP" --update-env
