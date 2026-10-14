@@ -33,7 +33,7 @@ export const MARKER_LABEL: Record<MapMarkerKind, string> = {
   objective: 'OBJECTIVE',
   buy: 'SUPPLY CAGE',
   upgrade: 'ARMORY BENCH',
-  crate: 'SUPPLY CACHE',
+  crate: 'MYSTERY BOX',
   lz: 'LANDING ZONE',
   start: 'INSERTION',
   hunt: 'HUNT TARGET',

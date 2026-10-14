@@ -31,7 +31,22 @@ container lanes (high threat) with its own caches and infected.
 3. **Extract** — call the helicopter from the LZ radio, survive the final horde, and board it alive.
 
 Each contract pays out once. Tougher zombies and better loot wait in the higher-threat regions. Spend your cash at the supply
-cages and the armory bench. At 7:30 a contamination surge spreads out from the compound, and the district is sealed at 12:00.
+cages and the armory bench.
+
+Along the way:
+
+- **Mystery boxes** sit where the supply caches used to (in every mode). Hold `E` to open one: it pays a little cash and
+  spins a reel that lands on ammunition, frag grenades or a gun you are not carrying. The prize floats over the box —
+  press `E` to take it (a gun replaces the one in your hands) or leave it, and after 12 seconds it sinks back. Boxes in
+  higher-threat regions roll guns more often.
+- **The HX-7 rocket launcher** only comes out of mystery boxes: one rocket at a time, a big blast that throws bodies
+  across the street, and it hurts you too if you fire it point-blank.
+- **Trapped survivors** (Standard and Standard Mazoku): three civilians are caged in around the District. Hold `E` at
+  a cage to break the lock; they pick up a gun, follow you and shoot, and the infected hunt them like they hunt you.
+  Each one freed pays $200 and each one still alive at extraction pays $400.
+- **Bodies fly.** A killing shot throws the body along the shot — a nudge from the rifle or pistol, a real shove from
+  the shotgun, and grenades and rockets launch them into the air. Blasts shove you as well, and the blow that kills you
+  throws your view with it. At 7:30 a contamination surge spreads out from the compound, and the district is sealed at 12:00.
 You lose if you die, if the district seals before you call extraction, or if the helicopter leaves without you.
 
 ## Maps
@@ -39,14 +54,18 @@ You lose if you die, if the district seals before you call extraction, or if the
 Pick the map on the title screen (the page reloads to build it).
 
 - **The District** — the original exclusion zone, now with the rail yard to the east. Every mode runs here.
-- **The Forge** — a foundry district at ember night, after the Vulcan community's phoenix forge: molten runoff in open
-  channels, sodium-orange streets, a phoenix sigil burning in the crossroads. Ember Market (insertion), the Pad
+- **The Forge** — a foundry district at ember night, after the Vulcan community (vulcan.genxmims.org): molten runoff in
+  open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. The infection has reached **Vulcan
+  HQ** on the plaza (its phoenix billboard and the clan's banners hang over a quarantined forge), and about a third of
+  the Forge's infected carry the names of Vulcan's members. Ember Market (insertion), the Pad
   (extraction), Phoenix Plaza and the Crucible. The same structure as the District with its own contracts:
   **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then **Rise from the Forge** at the Pad before the
   firestorm. On top of that:
   - **Ash and Cinder**, two soldiers who deploy with you, follow you, and shoot. The infected hunt them like they hunt
     you, and they can die for good. **Keep the squad alive**: each soldier still alive at extraction pays $500.
   - **Trials of Ignis**: six burning embers hidden around the map, $150 each and $600 plus two armor plates for all six.
+  - **Vulcan's leadership** — tomoe, Anya, Marv03K and piryriry — are the Forge's trapped survivors: free them and
+    they fight beside you.
 
   Standard, Standard Mazoku and Free Roam run on the Forge; co-op runs on the District for now.
 
@@ -71,7 +90,9 @@ Pick one on the title screen before you deploy. The choice is remembered.
   kills, downs, who is up, and who is watching. Up to three more people can watch as spectators.
   From wave 2, most waves carry a squad objective that pays every player when it is done: hold a marked point,
   recover three data cores, kill a marked elite (the Hunter), or clear the wave with nobody going down. Hold and
-  recover keep the wave going until they are finished. The host can switch the session to Standard Mazoku, and
+  recover keep the wave going until they are finished. **Restore the relay** is the squad's too: anyone can start it
+  at the console, it fills while at least one of you is in the zone and drains when you have all left, and when it
+  completes every player is paid once. There is no extraction in co-op — the session is won on waves. The host can switch the session to Standard Mazoku, and
   then on waves 2, 4, 6, 8 and 9 a card carrier joins the fight:
   anyone can knock her down and purge her, and whoever takes the card earns it for the whole squad.
   The session's creator can kick players, end the session, and switch it between "anyone with the link" and

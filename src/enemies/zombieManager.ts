@@ -3,7 +3,7 @@
  * separation, noise / alert propagation, hit detection (head sphere + body cylinder), explosions and corpse cleanup.
  */
 import * as THREE from 'three';
-import { MISSION, SPAWN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
+import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
 import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
 import type { Rng } from '../logic/rng';
 import type { QualityLevel, Region, ZombieType } from '../types';
@@ -107,8 +107,12 @@ export class ZombieManager {
 
   onKill: (z: Zombie, head: boolean) => void = () => {};
   /** Co-op guest: damage is not applied here but reported to the host through this. */
-  netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number) => void) | null = null;
+  netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
+  /** Hands out the names some infected carry (null: this one has none). Bosses and carriers never get one. */
+  namer: (() => string | null) | null = null;
+  private readonly tagSprites = new Map<Zombie, THREE.Sprite>();
+  private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
   carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
 
@@ -136,6 +140,7 @@ export class ZombieManager {
 
   private releaseZombie(z: Zombie): void {
     z.rig.setVisible(false);
+    this.untag(z);
     if (z.ownsRig) {
       let pool = this.pools.get(z.type);
       if (!pool) {
@@ -165,9 +170,56 @@ export class ZombieManager {
     const zz = new Zombie(this.nextId++, type, rig);
     zz.ownsRig = !opts.rig;
     zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, opts);
+    if (this.namer && !opts.boss && !opts.rig && !opts.curable) {
+      const name = this.namer();
+      if (name) this.tagZombie(zz, name);
+    }
     this.zombies.push(zz);
     this.totalSpawned++;
     return zz;
+  }
+
+  /** A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. */
+  private tagZombie(z: Zombie, name: string): void {
+    let mat = this.tagMats.get(name);
+    if (!mat) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 72;
+      const g = c.getContext('2d')!;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = 5;
+      g.strokeStyle = 'rgba(0,0,0,0.9)';
+      g.font = '700 26px system-ui, sans-serif';
+      g.strokeText(name, 128, 24, 248);
+      g.fillStyle = '#ffd9c0';
+      g.fillText(name, 128, 24, 248);
+      g.font = '800 15px system-ui, sans-serif';
+      g.lineWidth = 4;
+      g.strokeText('VULCAN  //  INFECTED', 128, 54, 248);
+      g.fillStyle = '#ff6a3a';
+      g.fillText('VULCAN  //  INFECTED', 128, 54, 248);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+      this.tagMats.set(name, mat);
+    }
+    const s = new THREE.Sprite(mat);
+    s.scale.set(1.4, 0.39, 1);
+    s.position.y = z.def.height + 0.45;
+    z.rig.root.add(s);
+    z.tag = name;
+    this.tagSprites.set(z, s);
+  }
+
+  private untag(z: Zombie): void {
+    const s = this.tagSprites.get(z);
+    if (s) {
+      s.removeFromParent();
+      this.tagSprites.delete(z);
+    }
+    z.tag = null;
   }
 
   /** Take one enemy out of the world immediately (a purged carrier). */
@@ -261,6 +313,12 @@ export class ZombieManager {
       if (z.active) this.grid.query(z.x, z.z, this.nearby);
       else this.nearby.length = 0;
       z.update(dt, envs ? this.envFor(z, envs) : env, this.nearby);
+    }
+
+    // name tags: only on the living, and only near enough to read
+    for (const [z, s] of this.tagSprites) {
+      const d2 = (z.x - p.x) * (z.x - p.x) + (z.z - p.z) * (z.z - p.z);
+      s.visible = z.active && !z.dormant && d2 < 34 * 34;
     }
 
     // corpse cleanup
@@ -444,17 +502,22 @@ export class ZombieManager {
       if (covered && coverMul <= 0) continue;
       let dmg = centerDamage + (edgeDamage - centerDamage) * Math.min(1, d / radius);
       if (covered) dmg *= coverMul;
+      // `ang`: the direction away from the blast (a body is thrown along it)
       const ang = Math.atan2(-dx, -dz);
+      const near = 1 - Math.min(1, d / radius);
+      const throwSpeed = RAGDOLL.blastEdge + (RAGDOLL.blastCenter - RAGDOLL.blastEdge) * near;
+      const throwLift = throwSpeed * RAGDOLL.blastLift + 1.5;
       if (this.netDamage) {
-        this.netDamage(z, dmg, false, ang + Math.PI);
+        this.netDamage(z, dmg, false, ang, throwSpeed, throwLift);
         continue;
       }
-      const killed = z.takeDamage(dmg, false, env, ang + Math.PI, 3);
+      const killed = z.takeDamage(dmg, false, env, ang, 3);
+      if (!z.active) z.fling(ang, throwSpeed, throwLift);
       if (killed) {
         kills++;
         z.diedAt = this.simTime;
         this.onKill(z, false);
-      } else if (!z.isBoss) {
+      } else if (!z.isBoss && z.active) {
         z.vx += (dx / Math.max(d, 0.3)) * knock;
         z.vz += (dz / Math.max(d, 0.3)) * knock;
         if (dmg > 40 && z.type !== 'armored') z.stagger(0.7, env);
@@ -463,14 +526,18 @@ export class ZombieManager {
     return kills;
   }
 
-  /** Apply damage from a bullet. Returns true when the zombie died. */
-  damage(z: Zombie, amount: number, head: boolean, env: ZombieEnv, shotYaw: number): boolean {
+  /**
+   * Apply damage from a bullet. Returns true when the zombie died. A killing blow throws the body along `shotYaw`
+   * at `push` m/s with `lift` m/s up (the ragdoll).
+   */
+  damage(z: Zombie, amount: number, head: boolean, env: ZombieEnv, shotYaw: number, push = 0, lift = 0): boolean {
     if (this.netDamage) {
       z.flinch();
-      this.netDamage(z, amount, head, shotYaw);
+      this.netDamage(z, amount, head, shotYaw, push, lift);
       return false;
     }
     const killed = z.takeDamage(amount, head, env, shotYaw, 1);
+    if (!z.active) z.fling(shotYaw, push, lift);
     if (killed) {
       z.diedAt = this.simTime;
       this.onKill(z, head);

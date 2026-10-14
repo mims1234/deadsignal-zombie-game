@@ -2,7 +2,7 @@
  * A single infected: behaviour state machine (idle, alert, chase, attack, stagger, dead), steering along the shared
  * flow field, telegraphed melee attacks with wall-checked hit tests, Warden specials (slam, charge) and animation state.
  */
-import { WARDEN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
+import { RAGDOLL, WARDEN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
 import type { AudioEngineApi } from '../audio/ids';
 import type { FxApi } from '../fx/fxTypes';
 import type { Rng } from '../logic/rng';
@@ -32,6 +32,10 @@ export interface NetZombie {
   flags: number;
   /** Card carrier number (1-based), or 0 for an ordinary infected. */
   carrier: number;
+  /** Ragdoll: height of the body off the ground and its tumble (pitch, roll), for bodies thrown by a blast. */
+  fy: number;
+  fp: number;
+  fr: number;
 }
 
 export interface PlayerRef {
@@ -95,6 +99,8 @@ export class Zombie {
   carrierIdx = 0;
   /** Co-op host: index of the player this infected is hunting. */
   targetIdx = 0;
+  /** A name this infected carries (the Forge: one of Vulcan's fallen), shown over its head and in the kill feed. */
+  tag: string | null = null;
   private netX = 0;
   private netZ = 0;
   private netYaw = 0;
@@ -140,6 +146,18 @@ export class Zombie {
   private staggerT = 0;
   private staggerDur = 0.5;
   private hitKick = 0;
+  // ---- ragdoll: a killed body is thrown, tumbles, bounces off walls and the floor, then settles ----
+  private flingVX = 0;
+  private flingVY = 0;
+  private flingVZ = 0;
+  private flingY = 0;
+  private flying = false;
+  /** Tumble about the body's own sideways (pitch) and forward (roll) axes, and their rates. */
+  private tumbleP = 0;
+  private tumbleR = 0;
+  private tumblePV = 0;
+  private tumbleRV = 0;
+  private readonly flingPos = { x: 0, z: 0 };
   // ---- death ----
   deathT = 0;
   private deathStyle: 0 | 1 | 2 = 0;
@@ -215,6 +233,9 @@ export class Zombie {
     this.hitKick = 0;
     this.deathT = 0;
     this.headshotDeath = false;
+    this.flying = false;
+    this.flingVX = this.flingVY = this.flingVZ = this.flingY = 0;
+    this.tumbleP = this.tumbleR = this.tumblePV = this.tumbleRV = 0;
     this.voiceTimer = 1 + rng.f() * 6;
     this.pathDist = Infinity;
     this.rig.reset(this.id * 7919 + Math.floor(x * 31 + z * 17));
@@ -251,6 +272,9 @@ export class Zombie {
       hp: Math.max(0, this.hp / this.maxHp),
       flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0),
       carrier: this.carrierIdx,
+      fy: this.flingY,
+      fp: this.tumbleP,
+      fr: this.tumbleR,
     };
   }
 
@@ -263,6 +287,9 @@ export class Zombie {
     this.netActionT = n.actionT;
     this.netStaggerT = n.staggerT;
     this.netSpeed = n.speed;
+    this.flingY = n.fy;
+    this.tumbleP = n.fp;
+    this.tumbleR = n.fr;
     this.hp = n.hp * this.maxHp;
     this.enraged = (n.flags & 8) !== 0;
     if (n.flags & 16) {
@@ -317,8 +344,96 @@ export class Zombie {
   }
 
   private syncRoot(): void {
-    this.rig.root.position.set(this.x, 0, this.z);
-    this.rig.root.rotation.y = this.yaw;
+    const r = this.rig.root;
+    if (this.flingY === 0 && this.tumbleP === 0 && this.tumbleR === 0) {
+      r.position.set(this.x, 0, this.z);
+      r.rotation.set(0, this.yaw, 0, 'YXZ');
+      return;
+    }
+    // tumble about the middle of the body, not the feet: place the root so the hips stay on the flight path
+    const h = 0.9;
+    const sp = Math.sin(this.tumbleP);
+    const cp = Math.cos(this.tumbleP);
+    const sr = Math.sin(this.tumbleR);
+    const cr = Math.cos(this.tumbleR);
+    const lx = -h * sr;
+    const ly = h * cr * cp;
+    const lz = h * cr * sp;
+    const sy = Math.sin(this.yaw);
+    const cy = Math.cos(this.yaw);
+    r.position.set(this.x - (lx * cy + lz * sy), this.flingY + h - ly, this.z - (-lx * sy + lz * cy));
+    r.rotation.set(this.tumbleP, this.yaw, this.tumbleR, 'YXZ');
+  }
+
+  /**
+   * Throw the body that was just killed (or knocked down): `yaw` is the direction of travel, `speed` m/s along it,
+   * `lift` m/s up. Heavier infected fly less; the Warden barely moves.
+   */
+  fling(yaw: number, speed: number, lift: number): void {
+    if ((this.state !== 'dead' && this.state !== 'downed') || this.deathT > 0.15 || (speed <= 0 && lift <= 0)) return;
+    const mass = this.isBoss ? 0.2 : this.type === 'armored' ? 0.6 : this.type === 'runner' ? 1.1 : 1;
+    const s = speed * mass;
+    this.flingVX += -Math.sin(yaw) * s;
+    this.flingVZ += -Math.cos(yaw) * s;
+    this.flingVY = Math.max(this.flingVY, lift * mass);
+    this.flying = true;
+    // spin end over end in the direction of travel, relative to the way the body faces
+    const rel = wrap(yaw - this.yaw);
+    const spin = (Math.hypot(s, lift * mass) * RAGDOLL.spin) * (0.8 + Math.random() * 0.4);
+    this.tumblePV += -Math.cos(rel) * spin;
+    this.tumbleRV += Math.sin(rel) * spin;
+  }
+
+  private stepFling(dt: number, env: ZombieEnv): void {
+    if (!this.flying) return;
+    this.flingVY -= RAGDOLL.gravity * dt;
+    this.flingY += this.flingVY * dt;
+    const p = this.flingPos;
+    p.x = this.x + this.flingVX * dt;
+    p.z = this.z + this.flingVZ * dt;
+    // walls stop the body (and take most of its speed)
+    if (env.world.resolveCircle(p, 0.3, this.flingY + 0.2, this.flingY + 1.4, 2)) {
+      this.flingVX *= -0.25;
+      this.flingVZ *= -0.25;
+      this.tumblePV *= 0.5;
+      this.tumbleRV *= 0.5;
+    }
+    this.x = p.x;
+    this.z = p.z;
+    let grounded = false;
+    if (this.flingY <= 0) {
+      this.flingY = 0;
+      grounded = true;
+      if (this.flingVY < -2.5) {
+        this.flingVY = -this.flingVY * RAGDOLL.bounce;
+        this.tumblePV *= 0.6;
+        this.tumbleRV *= 0.6;
+        env.fx.dust({ x: this.x, y: 0.1, z: this.z }, 0.35);
+      } else {
+        this.flingVY = 0;
+      }
+    }
+    if (grounded && this.flingVY === 0) {
+      const k = Math.exp(-RAGDOLL.friction * dt);
+      this.flingVX *= k;
+      this.flingVZ *= k;
+      // roll to rest: each tumble eases to the nearest whole turn, so the body ends in its lying pose
+      const ease = Math.min(1, dt * 7);
+      const tp = Math.round(this.tumbleP / (Math.PI * 2)) * Math.PI * 2;
+      const tr = Math.round(this.tumbleR / (Math.PI * 2)) * Math.PI * 2;
+      this.tumbleP += (tp - this.tumbleP) * ease;
+      this.tumbleR += (tr - this.tumbleR) * ease;
+      this.tumblePV = this.tumbleRV = 0;
+      if (Math.hypot(this.flingVX, this.flingVZ) < 0.15 && Math.abs(tp - this.tumbleP) < 0.01 && Math.abs(tr - this.tumbleR) < 0.01) {
+        this.flying = false;
+        this.flingY = 0;
+        this.tumbleP = this.tumbleR = 0;
+        this.flingVX = this.flingVZ = 0;
+      }
+    } else {
+      this.tumbleP += this.tumblePV * dt;
+      this.tumbleR += this.tumbleRV * dt;
+    }
   }
 
   /** Called by noise events (gunshots, sprinting) and by alerted neighbours. */
@@ -420,6 +535,9 @@ export class Zombie {
   /** A downed carrier gets back up with part of its health. */
   revive(hpFraction: number, env: ZombieEnv): void {
     if (this.state !== 'downed') return;
+    this.flying = false;
+    this.flingY = this.tumbleP = this.tumbleR = 0;
+    this.flingVX = this.flingVY = this.flingVZ = 0;
     this.hp = Math.max(1, this.maxHp * hpFraction);
     this.poise = 0;
     this.rig.reset(this.id * 7919);
@@ -447,6 +565,7 @@ export class Zombie {
 
     if (this.state === 'dead' || this.state === 'downed') {
       this.deathT += dt;
+      this.stepFling(dt, env);
       this.pose(env, 0);
       return;
     }

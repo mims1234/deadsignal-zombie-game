@@ -2,7 +2,7 @@
  * Contextual interactions: crates, stations (number-key panels), the transmitter console, the extraction terminal and the
  * helicopter door. Produces the HUD prompt / station panel each frame and executes actions exactly once.
  */
-import { CARD_MODE, ECONOMY, MISSION, PLAYER, WEAPONS } from '../config';
+import { CARD_MODE, ECONOMY, MISSION, PLAYER, SURVIVORS, WEAPONS } from '../config';
 import { buyMenu, purchaseBuy, purchaseUpgrade, upgradeMenu, type BuyItemId, type StationItem } from '../logic/economy';
 import type { Edges } from '../player/input';
 import type { HudPrompt, StationPanel } from '../ui/hudTypes';
@@ -20,6 +20,12 @@ export interface MissionApi {
   heliDoorPos(): { x: number; z: number } | null;
   canBoard(): boolean;
   board(): boolean;
+}
+
+/** Trapped survivors: opening a cage. */
+export interface RescueApi {
+  rescueTarget(): { id: string; name: string; dist: number } | null;
+  rescue(id: string): void;
 }
 
 /** Card recovery: purging a downed carrier. */
@@ -58,6 +64,7 @@ export class Interaction {
     private readonly entities: Entities,
     private readonly mission: MissionApi,
     private readonly cards: CureApi,
+    private readonly squad: RescueApi,
   ) {}
 
   reset(): void {
@@ -160,19 +167,26 @@ export class Interaction {
     };
 
     for (const c of this.entities.crates) {
-      if (c.opened) continue;
+      if (c.phase === 'gone') continue;
       const d = Math.hypot(c.def.x - px, c.def.z - pz);
-      if (d > PLAYER.interactReach || !facing(c.def.x, c.def.z, d)) continue;
-      targets.push({
-        id: `crate:${c.def.id}`,
-        dist: d,
-        text: 'OPEN SUPPLY CACHE',
-        sub: 'Cash, ammunition, armor plates',
-        tone: 'normal',
-        hold: ECONOMY.crateOpenTime,
-        enabled: true,
-        onUse: () => this.entities.openCrate(c),
-      });
+      if (d > PLAYER.interactReach + (c.phase === 'offer' ? 0.6 : 0) || !facing(c.def.x, c.def.z, d)) continue;
+      if (c.phase === 'closed') {
+        targets.push({
+          id: `crate:${c.def.id}`,
+          dist: d,
+          text: 'OPEN MYSTERY BOX',
+          sub: 'Ammunition, grenades or a gun - and a little cash',
+          tone: 'normal',
+          hold: ECONOMY.crateOpenTime,
+          enabled: true,
+          onUse: () => this.entities.openCrate(c),
+        });
+      } else if (c.phase === 'spin') {
+        targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: 'MYSTERY BOX', sub: 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
+      } else {
+        const t = this.entities.offerText(c);
+        targets.push({ id: `crate-take:${c.def.id}`, dist: d, text: t.text, sub: t.sub, tone: 'good', hold: 0, enabled: true, onUse: () => this.entities.takeBoxPrize(c) });
+      }
     }
     for (const s of this.entities.stations) {
       const d = Math.hypot(s.def.x - px, s.def.z - pz);
@@ -243,6 +257,20 @@ export class Interaction {
         hold: CARD_MODE.cureHold,
         enabled: true,
         onUse: () => this.cards.cure(down.id),
+      });
+    }
+    // a trapped survivor
+    const cage = this.squad.rescueTarget();
+    if (cage) {
+      targets.push({
+        id: `rescue:${cage.id}`,
+        dist: cage.dist,
+        text: `FREE ${cage.name.toUpperCase()}`,
+        sub: 'Break the lock - they will fight with you',
+        tone: 'good',
+        hold: SURVIVORS.rescueHold,
+        enabled: true,
+        onUse: () => this.squad.rescue(cage.id),
       });
     }
     // helicopter door

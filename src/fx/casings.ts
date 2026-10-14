@@ -22,6 +22,7 @@ const SPECS: Record<WeaponId, Spec> = {
   rifle: { len: 0.045, rad: 0.0058, shell: false },
   pistol: { len: 0.029, rad: 0.0049, shell: false },
   shotgun: { len: 0.07, rad: 0.0105, shell: true },
+  rpg: { len: 0.07, rad: 0.0105, shell: true }, // never ejects; here for completeness
 };
 
 function brassGeometry(): THREE.BufferGeometry {

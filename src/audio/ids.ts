@@ -28,6 +28,10 @@ export const SOUND_IDS = [
   'grenade_throw',
   'grenade_bounce', // metallic clink
   'grenade_explosion', // big boom with rumble and debris tail (~2s)
+  'rpg_shot', // launch: hard pop, roaring back-blast and a rushing motor (~1.2s)
+  'rpg_shot_up',
+  'box_tick', // mystery box reel: one bright tick per item that flicks past
+  'box_reveal', // the reel stops: a rising chime
   'armor_plate', // velcro rip + plate slide + thunk (~2.2s, matches plate apply time)
   // ---- feedback (non-spatial UI-ish) ----
   'hit_body', // short tick

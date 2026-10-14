@@ -13,6 +13,7 @@ import {
   claimHuntReward,
   completeHunt,
   contractsCompleted,
+  createDefense,
   updateDefense,
   updateHunt,
 } from '../logic/contracts';
@@ -74,6 +75,12 @@ export class MissionRuntime implements MissionApi {
   private coughTimer = 0;
   private wasInsideDefense = true;
   private lastRegion = 'low';
+  /**
+   * Co-op: the relay belongs to the squad. The host decides its progress from everyone's positions; starting it is
+   * a request (`requestRelay`) and nobody calls extraction - the session is won on waves.
+   */
+  shared = false;
+  requestRelay: (() => void) | null = null;
   private tmp = new THREE.Vector3();
   private readonly lz;
   private readonly toLzDist: number;
@@ -133,14 +140,23 @@ export class MissionRuntime implements MissionApi {
   }
 
   activateTransmitter(): void {
+    if (this.shared && this.requestRelay) {
+      this.requestRelay();
+      return;
+    }
+    this.beginDefense();
+  }
+
+  /** The uplink starts (solo: the player's hold; co-op: the host's word, on every client). */
+  beginDefense(): void {
     const ctx = this.ctx;
     const s = ctx.session;
     if (!activateDefense(s.defense)) return;
     ctx.level.transmitter.setState('active');
     ctx.audio.play('defense_start', { priority: 3 });
     this.transmitterLoop = ctx.audio.startLoop('transmitter', { volume: 0.6, pos: { x: ctx.level.data.defense.x, y: 3, z: ctx.level.data.defense.z } });
-    ctx.banner(ctx.level.data.text.defenseStart, 'Hold the marked area until it completes', 'warn', 4.5);
-    ctx.radio('COMMAND', 'Uplink initiated. Stay inside the marked area. They will come for the signal.');
+    ctx.banner(ctx.level.data.text.defenseStart, this.shared ? 'Squad objective - keep at least one of you inside the marked area' : 'Hold the marked area until it completes', 'warn', 4.5);
+    ctx.radio('COMMAND', this.shared ? 'Uplink initiated. One of you stays in that zone at all times - it counts for the whole squad.' : 'Uplink initiated. Stay inside the marked area. They will come for the signal.');
     ctx.feed('TRANSMITTER ACTIVATED', 'warn');
   }
 
@@ -149,6 +165,7 @@ export class MissionRuntime implements MissionApi {
   }
 
   terminalState(): 'locked' | 'available' | 'busy' {
+    if (this.shared) return 'busy'; // co-op is won on waves: no extraction to call
     const ph = this.ctx.session.extraction.phase;
     if (ph === 'locked') return 'locked';
     if (ph === 'available') return 'available';
@@ -218,6 +235,7 @@ export class MissionRuntime implements MissionApi {
 
   reset(): void {
     const ctx = this.ctx;
+    this.shared = false;
     this.areaMarker.root.visible = true;
     this.areaMarker.setProgress(0);
     this.areaMarker.setActive(false);
@@ -282,7 +300,9 @@ export class MissionRuntime implements MissionApi {
     // ---- defense contract ----
     const d = data.defense;
     const inside = Math.hypot(p.x - d.x, p.z - d.z) < d.radius;
-    if (s.defense.status === 'active') {
+    if (this.shared) {
+      // the squad's relay is driven by the co-op session (sharedRelay)
+    } else if (s.defense.status === 'active') {
       const done = updateDefense(s.defense, dt, inside, alive);
       ctx.level.transmitter.setProgress(s.defense.progress);
       this.areaMarker.setProgress(s.defense.progress);
@@ -373,7 +393,57 @@ export class MissionRuntime implements MissionApi {
     void escalationPhase;
   }
 
-  private completeDefense(): void {
+  /**
+   * Co-op relay, every client, every frame. `squadInside`: someone who is up stands in the zone. Only the host moves
+   * the progress (`authority`); the others take it from the snapshots. Returns true on the frame it completes here.
+   */
+  sharedRelay(dt: number, time: number, squadInside: boolean, authority: boolean): boolean {
+    const ctx = this.ctx;
+    const s = ctx.session;
+    const def = s.defense;
+    let done = false;
+    if (def.status === 'active') {
+      if (authority) done = updateDefense(def, dt, squadInside, true);
+      ctx.level.transmitter.setProgress(def.progress);
+      this.areaMarker.setProgress(def.progress);
+      this.areaMarker.setActive(squadInside);
+      if (!squadInside && this.wasInsideDefense && ctx.playerAlive()) {
+        ctx.banner('NOBODY IS AT THE RELAY', 'Uplink progress is draining - one of you get back in the zone', 'danger', 2.5);
+        ctx.audio.play('klaxon', { priority: 2, volume: 0.6 });
+      }
+      this.wasInsideDefense = squadInside;
+    } else {
+      if (def.status === 'available') this.areaMarker.setProgress(0);
+      this.areaMarker.setActive(squadInside);
+    }
+    this.areaMarker.update(dt, time);
+    if (done) this.completeDefense();
+    return done;
+  }
+
+  /** Co-op guest: the host's view of the relay. Starts and completes it here too (each player claims the reward once). */
+  applySharedRelay(status: 'available' | 'active' | 'complete', progress: number): void {
+    const ctx = this.ctx;
+    const def = ctx.session.defense;
+    if (status === 'available' && def.status !== 'available') {
+      // the host started a fresh run
+      Object.assign(def, createDefense());
+      ctx.level.transmitter.setState('ready');
+      ctx.level.transmitter.setProgress(0);
+      this.transmitterLoop?.stop(0.3);
+      this.transmitterLoop = null;
+      return;
+    }
+    if (status !== 'available' && def.status === 'available') this.beginDefense();
+    if (def.status === 'active') def.progress = progress;
+    if (status === 'complete' && def.status === 'active') {
+      def.status = 'complete';
+      def.progress = 1;
+      this.completeDefense();
+    }
+  }
+
+  completeDefense(): void {
     const ctx = this.ctx;
     const s = ctx.session;
     ctx.level.transmitter.setState('done');

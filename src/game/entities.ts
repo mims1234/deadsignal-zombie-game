@@ -1,21 +1,144 @@
-/** Crates, stations and ground pickups: models, state and per-frame animation. */
+/** Mystery boxes, stations and ground pickups: models, state and per-frame animation. */
 import * as THREE from 'three';
-import { ECONOMY, GRENADE, PLAYER, REGIONS, WEAPONS } from '../config';
+import { ECONOMY, GRENADE, MYSTERY_BOX, PLAYER, REGIONS, WEAPONS } from '../config';
 import { addReserve, isFull } from '../logic/ammo';
-import { applyCrateReward, rollCrateReward } from '../logic/economy';
+import { addCash, rollCrateReward } from '../logic/economy';
+import { type BoxPrize, REEL, prizeKey, prizeLabel, rollBox, takePrize } from '../logic/mysteryBox';
 import type { Region } from '../types';
 import type { CrateDef, StationDef } from '../world/layout/data';
+import type { MaterialLib } from '../world/materials';
 import { createLootCrate, createPickupModel, createStationModel, type CrateModel, type PickupKind, type StationModel } from '../world/models';
+import { createBoxMark, createGunDisplay } from '../world/models/boxDisplay';
 import type { GameCtx } from './ctx';
+
+/** closed -> (opened) spin -> offer -> gone. A box opens once per run. */
+export type BoxPhase = 'closed' | 'spin' | 'offer' | 'gone';
 
 export class CrateRuntime {
   opened = false;
   openT = 0;
   discovered = false;
+  phase: BoxPhase = 'closed';
+  /** Seconds into the current phase. */
+  t = 0;
+  prize: BoxPrize | null = null;
+  private face = 0;
+  private nextTick = 0;
+  /** The reel: one model per face, shown one at a time over the box (built on first open). */
+  private reel: THREE.Group | null = null;
+  private readonly faces: THREE.Object3D[] = [];
+  readonly mark: THREE.Sprite;
   constructor(
     readonly def: CrateDef,
     readonly model: CrateModel,
-  ) {}
+  ) {
+    this.mark = createBoxMark();
+    this.mark.position.set(def.x, 1.55, def.z);
+  }
+
+  reset(): void {
+    this.opened = false;
+    this.openT = 0;
+    this.discovered = false;
+    this.phase = 'closed';
+    this.t = 0;
+    this.prize = null;
+    this.mark.visible = true;
+    if (this.reel) this.reel.visible = false;
+    this.model.setOpen(0);
+    this.model.setLooted(false);
+  }
+
+  private buildReel(parent: THREE.Object3D, mats: MaterialLib): THREE.Group {
+    const g = new THREE.Group();
+    for (const p of REEL) {
+      let m: THREE.Object3D;
+      if (p.kind === 'weapon') {
+        m = createGunDisplay(p.id);
+      } else {
+        m = createPickupModel(p.kind === 'ammo' ? 'ammo' : 'grenade', mats);
+        m.scale.setScalar(p.kind === 'ammo' ? 1.7 : 2.2);
+      }
+      m.visible = false;
+      g.add(m);
+      this.faces.push(m);
+    }
+    g.position.set(this.def.x, 0.7, this.def.z);
+    parent.add(g);
+    return g;
+  }
+
+  private show(i: number): void {
+    this.face = i;
+    this.faces.forEach((f, k) => (f.visible = k === i));
+  }
+
+  /** Start the reel on `prize`. */
+  spin(prize: BoxPrize, parent: THREE.Object3D, mats: MaterialLib): void {
+    this.reel ??= this.buildReel(parent, mats);
+    this.reel.visible = true;
+    this.reel.position.y = 0.7;
+    this.reel.scale.setScalar(1);
+    this.prize = prize;
+    this.phase = 'spin';
+    this.t = 0;
+    this.nextTick = 0;
+    this.mark.visible = false;
+    this.show(Math.floor(Math.random() * this.faces.length));
+  }
+
+  /** Advance the reel / offer. Returns what happened this frame. */
+  update(dt: number, time: number): 'tick' | 'land' | 'expire' | null {
+    const reel = this.reel;
+    if (this.phase === 'closed') {
+      this.mark.position.y = 1.55 + Math.sin(time * 2.2 + this.def.x) * 0.08;
+      return null;
+    }
+    if (!reel || this.phase === 'gone') {
+      if (reel && reel.visible) {
+        // sinking back into the box
+        this.t += dt;
+        reel.position.y -= dt * 1.6;
+        reel.scale.setScalar(Math.max(0.01, 1 - this.t * 1.8));
+        if (this.t > 0.55) reel.visible = false;
+      }
+      return null;
+    }
+    this.t += dt;
+    reel.rotation.y += dt * (this.phase === 'spin' ? 5 : 1.4);
+    if (this.phase === 'spin') {
+      const k = Math.min(1, this.t / MYSTERY_BOX.spin);
+      reel.position.y = 0.7 + 0.8 * (1 - (1 - k) * (1 - k));
+      if (this.t >= MYSTERY_BOX.spin) {
+        this.show(Math.max(0, REEL.findIndex((p) => prizeKey(p) === prizeKey(this.prize!))));
+        this.phase = 'offer';
+        this.t = 0;
+        return 'land';
+      }
+      if (this.t >= this.nextTick) {
+        // ticks slow down as the reel winds down
+        this.nextTick = this.t + 0.055 + 0.36 * k * k;
+        this.show((this.face + 1) % this.faces.length);
+        return 'tick';
+      }
+      return null;
+    }
+    // offer: the prize bobs over the open box until it is taken or the time runs out
+    reel.position.y = 1.5 + Math.sin(time * 2.6) * 0.06;
+    if (this.t >= MYSTERY_BOX.offer) {
+      this.phase = 'gone';
+      this.t = 0;
+      return 'expire';
+    }
+    return null;
+  }
+
+  /** The prize was taken: it vanishes at once. */
+  taken(): void {
+    this.phase = 'gone';
+    this.t = 1;
+    if (this.reel) this.reel.visible = false;
+  }
 }
 
 export class StationRuntime {
@@ -48,7 +171,9 @@ export class Entities {
       model.root.position.set(def.x, 0, def.z);
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);
-      this.crates.push(new CrateRuntime(def, model));
+      const c = new CrateRuntime(def, model);
+      this.root.add(c.mark);
+      this.crates.push(c);
     }
     for (const def of ctx.level.data.stations) {
       const model = createStationModel(def.kind, ctx.mats);
@@ -60,13 +185,7 @@ export class Entities {
   }
 
   reset(): void {
-    for (const c of this.crates) {
-      c.opened = false;
-      c.openT = 0;
-      c.discovered = false;
-      c.model.setOpen(0);
-      c.model.setLooted(false);
-    }
+    for (const c of this.crates) c.reset();
     for (const s of this.stations) s.model.setState('idle');
     this.clearPickups();
   }
@@ -86,12 +205,22 @@ export class Entities {
     for (const c of this.crates) {
       const d2 = (c.def.x - px) ** 2 + (c.def.z - pz) ** 2;
       if (d2 < 30 * 30) c.discovered = true;
-      if (d2 > 90 * 90) continue;
+      if (d2 > 90 * 90 && c.phase !== 'spin' && c.phase !== 'offer') continue;
       if (c.opened && c.openT < 1) {
         c.openT = Math.min(1, c.openT + dt / 0.45);
         c.model.setOpen(c.openT);
       }
       c.model.update(dt, time);
+      const ev = c.update(dt, time);
+      const at = { x: c.def.x, y: 1.2, z: c.def.z };
+      if (ev === 'tick') ctx.audio.play('box_tick', { pos: at, priority: 1, volume: 0.7 });
+      else if (ev === 'land') {
+        ctx.audio.play('box_reveal', { pos: at, priority: 2 });
+        ctx.fx.sparkle(at, 0xffc860, 18);
+      } else if (ev === 'expire') {
+        c.model.setLooted(true);
+        ctx.feed('THE MYSTERY BOX TOOK ITS PRIZE BACK', 'warn');
+      }
     }
     for (const s of this.stations) {
       const d2 = (s.def.x - px) ** 2 + (s.def.z - pz) ** 2;
@@ -167,28 +296,50 @@ export class Entities {
     }
   }
 
-  /** Open a crate: grants its loot exactly once. Returns false if it was already opened. */
+  /** Open a mystery box: pays its region's cash once and spins the reel. False if it was already opened. */
   openCrate(c: CrateRuntime): boolean {
     if (c.opened) return false;
     const ctx = this.ctx;
     c.opened = true;
     ctx.session.stats.cratesOpened++;
     const inv = ctx.session.inv;
-    const reward = rollCrateReward(c.def.region, inv, ctx.rng);
-    const applied = applyCrateReward(inv, reward);
-    c.model.setLooted(true);
+    const cash = rollCrateReward(c.def.region, inv, ctx.rng).cash;
+    addCash(inv, cash);
+    c.spin(rollBox(c.def.region, inv, ctx.rng), this.root, ctx.mats);
     ctx.audio.play('crate_open', { pos: { x: c.def.x, y: 0.6, z: c.def.z }, priority: 2 });
     ctx.audio.play('pickup_cash', { priority: 1, volume: 0.7 });
     ctx.fx.sparkle({ x: c.def.x, y: 0.9, z: c.def.z }, 0xffe08a, 16);
-    ctx.hudEvent({ type: 'cash', amount: applied.cash });
-    ctx.feed(`SUPPLY CACHE  +$${applied.cash}`, 'good');
-    for (const slot of [0, 1] as const) {
-      const w = inv.slots[slot];
-      if (w && applied.ammo[slot] > 0) ctx.feed(`+${applied.ammo[slot]} ${WEAPONS[w.id].short} AMMO`, 'good');
-    }
-    if (applied.plates > 0) ctx.feed('+1 ARMOR PLATE', 'good');
-    if (applied.grenades > 0) ctx.feed('+1 FRAG GRENADE', 'good');
+    ctx.hudEvent({ type: 'cash', amount: cash });
+    ctx.feed(`MYSTERY BOX  +$${cash}`, 'good');
     return true;
+  }
+
+  /** Take what a box is offering. Leaves it on offer (and says why) when it would do nothing. */
+  takeBoxPrize(c: CrateRuntime): boolean {
+    if (c.phase !== 'offer' || !c.prize) return false;
+    const ctx = this.ctx;
+    const r = takePrize(ctx.session.inv, c.prize);
+    if (!r.ok) {
+      ctx.audio.play('buy_denied', { priority: 2, volume: 0.8 });
+      ctx.feed(r.message.toUpperCase(), 'warn');
+      return false;
+    }
+    if (r.swapped) ctx.weapons.cancelActions();
+    c.taken();
+    c.model.setLooted(true);
+    ctx.audio.play(c.prize.kind === 'weapon' ? 'weapon_draw' : 'pickup_ammo', { priority: 2 });
+    ctx.fx.sparkle({ x: c.def.x, y: 1.5, z: c.def.z }, 0xffc860, 14);
+    ctx.feed(r.message, 'good');
+    return true;
+  }
+
+  /** What an offered prize is called, and what taking it means. */
+  offerText(c: CrateRuntime): { text: string; sub: string } {
+    const p = c.prize!;
+    const held = this.ctx.session.inv.slots[this.ctx.session.inv.activeSlot];
+    const left = Math.max(0, Math.ceil(MYSTERY_BOX.offer - c.t));
+    const sub = p.kind === 'weapon' && held && held.id !== p.id ? `Replaces your ${WEAPONS[held.id].short} - or leave it (${left}s)` : `Leave it and it sinks back into the box (${left}s)`;
+    return { text: `TAKE ${prizeLabel(p)}`, sub };
   }
 
   regionOf(c: CrateRuntime): Region {

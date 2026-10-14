@@ -77,6 +77,7 @@ export interface ViewmodelSet {
   rifle: ViewmodelRig;
   pistol: ViewmodelRig;
   shotgun: ViewmodelRig;
+  rpg: ViewmodelRig;
   /** Hand pulling a pin and throwing a grenade; `action` timeline: pin pull 0-0.3, wind-up 0.3-0.45, release ~0.5, recover 0.5-1. */
   grenade: ViewmodelRig;
   /** Hand pulling an armour plate from the vest and slotting it in; `action` spans the apply time (arm reaches, plate slides, tap). */

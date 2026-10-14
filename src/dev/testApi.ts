@@ -5,6 +5,7 @@
  * bypass game rules except explicitly named teleport / spawn / time helpers.
  */
 import { WEAPONS } from '../config';
+import { createCarried } from '../logic/economy';
 import type { Game } from '../game/game';
 import type { Edges } from '../player/input';
 import type { WeaponId, ZombieType } from '../types';
@@ -191,6 +192,22 @@ export function installTestApi(game: Game): void {
       if (slot >= 0) inv.activeSlot = slot as 0 | 1;
     },
     weaponDefs: WEAPONS,
+    /** Put a fresh `id` in the hands (replacing what is held). */
+    giveWeapon(id: WeaponId): void {
+      const inv = game.session.inv;
+      inv.slots[inv.activeSlot] = createCarried(id);
+      game.weapons.cancelActions();
+    },
+    /** Mystery boxes: where they are and what they are doing. */
+    boxes() {
+      return game.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, yaw: c.def.yaw, phase: c.phase, prize: c.prize }));
+    },
+    squad() {
+      return game.squad.devInfo();
+    },
+    zombieInfo() {
+      return game.zombies.zombies.map((z) => ({ id: z.id, x: +z.x.toFixed(2), z: +z.z.toFixed(2), y: +z.rig.root.position.y.toFixed(2), state: z.state, tag: z.tag, hp: Math.round(z.hp), maxHp: Math.round(z.maxHp) }));
+    },
     closePanel(): void {
       game.interaction.closePanel(false);
     },

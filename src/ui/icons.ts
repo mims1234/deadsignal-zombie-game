@@ -114,6 +114,17 @@ const WEAPON_PATHS: Record<WeaponId, string[]> = {
     // bead sight
     'M148 13h4v4h-4z',
   ],
+  rpg: [
+    // launch tube with the flared venturi at the back
+    'M14 18h104v12H14z',
+    'M2 14 14 18v12L2 34z',
+    // warhead
+    'M118 16h14l22 8-22 8h-14z',
+    // pistol grip, forward grip
+    'M44 30h10l-3 15h-10zM78 30h9l-2 11h-9z',
+    // sight
+    'M56 10h4v8h-4zM96 12h3v6h-3z',
+  ],
 };
 
 export function weaponSilhouette(id: WeaponId, cls = ''): SVGSVGElement {

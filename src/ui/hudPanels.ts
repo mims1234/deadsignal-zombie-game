@@ -182,7 +182,7 @@ export class WeaponView {
       setHidden(this.tier, !showTier);
       this.tierText.set(w.tierLabel);
       setAttr(this.tier, 'data-tier', String(w.tier));
-      this.mode.set(w.auto ? 'AUTO' : w.id === 'shotgun' ? 'PUMP' : 'SEMI');
+      this.mode.set(w.auto ? 'AUTO' : w.id === 'shotgun' ? 'PUMP' : w.id === 'rpg' ? 'ROCKET' : 'SEMI');
       if (w.id !== this.sil) {
         this.sil = w.id;
         this.silHost.replaceChildren(weaponSilhouette(w.id));

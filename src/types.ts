@@ -8,7 +8,7 @@
  *  - Ground is flat at y = 0.
  */
 
-export type WeaponId = 'rifle' | 'pistol' | 'shotgun';
+export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg';
 
 export type ZombieType = 'shambler' | 'runner' | 'armored' | 'warden';
 
@@ -73,7 +73,7 @@ export interface MissionStats {
   headshots: number;
   contractsCompleted: number;
   contractsTotal: number;
-  /** Supply crates opened. */
+  /** Mystery boxes opened. */
   cratesOpened: number;
   /** Total cash earned across the run (not the balance). */
   cashEarned: number;

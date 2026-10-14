@@ -10,7 +10,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, REGIONS, RENDER, ZOMBIE_AI } from '../config';
+import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -45,7 +45,7 @@ import { FlowField } from '../world/nav';
 import type { GameCtx } from './ctx';
 import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
-import { ForgeRuntime } from './forgeRuntime';
+import { SquadRuntime } from './squad';
 import { Interaction, type InteractionOutput } from './interaction';
 import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
@@ -81,7 +81,7 @@ export class Game implements GameCtx {
   zombieFactory!: ZombieFactoryExt;
   cards!: CardRuntime;
   coop!: CoopSession;
-  forge!: ForgeRuntime;
+  squad!: SquadRuntime;
   /** Which map was built this page load. */
   mapId: 'district' | 'forge' = 'district';
   private coopUi!: CoopUi;
@@ -140,6 +140,10 @@ export class Game implements GameCtx {
   private readonly camDir = new THREE.Vector3();
   private readonly listenerFwd = { x: 0, y: 0, z: -1 };
   private readonly pushOut = { x: 0, z: 0 };
+  /** The last blow that landed (direction away from it, and how hard): a killing one throws the camera. */
+  private lastBlow = { x: 0, z: 1, power: 0, at: -9 };
+  /** Death camera ragdoll: the eye is thrown, tumbles and comes to rest on the ground. */
+  private readonly deathCam = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, roll: 0, rollV: 0, pitch: 0, pitchV: 0, pos: { x: 0, z: 0 } };
   private cinePos = new THREE.Vector3();
   private cineFrom = new THREE.Vector3();
   private devTimeScale = 1;
@@ -273,6 +277,19 @@ export class Game implements GameCtx {
     this.zombies = new ZombieManager(this.zombieFactory, this.level);
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
+    if (this.mapId === 'forge') {
+      // Vulcan HQ fell: some of the Forge's infected are the clan's own Infernus, each name used once at a time
+      let bag: string[] = [];
+      this.zombies.namer = () => {
+        if (this.rng.f() >= VULCAN.namedShare) return null;
+        const inUse = new Set(this.zombies.zombies.map((q) => q.tag));
+        if (bag.length === 0) bag = [...VULCAN.infected].sort(() => this.rng.f() - 0.5);
+        for (let i = 0; i < bag.length; i++) {
+          if (!inUse.has(bag[i]!)) return bag.splice(i, 1)[0]!;
+        }
+        return null;
+      };
+    }
     this.cards = new CardRuntime(this, this.zombieFactory.material, () => this.zenv);
     await this.cards.load();
     if (this.account.user) this.cards.setCounts(this.account.cards);
@@ -289,7 +306,7 @@ export class Game implements GameCtx {
         fx: this.fx,
         audio: this.audio,
         playerPos: () => ({ x: this.player.x, y: this.player.y + 1, z: this.player.z }),
-        hurtPlayerExplosion: (amount, x, z) => this.hurtPlayer(amount, x, z, {}),
+        hurtPlayerExplosion: (amount, x, z, closeness) => this.blastPlayer(amount, x, z, closeness),
         onExplosion: (x, y, z) => this.onExplosion(x, y, z),
         playerVelocity: () => ({ x: this.player.vx, z: this.player.vz }),
       },
@@ -316,6 +333,7 @@ export class Game implements GameCtx {
         hudEvent: (e) => this.hud.event(e),
         noise: (radius) => this.zombies.emitNoise(this.player.x, this.player.z, radius),
         throwGrenade: (o, d) => this.grenades.throw(o, d),
+        fireRocket: (o, d, dmg) => this.grenades.fireRocket(o, d, dmg),
         recordShot: (hit) => {
           this.session.stats.shotsFired++;
           if (hit) this.session.stats.shotsHit++;
@@ -333,9 +351,12 @@ export class Game implements GameCtx {
 
     this.entities = new Entities(this);
     this.mission = new MissionRuntime(this, this.entities);
-    this.interaction = new Interaction(this, this.entities, this.mission, this.cards);
+    this.interaction = new Interaction(this, this.entities, this.mission, this.cards, {
+      rescueTarget: () => this.squad.rescueTarget(),
+      rescue: (id) => this.squad.rescue(id),
+    });
     this.coop = new CoopSession(this);
-    this.forge = new ForgeRuntime(this);
+    this.squad = new SquadRuntime(this);
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       isAdmin: () => this.account.admin,
@@ -655,9 +676,9 @@ export class Game implements GameCtx {
       if (this.mode === 'coop') {
         if (!spectating) this.banner('CO-OP  //  WAVE SURVIVAL', 'Hold out for ten waves. Anyone who goes down returns when the wave is cleared.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
-        this.banner('THE FORGE', 'Rekindle the beacon. Slay the Infernus. Keep Ash and Cinder alive. Rise.', 'info', 5);
-      } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Extract.', 'info', 4.5);
-      else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Contain the outbreak. Restore the relay. Kill the Warden. Extract.', 'info', 4.5);
+        this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
+      } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
+      else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
     }
   }
 
@@ -740,7 +761,8 @@ export class Game implements GameCtx {
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
-    this.forge.reset(this.mapId === 'forge' && (this.mode === 'standard' || this.mode === 'cards'));
+    const solo = this.mode === 'standard' || this.mode === 'cards';
+    this.squad.reset(this.mapId === 'forge' && solo, solo);
     this.weapons.hidden = this.mode === 'roam' || this.coop.role === 'spectator';
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
@@ -939,7 +961,7 @@ export class Game implements GameCtx {
     // ---- enemies ----
     this.updateEnemies(dt, alive);
     this.cards.update(dt);
-    this.forge.update(dt);
+    this.squad.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -1115,7 +1137,7 @@ export class Game implements GameCtx {
       return;
     }
     const boarding = this.endingKind === 'board';
-    this.zombies.update(dt, z, alive && !boarding, this.forge.envs(z));
+    this.zombies.update(dt, z, alive && !boarding, this.squad.envs(z));
     if (alive && !boarding) {
       const s = this.session;
       const ex = s.extraction;
@@ -1155,6 +1177,7 @@ export class Game implements GameCtx {
     const d = Math.hypot(dx, dz) || 1;
     p.vx += (dx / d) * knock;
     p.vz += (dz / d) * knock;
+    this.lastBlow = { x: dx / d, z: dz / d, power: knock, at: this.time };
     if (kind !== 'melee') this.shake(0.5);
     this.audio.play('zombie_claw_hit', { priority: 3, volume: 0.9 });
     p.kickPitch += (this.settings.reducedMotion ? 0.01 : 0.03) * (kind === 'melee' ? 1 : 2);
@@ -1190,8 +1213,43 @@ export class Game implements GameCtx {
     if (res.dead) this.onPlayerDied();
   }
 
+  /** Caught in a blast: hurt, and shoved away from it (with a hop) in proportion to how close it was. */
+  private blastPlayer(amount: number, x: number, z: number, closeness: number): void {
+    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam' || this.coop.role === 'spectator') return;
+    const p = this.player;
+    const dx = p.x - x;
+    const dz = p.z - z;
+    const d = Math.hypot(dx, dz) || 1;
+    const push = RAGDOLL.playerBlastPush * closeness;
+    p.vx += (dx / d) * push;
+    p.vz += (dz / d) * push;
+    if (closeness > 0.25) {
+      p.vy = Math.max(p.vy, RAGDOLL.playerBlastHop * closeness);
+      p.onGround = false;
+    }
+    this.lastBlow = { x: dx / d, z: dz / d, power: push * 1.6, at: this.time };
+    this.hurtPlayer(amount, x, z, {});
+  }
+
   private onPlayerDied(): void {
     if (this.session.ended) return;
+    // the body goes where the blow sent it
+    const blow = this.time - this.lastBlow.at < 0.5 ? this.lastBlow : { x: 0, z: 0, power: 0, at: 0 };
+    const cam = this.deathCam;
+    const p = this.player;
+    cam.x = p.x;
+    cam.y = p.eyeY();
+    cam.z = p.z;
+    const power = Math.min(14, blow.power);
+    cam.vx = p.vx * 0.5 + blow.x * (1.2 + power * 0.7);
+    cam.vz = p.vz * 0.5 + blow.z * (1.2 + power * 0.7);
+    cam.vy = 0.6 + power * 0.35;
+    // fall sideways, away from the blow's side of the view
+    const right = blow.x * Math.cos(p.yaw) - blow.z * Math.sin(p.yaw);
+    cam.roll = 0;
+    cam.rollV = (right >= 0 ? 1 : -1) * (1.6 + power * 0.25);
+    cam.pitch = 0;
+    cam.pitchV = -0.6 - power * 0.06;
     this.audio.play('player_death', { priority: 3 });
     this.weapons.cancelActions();
     this.interaction.closePanel(false);
@@ -1204,8 +1262,8 @@ export class Game implements GameCtx {
 
   private onZombieKilled(z: Zombie, head: boolean): void {
     if (this.coop.live && this.coop.onKill(z, head)) return; // another player's kill: they are paid, not the host
-    if (this.forge.allyShooting) {
-      // a soldier's kill: it still counts for the contract, but it is not the player's
+    if (this.squad.allyShooting) {
+      // an ally's kill: it still counts for the contract, but it is not the player's
       if (z.isBoss) this.mission.onWardenKilled();
       return;
     }
@@ -1216,7 +1274,7 @@ export class Game implements GameCtx {
     const cash = killReward(z.def, head, region);
     addCash(s.inv, cash);
     this.hud.event({ type: 'cash', amount: cash });
-    this.feed(`+$${cash}  ${z.def.name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
+    this.feed(`+$${cash}  ${z.tag ? `${z.tag.toUpperCase()} (INFECTED)` : z.def.name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
     // supply drops
     const def = z.def;
     if (!z.isBoss && this.rng.chance(def.dropChance * REGIONS[region].dropMul)) {
@@ -1266,7 +1324,7 @@ export class Game implements GameCtx {
   endRun(outcome: 'victory' | 'defeat', reason: string): void {
     const s = this.session;
     if (s.ended) return;
-    if (outcome === 'victory') this.forge.onExtracted();
+    if (outcome === 'victory') this.squad.onExtracted();
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
     const stats = buildStats(s, outcome, reason, this.mission.contractsDone());
@@ -1425,10 +1483,35 @@ export class Game implements GameCtx {
     }
     if (this.state === 'ending') {
       if (this.endingKind === 'death') {
-        const t = Math.min(1, this.endingT / 0.9);
-        ey = ey + (0.32 - ey) * (t * t * (3 - 2 * t));
-        pitch += t * -0.35;
-        roll = t * 0.6;
+        // ragdoll camera: thrown by the killing blow, bouncing off walls, rolling onto its side on the ground
+        const c = this.deathCam;
+        const step = Math.min(dt, 1 / 30);
+        c.vy -= RAGDOLL.gravity * step;
+        c.pos.x = c.x + c.vx * step;
+        c.pos.z = c.z + c.vz * step;
+        if (this.level.world.resolveCircle(c.pos, 0.25, Math.max(0.05, c.y - 0.3), c.y + 0.1, 2)) {
+          c.vx *= -0.2;
+          c.vz *= -0.2;
+        }
+        c.x = c.pos.x;
+        c.z = c.pos.z;
+        c.y += c.vy * step;
+        const floor = 0.3;
+        if (c.y <= floor) {
+          c.y = floor;
+          c.vy = c.vy < -3 ? -c.vy * 0.25 : 0;
+          const k = Math.exp(-6 * step);
+          c.vx *= k;
+          c.vz *= k;
+        }
+        const restRoll = (c.rollV >= 0 ? 1 : -1) * 1.35;
+        c.roll += (restRoll - c.roll) * Math.min(1, step * Math.abs(c.rollV) * 1.4);
+        c.pitch += (-0.3 - c.pitch) * Math.min(1, step * Math.abs(c.pitchV) * 2.5);
+        ex = c.x;
+        ey = c.y;
+        ez = c.z;
+        pitch += this.settings.reducedMotion ? c.pitch * 0.5 : c.pitch;
+        roll = this.settings.reducedMotion ? c.roll * 0.4 : c.roll;
       } else if (this.endingKind === 'board') {
         const t = Math.min(1, this.endingT / 1.6);
         const e = t * t * (3 - 2 * t);
@@ -1492,8 +1575,8 @@ export class Game implements GameCtx {
     const md = buildMapDynamic(this, this.mission, this.cards, this.markers);
     if (this.coop.live) this.coop.decorateHud(st, md);
     else {
-      this.forge.objectives(st.objectives);
-      this.forge.markers(md.markers);
+      this.squad.objectives(st.objectives);
+      this.squad.markers(md.markers);
     }
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });

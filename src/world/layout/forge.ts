@@ -4,12 +4,11 @@
  *
  *   SW  Ember Market   insertion gate, market hall, workshops (low threat)
  *   NW  The Pad        helipad and radio for extraction, fuel farm (low)
- *   SE  Phoenix Plaza  the beacon to rekindle, the forge hall with its VULCAN sign (medium)
+ *   SE  Phoenix Plaza  the beacon to rekindle, and Vulcan HQ (the forge hall) under its phoenix billboard (medium)
  *   NE  The Crucible   open-roofed foundry with molten pools, the Infernus, the firestorm spire (high)
  */
 import * as THREE from 'three';
 import { quarantineGate, helipad, skylineBackdrop, spire, transmitterSite, type SpireHandle, type TransmitterHandle } from '../landmarks';
-import { neonLabelMaterial } from '../landmarks/tex';
 import {
   barrelGroup,
   checkpointBooth,
@@ -30,6 +29,7 @@ import {
 } from '../props';
 import { addBox, building, groundRect, perimeterWall, wallDecal } from '../structures';
 import { HALF_PI, type Ctx } from './util';
+import { vulcanForge, vulcanSigilMaterial } from './vulcan';
 
 export const FORGE_BOUNDS = { minX: -62, maxX: 62, minZ: -50, maxZ: 50 };
 export const FORGE = {
@@ -40,61 +40,6 @@ export const FORGE = {
   infernus: { x: 36, z: -27 },
   spire: { x: 54, z: -43 },
 };
-
-/** A glowing phoenix sigil, painted once on a canvas (a ring with two swept wings and a rising tail). */
-function sigilMaterial(): THREE.MeshStandardMaterial {
-  const c = document.createElement('canvas');
-  c.width = c.height = 512;
-  const g = c.getContext('2d')!;
-  g.translate(256, 256);
-  g.strokeStyle = '#ff7a1a';
-  g.fillStyle = '#ff7a1a';
-  g.lineCap = 'round';
-  g.shadowColor = '#ff9a3a';
-  g.shadowBlur = 18;
-  g.lineWidth = 14;
-  g.beginPath();
-  g.arc(0, 0, 214, 0, Math.PI * 2);
-  g.stroke();
-  g.lineWidth = 5;
-  g.beginPath();
-  g.arc(0, 0, 192, 0, Math.PI * 2);
-  g.stroke();
-  // wings: fans of tapered feathers sweeping up and out
-  for (const s of [-1, 1]) {
-    for (let i = 0; i < 9; i++) {
-      const a = -0.25 - i * 0.13;
-      const len = 150 - i * 9;
-      g.beginPath();
-      g.moveTo(s * 18, -10 + i * 6);
-      g.quadraticCurveTo(s * (60 + i * 8), -40 - i * 4, s * Math.cos(a) * len, Math.sin(a) * len - 30 + i * 14);
-      g.lineWidth = 12 - i;
-      g.stroke();
-    }
-  }
-  // body, head and the rising tail
-  g.beginPath();
-  g.ellipse(0, 10, 22, 52, 0, 0, Math.PI * 2);
-  g.fill();
-  g.beginPath();
-  g.arc(0, -58, 17, 0, Math.PI * 2);
-  g.fill();
-  g.beginPath();
-  g.moveTo(10, -64);
-  g.lineTo(44, -56);
-  g.lineTo(12, -50);
-  g.fill();
-  for (const s of [-1, 0, 1]) {
-    g.beginPath();
-    g.moveTo(0, 50);
-    g.quadraticCurveTo(s * 40, 110, s * 70, 160);
-    g.lineWidth = 10;
-    g.stroke();
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshStandardMaterial({ map: tex, emissive: 0xff6a10, emissiveMap: tex, emissiveIntensity: 1.6, transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2 });
-}
 
 /** Molten metal: emissive, slowly pulsing. */
 function moltenMaterial(c: Ctx): THREE.MeshStandardMaterial {
@@ -169,8 +114,8 @@ export function buildForge(c: Ctx): ForgeResult {
   groundRect(b, 'concreteSlab', 5, 5, 61, 49, 0.02);
   groundRect(b, 'concreteSlab', 5, -49, 61, -18, 0.02);
   groundRect(b, 'concreteSlab', 5, -13, 61, -5, 0.02);
-  // the sigil burning in the crossroads
-  groundRect(b, sigilMaterial(), -7, -7, 7, 7, 0.035);
+  // Vulcan's phoenix burning in the crossroads
+  groundRect(b, vulcanSigilMaterial(), -7, -7, 7, 7, 0.035);
   b.light({ x: 0, y: 2.5, z: 0, color: 0xff6a14, intensity: 140, distance: 16 });
 
   d.regionRects.push(
@@ -266,8 +211,9 @@ export function buildForge(c: Ctx): ForgeResult {
     tag: 'forge-hall',
   });
   void hall;
-  // VULCAN in neon over the hall's street front, and the phoenix pillar at the plaza corner
-  addBox(b, neonLabelMaterial('VULCAN FORGE', '#ff7a1a'), 48, 7.2, 6.75, 12, 1.6, 0.12, 0, { cast: false });
+  // the hall is Vulcan HQ: the phoenix billboard on its roof, its name in neon, the quarantine it fell under;
+  // the clan's banners hang around the perimeter. Then the phoenix pillar at the plaza corner.
+  vulcanForge(c, { x: 48, z: 13, frontZ: 7, height: 6 });
   b.light({ x: 48, y: 7, z: 5.5, color: 0xff7a1a, intensity: 110, distance: 14 });
   addBox(b, 'steelDark', 14, 4.5, 14, 1.4, 9, 1.4, Math.PI / 4);
   addBox(b, b.mats.get('emAmber'), 14, 9.3, 14, 1.8, 0.8, 1.8, Math.PI / 4, { cast: false });

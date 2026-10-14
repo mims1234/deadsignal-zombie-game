@@ -320,9 +320,124 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       },
     ],
   },
+  rpg: {
+    id: 'rpg',
+    name: 'HX-7 Rocket Launcher',
+    short: 'HX-7',
+    auto: false,
+    /** Centre-of-blast damage; the rocket itself is handled by `ROCKET`. */
+    damage: 340,
+    pellets: 1,
+    headshotMul: 1,
+    fireInterval: 0.9,
+    magSize: 1,
+    reserveStart: 4,
+    reserveMax: 6,
+    reloadStyle: 'magazine',
+    reloadTactical: 2.4,
+    reloadEmpty: 2.4,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 1.2,
+    spreadAds: 0.15,
+    spreadMove: 1.4,
+    spreadAir: 2.5,
+    spreadPerShot: 0,
+    spreadMax: 1.2,
+    spreadRecover: 4,
+    recoilPitch: 5.5,
+    recoilYaw: 1.2,
+    recoilRecover: 4.5,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 140,
+    adsFovMul: 0.8,
+    adsTime: 0.28,
+    moveMul: 0.9,
+    noise: 60,
+    drawTime: 0.7,
+    tracerColors: [0xffc070, 0xff9030, 0x6ff0ff],
+    /** Only found in mystery boxes. */
+    price: 0,
+    ammoPrice: 450,
+    tiers: [
+      {
+        label: 'MK II',
+        description: 'Tandem warhead: +30% blast damage, two-rocket rack, faster reload.',
+        cost: 1800,
+        damageMul: 1.3,
+        magSizeAdd: 1,
+        reserveMaxAdd: 2,
+        fireRateMul: 1.0,
+        recoilMul: 0.9,
+        spreadMul: 0.9,
+        reloadMul: 0.85,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0,
+      },
+      {
+        label: 'MK III',
+        description: 'Thermobaric fill: +70% blast damage, three-rocket rack, quick reload.',
+        cost: 3600,
+        damageMul: 1.7,
+        magSizeAdd: 2,
+        reserveMaxAdd: 4,
+        fireRateMul: 1.15,
+        recoilMul: 0.8,
+        spreadMul: 0.8,
+        reloadMul: 0.7,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0,
+      },
+    ],
+  },
 };
 
-export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun'];
+export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg'];
+
+/** The HX-7's rocket: flies straight and fast, bursts on whatever it touches. Damage comes from the weapon. */
+export const ROCKET = {
+  speed: 42,
+  /** A little drop so long shots arc. */
+  gravity: 2.5,
+  /** Detonates by itself after this long (out of the map, into the sky). */
+  life: 4,
+  radius: 0.08,
+  blastRadius: 6.5,
+  /** Edge damage as a share of the centre damage. */
+  edgeShare: 0.15,
+  selfMul: 0.45,
+  knockback: 12,
+  /** Distance from the camera before it can hit anything (no point-blank surprises). */
+  armDistance: 1.2,
+} as const;
+
+/**
+ * How hard a killing blow throws the body (m/s along the shot, and up). Explosions scale with distance from the blast.
+ */
+export const RAGDOLL = {
+  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
+  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
+  /** Explosions: speed at the centre, falling off to `blastEdge` at the edge; lift is `blastLift` times that. */
+  blastCenter: 15,
+  blastEdge: 5,
+  blastLift: 0.6,
+  gravity: 16,
+  /** Ground bounce: share of vertical speed kept, and sliding friction per second. */
+  bounce: 0.28,
+  friction: 5.5,
+  /** Tumble speed (rad/s) per m/s of launch speed. */
+  spin: 0.75,
+  /** Player hit by their own (or a soldier's) blast while alive: shove and hop. */
+  playerBlastPush: 9,
+  playerBlastHop: 4.5,
+} as const;
 
 export const GRENADE = {
   start: 2,
@@ -694,6 +809,27 @@ export const ECONOMY = {
   stationRange: 3.4,
 } as const;
 
+/**
+ * Mystery boxes (where the supply caches were): opening one pays its region's cash and spins a reel that lands on
+ * ammunition, grenades or a gun. The prize floats over the box; take it with E or leave it and it sinks back.
+ */
+export const MYSTERY_BOX = {
+  /** Reel spin, and how long the prize waits to be taken. */
+  spin: 2.6,
+  offer: 12,
+  /** Chances by region (the rest is ammunition); `rpgMul` scales the HX-7's weight among the guns. */
+  odds: {
+    low: { weapon: 0.32, grenades: 0.26, rpgMul: 0.6 },
+    medium: { weapon: 0.42, grenades: 0.24, rpgMul: 1 },
+    high: { weapon: 0.52, grenades: 0.2, rpgMul: 1.6 },
+  } as Record<Region, { weapon: number; grenades: number; rpgMul: number }>,
+  /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
+  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2 } as Record<WeaponId, number>,
+  grenades: 2,
+  /** Magazines of reserve for each carried weapon. */
+  ammoMags: 3,
+} as const;
+
 // ---------------------------------------------------------------------------------------------
 // Card recovery (optional mode) and free roam
 // ---------------------------------------------------------------------------------------------
@@ -762,6 +898,58 @@ export const FORGE_SQUAD = {
   emberRadius: 1.6,
   emberCash: 150,
   trialsBonus: 600,
+} as const;
+
+/**
+ * Trapped survivors (Standard, Standard Mazoku and the Forge): caged in around the map, freed with a hold of E, then
+ * they fight alongside you. Side contract: get them out alive.
+ */
+export const SURVIVORS = {
+  /** Who is waiting on each map. On the Forge they are the Vulcan clan's own leadership. */
+  district: [
+    { name: 'Dr. Lena Ortiz', tag: 'FIELD MEDIC', color: 0xb8c4c8 },
+    { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
+    { name: 'Mika Reyes', tag: 'COURIER', color: 0x7a4a6a },
+  ],
+  forge: [
+    { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },
+    { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
+    { name: 'Marv03K', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
+    { name: 'piryriry', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
+  ],
+  hp: 110,
+  damageTaken: 0.85,
+  range: 24,
+  fireInterval: 0.6,
+  bodyDamage: 13,
+  headDamage: 34,
+  /** Hold time at the cage, and cash for each one freed. */
+  rescueHold: 2,
+  rescueCash: 200,
+  /** Cash for each freed survivor who is still alive at extraction. */
+  extractBonus: 400,
+  /** Cages are placed at least this far from the insertion point. */
+  minStartDistance: 40,
+} as const;
+
+/**
+ * Vulcan's members, on the Forge: the infection reached Vulcan HQ, and these are the clan's Infernus who did not make
+ * it out. Some of the Forge's infected carry their names.
+ */
+export const VULCAN = {
+  /** Share of the Forge's ordinary infected that carry a name. */
+  namedShare: 0.3,
+  infected: [
+    'icecat', 'abhyudaya_xd', 'Agnes Tachyon', 'AshWasTaken', 'ChadRevive', 'Clumsy', 'DragonsKeep', 'Error109wastaken',
+    'Faust1nus', 'grace', 'Hakouren', 'HoangKim', 'JaxtheFennec', 'kaleopsis', 'Keo', 'Kratox', 'Michiko', 'Night',
+    'Pietro', 'rintairou97', 'Seiji', 'Sharky', 'Skyrat', 'Snowko', 'Tao', 'Tuann', 'yukine', 'Airtic', 'Arcy', 'Azu',
+    'Blazeking', 'Cherry', 'Cosmos', 'Dreamy', 'etienne', 'gravity', 'hezzuki', 'Juanzzz', 'Kamito', 'Monquixote',
+    'Nookq', 'Prab', 'Remix', 'sai', 'Shinchan', 'Snowy', 'Tesseris', 'Vanilla Oreo', 'Yoru', 'Yuta Okkotsu',
+    'zoro_thelost', 'Aristo', 'Chris', 'dhairya', 'GumBall', 'Himemori Luna', 'Kanishk', 'Kirill', 'Lekvest', 'Mace',
+    'Peaches_MLG', 'ReNoin', 'Saku', 'senchou', 'Shua', 'SniperKing12341', 'Spidey', 'Wind', 'Abhay', 'Aesc',
+    'AnimeFreak', 'Arsam', 'Beru', 'dattoh', 'Downhill', 'Eeriie', 'Fallen', 'Gouda', 'H0LL0W', 'hiro', 'Kazu',
+    'Lenkun', 'Nex Venrick', 'Quintino', 'Salagast', 'Serenity', 'SJ', 'ToastiestOrb', 'Xarosa', 'Yuichiro', 'Zaraki',
+  ],
 } as const;
 
 export const FREE_ROAM = {

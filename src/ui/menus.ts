@@ -433,7 +433,7 @@ class Menus implements MenusApi {
     cell('ACCURACY', `${accuracy}   ${fmtInt(stats.shotsHit)} / ${fmtInt(stats.shotsFired)}`);
     cell('CONTRACTS', `${stats.contractsCompleted} / ${stats.contractsTotal}`, stats.contractsCompleted >= stats.contractsTotal ? 'good' : '');
     if (stats.cardsTotal > 0) cell('CARDS RECOVERED', `${stats.cardsRecovered} / ${stats.cardsTotal}`, stats.cardsRecovered >= stats.cardsTotal ? 'good' : '');
-    cell('SUPPLY CACHES', fmtInt(stats.cratesOpened));
+    cell('MYSTERY BOXES', fmtInt(stats.cratesOpened));
     cell('CASH EARNED', fmtMoney(stats.cashEarned));
     cell('CASH SPENT', fmtMoney(stats.cashSpent));
     cell('AMMO COLLECTED', fmtInt(stats.ammoCollected));

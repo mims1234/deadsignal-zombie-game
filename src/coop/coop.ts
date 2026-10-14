@@ -7,12 +7,13 @@
  *   spectator  flies freely and watches (a hidden admin is a spectator nobody is told about)
  */
 import type * as THREE from 'three';
-import { CARD_MODE, COOP } from '../config';
+import { CARD_MODE, COOP, MISSION } from '../config';
 import type { NetZombie, PlayerRef, ZombieEnv } from '../enemies/zombie';
 import type { DirectorContext } from '../enemies/zombieManager';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import type { Game } from '../game/game';
 import { spreadPick } from '../logic/carriers';
+import type { ContractStatus } from '../logic/contracts';
 import { killReward } from '../logic/economy';
 import {
   MISSION_KINDS,
@@ -40,6 +41,7 @@ import { Avatar } from './avatar';
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
 const PHASES: WavePhase[] = ['break', 'active', 'won', 'lost'];
+const RELAY_STATUSES: ContractStatus[] = ['available', 'active', 'complete'];
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
@@ -208,6 +210,7 @@ export class CoopSession {
     this.mazoku = false;
     this.started = false;
     this.mission = null;
+    this.g.mission.shared = false;
     this.g.zombies.netDamage = null;
     this.g.cards.coopMode = 'off';
     this.props?.sync(null, false, 0, 0);
@@ -225,7 +228,7 @@ export class CoopSession {
     const g = this.g;
     this.started = this.role !== 'none';
     const remote = this.role === 'guest' || this.role === 'spectator';
-    g.zombies.netDamage = remote ? (z, a, h, y) => this.room.send('host', { k: 'hit', z: z.netId, a: r1(a), h, y: r2(y) }) : null;
+    g.zombies.netDamage = remote ? (z, a, h, y, pu, li) => this.room.send('host', { k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li) }) : null;
     g.zombies.carrierRig = (i) => g.cards.rigFor(i);
     g.cards.coopMode = this.role === 'host' ? 'host' : remote ? 'remote' : 'off';
     g.cards.onCoopCure = (id) => this.room.send('host', { k: 'cure', id });
@@ -235,6 +238,9 @@ export class CoopSession {
       g.cards.award(id, COOP.carrierReward);
     };
     this.props ??= new MissionProps(g.worldRoot);
+    // the relay is the squad's: one uplink for everyone, started by anyone, paid to everyone
+    g.mission.shared = this.started;
+    g.mission.requestRelay = () => this.requestRelay();
     this.me = { kills: 0, downs: 0 };
     this.mission = null;
     this.seenWave = 0;
@@ -323,8 +329,8 @@ export class CoopSession {
 
     const w = this.waves;
     const m = this.mission;
-    // an open hold / collect objective keeps the wave alive with a trickle of infected
-    const trickle = w.phase === 'active' && blocksWaveEnd(m) && w.toSpawn <= 1;
+    // an open hold / collect objective (or a running uplink) keeps the wave alive with a trickle of infected
+    const trickle = w.phase === 'active' && (blocksWaveEnd(m) || g.session.defense.status === 'active') && w.toSpawn <= 1;
     if (trickle) w.toSpawn = 1;
     const event = stepWaves(w, dt, g.zombies.hostileCount, up, envs.length);
     if (event === 'wave-start') this.onWaveStart();
@@ -371,6 +377,12 @@ export class CoopSession {
       if (!z || !z.alive) done = eliteKilled(m);
     }
     if (done) this.payBonus(m);
+  }
+
+  /** Someone held E at the relay console. Host: start it for the squad; others ask the host. */
+  private requestRelay(): void {
+    if (this.role === 'host') this.g.mission.beginDefense();
+    else if (this.role === 'guest') this.room.send('host', { k: 'relay' });
   }
 
   /** Objective complete: every player is paid. */
@@ -438,6 +450,10 @@ export class CoopSession {
     for (const a of this.avatars.values()) a.update(dt);
     const m = this.mission;
     this.props?.sync(m, !!m && Math.hypot(g.player.x - m.x, g.player.z - m.z) < m.radius, dt, g.time);
+    // the squad's relay: anyone who is up inside the zone keeps it going
+    const rd = g.level.data.defense;
+    const atRelay = this.upPlayers().some((q) => Math.hypot(q.x - rd.x, q.z - rd.z) < rd.radius);
+    g.mission.sharedRelay(dt, g.time, atRelay, this.role === 'host');
 
     this.sendT -= dt;
     if (this.sendT <= 0) {
@@ -486,7 +502,10 @@ export class CoopSession {
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
     }
-    a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.ref.alive);
+    // a teammate who goes down falls where they stood (and gets up again when they come back)
+    if (!p.ref.alive && a.root.visible && !a.fallen) a.fall(Math.sin(p.yaw), Math.cos(p.yaw), 1.5);
+    else if (p.ref.alive && a.fallen) a.rise();
+    a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.ref.alive || a.fallen);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -498,14 +517,18 @@ export class CoopSession {
     const w = this.waves;
     const z = g.zombies.zombies.map((q) => {
       const n = q.toNet();
-      return [n.id, TYPES.indexOf(n.type), r1(n.x), r1(n.z), r2(n.yaw), MODES.indexOf(n.mode), r2(n.actionT), r2(n.staggerT), r1(n.speed), r2(n.hp), n.flags, n.carrier];
+      const row = [n.id, TYPES.indexOf(n.type), r1(n.x), r1(n.z), r2(n.yaw), MODES.indexOf(n.mode), r2(n.actionT), r2(n.staggerT), r1(n.speed), r2(n.hp), n.flags, n.carrier];
+      // a body in the air: its height and tumble ride along
+      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
+      return row;
     });
     const me = g.player;
     const p: unknown[][] = [[room.hostId, r1(me.x), r1(me.y), r1(me.z), r2(me.yaw), g.playerAlive() ? 1 : 0, Math.round(g.session.vitals.health), this.me.kills, this.me.downs]];
     for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs]);
     const m = this.mission;
     const mission = m ? [MISSION_KINDS.indexOf(m.kind), MISSION_STATUSES.indexOf(m.status), r2(m.progress), r1(m.x), r1(m.z), m.eliteId, m.reward, ...m.items.flatMap((i) => [r1(i.x), r1(i.z), i.taken ? 1 : 0])] : null;
-    this.room.send('all', { k: 's', g: this.gen, w: [w.n, PHASES.indexOf(w.phase), r1(Math.max(0, w.breakLeft)), this.left], z, p, m: mission, c: g.cards.coopState() });
+    const rl = [RELAY_STATUSES.indexOf(g.session.defense.status), r2(g.session.defense.progress)];
+    this.room.send('all', { k: 's', g: this.gen, w: [w.n, PHASES.indexOf(w.phase), r1(Math.max(0, w.breakLeft)), this.left], z, p, m: mission, c: g.cards.coopState(), rl });
   }
 
   private onRelay(from: string, d: Record<string, unknown>): void {
@@ -543,7 +566,7 @@ export class CoopSession {
         if (!z || !z.alive) return;
         this.killer = from;
         // a single hit can never do more than the strongest weapon plausibly could
-        g.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, g.zenv, Number(d.y) || 0);
+        g.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, g.zenv, Number(d.y) || 0, Math.min(20, Number(d.pu) || 0), Math.min(15, Number(d.li) || 0));
         this.killer = null;
       } else if (d.k === 'cure') {
         // only someone standing next to her can purge her
@@ -551,6 +574,10 @@ export class CoopSession {
         if (at && p.ref.alive && Math.hypot(at.x - p.ref.x, at.z - p.ref.z) < CARD_MODE.cureReach + 2.5) g.cards.cure(String(d.id));
       } else if (d.k === 'take') {
         if (p.ref.alive) g.cards.coopTake(String(d.id), p.ref.x, p.ref.z);
+      } else if (d.k === 'relay') {
+        // only someone standing at the console can start the uplink
+        const c = g.mission.transmitterPos();
+        if (p.ref.alive && Math.hypot(c.x - p.ref.x, c.z - p.ref.z) < 5) g.mission.beginDefense();
       }
       return;
     }
@@ -578,9 +605,11 @@ export class CoopSession {
     this.waves.phase = PHASES[w[1] ?? 0] ?? 'break';
     this.waves.breakLeft = w[2] ?? 0;
     this.left = w[3] ?? 0;
-    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0 }));
+    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0, fy: q[12] ?? 0, fp: q[13] ?? 0, fr: q[14] ?? 0 }));
     g.zombies.syncPuppets(list, g.rng);
     g.cards.coopApply((d.c as number[][] | undefined) ?? [], (carrier) => g.zombies.zombies.find((z) => z.carrierIdx === carrier) ?? null);
+    const rl = d.rl as number[] | undefined;
+    if (rl && this.gen === gen) g.mission.applySharedRelay(RELAY_STATUSES[rl[0]!] ?? 'available', Number(rl[1]) || 0);
 
     const q = d.m as number[] | null | undefined;
     if (!q) {
@@ -687,6 +716,16 @@ export class CoopSession {
         distance: m.status === 'active' ? far : -1,
       });
     }
+    const relay = g.session.defense;
+    st.objectives.push({
+      id: 'relay',
+      title: `${MISSION.defense.title}  (SQUAD)`,
+      detail: relay.status === 'complete' ? 'Complete - paid to everyone' : relay.status === 'active' ? `Keep one of you in the zone - ${Math.round(relay.progress * 100)}%` : 'Optional - start it at the console; it counts for the whole squad',
+      state: relay.status === 'complete' ? 'complete' : 'active',
+      progress: relay.status === 'active' ? relay.progress : -1,
+      tracked: relay.status === 'active' && (!m || m.status !== 'active'),
+      distance: relay.status === 'complete' ? -1 : Math.hypot(g.level.data.defense.x - g.player.x, g.level.data.defense.z - g.player.z),
+    });
     st.objectives.push(...cards);
     const squad = [...this.peers.values()];
     if (squad.length > 0) {
@@ -697,7 +736,7 @@ export class CoopSession {
     const boss = g.zombies.boss;
     st.boss = boss && boss.alive ? { name: 'THE WARDEN', fraction: Math.max(0, boss.hp / boss.maxHp), enraged: boss.enraged } : g.cards.bossInfo();
 
-    md.markers = md.markers.filter((k) => k.kind === 'buy' || k.kind === 'upgrade' || k.kind === 'crate' || k.kind === 'start' || k.id.startsWith('card:'));
+    md.markers = md.markers.filter((k) => k.kind === 'buy' || k.kind === 'upgrade' || k.kind === 'crate' || k.kind === 'start' || (k.kind === 'transmitter' && g.session.defense.status !== 'complete') || k.id.startsWith('card:'));
     for (const p of this.peers.values()) {
       if (p.ref.alive) md.markers.push({ id: `mate:${p.id}`, kind: 'objective', x: p.ref.x, z: p.ref.z, label: p.name.toUpperCase(), color: '#8fd18a', visible: true, compass: true });
     }

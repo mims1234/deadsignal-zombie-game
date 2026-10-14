@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { AudioEngineApi, SoundId } from '../audio/ids';
-import { GRENADE, PLAYER, WEAPONS, type WeaponDef } from '../config';
+import { GRENADE, PLAYER, RAGDOLL, WEAPONS, type WeaponDef } from '../config';
 import type { ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import type { FxApi } from '../fx/fxTypes';
@@ -37,6 +37,8 @@ export interface WeaponHost {
   noise(radius: number): void;
   /** Throw a grenade from `origin` along `dir` (adds the player's velocity). */
   throwGrenade(origin: THREE.Vector3, dir: THREE.Vector3): void;
+  /** Launch an HX-7 rocket from `origin` along `dir`; `damage` is the blast's centre damage. */
+  fireRocket(origin: THREE.Vector3, dir: THREE.Vector3, damage: number): void;
   /** A shot resolved (for accuracy stats). */
   recordShot(hitZombie: boolean): void;
   onPlateApplied(armorAdded: number): void;
@@ -104,7 +106,7 @@ export class WeaponSystem {
     private readonly host: WeaponHost,
     private readonly rigs: ViewmodelSet,
   ) {
-    for (const r of [rigs.rifle, rigs.pistol, rigs.shotgun, rigs.grenade, rigs.plate]) host.renderer.viewScene.add(r.root);
+    for (const r of [rigs.rifle, rigs.pistol, rigs.shotgun, rigs.rpg, rigs.grenade, rigs.plate]) host.renderer.viewScene.add(r.root);
     this.hideAll();
   }
 
@@ -215,7 +217,7 @@ export class WeaponSystem {
     this.visualTier = -1;
     this.visualWeapon = null;
     this.hidden = false;
-    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.grenade, this.rigs.plate]) r.reset();
+    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.rpg, this.rigs.grenade, this.rigs.plate]) r.reset();
     this.hideAll();
     this.host.renderer.zoom = 1;
     this.host.renderer.viewFlash.intensity = 0;
@@ -223,7 +225,7 @@ export class WeaponSystem {
   }
 
   private hideAll(): void {
-    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.grenade, this.rigs.plate]) r.root.visible = false;
+    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.rpg, this.rigs.grenade, this.rigs.plate]) r.root.visible = false;
   }
 
   /** Cancel anything in progress (pause safety, death, cinematics). Never touches ammunition counts. */
@@ -451,13 +453,24 @@ export class WeaponSystem {
     const rig = this.rigFor(c.id);
     this.muzzleWorld(rig.muzzle, this.muzzleW);
 
+    // ---- rocket ----
+    if (c.id === 'rpg') {
+      const r = Math.sqrt(Math.random()) * spreadDeg * DEG;
+      const a = Math.random() * Math.PI * 2;
+      this.dir.copy(this.fwd).addScaledVector(this.right, Math.tan(r) * Math.cos(a)).addScaledVector(this.up, Math.tan(r) * Math.sin(a)).normalize();
+      // leaves the tube just right of and below the eye, flying where the sight points
+      this.tmp.copy(this.camPos).addScaledVector(this.fwd, 0.7).addScaledVector(this.right, 0.12).addScaledVector(this.up, -0.08);
+      host.fireRocket(this.tmp, this.dir, s.damage);
+      host.recordShot(false);
+    }
+
     // ---- pellets ----
     const zenv = host.zombieEnv();
     let anyHit = false;
     let anyKill = false;
     let anyHead = false;
     let impactSounds = 0;
-    for (let i = 0; i < s.pellets; i++) {
+    for (let i = 0; c.id !== 'rpg' && i < s.pellets; i++) {
       const r = Math.sqrt(Math.random()) * spreadDeg * DEG;
       const a = Math.random() * Math.PI * 2;
       this.dir.copy(this.fwd).addScaledVector(this.right, Math.tan(r) * Math.cos(a)).addScaledVector(this.up, Math.tan(r) * Math.sin(a)).normalize();
@@ -478,7 +491,7 @@ export class WeaponSystem {
         if (res.surface === 'metal' && Math.random() < 0.25) host.audio.play('ricochet', { pos: { x: res.x, y: res.y, z: res.z }, volume: 0.6, priority: 0 });
       }
     }
-    host.recordShot(anyHit);
+    if (c.id !== 'rpg') host.recordShot(anyHit);
     if (anyHit) host.hudEvent({ type: 'hit', head: anyHead, kill: anyKill });
     if (anyHit) host.audio.play(anyKill ? 'kill_confirm' : anyHead ? 'hit_head' : 'hit_body', { priority: 2, volume: anyKill ? 0.8 : 0.6 });
 
@@ -500,9 +513,9 @@ export class WeaponSystem {
     host.renderer.viewFlash.color.setHex(d.tracerColors[c.tier]!);
     host.renderer.flashLight.color.setHex(c.tier === 2 ? 0x9ff0ff : 0xffc27a);
     host.renderer.flashLight.position.copy(this.camPos).addScaledVector(this.fwd, 1.2);
-    rig.onFire(c.tier, c.id === 'shotgun' ? 1.3 : c.id === 'pistol' ? 1.0 : 0.85);
-    host.fx.muzzleSmoke(this.muzzleW, this.fwd, c.id === 'shotgun');
-    if (c.id !== 'shotgun') this.ejectCasing(rig, c.id);
+    rig.onFire(c.tier, c.id === 'rpg' ? 1.5 : c.id === 'shotgun' ? 1.3 : c.id === 'pistol' ? 1.0 : 0.85);
+    host.fx.muzzleSmoke(this.muzzleW, this.fwd, c.id === 'shotgun' || c.id === 'rpg');
+    if (c.id === 'rifle' || c.id === 'pistol') this.ejectCasing(rig, c.id);
     // noise wakes nearby infected (throttled)
     if (this.time - this.lastNoise > 0.2) {
       this.lastNoise = this.time;
@@ -541,7 +554,9 @@ export class WeaponSystem {
       const fm = falloffMul(d, dist);
       const dmg = zombieHitDamage(s.damage, zh.zombie.def, zh.head, s.headshotMul, s.armorPierce, fm);
       const shotYaw = Math.atan2(-dir.x, -dir.z);
-      const killed = host.zombies.damage(zh.zombie, dmg, zh.head, zenv, shotYaw);
+      // a killing blow throws the body along the shot: a nudge from a rifle, a real shove from the shotgun
+      const fade = Math.max(0.35, falloffMul(d, dist));
+      const killed = host.zombies.damage(zh.zombie, dmg, zh.head, zenv, shotYaw, RAGDOLL.push[d.id] * fade, RAGDOLL.lift[d.id] * fade);
       host.fx.blood({ x: zh.x, y: zh.y, z: zh.z }, dir, { head: zh.head, kill: killed, amount: killed ? 1 : 0.6 });
       return { x: zh.x, y: zh.y, z: zh.z, hitZombie: true, head: zh.head, kill: killed, surface: 'flesh' };
     }

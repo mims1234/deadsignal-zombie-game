@@ -118,6 +118,32 @@ const lootAt = await host.evaluate(() => { const g = window.__dead.game; const u
 await guest.evaluate((p) => window.__dead.game.player.teleport(p.x + 0.3, p.z), lootAt);
 check('when the guest takes the card, both players get it', (await until(guest, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)) && (await until(host, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)));
 
+// the relay is the squad's: the guest starts it, anyone in the zone keeps it going, it pays everyone once
+check('nobody calls extraction in co-op', (await guest.evaluate(() => window.__dead.game.mission.terminalState())) === 'busy');
+await host.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(100, 100); g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); });
+const relay = await guest.evaluate(() => { const g = window.__dead.game; const c = g.mission.transmitterPos(); g.player.teleport(c.x, c.z + 1.2); return { x: g.level.data.defense.x, z: g.level.data.defense.z }; });
+await sleep(400); // the host hears where the guest stands
+await guest.evaluate(() => window.__dead.game.mission.activateTransmitter());
+check('a guest at the console starts the uplink for the whole squad', (await until(host, () => window.__dead.game.session.defense.status === 'active')) && (await until(guest, () => window.__dead.game.session.defense.status === 'active')));
+await guest.evaluate((r) => window.__dead.game.player.teleport(r.x + 2, r.z + 2), relay);
+const p0 = await host.evaluate(() => window.__dead.game.session.defense.progress);
+await sleep(2500);
+const p1 = await host.evaluate(() => { window.__dead.setHealth(100, 100); return window.__dead.game.session.defense.progress; });
+check('the uplink fills while only the guest is in the zone (host far away)', p1 > p0, `${p0.toFixed(3)} -> ${p1.toFixed(3)}`);
+check('the guest sees the same progress', await until(guest, (p) => Math.abs(window.__dead.game.session.defense.progress - p) < 0.05 && window.__dead.game.session.defense.progress > 0, p1));
+await guest.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x + 3, g.level.data.playerStart.z); window.__dead.setHealth(100, 100); });
+await sleep(800);
+const p2 = await host.evaluate(() => window.__dead.game.session.defense.progress);
+await sleep(2000);
+const p3 = await host.evaluate(() => window.__dead.game.session.defense.progress);
+check('with the whole squad out of the zone it drains', p3 < p2, `${p2.toFixed(3)} -> ${p3.toFixed(3)}`);
+const relayCash = await guest.evaluate(() => window.__dead.game.session.inv.cash);
+await host.evaluate(() => { window.__dead.game.session.defense.progress = 0.995; });
+await guest.evaluate((r) => window.__dead.game.player.teleport(r.x + 2, r.z + 2), relay);
+check('completing it pays the guest', await until(guest, (c) => window.__dead.game.session.defense.status === 'complete' && window.__dead.game.session.defense.rewardClaimed && window.__dead.game.session.inv.cash >= c + 1200, relayCash));
+check('and the host, once each', await host.evaluate(() => window.__dead.game.session.defense.status === 'complete' && window.__dead.game.session.defense.rewardClaimed));
+check('the relay cannot be started again', (await guest.evaluate(() => window.__dead.game.mission.canActivateTransmitter())) === false);
+
 // everyone down in a wave: lost, for everyone
 await guest.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });
 await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && !r.alive));

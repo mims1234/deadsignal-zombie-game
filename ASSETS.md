@@ -1,6 +1,6 @@
 # Assets and attribution
 
-**Apart from the card art listed below, DEAD SIGNAL: EXCLUSION ZONE ships with no image, model or audio files.**
+**Apart from the card art and the Vulcan logo listed below, DEAD SIGNAL: EXCLUSION ZONE ships with no image, model or audio files.**
 
 - **Geometry and models** (district, buildings, props, vehicles, weapons, hands, zombies, helicopter, stations) are built from
   Three.js primitives and procedural geometry in code.
@@ -17,6 +17,13 @@ made by the repository owner. The characters on them belong to their respective 
 series, Otonari no Tenshi-sama, Hyperdimension Neptunia, Gotoubun no Hanayome), so keep this folder out of any public
 release. The mode still runs without the files: a carrier with no image gets a plain generated card. The carriers'
 3D models are built in code (`src/cards/cosplay.ts`) and read nothing from the images.
+
+## Vulcan logo (the Forge)
+
+`src/world/art/vulcan-logo.png` is the Vulcan community's phoenix logo, taken from vulcan.genxmims.org (the repository
+owner's site) with their go-ahead. The Forge tints it on canvases for the Vulcan HQ billboard, the crossroads sigil
+and the clan banners (`src/world/layout/vulcan.ts`). The names of Vulcan's members used on the Forge (survivors and
+named infected, `SURVIVORS` and `VULCAN` in `src/config.ts`) come from the same site's member list.
 
 ## Software dependencies
 

@@ -357,6 +357,40 @@ export function grenadeExplosion(c: Ctx): Float32Array {
   return finalize(out, sr, { peak: 0.95, fadeOut: 0.25 });
 }
 
+/** Rocket launch: a hard pop, the roar of the back-blast and the motor rushing away. */
+export function rpgShot(c: Ctx, upgraded: boolean): Float32Array {
+  const { sr, r } = c;
+  const out = alloc(sr, 1.4);
+  noiseLayer(out, sr, r, { dur: 0.05, gain: 0.7, attack: 0.0004, tau: 0.01, filters: [{ type: 'hp', f: 1200 }] });
+  toneLayer(out, sr, r, { dur: 0.45, gain: 0.85, f0: jit(r, 120, 0.06), f1: 38, tau: 0.13, attack: 0.002, drive: 2 });
+  noiseLayer(out, sr, r, { start: 0.005, dur: 0.6, gain: 0.75, attack: 0.004, tau: 0.16, color: 'white', filters: [{ type: 'lp', f: 4200, f2: 700, q: 0.6 }] });
+  whoosh(out, sr, r, 0.05, 1.1, { f0: 1400, f1: 500, f2: 300, gain: 0.5 });
+  if (upgraded) crackles(out, sr, r, { start: 0.02, dur: 0.6, rate: 140, rateTau: 0.3, gain: 0.18, tau: 0.003, filters: [{ type: 'bp', f: 2600, q: 0.7 }] });
+  echoTaps(out, sr, [
+    { t: 0.14, g: 0.25, lp: 1400 },
+    { t: 0.3, g: 0.14, lp: 900 },
+  ]);
+  for (let i = 0; i < out.length; i++) out[i] = sat(out[i]! * 1.2);
+  return finalize(out, sr, { peak: 0.85, fadeOut: 0.2 });
+}
+
+/** Mystery box reel tick. */
+export function boxTick(c: Ctx): Float32Array {
+  const { sr, r } = c;
+  const out = alloc(sr, 0.18);
+  click(out, sr, r, 0, { f: jit(r, 2600, 0.1), q: 3, tau: 0.003, gain: 0.5 });
+  ring(out, sr, r, 0.002, jit(r, 1800, 0.05), 0.08, 0.35, [1, 2.4]);
+  return finalize(out, sr, { peak: 0.35, fadeOut: 0.04 });
+}
+
+/** Mystery box result: three rising bell notes. */
+export function boxReveal(c: Ctx): Float32Array {
+  const { sr, r } = c;
+  const out = alloc(sr, 1.2);
+  [880, 1175, 1568].forEach((f, i) => ring(out, sr, r, i * 0.09, f, 0.5, 0.45, [1, 2, 3.01]));
+  return finalize(out, sr, { peak: 0.45, fadeOut: 0.2 });
+}
+
 export function armorPlate(c: Ctx): Float32Array {
   const { sr, r } = c;
   const out = alloc(sr, 2.35);
