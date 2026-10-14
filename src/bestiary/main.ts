@@ -8,7 +8,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { RENDER, SURVIVORS, ZOMBIES } from '../config';
+import { RENDER, SQUADS, SURVIVORS, ZOMBIES } from '../config';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import { MATRON, MATRON_DEF } from '../enemies/matron';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
@@ -32,6 +32,8 @@ interface Entry {
   /** Animations this entry can play (people: the poses in `avatarModes`). */
   modes: ZombieMode[] | 'avatar';
   avatarModes?: string[];
+  /** People entries with several characters: a mode button per person, each rebuilds the model. */
+  cast?: string[];
   build(): THREE.Object3D;
   /** Zombie rig, when the entry is one. */
   rig?: ZombieRig;
@@ -236,7 +238,41 @@ const entries: Entry[] = [
       return a.root;
     },
   },
+  {
+    id: 'lantern', group: 'BESIDE YOU', name: 'Lantern team', height: 1.8,
+    tagline: 'Rin Vance and Dr. Imani Okafor.',
+    lore: 'The two who go over the wall at Blackwood Hill with you. Vance is the team marksman and does not miss twice; Okafor worked the wards before the fall, knows every corridor, and carries a shotgun and a medic bag. They follow you, fight, and can die for good.',
+    where: 'The Asylum', stats: [['Health', '160'], ['Weapons', 'rifle / shotgun'], ['Extracted alive', '+$500 each']], modes: 'avatar',
+    cast: ['VANCE', 'OKAFOR'],
+    avatarModes: ['VANCE', 'OKAFOR', 'IDLE', 'WALK', 'FIRE', 'FALL'],
+    build: () => {
+      const d = SQUADS.asylum!;
+      const i = Math.max(0, castIndex);
+      const a = new Avatar(d.names[i]!, i, { tag: d.tag, tagColor: d.tagColor, weapon: d.weapons[i], helmet: d.helmets[i], color: d.colors?.[i], look: d.looks?.[i] });
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'blackwood-staff', group: 'BESIDE YOU', name: 'Blackwood staff', height: 1.8,
+    tagline: 'The nurses, the chaplain, and Patient 117.',
+    lore: `Blackwood Hill was run by its nursing sisters, and some of them are still locked in behind the wards: ${SURVIVORS.asylum.map((s) => s.name).join(', ')}. Break them out and they pick up a pistol and fight beside you. Ellie Crane was the asylum's last admission - the girl who heard the sundown cases talk to the dark.`,
+    where: 'The Asylum', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    cast: SURVIVORS.asylum.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()),
+    avatarModes: [...SURVIVORS.asylum.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()), 'TRAPPED', 'WALK', 'FIRE'],
+    build: () => {
+      const i = Math.max(0, castIndex);
+      const who = SURVIVORS.asylum[i]!;
+      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8' });
+      a.arm();
+      current!.avatar = a;
+      return a.root;
+    },
+  },
 ];
+
+/** Which character a people entry with a cast shows. */
+let castIndex = 0;
 
 // ---------------------------------------------------------------------------------------------
 // selection, animation
@@ -327,6 +363,15 @@ function setMode(m: ZombieMode): void {
 }
 
 function setAvatarMode(m: string): void {
+  // a person's name in a cast: rebuild the model as them, then stand idle
+  const who = current?.cast?.indexOf(m) ?? -1;
+  if (who >= 0 && current) {
+    castIndex = who;
+    select(current, true);
+    avatarMode = m;
+    renderModes();
+    return;
+  }
   avatarMode = m;
   modeT = 0;
   const a = current?.avatar;
@@ -339,7 +384,8 @@ function setAvatarMode(m: string): void {
   if (m === 'FALL') a.fall(0, -1, 1.5);
 }
 
-function select(e: Entry): void {
+function select(e: Entry, keepCast = false): void {
+  if (!keepCast) castIndex = 0;
   if (model) {
     model.removeFromParent();
     current?.avatar?.dispose();
@@ -361,7 +407,8 @@ function select(e: Entry): void {
   const built = e.avatar as Avatar | undefined; // set by build()
   if (built) {
     built.set(0, 0, 0, Math.PI, true);
-    setAvatarMode(e.avatarModes?.[0] ?? 'IDLE');
+    setAvatarMode(e.cast ? 'IDLE' : (e.avatarModes?.[0] ?? 'IDLE'));
+    if (e.cast) avatarMode = e.cast[castIndex]!;
   }
   mode = 'idle';
   modeT = 0;

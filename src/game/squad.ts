@@ -185,7 +185,7 @@ export class SquadRuntime {
       names.forEach((name, i) =>
         this.addAlly(
           makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill),
-          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: def?.colors?.[i] }),
+          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: def?.colors?.[i], look: def?.looks?.[i] }),
         ),
       );
     }
@@ -198,7 +198,7 @@ export class SquadRuntime {
       if (!follow && !c) return;
       const a = this.addAlly(
         makeAllyBody(g.level, who.name, 'survivor', c?.x ?? 0, c?.z ?? 0, 0, c?.slot ?? { x: 0, z: 3 }, true, this.allies.length, skill),
-        new Avatar(who.name, i, { color: who.color, helmet: false, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : g.mapId === 'asylum' ? '#d8e6c8' : '#9fd0ff' }),
+        new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : g.mapId === 'asylum' ? '#d8e6c8' : '#9fd0ff' }),
       );
       a.avatar.cowering = true;
       if (c) this.placeCage(a, c.x, c.z);

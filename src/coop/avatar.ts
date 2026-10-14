@@ -7,6 +7,8 @@
  */
 import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
+import type { AvatarLook } from '../config';
+import { addFace, addHair, addOutfit } from './avatarLook';
 
 const UNIFORM = [0x4f6b8a, 0x8a6b4f, 0x5f8a5a];
 
@@ -20,6 +22,8 @@ export interface AvatarStyle {
   helmet?: boolean;
   /** What the figure carries (defaults to a rifle with a helmet, nothing without). */
   weapon?: AvatarWeapon;
+  /** A woman's figure, hair, face and outfit (the Asylum's staff and Lantern team). */
+  look?: AvatarLook;
   /** Second line under the name, e.g. a rank. */
   tag?: string;
   tagColor?: string;
@@ -226,9 +230,16 @@ export class Avatar {
     const cloth = new THREE.MeshStandardMaterial({ color: style.color ?? UNIFORM[index % UNIFORM.length], roughness: 0.85 });
     const trim = new THREE.MeshStandardMaterial({ color: new THREE.Color(style.color ?? UNIFORM[index % UNIFORM.length]).multiplyScalar(0.62), roughness: 0.9 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x23282c, roughness: 0.7 });
-    const skin = new THREE.MeshStandardMaterial({ color: 0xc9a183, roughness: 0.8 });
+    const look = style.look;
+    const female = look?.female === true;
+    const outfit = look?.outfit;
+    const skin = new THREE.MeshStandardMaterial({ color: look?.skin ?? 0xc9a183, roughness: 0.8 });
     const glove = new THREE.MeshStandardMaterial({ color: 0x2a2a26, roughness: 0.9 });
     const soldier = style.helmet !== false;
+    const geared = soldier || outfit === 'tactical';
+    // legs and shoes by outfit: white tights under a nurse's dress, bare under a gown, scrubs under a coat
+    const legMat = outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xf0ece8, roughness: 0.7 }) : outfit === 'gown' ? skin : outfit === 'coat' ? new THREE.MeshStandardMaterial({ color: look?.accent ?? 0x6c8fae, roughness: 0.85 }) : outfit === 'habit' ? dark : null;
+    const shoeMat = outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xe6e2da, roughness: 0.5 }) : outfit === 'gown' ? skin : dark;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D): THREE.Mesh => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
@@ -237,16 +248,17 @@ export class Avatar {
       return m;
     };
     // ---- hips and legs ----
-    add(new THREE.BoxGeometry(0.36, 0.2, 0.23), trim, 0, 0.97, 0, this.body); // pelvis
-    add(new THREE.BoxGeometry(0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
+    add(new THREE.BoxGeometry(female ? 0.37 : 0.36, 0.2, female ? 0.22 : 0.23), legMat ?? trim, 0, 0.97, 0, this.body); // pelvis
+    if (!female || geared || outfit === 'coat') add(new THREE.BoxGeometry(female ? 0.34 : 0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
     for (const s of [-1, 1]) {
       const root = new THREE.Group();
-      root.position.set(s * 0.11, 0.93, 0);
-      add(P.thigh, cloth, 0, 0, 0, root);
+      root.position.set(s * (female ? 0.1 : 0.11), 0.93, 0);
+      if (female) root.scale.set(0.84, 1, 0.84);
+      add(P.thigh, legMat ?? cloth, 0, 0, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -THIGH;
-      add(P.shin, trim, 0, 0, 0, joint);
-      add(P.boot, dark, 0, -SHIN, 0, joint);
+      add(P.shin, legMat ?? trim, 0, 0, 0, joint);
+      add(P.boot, shoeMat, 0, -SHIN, 0, joint);
       root.add(joint);
       this.body.add(root);
       this.legs.push({ root, joint });
@@ -254,29 +266,37 @@ export class Avatar {
     // ---- chest, head, arms ----
     this.chest.position.y = 1.02;
     this.body.add(this.chest);
-    add(new THREE.BoxGeometry(0.42, 0.5, 0.24), cloth, 0, 0.28, 0, this.chest); // torso
-    add(new THREE.BoxGeometry(0.46, 0.34, 0.3), soldier ? dark : trim, 0, 0.3, 0, this.chest); // vest / jacket
-    if (soldier) {
-      for (const x of [-0.12, 0, 0.12]) add(new THREE.BoxGeometry(0.1, 0.11, 0.06), trim, x, 0.2, -0.17, this.chest); // pouches
-      add(new THREE.BoxGeometry(0.34, 0.38, 0.14), trim, 0, 0.3, 0.21, this.chest); // pack
+    add(new THREE.BoxGeometry(female ? 0.35 : 0.42, female ? 0.48 : 0.5, female ? 0.22 : 0.24), cloth, 0, 0.28, 0, this.chest); // torso
+    if (!female) add(new THREE.BoxGeometry(0.46, 0.34, 0.3), soldier ? dark : trim, 0, 0.3, 0, this.chest); // vest / jacket
+    else if (geared) add(new THREE.BoxGeometry(0.39, 0.3, 0.27), dark, 0, 0.3, 0, this.chest); // a fitted plate carrier
+    if (geared) {
+      for (const x of female ? [-0.09, 0.09] : [-0.12, 0, 0.12]) add(new THREE.BoxGeometry(0.1, 0.11, 0.06), trim, x, 0.2, female ? -0.155 : -0.17, this.chest); // pouches
+      add(new THREE.BoxGeometry(female ? 0.28 : 0.34, female ? 0.32 : 0.38, female ? 0.12 : 0.14), trim, 0, 0.3, female ? 0.19 : 0.21, this.chest); // pack
     }
-    add(new THREE.CylinderGeometry(0.055, 0.065, 0.1, 8), skin, 0, 0.56, 0, this.chest); // neck
+    add(new THREE.CylinderGeometry(female ? 0.045 : 0.055, female ? 0.055 : 0.065, 0.1, 8), skin, 0, 0.56, 0, this.chest); // neck
     this.head.position.set(0, 0.68, 0);
     this.chest.add(this.head);
-    add(new THREE.SphereGeometry(0.12, 14, 10), skin, 0, 0, 0, this.head);
-    add(new THREE.BoxGeometry(0.16, 0.035, 0.03), dark, 0, 0.02, -0.105, this.head); // brow / eyes
+    add(new THREE.SphereGeometry(0.12, 16, 12), skin, 0, 0, 0, this.head);
+    if (female && look) {
+      // a slightly larger, softer head: big eyes, hair, and whatever the outfit puts on it
+      this.head.scale.setScalar(1.1);
+      addFace(this.head, look);
+      addHair(this.head, look);
+      addOutfit(this.body, this.chest, this.head, look, cloth);
+    } else add(new THREE.BoxGeometry(0.16, 0.035, 0.03), dark, 0, 0.02, -0.105, this.head); // brow / eyes
     this.helmet = add(new THREE.SphereGeometry(0.145, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), dark, 0, 0.02, 0, this.head);
     this.helmet.scale.set(1, 0.85, 1.08);
-    this.helmet.visible = soldier;
+    this.helmet.visible = soldier && !female;
     for (const s of [1, -1]) {
       // right arm first: arms[0] holds the grip, arms[1] the handguard
       const root = new THREE.Group();
-      root.position.set(s * 0.24, SHOULDER_Y, s < 0 ? -0.04 : 0);
+      root.position.set(s * (female ? 0.21 : 0.24), SHOULDER_Y, s < 0 ? -0.04 : 0);
+      if (female) root.scale.set(0.84, 1, 0.84);
       add(P.upper, cloth, 0, 0.02, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -UPPER;
       add(P.fore, cloth, 0, 0, 0, joint);
-      add(P.hand, soldier ? glove : skin, 0, -FORE, 0, joint);
+      add(P.hand, geared ? glove : skin, 0, -FORE, 0, joint);
       root.add(joint);
       this.chest.add(root);
       this.arms.push({ root, joint });
@@ -284,7 +304,7 @@ export class Avatar {
     this.chest.add(this.gunHolder);
     this.flash = new THREE.Mesh(P.flashGeo, P.flash);
     this.flash.visible = false;
-    this.setWeapon(style.weapon ?? (soldier ? 'rifle' : 'none'));
+    this.setWeapon(style.weapon ?? (geared ? 'rifle' : 'none'));
     this.tag = nameTag(name, style.tag, style.tagColor ?? '#ffb060');
     this.tilt.add(this.body);
     this.root.add(this.tilt, this.tag);

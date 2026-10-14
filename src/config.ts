@@ -941,6 +941,19 @@ export const FORGE_SQUAD = {
   trialsBonus: 600,
 } as const;
 
+/** How a teammate or survivor looks (read by `coop/avatarLook.ts`); without one they are the stock figure. */
+export interface AvatarLook {
+  female?: boolean;
+  hair?: 'bob' | 'short' | 'long' | 'ponytail' | 'twintails' | 'bun' | 'puff' | 'veil';
+  hairColor?: number;
+  outfit?: 'nurse' | 'gown' | 'coat' | 'tactical' | 'habit';
+  skin?: number;
+  eyes?: number;
+  glasses?: boolean;
+  /** Trim: a nurse's cross and collar, ribbons, scrubs under a coat. */
+  accent?: number;
+}
+
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */
 export interface SquadDef {
   names: readonly string[];
@@ -949,11 +962,23 @@ export interface SquadDef {
   weapons: readonly ('rifle' | 'shotgun' | 'pistol')[];
   helmets: readonly boolean[];
   colors?: readonly number[];
+  looks?: readonly AvatarLook[];
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   forge: { names: FORGE_SQUAD.allies, tag: 'SQUAD', tagColor: '#8fd18a', weapons: ['rifle', 'rifle'], helmets: [true, true] },
-  // Lantern team: Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
-  asylum: { names: ['Vance', 'Okafor'], tag: 'LANTERN', tagColor: '#9fd0ff', weapons: ['rifle', 'shotgun'], helmets: [true, false], colors: [0x3e4a3c, 0xc9d1cd] },
+  // Lantern team: Rin Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
+  asylum: {
+    names: ['Vance', 'Okafor'],
+    tag: 'LANTERN',
+    tagColor: '#9fd0ff',
+    weapons: ['rifle', 'shotgun'],
+    helmets: [false, false],
+    colors: [0x47523f, 0xeef0ec],
+    looks: [
+      { female: true, outfit: 'tactical', hair: 'ponytail', hairColor: 0x2b1b12, skin: 0xe8c3a2, eyes: 0x3a2a1a, accent: 0x2a2e32 },
+      { female: true, outfit: 'coat', hair: 'puff', hairColor: 0x1b120d, skin: 0x8a5634, eyes: 0x24160e, accent: 0x5f8fa8 },
+    ],
+  },
 };
 
 /**
@@ -967,10 +992,13 @@ export const SURVIVORS = {
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
     { name: 'Mika Reyes', tag: 'COURIER', color: 0x7a4a6a },
   ],
+  // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`)
   asylum: [
-    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xd8dccf },
-    { name: 'Elias Crane', tag: 'PATIENT 117', color: 0x8a9a8c },
-    { name: 'Father Doyle', tag: 'CHAPLAIN', color: 0x2a2a30 },
+    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
+    { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
+    { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
+    { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },
+    { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
   ],
   forge: [
     { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },

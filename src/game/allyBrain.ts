@@ -5,7 +5,7 @@
  * each shot and decides what to show.
  */
 import * as THREE from 'three';
-import { FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
+import { type AvatarLook, FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
@@ -191,7 +191,7 @@ export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
 }
 
 /** Who waits in the cages on a map. */
-export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number }[] {
+export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number; look?: AvatarLook }[] {
   return SURVIVORS[map];
 }
 

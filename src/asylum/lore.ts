@@ -4,9 +4,10 @@
  *
  * The story: in 1958 Blackwood's superintendent turned Ward Nine into the Lantern Ward, for "sundown cases" who were
  * quiet by day and violent after dark - the same sickness the exclusion zone is full of now. They were kept under
- * light that was never put out, and Head Nurse Agatha Mourne walked their round every night. In 1961 the hospital took
- * its last patient, a nine-year-old boy who heard them (Elias Crane, Patient 117), and Mourne promised to look in on
- * him every night for as long as she lived. Forty days ago the power failed and the isolation lamps went dark for the
+ * light that was never put out, and its Head Nurse walked their round every night. Blackwood was run by its nursing
+ * sisters - every one of its staff a woman - and the last Head Nurse was Agatha Mourne. Three years ago it took its
+ * last patient, a sixteen-year-old girl who heard them (Ellie Crane, Patient 117), and Mourne promised to look in on
+ * her every night for as long as she lived. Forty days ago the power failed and the isolation lamps went dark for the
  * first time in sixty years. The Matron took her lantern and went in alone to calm them. She never came out; she only
  * walks at lights-out now, her round unbroken, seeing everyone to bed. The last orderly lit the crematorium for the
  * dead, and its stack has smoked black ever since.
@@ -30,18 +31,18 @@ export const RECORD_NOTES: readonly RecordNote[] = [
     source: "Superintendent's memorandum  //  Blackwood Hill  //  March 1958",
     body:
       'By order of the Board, Ward Nine becomes the Lantern Ward. Our sundown cases - docile by day, violent after dark - are to be kept under light, without interruption, for the length of their treatment.\n\n' +
-      'The lamps are not to be put out for any reason. Head Nurse A. Mourne will keep the night round herself.\n\n' +
+      'The lamps are not to be put out for any reason. The Head Nurse will keep the night round herself.\n\n' +
       'Whatever is in them sleeps in the light. We do not yet know what it does in the dark.',
     comment: 'Sundown cases. Quiet by day, violent after dark - that is exactly what we are seeing out there. This place knew in 1958.',
   },
   {
-    title: 'PATIENT 117 - CRANE, ELIAS',
-    source: 'Admission card  //  West ward  //  November 1961',
+    title: 'PATIENT 117 - CRANE, ELLIE',
+    source: 'Admission card  //  West ward  //  three years ago',
     body:
-      'Age nine. Night terrors. Insists the patients in Ward Nine "talk to the dark, and the dark talks back." Blackwood\'s last admission.\n\n' +
+      'Age sixteen. Night terrors. Insists the patients in Ward Nine "talk to the dark, and the dark talks back." Blackwood\'s last admission.\n\n' +
       "Moved to the west ward at the Head Nurse's request.\n\n" +
-      'Margin, red ink, in her hand: He hears them. Keep his lamp lit. I will look in on him every night, as long as I live. - A.M.',
-    comment: 'Elias Crane. Patient 117 is still locked in somewhere on this hill - sixty years here. And she kept her promise. Every night.',
+      'Margin, red ink, in her hand: She hears them. Keep her lamp lit. I will look in on her every night, as long as I live. - A.M.',
+    comment: "Ellie Crane. Patient 117 could still be locked in somewhere on this hill - and Mourne kept her promise. Every night. Let's be the ones who let her out.",
   },
   {
     title: 'INCIDENT - ISOLATION BLOCK',
