@@ -139,7 +139,7 @@ export class MissionRuntime implements MissionApi {
     ctx.level.transmitter.setState('active');
     ctx.audio.play('defense_start', { priority: 3 });
     this.transmitterLoop = ctx.audio.startLoop('transmitter', { volume: 0.6, pos: { x: ctx.level.data.defense.x, y: 3, z: ctx.level.data.defense.z } });
-    ctx.banner('UPLINK ACTIVE', 'Hold the marked area until the transmission completes', 'warn', 4.5);
+    ctx.banner(ctx.level.data.text.defenseStart, 'Hold the marked area until it completes', 'warn', 4.5);
     ctx.radio('COMMAND', 'Uplink initiated. Stay inside the marked area. They will come for the signal.');
     ctx.feed('TRANSMITTER ACTIVATED', 'warn');
   }
@@ -273,9 +273,10 @@ export class MissionRuntime implements MissionApi {
     bumpRegion(s, region);
     if (region !== this.lastRegion) {
       this.lastRegion = region;
-      if (region === 'medium') ctx.banner('MEDIUM THREAT', 'Industrial depot - armored infected sighted', 'warn', 3);
-      else if (region === 'high') ctx.banner('HIGH THREAT', 'Contaminated research compound', 'danger', 3.5);
-      else ctx.banner('LOW THREAT', 'Outer streets', 'info', 2.2);
+      const names = data.text.regions;
+      if (region === 'medium') ctx.banner('MEDIUM THREAT', names.medium, 'warn', 3);
+      else if (region === 'high') ctx.banner('HIGH THREAT', names.high, 'danger', 3.5);
+      else ctx.banner('LOW THREAT', names.low, 'info', 2.2);
     }
 
     // ---- defense contract ----
@@ -304,7 +305,7 @@ export class MissionRuntime implements MissionApi {
     if (s.hunt.status === 'active' && boss && boss.alive) {
       const dist = Math.hypot(boss.x - p.x, boss.z - p.z);
       if (updateHunt(s.hunt, dist, true)) {
-        ctx.banner('TARGET IDENTIFIED', 'THE WARDEN - heavily armored. Aim for the head.', 'danger', 4.5);
+        ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
         ctx.radio('COMMAND', "That's him. Heavy plating - go for the head and watch for the slam.");
         ctx.audio.play('objective_ping', { priority: 2 });
       }
@@ -312,8 +313,8 @@ export class MissionRuntime implements MissionApi {
 
     // ---- unlock extraction ----
     if (unlockExtraction(ex, allContractsComplete(s.defense, s.hunt))) {
-      ctx.banner('EXTRACTION AVAILABLE', 'Proceed to LZ ECHO and signal the helicopter', 'good', 5);
-      ctx.radio('COMMAND', 'Both contracts complete. Move to LZ Echo and radio the bird.');
+      ctx.banner('EXTRACTION AVAILABLE', `Proceed to ${data.text.lz} and signal the helicopter`, 'good', 5);
+      ctx.radio('COMMAND', `Both contracts complete. Move to ${data.text.lz} and radio the bird.`);
       ctx.audio.play('contract_complete', { priority: 3 });
       this.beam.visible = true;
       this.terminal.setState('idle');
@@ -366,7 +367,7 @@ export class MissionRuntime implements MissionApi {
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
       s.flags.add('brief');
-      ctx.radio('COMMAND', 'Insertion confirmed. Two contracts: restore the depot relay and eliminate the Warden. Then radio for extraction at LZ Echo.', 7);
+      ctx.radio('COMMAND', data.text.brief, 8);
       ctx.audio.play('contract_new', { priority: 3 });
     }
     void escalationPhase;
@@ -384,7 +385,7 @@ export class MissionRuntime implements MissionApi {
     if (r) {
       const a = applyContractReward(s.inv, r);
       ctx.hudEvent({ type: 'cash', amount: a.cash });
-      ctx.banner('RELAY RESTORED', `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}`, 'good', 5);
+      ctx.banner(ctx.level.data.text.defenseDone, `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}`, 'good', 5);
       ctx.feed(`CONTRACT COMPLETE  +$${a.cash}`, 'good');
       if (a.plates) ctx.feed(`+${a.plates} ARMOR PLATES`, 'good');
       ctx.radio('COMMAND', 'Relay restored. Nice work.');
@@ -402,9 +403,9 @@ export class MissionRuntime implements MissionApi {
     if (r) {
       const a = applyContractReward(s.inv, r);
       ctx.hudEvent({ type: 'cash', amount: a.cash });
-      ctx.banner('THE WARDEN IS DOWN', `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}${a.grenades ? `   +${a.grenades} GRENADES` : ''}`, 'good', 5.5);
+      ctx.banner(`${ctx.level.data.text.boss} IS DOWN`, `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}${a.grenades ? `   +${a.grenades} GRENADES` : ''}`, 'good', 5.5);
       ctx.feed(`CONTRACT COMPLETE  +$${a.cash}`, 'good');
-      ctx.radio('COMMAND', 'Confirmed kill. The Warden is down.');
+      ctx.radio('COMMAND', `Confirmed kill. ${ctx.level.data.text.boss.toLowerCase().replace(/^the /, 'The ')} is down.`);
     }
   }
 
@@ -522,14 +523,14 @@ export class MissionRuntime implements MissionApi {
     // advance warning
     if (!s.flags.has('surgeWarn') && s.elapsed >= start - MISSION.hazard.warningLead && calledAt === null) {
       s.flags.add('surgeWarn');
-      ctx.banner('CONTAINMENT FAILING', 'A contamination surge begins in 20 seconds', 'warn', 4);
+      ctx.banner('CONTAINMENT FAILING', `${data.text.surge} in 20 seconds`, 'warn', 4);
       ctx.radio('COMMAND', 'Containment is failing at the compound. Surge in twenty seconds.');
       ctx.audio.play('klaxon', { priority: 3 });
     }
     const active = surgeActive(s.elapsed, calledAt);
     if (active && !s.flags.has('surge')) {
       s.flags.add('surge');
-      ctx.banner('CONTAMINATION SURGE', 'A toxic front is spreading from the compound - reach extraction', 'danger', 6);
+      ctx.banner(data.text.surge, 'A toxic front is spreading - reach extraction', 'danger', 6);
       ctx.radio('COMMAND', 'Contamination surge! Stay ahead of the front and reach the LZ.');
       ctx.audio.play('siren_wail', { priority: 3 });
       this.sirenLoop = ctx.audio.startLoop('siren', { volume: 0.3 });
@@ -599,12 +600,12 @@ export class MissionRuntime implements MissionApi {
     const defDist = Math.hypot(data.defense.x - p.x, data.defense.z - p.z);
     const dstate = s.defense.status;
     let ddetail: string;
-    if (dstate === 'available') ddetail = `Activate the transmitter at the depot (${Math.round(defDist)} m)`;
+    if (dstate === 'available') ddetail = `${data.text.defensePrompt.charAt(0)}${data.text.defensePrompt.slice(1).toLowerCase()} (${Math.round(defDist)} m)`;
     else if (dstate === 'active') ddetail = s.defense.insideNow ? `Hold the area - ${Math.round(s.defense.progress * 100)}%` : 'RETURN TO THE MARKED AREA';
-    else ddetail = 'Relay restored';
+    else ddetail = 'Complete';
     list.push({
       id: 'defense',
-      title: MISSION.defense.title,
+      title: data.text.defenseTitle,
       detail: ddetail,
       state: dstate === 'complete' ? 'complete' : dstate === 'active' ? 'active' : 'available',
       progress: dstate === 'available' ? -1 : s.defense.progress,
@@ -615,12 +616,12 @@ export class MissionRuntime implements MissionApi {
     const huntDist = Math.hypot(data.hunt.searchX - p.x, data.hunt.searchZ - p.z);
     const hstate = s.hunt.status;
     let hdetail: string;
-    if (hstate === 'complete') hdetail = 'The Warden is dead';
-    else if (s.hunt.identified && boss?.alive) hdetail = `Eliminate THE WARDEN (${Math.round(Math.hypot(boss.x - p.x, boss.z - p.z))} m)`;
-    else hdetail = `Search the research compound (${Math.round(huntDist)} m)`;
+    if (hstate === 'complete') hdetail = `${data.text.boss} is dead`;
+    else if (s.hunt.identified && boss?.alive) hdetail = `Eliminate ${data.text.boss} (${Math.round(Math.hypot(boss.x - p.x, boss.z - p.z))} m)`;
+    else hdetail = `Search ${data.text.huntSite} (${Math.round(huntDist)} m)`;
     list.push({
       id: 'hunt',
-      title: MISSION.hunt.title,
+      title: data.text.huntTitle,
       detail: hdetail,
       state: hstate === 'complete' ? 'complete' : 'active',
       progress: hstate === 'complete' ? 1 : boss && s.hunt.identified ? 1 - boss.hp / boss.maxHp : -1,
@@ -632,7 +633,7 @@ export class MissionRuntime implements MissionApi {
     let edetail = 'Complete both contracts to unlock';
     let estate: HudObjective['state'] = 'locked';
     if (ex.phase === 'available') {
-      edetail = `Signal the helicopter at LZ ECHO (${Math.round(lzDist)} m)`;
+      edetail = `Signal the helicopter at ${data.text.lz} (${Math.round(lzDist)} m)`;
       estate = 'available';
     } else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') {
       edetail = 'Hold the landing zone until touchdown';
@@ -649,7 +650,7 @@ export class MissionRuntime implements MissionApi {
     }
     list.push({
       id: 'extract',
-      title: MISSION.extraction.title + ' AT LZ ECHO',
+      title: data.text.extractTitle,
       detail: edetail,
       state: estate,
       progress: -1,
@@ -678,7 +679,7 @@ export class MissionRuntime implements MissionApi {
       kind: 'transmitter',
       x: data.defense.x,
       z: data.defense.z,
-      label: 'RELAY',
+      label: data.text.defenseSite,
       color: '#5ad0ff',
       radius: data.defense.radius,
       visible: true,
@@ -689,7 +690,7 @@ export class MissionRuntime implements MissionApi {
     const boss = ctx.zombies.boss;
     if (s.hunt.status !== 'complete') {
       if (s.hunt.identified && boss?.alive) {
-        out.push({ id: 'hunt', kind: 'hunt', x: boss.x, z: boss.z, label: 'THE WARDEN', color: '#ff5a4d', visible: true, compass: true, pulse: true });
+        out.push({ id: 'hunt', kind: 'hunt', x: boss.x, z: boss.z, label: data.text.boss, color: '#ff5a4d', visible: true, compass: true, pulse: true });
       } else {
         out.push({ id: 'hunt', kind: 'hunt', x: data.hunt.searchX, z: data.hunt.searchZ, label: 'SEARCH AREA', color: '#ff8a5a', radius: data.hunt.searchRadius, visible: true, compass: true, pulse: tracked === 'hunt' });
       }
@@ -700,7 +701,7 @@ export class MissionRuntime implements MissionApi {
       kind: 'lz',
       x: this.lz.lzX,
       z: this.lz.lzZ,
-      label: 'LZ ECHO',
+      label: data.text.lz,
       color: '#ffc040',
       radius: lzShown ? this.lz.lzRadius : undefined,
       visible: true,
@@ -719,7 +720,7 @@ export class MissionRuntime implements MissionApi {
     for (const c of this.entities.crates) {
       out.push({ id: c.def.id, kind: 'crate', x: c.def.x, z: c.def.z, visible: c.discovered && !c.opened || (!c.opened && Math.hypot(c.def.x - player.x, c.def.z - player.z) < 30) });
     }
-    out.push({ id: 'spire', kind: 'landmark', x: data.hazardCenter.x, z: data.hazardCenter.z, label: 'SPIRE', color: '#5fe08a', visible: true, dim: true });
+    out.push({ id: 'spire', kind: 'landmark', x: data.hazardCenter.x, z: data.hazardCenter.z, label: data.text.hazardSite, color: '#5fe08a', visible: true, dim: true });
   }
 
   contractsDone(): number {

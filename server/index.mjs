@@ -167,7 +167,7 @@ app.post('/api/ping', { preHandler: player }, async () => ({ ok: true }));
 app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
-  return { id: db.startRun(req.user.id, mode, !!req.body?.touch) };
+  return { id: db.startRun(req.user.id, mode, !!req.body?.touch, req.body?.map) };
 });
 
 app.post('/api/runs/:id/end', { preHandler: player }, async (req) => ({ ok: db.endRun(req.user.id, Number(req.params.id), req.body ?? {}) }));

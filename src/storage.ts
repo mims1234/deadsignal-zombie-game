@@ -6,6 +6,7 @@ const KEY_SETTINGS = 'deadsignal.settings.v1';
 const KEY_BEST = 'deadsignal.best.v1';
 const KEY_MODE = 'deadsignal.mode.v1';
 const KEY_CARDS = 'deadsignal.cards.v1';
+const KEY_MAP = 'deadsignal.map.v1';
 
 const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => {
   const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -102,6 +103,22 @@ export function loadMode(): GameMode {
     return m === 'cards' || m === 'roam' ? m : 'standard';
   } catch {
     return 'standard';
+  }
+}
+
+export function loadMap(): 'district' | 'forge' {
+  try {
+    return window.localStorage.getItem(KEY_MAP) === 'forge' ? 'forge' : 'district';
+  } catch {
+    return 'district';
+  }
+}
+
+export function saveMap(map: 'district' | 'forge'): void {
+  try {
+    window.localStorage.setItem(KEY_MAP, map);
+  } catch {
+    /* ignore */
   }
 }
 

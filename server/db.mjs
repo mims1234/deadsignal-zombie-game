@@ -93,6 +93,13 @@ export function openDb(file) {
     );
   `);
 
+  // added after the first release: older databases get the column here
+  try {
+    db.exec('ALTER TABLE runs ADD COLUMN map TEXT');
+  } catch {
+    /* already there */
+  }
+
   const q = {
     upsertUser: db.prepare(`INSERT INTO users (id, username, display_name, avatar, created_at, last_seen) VALUES (@id, @username, @display_name, @avatar, @t, @t)
       ON CONFLICT(id) DO UPDATE SET username = @username, display_name = @display_name, avatar = @avatar, last_seen = @t`),
@@ -104,7 +111,7 @@ export function openDb(file) {
     dropUserSessions: db.prepare('DELETE FROM sessions WHERE user_id = ?'),
     purgeSessions: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
     addVisit: db.prepare('INSERT INTO visits (ts, day, visitor, user_id, touch) VALUES (?, ?, ?, ?, ?)'),
-    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day) VALUES (?, ?, ?, ?, ?)'),
+    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map) VALUES (?, ?, ?, ?, ?, ?)'),
     run: db.prepare('SELECT * FROM runs WHERE id = ?'),
     endRun: db.prepare(`UPDATE runs SET ended_at = @t, outcome = @outcome, reason = @reason, duration = @duration, kills = @kills, headshots = @headshots,
       contracts = @contracts, cards = @cards, cash = @cash, shots_fired = @shots_fired, shots_hit = @shots_hit, region = @region WHERE id = @id AND ended_at IS NULL`),
@@ -140,7 +147,7 @@ export function openDb(file) {
     },
     dropSession: (token) => q.dropSession.run(token),
     visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
-    startRun: (userId, mode, touch) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day()).lastInsertRowid),
+    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), map === 'forge' ? 'forge' : 'district').lastInsertRowid),
     /** Close a run with the client's numbers. They are for analytics only: nothing is granted from them. */
     endRun(userId, id, body) {
       const run = q.run.get(id);
@@ -234,7 +241,7 @@ export function openDb(file) {
       );
       const cardTotals = all('SELECT card_id, SUM(count) n, COUNT(*) owners FROM cards GROUP BY card_id ORDER BY n DESC');
       const recentRuns = all(
-        `SELECT r.id, r.started_at, r.mode, r.touch, r.outcome, r.reason, r.duration, r.kills, r.cards, u.display_name name, u.id user_id
+        `SELECT r.id, r.started_at, r.mode, r.map, r.touch, r.outcome, r.reason, r.duration, r.kills, r.cards, u.display_name name, u.id user_id
          FROM runs r JOIN users u ON u.id = r.user_id ORDER BY r.id DESC LIMIT 40`,
       );
       const coop = one(
@@ -243,7 +250,8 @@ export function openDb(file) {
          FROM coop_rooms WHERE day >= ?`,
         since,
       );
-      return { days, totals, daily, modes, failReasons, topPlayers, cardTotals, recentRuns, coop };
+      const maps = all("SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ? GROUP BY 1", since);
+      return { days, totals, daily, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
     },
     users(search) {
       const like = `%${(search ?? '').replace(/[%_]/g, '')}%`;

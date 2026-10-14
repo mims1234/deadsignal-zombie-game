@@ -200,7 +200,7 @@ export class Interaction {
         targets.push({
           id: 'transmitter',
           dist: d,
-          text: 'ACTIVATE TRANSMITTER',
+          text: this.ctx.level.data.text.defensePrompt,
           sub: `Hold the marked area for ${MISSION.defense.duration}s while the uplink completes`,
           tone: 'warn',
           hold: MISSION.defense.activateHold,

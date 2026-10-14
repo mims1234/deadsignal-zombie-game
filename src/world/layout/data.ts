@@ -39,7 +39,94 @@ export interface AmbientZombieDef {
   region: Region;
 }
 
+export type MapId = 'district' | 'forge';
+
+/** Everything the mission says out loud that depends on the map. */
+export interface MapText {
+  name: string;
+  defenseTitle: string;
+  /** Short map / compass label of the defense site. */
+  defenseSite: string;
+  defensePrompt: string;
+  defenseStart: string;
+  defenseDone: string;
+  huntTitle: string;
+  boss: string;
+  huntSite: string;
+  extractTitle: string;
+  lz: string;
+  surge: string;
+  hazardSite: string;
+  regions: Record<Region, string>;
+  /** Opening radio line. */
+  brief: string;
+  /** Title-screen copy. */
+  kicker: string;
+  signal: string;
+  premise: string;
+  foot: string;
+  /** Title-screen brief: three rows. */
+  rows: { tag: string; title: string; text: string }[];
+}
+
+export const MAP_TEXT: Record<MapId, MapText> = {
+  district: {
+    name: 'THE DISTRICT',
+    defenseTitle: 'RESTORE THE RELAY',
+    defenseSite: 'RELAY',
+    defensePrompt: 'ACTIVATE TRANSMITTER',
+    defenseStart: 'UPLINK ACTIVE',
+    defenseDone: 'RELAY RESTORED',
+    huntTitle: 'ELIMINATE THE WARDEN',
+    boss: 'THE WARDEN',
+    huntSite: 'the research compound',
+    extractTitle: 'EXTRACT AT LZ ECHO',
+    lz: 'LZ ECHO',
+    surge: 'CONTAMINATION SURGE',
+    hazardSite: 'SPIRE',
+    regions: { low: 'Outer streets', medium: 'Industrial depot - armored infected sighted', high: 'Contaminated research compound' },
+    brief: 'Insertion confirmed. Two contracts: restore the depot relay and eliminate the Warden. Then radio for extraction at LZ Echo.',
+    kicker: 'SECTOR 7  //  QUARANTINE PERIMETER  //  BLUE HOUR',
+    signal: 'NO CARRIER  -  LAST KNOWN POSITION: RESEARCH COMPOUND',
+    premise: 'The district has been sealed for nine days. Insert at the checkpoint, clear two contracts, call the bird, and get out before the surge takes the landing zone.',
+    foot: 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.',
+    rows: [
+      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE RELAY', text: 'Activate the depot transmitter and hold the marked area while the uplink completes.' },
+      { tag: 'CONTRACT BRAVO', title: 'ELIMINATE THE WARDEN', text: 'Locate and kill the elite infected inside the research compound.' },
+      { tag: 'EXTRACT', title: 'LZ ECHO', text: 'Radio the helicopter, survive the final horde and board before the district seals.' },
+    ],
+  },
+  forge: {
+    name: 'THE FORGE',
+    defenseTitle: 'REKINDLE THE BEACON',
+    defenseSite: 'BEACON',
+    defensePrompt: 'IGNITE THE PHOENIX BEACON',
+    defenseStart: 'BEACON IGNITED',
+    defenseDone: 'THE BEACON BURNS',
+    huntTitle: 'SLAY THE INFERNUS',
+    boss: 'THE INFERNUS',
+    huntSite: 'the Crucible',
+    extractTitle: 'RISE FROM THE FORGE',
+    lz: 'THE PAD',
+    surge: 'FIRESTORM',
+    hazardSite: 'FLUE',
+    regions: { low: 'Ember Market', medium: 'Phoenix Plaza - the forge hall', high: 'The Crucible - molten floor' },
+    kicker: 'VULCAN FOUNDRY  //  EMBER NIGHT  //  RISE FROM THE FORGE',
+    signal: 'BEACON COLD  -  LAST KNOWN POSITION: THE CRUCIBLE',
+    premise: 'The phoenix forge went dark and the infected took the foundry floor. Deploy with Ash and Cinder, rekindle the beacon, slay the Infernus, and rise from the forge before the firestorm.',
+    foot: 'Two soldiers deploy with you and can die. Six Ignis embers burn somewhere in the Forge. A firestorm rises from the flue late in the mission.',
+    brief: 'Ember squad, you are in the Forge. Rekindle the phoenix beacon on the plaza and slay the Infernus in the Crucible. Keep Ash and Cinder breathing. Then rise from the forge at the Pad.',
+    rows: [
+      { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold the circle while it catches.' },
+      { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The burning elite walks the molten floor of the Crucible.' },
+      { tag: 'EXTRACT', title: 'RISE FROM THE FORGE', text: 'Signal the bird at the Pad, hold out, and board before the firestorm takes the district.' },
+    ],
+  },
+};
+
 export interface LevelData {
+  id: MapId;
+  text: MapText;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   playerStart: { x: number; z: number; yaw: number };
   stations: StationDef[];

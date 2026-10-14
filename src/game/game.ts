@@ -27,7 +27,7 @@ import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { hasStoredSettings, isBetterRun, loadBest, loadMode, loadSettings, saveBest, saveMode, saveSettings } from '../storage';
+import { hasStoredSettings, isBetterRun, loadBest, loadMap, loadMode, loadSettings, saveBest, saveMap, saveMode, saveSettings } from '../storage';
 import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
@@ -45,6 +45,7 @@ import { FlowField } from '../world/nav';
 import type { GameCtx } from './ctx';
 import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
+import { ForgeRuntime } from './forgeRuntime';
 import { Interaction, type InteractionOutput } from './interaction';
 import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
@@ -80,6 +81,9 @@ export class Game implements GameCtx {
   zombieFactory!: ZombieFactoryExt;
   cards!: CardRuntime;
   coop!: CoopSession;
+  forge!: ForgeRuntime;
+  /** Which map was built this page load. */
+  mapId: 'district' | 'forge' = 'district';
   private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
@@ -170,6 +174,7 @@ export class Game implements GameCtx {
     if (this.touchMode && !hasStoredSettings()) this.settings.quality = 'low';
     this.best = loadBest();
     this.mode = loadMode();
+    this.mapId = loadMap();
     if (this.touchMode) document.documentElement.classList.add('ds-touch');
 
     this.menus = createMenus({
@@ -180,6 +185,7 @@ export class Game implements GameCtx {
       onSettingsChange: (s) => this.applySettings(s, true),
       onModeChange: (m) => this.setMode(m),
       onLogout: () => void logout().then(() => window.location.reload()),
+      onMapChange: (m) => this.setMap(m),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -220,7 +226,15 @@ export class Game implements GameCtx {
 
     this.menus.showLoading(0.25, 'BUILDING DISTRICT');
     await nextFrame();
-    this.level = buildLevel(this.mats);
+    this.level = buildLevel(this.mats, this.mapId);
+    if (this.mapId === 'forge') {
+      // ember night: warm haze, firelit ground bounce and an orange horizon fill
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x2a1710);
+      this.renderer.light.hemi.color.set(0x9a6a52);
+      this.renderer.light.hemi.groundColor.set(0x4a1c08);
+      this.renderer.light.fill.color.set(0xff7a2a);
+    }
     this.worldRoot.add(this.level.root);
     this.renderer.lightPool.setLamps(this.level.lights);
 
@@ -321,6 +335,7 @@ export class Game implements GameCtx {
     this.mission = new MissionRuntime(this, this.entities);
     this.interaction = new Interaction(this, this.entities, this.mission, this.cards);
     this.coop = new CoopSession(this);
+    this.forge = new ForgeRuntime(this);
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       isAdmin: () => this.account.admin,
@@ -365,11 +380,17 @@ export class Game implements GameCtx {
     this.menus.hideLoading();
     this.state = 'title';
     this.hud.setVisible(false);
-    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
+    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
     this.menus.showTitle(this.best);
     // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
     const invite = new URLSearchParams(window.location.search);
     const code = invite.get('room');
+    if (code && this.account.user && this.mapId !== 'district') {
+      // co-op runs on the District: switch maps and come back to the same link
+      saveMap('district');
+      window.location.reload();
+      return true;
+    }
     if (code && this.account.user) {
       this.setMode('coop');
       this.coopUi.open(code);
@@ -444,7 +465,15 @@ export class Game implements GameCtx {
       this.coopUi.close();
     }
     this.cards.reset(mode === 'cards', false);
-    this.menus.setModeInfo({ mode, cards: this.cards.collection() });
+    this.menus.setModeInfo({ mode, map: this.mapId, cards: this.cards.collection() });
+  }
+
+  /** Title screen only: the other map is built on a fresh page load. */
+  setMap(map: 'district' | 'forge'): void {
+    if (this.state !== 'title' || map === this.mapId) return;
+    saveMap(map);
+    if (map !== 'district' && this.mode === 'coop') saveMode('standard');
+    window.location.reload();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -608,13 +637,15 @@ export class Game implements GameCtx {
     this.audio.resume();
     if (fresh) {
       this.closeRun();
-      this.tracker.start(this.mode, this.touchMode);
+      this.tracker.start(this.mode, this.touchMode, this.mapId);
     }
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
       if (!this.ambience || !this.ambience.active) this.ambience = this.audio.startLoop('ambience', { volume: 0.8, fadeIn: 2 });
       if (this.mode === 'coop') {
         if (!spectating) this.banner('CO-OP  //  WAVE SURVIVAL', 'Hold out for ten waves. Anyone who goes down returns when the wave is cleared.', 'info', 5);
+      } else if (this.mapId === 'forge' && !roam) {
+        this.banner('THE FORGE', 'Rekindle the beacon. Slay the Infernus. Keep Ash and Cinder alive. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Extract.', 'info', 4.5);
       else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Contain the outbreak. Restore the relay. Kill the Warden. Extract.', 'info', 4.5);
     }
@@ -647,7 +678,7 @@ export class Game implements GameCtx {
     this.audio.resume();
     this.ambience = null;
     this.heartbeat = null;
-    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
+    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
     this.menus.showTitle(this.best);
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
@@ -699,6 +730,7 @@ export class Game implements GameCtx {
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
+    this.forge.reset(this.mapId === 'forge' && (this.mode === 'standard' || this.mode === 'cards'));
     this.weapons.hidden = this.mode === 'roam' || this.coop.role === 'spectator';
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
@@ -897,6 +929,7 @@ export class Game implements GameCtx {
     // ---- enemies ----
     this.updateEnemies(dt, alive);
     this.cards.update(dt);
+    this.forge.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -1072,7 +1105,7 @@ export class Game implements GameCtx {
       return;
     }
     const boarding = this.endingKind === 'board';
-    this.zombies.update(dt, z, alive && !boarding);
+    this.zombies.update(dt, z, alive && !boarding, this.forge.envs(z));
     if (alive && !boarding) {
       const s = this.session;
       const ex = s.extraction;
@@ -1161,6 +1194,11 @@ export class Game implements GameCtx {
 
   private onZombieKilled(z: Zombie, head: boolean): void {
     if (this.coop.live && this.coop.onKill(z, head)) return; // another player's kill: they are paid, not the host
+    if (this.forge.allyShooting) {
+      // a soldier's kill: it still counts for the contract, but it is not the player's
+      if (z.isBoss) this.mission.onWardenKilled();
+      return;
+    }
     const s = this.session;
     s.stats.kills++;
     if (head) s.stats.headshots++;
@@ -1218,6 +1256,7 @@ export class Game implements GameCtx {
   endRun(outcome: 'victory' | 'defeat', reason: string): void {
     const s = this.session;
     if (s.ended) return;
+    if (outcome === 'victory') this.forge.onExtracted();
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
     const stats = buildStats(s, outcome, reason, this.mission.contractsDone());
@@ -1328,7 +1367,7 @@ export class Game implements GameCtx {
     this.pendingResults = null;
     this.tracker.end(pr.outcome, pr.stats.reason, pr.stats);
     this.state = 'results';
-    this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
+    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
     this.hud.setVisible(false);
     this.hud.toggleTacticalMap(false);
     this.audio.stopAll();
@@ -1442,6 +1481,10 @@ export class Game implements GameCtx {
     const st = buildHudState(this, this.mission, this.cards, this.io, show);
     const md = buildMapDynamic(this, this.mission, this.cards, this.markers);
     if (this.coop.live) this.coop.decorateHud(st, md);
+    else {
+      this.forge.objectives(st.objectives);
+      this.forge.markers(md.markers);
+    }
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

@@ -60,7 +60,7 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, cards: Card
       inside: mission.insideHazard,
       message: mission.hazardRadiusNow > 0 ? (mission.insideHazard ? 'TOXIC EXPOSURE - LEAVE THE ZONE' : 'CONTAMINATION SURGE - REACH EXTRACTION') : null,
     },
-    boss: bossVisible ? { name: 'THE WARDEN', fraction: Math.max(0, boss!.hp / boss!.maxHp), enraged: boss!.enraged } : cards.bossInfo(),
+    boss: bossVisible ? { name: ctx.level.data.text.boss, fraction: Math.max(0, boss!.hp / boss!.maxHp), enraged: boss!.enraged } : cards.bossInfo(),
     fps,
     compassYaw: ctx.player.yaw,
     vignette: hp < 40 ? Math.min(1, (40 - hp) / 40) : 0,

@@ -68,6 +68,7 @@
       </div>
       <h2>Modes</h2>
       <div class="card tablewrap" id="modes"></div>
+      <div class="card tablewrap" style="margin-top: 16px"><h3>Maps</h3><div class="sub">Runs per map in the range</div><div id="maps"></div></div>
       <div class="grid2" style="margin-top: 16px">
         <div class="card tablewrap"><h3>Why runs fail</h3><div class="sub">Defeats in the range, by cause</div><div id="fails"></div></div>
         <div class="card tablewrap"><h3>Cards recovered</h3><div class="sub">All time</div><div id="cards"></div></div>
@@ -181,6 +182,13 @@
           { label: 'Cards', num: 1, cell: (m) => num(m.cards) },
           { label: 'On touch', num: 1, cell: (m) => pct(m.touch, m.runs) },
         ], o.modes, 'No runs in this range yet.');
+        table($('maps'), [
+          { label: 'Map', cell: (m) => (m.map === 'forge' ? 'The Forge' : 'The District') },
+          { label: 'Runs', num: 1, cell: (m) => num(m.runs) },
+          { label: 'Players', num: 1, cell: (m) => num(m.players) },
+          { label: 'Extracted', num: 1, cell: (m) => pct(m.wins, m.runs) },
+          { label: 'Avg length', num: 1, cell: (m) => clock(m.avgDuration) },
+        ], o.maps || [], 'No runs in this range yet.');
         table($('fails'), [{ label: 'Cause', cell: (r) => r.reason }, { label: 'Runs', num: 1, cell: (r) => num(r.n) }], o.failReasons, 'No defeats recorded.');
         table($('cards'), [{ label: 'Card', cell: (r) => r.card_id }, { label: 'Recovered', num: 1, cell: (r) => num(r.n) }, { label: 'Players', num: 1, cell: (r) => num(r.owners) }], o.cardTotals, 'No cards recovered yet.');
         const c = o.coop;
@@ -213,6 +221,7 @@
           { label: 'Started', cell: (r) => when(r.started_at) },
           { label: 'Player', cell: (r) => r.name },
           { label: 'Mode', cell: (r) => MODE[r.mode] || r.mode },
+          { label: 'Map', cell: (r) => (r.map === 'forge' ? 'Forge' : 'District') },
           { label: 'Result', cell: (r) => h('span', { class: `pill ${r.outcome || ''}` }, r.outcome || 'in progress') },
           { label: 'Detail', cell: (r) => r.reason || '' },
           { label: 'Length', num: 1, cell: (r) => clock(r.duration) },

@@ -10,7 +10,8 @@ import { LevelBuilder, type LampSpec } from './builder';
 import { CollisionWorld } from './collision';
 import type { GlowField } from './glow';
 import type { SpireHandle, TransmitterHandle } from './landmarks';
-import { LevelDataBuilder, regionAtRects, yawFacing, type LevelData } from './layout/data';
+import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, type MapId } from './layout/data';
+import { buildForge, FORGE, FORGE_BOUNDS } from './layout/forge';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
@@ -46,22 +47,58 @@ export interface Level {
   dispose(): void;
 }
 
-export function buildLevel(mats: MaterialLib): Level {
-  const world = new CollisionWorld(WORLD_BOUNDS);
+/** Where a map's mission sites are. */
+interface Sites {
+  start: { x: number; z: number; yaw: number };
+  lz: { x: number; z: number; radius: number; terminalX: number; terminalZ: number; terminalYaw: number };
+  defense: { x: number; z: number; radius: number };
+  hunt: LevelData['hunt'];
+  hazard: { x: number; z: number };
+}
+
+export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level {
+  const forge = mapId === 'forge';
+  const WORLD = forge ? FORGE_BOUNDS : WORLD_BOUNDS;
+  const world = new CollisionWorld(WORLD);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
-  const c: Ctx = { b, d, rng: new Rng(20240928), mats, placed: [] };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : 20240928), mats, placed: [] };
 
-  buildRoads(c);
-  buildCheckpoint(c);
-  buildCornerStore(c);
-  buildParkingLot(c);
-  buildApartments(c);
-  buildLandingZone(c);
-  buildNorthStrip(c);
-  const depot = buildDepot(c);
-  const compound = buildCompound(c);
-  buildRailYard(c);
+  let transmitter: TransmitterHandle;
+  let spireHandle: SpireHandle;
+  let site: Sites;
+  if (forge) {
+    const r = buildForge(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    site = {
+      start: { x: FORGE.start.x, z: FORGE.start.z, yaw: yawFacing(0.7, -0.7) },
+      lz: { ...FORGE.lz, terminalYaw: yawFacing(-0.8, -0.6) },
+      defense: { ...FORGE.beacon },
+      hunt: { wardenX: FORGE.infernus.x, wardenZ: FORGE.infernus.z, searchX: FORGE.crucible.x, searchZ: FORGE.crucible.z, searchRadius: 22 },
+      hazard: { ...FORGE.spire },
+    };
+  } else {
+    buildRoads(c);
+    buildCheckpoint(c);
+    buildCornerStore(c);
+    buildParkingLot(c);
+    buildApartments(c);
+    buildLandingZone(c);
+    buildNorthStrip(c);
+    const depot = buildDepot(c);
+    const compound = buildCompound(c);
+    buildRailYard(c);
+    transmitter = depot.transmitter;
+    spireHandle = compound.spire;
+    site = {
+      start: { x: -51, z: 43.5, yaw: yawFacing(0.83, -0.55) },
+      lz: { x: LZ.x, z: LZ.z, radius: LZ.radius, terminalX: LZ.terminalX, terminalZ: LZ.terminalZ, terminalYaw: yawFacing(-0.9, 0.35) },
+      defense: { x: DEPOT.arena.x, z: DEPOT.arena.z, radius: DEPOT.arena.radius },
+      hunt: { wardenX: COMPOUND.wardenX, wardenZ: COMPOUND.wardenZ, searchX: 30, searchZ: -36, searchRadius: 26 },
+      hazard: { x: COMPOUND.spire.x, z: COMPOUND.spire.z },
+    };
+  }
   b.finalize();
 
   // ---- gameplay placement validation ----
@@ -70,9 +107,9 @@ export function buildLevel(mats: MaterialLib): Level {
   // to the nearest free, reachable ground before anything else is built on it. Crates and stations are also rejected where
   // they would seal a corridor (a 1 m crate in a 2.5 m alley can cut a street in two).
   const report: PlacementReport = { moved: [], dropped: [] };
-  const navStatic = new NavGrid(WORLD_BOUNDS, world);
+  const navStatic = new NavGrid(WORLD, world);
   const reach = new FlowField(navStatic);
-  const st0 = { x: -51, z: 43.5 };
+  const st0 = { x: site.start.x, z: site.start.z };
   reach.compute(st0.x, st0.z);
   const freeReachable = (x: number, z: number): boolean => !navStatic.isBlockedAt(x, z) && reach.isReachable(x, z);
   const countReachable = (): number => {
@@ -179,8 +216,8 @@ export function buildLevel(mats: MaterialLib): Level {
     cr.z = r.z;
     cr.yaw = r.yaw;
   }
-  world.add({ x: LZ.terminalX, z: LZ.terminalZ, hx: 0.5, hz: 0.5, y1: 1.3, mapKind: 'prop', tag: 'terminal', surface: 'metal' });
-  rasterize(LZ.terminalX, LZ.terminalZ, 0.5, 0.5, 0);
+  world.add({ x: site.lz.terminalX, z: site.lz.terminalZ, hx: 0.5, hz: 0.5, y1: 1.3, mapKind: 'prop', tag: 'terminal', surface: 'metal' });
+  rasterize(site.lz.terminalX, site.lz.terminalZ, 0.5, 0.5, 0);
   reach.compute(st0.x, st0.z);
   // spawn points and ambient infected: nearest free, reachable ground (keeps clear of the props just added)
   const clearOfProps = (x: number, z: number): boolean => freeReachable(x, z) && !world.circleBlocked(x, z, 0.7, 0.05, 1.7);
@@ -202,7 +239,7 @@ export function buildLevel(mats: MaterialLib): Level {
   d.spawnPoints = snapList(d.spawnPoints, 'spawn');
   d.ambient = snapList(d.ambient, 'ambient');
 
-  const nav = new NavGrid(WORLD_BOUNDS, world);
+  const nav = new NavGrid(WORLD, world);
 
   // ---- minimap / tactical map data straight from the real colliders ----
   const footprints: MapFootprint[] = [];
@@ -215,43 +252,45 @@ export function buildLevel(mats: MaterialLib): Level {
     footprints.push({ x: col.cx, z: col.cz, hx: col.hx, hz: col.hz, rot: col.rot, kind: col.mapKind });
   }
   const map: MapData = {
-    bounds: { ...WORLD_BOUNDS },
+    bounds: { ...WORLD },
     roads: d.roads,
     regions: d.regionRects,
     footprints,
     labels: d.labels,
   };
 
-  const lzYaw = 0;
+  const L = site.lz;
   const data: LevelData = {
-    bounds: { ...WORLD_BOUNDS },
-    playerStart: { x: -51, z: 43.5, yaw: yawFacing(0.83, -0.55) },
+    id: mapId,
+    text: MAP_TEXT[mapId],
+    bounds: { ...WORLD },
+    playerStart: { ...site.start },
     stations: d.stations,
     crates: d.crates,
     spawnPoints: d.spawnPoints,
     ambient: d.ambient,
-    defense: { x: DEPOT.arena.x, z: DEPOT.arena.z, radius: DEPOT.arena.radius },
-    hunt: { wardenX: COMPOUND.wardenX, wardenZ: COMPOUND.wardenZ, searchX: 30, searchZ: -36, searchRadius: 26 },
+    defense: site.defense,
+    hunt: site.hunt,
     extraction: {
-      lzX: LZ.x,
-      lzZ: LZ.z,
-      lzRadius: LZ.radius,
-      terminalX: LZ.terminalX,
-      terminalZ: LZ.terminalZ,
-      terminalYaw: yawFacing(-0.9, 0.35),
-      heliX: LZ.x,
-      heliZ: LZ.z,
-      heliYaw: lzYaw,
-      heliFrom: { x: LZ.x + 70, y: 48, z: LZ.z - 70 },
+      lzX: L.x,
+      lzZ: L.z,
+      lzRadius: L.radius,
+      terminalX: L.terminalX,
+      terminalZ: L.terminalZ,
+      terminalYaw: L.terminalYaw,
+      heliX: L.x,
+      heliZ: L.z,
+      heliYaw: 0,
+      heliFrom: { x: L.x + 70, y: 48, z: L.z - 70 },
     },
-    hazardCenter: { x: COMPOUND.spire.x, z: COMPOUND.spire.z },
+    hazardCenter: site.hazard,
     regionRects: d.regionRects,
     map,
   };
 
   world.groundSurface = (x: number, z: number): SurfaceKind => {
     // outside the paved blocks the ground is dirt
-    if (Math.abs(x) > 65 || Math.abs(z) > 51) return 'dirt';
+    if (x < WORLD.minX + 1 || x > WORLD.maxX - 1 || Math.abs(z) > WORLD.maxZ - 1) return 'dirt';
     return 'concrete';
   };
 
@@ -263,8 +302,8 @@ export function buildLevel(mats: MaterialLib): Level {
     data,
     lights: b.lights,
     glowField: b.glowField,
-    transmitter: depot.transmitter,
-    spire: compound.spire,
+    transmitter,
+    spire: spireHandle,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

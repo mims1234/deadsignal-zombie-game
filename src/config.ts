@@ -743,6 +743,27 @@ export const COOP = {
   carrierReward: 350,
 } as const;
 
+/** The Forge map: the two soldiers who deploy with you, and the Trials of Ignis. */
+export const FORGE_SQUAD = {
+  allies: ['Ash', 'Cinder'],
+  allyHp: 160,
+  /** Share of an infected's hit a soldier actually takes (body armour). */
+  allyDamageTaken: 0.75,
+  /** Engagement range, seconds between shots, and damage per hit. */
+  range: 28,
+  fireInterval: 0.42,
+  bodyDamage: 17,
+  headDamage: 44,
+  /** A soldier farther than this from the player regroups next to them. */
+  regroupDistance: 45,
+  /** Cash per soldier who is still alive at extraction. */
+  saveBonus: 500,
+  embers: [[-20, 46], [-58, 10], [-36, -46], [58, 46], [59, -4], [30, -40]] as [number, number][],
+  emberRadius: 1.6,
+  emberCash: 150,
+  trialsBonus: 600,
+} as const;
+
 export const FREE_ROAM = {
   speed: 9,
   fastSpeed: 26,

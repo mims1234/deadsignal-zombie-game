@@ -183,6 +183,8 @@ export interface AccountInfo {
 
 export interface ModeInfo {
   mode: GameMode;
+  /** Which map the next deploy uses. */
+  map: 'district' | 'forge';
   cards: CardCollectionEntry[];
 }
 
@@ -279,6 +281,8 @@ export interface MenuCallbacks {
   /** The player picked what DEPLOY starts (title screen only). */
   onModeChange(mode: GameMode): void;
   onLogout(): void;
+  /** Title screen only: switch maps (the page reloads to build the other one). */
+  onMapChange(map: 'district' | 'forge'): void;
 }
 
 export interface MenusApi {

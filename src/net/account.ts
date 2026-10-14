@@ -77,10 +77,10 @@ export class RunTracker {
     return this.open;
   }
 
-  start(mode: GameMode, touch: boolean): void {
+  start(mode: GameMode, touch: boolean, map: string): void {
     if (!this.enabled()) return;
     this.open = true;
-    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', { mode, touch }))?.id ?? null);
+    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', { mode, touch, map }))?.id ?? null);
   }
 
   /** `keepalive` lets the request outlive the page (tab closing). */

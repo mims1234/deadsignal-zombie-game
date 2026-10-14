@@ -6,6 +6,7 @@
 import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS } from '../config';
 import type { BestRun, GameMode, MissionStats, Settings } from '../types';
+import { MAP_TEXT } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
@@ -14,23 +15,6 @@ import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './se
 
 type ScreenKind = 'title' | 'pause' | 'resume' | 'results' | 'error';
 
-const BRIEF: { tag: string; title: string; text: string }[] = [
-  {
-    tag: 'CONTRACT ALPHA',
-    title: 'RESTORE THE RELAY',
-    text: 'Activate the depot transmitter and hold the marked area while the uplink completes.',
-  },
-  {
-    tag: 'CONTRACT BRAVO',
-    title: 'ELIMINATE THE WARDEN',
-    text: 'Locate and kill the elite infected inside the research compound.',
-  },
-  {
-    tag: 'EXTRACT',
-    title: 'LZ ECHO',
-    text: 'Radio the helicopter, survive the final horde and board before the district seals.',
-  },
-];
 
 const CARD_BRIEF = {
   tag: 'SIDE CONTRACT',
@@ -60,7 +44,7 @@ class Menus implements MenusApi {
   private readonly panels = new Set<SettingsPanel>();
   private deployStamp = 0;
   private touch = false;
-  private info: ModeInfo = { mode: 'standard', cards: [] };
+  private info: ModeInfo = { mode: 'standard', map: 'district', cards: [] };
   private lastBest: BestRun | null = null;
   private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
@@ -243,18 +227,19 @@ class Menus implements MenusApi {
     const main = el('div', 'ds-title-main', root);
     const kicker = el('div', 'kicker', main);
     el('span', 'haz', kicker);
-    el('span', '', kicker, 'SECTOR 7  //  QUARANTINE PERIMETER  //  BLUE HOUR');
+    const text = MAP_TEXT[this.info.map];
+    el('span', '', kicker, text.kicker);
     const h1 = el('h1', 'name', main);
     el('span', 'l1', h1, 'DEAD SIGNAL');
     el('span', 'l2', h1, 'EXCLUSION ZONE');
     const sig = el('div', 'sigline', main);
     for (let i = 0; i < 5; i++) el('i', '', sig);
-    el('span', '', sig, 'NO CARRIER  -  LAST KNOWN POSITION: RESEARCH COMPOUND');
+    el('span', '', sig, text.signal);
     el(
       'p',
       'premise',
       main,
-      'The district has been sealed for nine days. Insert at the checkpoint, clear two contracts, call the bird, and get out before the surge takes the landing zone.',
+      text.premise,
     );
 
     // ---- account: its own row, first, because nothing else works without it ----
@@ -289,6 +274,17 @@ class Menus implements MenusApi {
       }
     }
 
+    // ---- which map ----
+    const maps = el('div', 'modes', main);
+    el('span', 'lbl', maps, 'MAP');
+    const mapSeg = el('div', 'seg', maps);
+    for (const id of ['district', 'forge'] as const) {
+      const b = this.button(mapSeg, MAP_TEXT[id].name, id === this.info.map ? 'on' : '', () => {
+        if (id !== this.info.map) this.cb.onMapChange(id);
+      });
+      b.setAttribute('aria-pressed', id === this.info.map ? 'true' : 'false');
+    }
+
     // ---- what DEPLOY starts ----
     const modes = el('div', 'modes', main);
     el('span', 'lbl', modes, 'MODE');
@@ -300,6 +296,10 @@ class Menus implements MenusApi {
       });
       b.setAttribute('role', 'radio');
       b.setAttribute('aria-checked', m.id === mode ? 'true' : 'false');
+      if (m.id === 'coop' && this.info.map !== 'district') {
+        b.disabled = true;
+        b.title = 'Co-op runs on The District';
+      }
     }
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
@@ -338,7 +338,8 @@ class Menus implements MenusApi {
     const bh = el('div', 'ds-panel-head', brief);
     el('span', '', bh, 'OPERATION BRIEF');
     el('span', 'aux', bh, 'PRIORITY ALPHA');
-    const briefRows = mode === 'cards' ? [BRIEF[0]!, BRIEF[1]!, CARD_BRIEF, BRIEF[2]!] : BRIEF;
+    const rows = MAP_TEXT[this.info.map].rows;
+    const briefRows = mode === 'cards' ? [rows[0]!, rows[1]!, CARD_BRIEF, rows[2]!] : rows;
     for (let i = 0; i < briefRows.length; i++) {
       const item = briefRows[i]!;
       const row = el('div', 'row', brief);
@@ -349,7 +350,7 @@ class Menus implements MenusApi {
       el('span', 'title', tt, item.title);
       el('div', 'text', body, item.text);
     }
-    el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
+    el('div', 'foot', brief, text.foot);
 
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
     showTab = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');

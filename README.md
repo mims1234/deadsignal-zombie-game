@@ -34,6 +34,22 @@ Each contract pays out once. Tougher zombies and better loot wait in the higher-
 cages and the armory bench. At 7:30 a contamination surge spreads out from the compound, and the district is sealed at 12:00.
 You lose if you die, if the district seals before you call extraction, or if the helicopter leaves without you.
 
+## Maps
+
+Pick the map on the title screen (the page reloads to build it).
+
+- **The District** — the original exclusion zone, now with the rail yard to the east. Every mode runs here.
+- **The Forge** — a foundry district at ember night, after the Vulcan community's phoenix forge: molten runoff in open
+  channels, sodium-orange streets, a phoenix sigil burning in the crossroads. Ember Market (insertion), the Pad
+  (extraction), Phoenix Plaza and the Crucible. The same structure as the District with its own contracts:
+  **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then **Rise from the Forge** at the Pad before the
+  firestorm. On top of that:
+  - **Ash and Cinder**, two soldiers who deploy with you, follow you, and shoot. The infected hunt them like they hunt
+    you, and they can die for good. **Keep the squad alive**: each soldier still alive at extraction pays $500.
+  - **Trials of Ignis**: six burning embers hidden around the map, $150 each and $600 plus two armor plates for all six.
+
+  Standard, Standard Mazoku and Free Roam run on the Forge; co-op runs on the District for now.
+
 ## Modes
 
 Pick one on the title screen before you deploy. The choice is remembered.

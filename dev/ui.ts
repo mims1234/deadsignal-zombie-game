@@ -291,6 +291,7 @@ const menus = createMenus({
   onQuitToTitle: () => calls.push('title'),
   onModeChange: (m) => calls.push(`mode:${m}`),
   onLogout: () => calls.push('logout'),
+  onMapChange: (m) => calls.push(`map:${m}`),
   onSettingsChange: (s) => {
     settings = s;
     calls.push(`settings:${JSON.stringify(s)}`);
