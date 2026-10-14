@@ -20,6 +20,9 @@ You need Node.js 22.12 or newer, [pnpm](https://pnpm.io/), and a desktop browser
 
 It also runs on phones and tablets held sideways, with on-screen controls (see below).
 
+**BESTIARY** on the title screen opens `bestiary.html`: every infected, the five card carriers, the Forge squad and
+the survivors as 3D models you can turn and animate, with their stats and lore.
+
 ## The mission
 
 The district now runs east through the old Route 9 collapse into the **rail yard**, a walled freight yard of
@@ -67,7 +70,7 @@ Pick the map on the title screen (the page reloads to build it).
   - **Vulcan's leadership** — tomoe, Anya, Marv03K and piryriry — are the Forge's trapped survivors: free them and
     they fight beside you.
 
-  Standard, Standard Mazoku and Free Roam run on the Forge; co-op runs on the District for now.
+  Every mode runs on both maps, co-op included.
 
 ## Modes
 
@@ -83,23 +86,23 @@ Pick one on the title screen before you deploy. The choice is remembered.
   `W A S D` moves along the view, `Space` climbs, `C` descends, `Shift` goes fast. On touch, look where you want to
   go and push the stick.
 
-- **Co-op** (needs the game server and a signed-in account) — up to three players survive ten waves together on the
-  same map. Create a session in the lobby and share the invite link, or join with a code. Each wave is larger and
-  tougher than the last and scales with the squad; the Warden joins on waves 5 and 10. A player who goes down returns
-  when the wave is cleared, and the run is lost only if everyone is down at once. Hold `Tab` for the scoreboard:
-  kills, downs, who is up, and who is watching. Up to three more people can watch as spectators.
-  From wave 2, most waves carry a squad objective that pays every player when it is done: hold a marked point,
-  recover three data cores, kill a marked elite (the Hunter), or clear the wave with nobody going down. Hold and
-  recover keep the wave going until they are finished. **Restore the relay** is the squad's too: anyone can start it
-  at the console, it fills while at least one of you is in the zone and drains when you have all left, and when it
-  completes every player is paid once. There is no extraction in co-op — the session is won on waves. The host can switch the session to Standard Mazoku, and
-  then on waves 2, 4, 6, 8 and 9 a card carrier joins the fight:
-  anyone can knock her down and purge her, and whoever takes the card earns it for the whole squad.
-  The session's creator can kick players, end the session, and switch it between "anyone with the link" and
+- **Co-op** (needs the game server and a signed-in account) — up to three players run a map's operation together:
+  Standard, Standard Mazoku or Free Roam, on the District or the Forge. Create a session in the lobby and share the
+  invite link, or join with a code; a player following an invite to another map is moved onto it. The session's
+  owner picks the mode in the lobby before starting. The operation is the squad's: the relay, the Warden, the
+  extraction, the Forge's soldiers, cages and embers and the Mazoku carriers are shared, so anything one of you
+  completes is done for everyone, and its reward is paid to every player once. The relay fills while at least one of
+  you is in the zone. Anyone can call the helicopter from the radio, and each player boards on their own; the
+  squad's bonuses go to whoever is aboard when it leaves.
+  **Revives.** A player at zero health goes down and bleeds out over 30 seconds. A teammate gets close and holds `E`
+  for three seconds to bring them back up with half health. The run is lost only if nobody is left standing.
+  Hold `Tab` for the scoreboard: kills, downs, who is up, down or aboard, and who is watching. Up to three more people
+  can watch as spectators.
+  The session's owner can kick players, end the session, and switch it between "anyone with the link" and
   invite-only (a list of Discord ids). Any player can report another from the lobby.
 
   **Hosting.** When you create a session you choose who runs it:
-  - **Server hosted** (the default): the game server runs the session - the infected, the waves, the objectives and
+  - **Server hosted** (the default): the game server runs the session - the infected, the squad, the objectives and
     who hit what - and every player is an equal client. Nobody needs a strong device, a phone plays as well as a PC,
     and the session carries on if its creator leaves (another player becomes its owner).
   - **Self host**: the creator's browser runs the session for everyone, as co-op worked before. The others play at

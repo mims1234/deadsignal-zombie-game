@@ -10,7 +10,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI } from '../config';
+import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -21,7 +21,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
-import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit, roomExists } from '../net/account';
+import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -113,6 +113,11 @@ export class Game implements GameCtx {
   private noLock = false;
   /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
   private readonly touchMode = isTouchDevice();
+
+  /** Flying with no damage and no HUD: free roam, a co-op free-roam session, and spectators. */
+  get flying(): boolean {
+    return this.mode === 'roam' || this.coop.role === 'spectator' || (this.mode === 'coop' && this.coop.role !== 'none' && this.coop.kind === 'roam');
+  }
   private touch: TouchControlsApi | null = null;
   private playingSince = 0;
   // aim assist / auto fire scratch (touch play); reused every frame so nothing is allocated while playing
@@ -355,11 +360,14 @@ export class Game implements GameCtx {
     this.interaction = new Interaction(this, this.entities, this.mission, this.cards, {
       rescueTarget: () => this.squad.rescueTarget(),
       rescue: (id) => this.squad.rescue(id),
+      reviveTarget: () => this.coop.reviveTarget(),
+      revive: (id) => this.coop.revive(id),
     });
     this.coop = new CoopSession(this);
     this.squad = new SquadRuntime(this);
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
+      mapId: () => this.mapId,
       isAdmin: () => this.account.admin,
       canShow: () => this.mode === 'coop' && (this.state === 'title' || this.state === 'results'),
       deploy: () => this.requestStart(this.state === 'results'),
@@ -417,13 +425,14 @@ export class Game implements GameCtx {
     const invite = new URLSearchParams(window.location.search);
     const code = invite.get('room');
     // a link to a session that has ended (or never existed) is just the main page, with a word about why
-    const live = code && this.account.user ? await roomExists(code) : false;
-    if (code && this.account.user && !live) {
+    const info = code && this.account.user ? await roomInfo(code) : null;
+    const live = !!info;
+    if (code && this.account.user && !info) {
       window.history.replaceState(null, '', window.location.pathname);
       this.menus.flash(`Session ${code.toUpperCase().slice(0, 6)} has ended or does not exist.`);
-    } else if (code && this.account.user && this.mapId !== 'district') {
-      // co-op runs on the District: switch maps and come back to the same link
-      saveMap('district');
+    } else if (info && info.map !== this.mapId) {
+      // the session plays another map: switch to it and come back to the same link
+      saveMap(info.map);
       window.location.reload();
       return true;
     }
@@ -540,9 +549,15 @@ export class Game implements GameCtx {
   setMap(map: 'district' | 'forge'): void {
     if (this.state !== 'title' || map === this.mapId) return;
     saveMap(map);
-    if (map !== 'district' && this.mode === 'coop') saveMode('standard');
     // a clean address: any invite or sign-in parameters belong to the page that is being left
     window.location.assign(window.location.pathname);
+  }
+
+  /** Joined a co-op session that plays another map: build that map and come straight back into the session. */
+  switchMapForRoom(code: string, map: 'district' | 'forge'): void {
+    saveMap(map);
+    this.coop.room.leave();
+    window.location.assign(`${window.location.pathname}?room=${encodeURIComponent(code)}`);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -687,7 +702,7 @@ export class Game implements GameCtx {
     this.state = 'playing';
     this.playingSince = performance.now();
     const spectating = this.coop.role === 'spectator';
-    const roam = this.mode === 'roam' || spectating;
+    const roam = this.flying;
     this.roamHint.textContent = (spectating ? 'SPECTATING' : 'FREE ROAM') + this.roamKeys;
     if (spectating) {
       const at = this.coop.focusPoint();
@@ -712,7 +727,12 @@ export class Game implements GameCtx {
       this.audio.play('ui_deploy', { priority: 3 });
       if (!this.ambience || !this.ambience.active) this.ambience = this.audio.startLoop('ambience', { volume: 0.8, fadeIn: 2 });
       if (this.mode === 'coop') {
-        if (!spectating) this.banner('CO-OP  //  WAVE SURVIVAL', 'Hold out for ten waves. Anyone who goes down returns when the wave is cleared.', 'info', 5);
+        const kind = this.coop.kind;
+        const text = this.level.data.text;
+        if (spectating) {
+          // watching: no briefing
+        } else if (kind === 'roam') this.banner('CO-OP  //  FREE ROAM', 'Fly anywhere together. No infected, no clock.', 'info', 4.5);
+        else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
@@ -799,9 +819,11 @@ export class Game implements GameCtx {
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
+    // the squad: solo runs it here; a co-op story run shows the simulation's
     const solo = this.mode === 'standard' || this.mode === 'cards';
-    this.squad.reset(this.mapId === 'forge' && solo, solo);
-    this.weapons.hidden = this.mode === 'roam' || this.coop.role === 'spectator';
+    const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
+    this.squad.reset(this.mapId === 'forge' && (solo || coopStory), solo || coopStory, coopStory);
+    this.weapons.hidden = this.flying;
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
     this.hud.reset();
@@ -925,7 +947,7 @@ export class Game implements GameCtx {
     const s = this.session;
     const alive = this.playerAlive();
     const edges = edgesOverride ?? this.input.consume(dt);
-    if (this.mode === 'roam' || this.coop.role === 'spectator') {
+    if (this.flying) {
       this.simulateRoam(dt, edges);
       return;
     }
@@ -994,7 +1016,8 @@ export class Game implements GameCtx {
     if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt);
 
     // ---- mission ----
-    this.mission.update(this.coop.live ? 0 : dt, this.renderer.camera, this.time); // co-op runs on waves, not the mission clock
+    // co-op free roam has no mission; a co-op story run shows the simulation's (the clock comes in its reports)
+    this.mission.update(this.coop.live && !this.coop.story ? 0 : dt, this.renderer.camera, this.time);
 
     // ---- enemies ----
     this.updateEnemies(dt, alive);
@@ -1043,7 +1066,7 @@ export class Game implements GameCtx {
     z.player.eyeY = p.eyeY();
     z.player.alive = false;
     if (this.coop.live) {
-      this.coop.updateEnemies(dt, false);
+      this.coop.updateEnemies(dt);
       this.coop.update(dt);
     } else {
       this.zombies.update(dt, z, false);
@@ -1171,7 +1194,7 @@ export class Game implements GameCtx {
       }
     }
     if (this.coop.live) {
-      this.coop.updateEnemies(dt, alive);
+      this.coop.updateEnemies(dt);
       return;
     }
     const boarding = this.endingKind === 'board';
@@ -1222,7 +1245,7 @@ export class Game implements GameCtx {
   }
 
   hurtPlayer(amount: number, srcX: number | null, srcZ: number | null, opts: { ignoreArmor?: boolean; toxic?: boolean } = {}): void {
-    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam' || this.coop.role === 'spectator') return;
+    if (!this.playerAlive() || this.endingKind === 'board' || this.flying) return;
     const s = this.session;
     const mul = opts.toxic ? 1 : REGIONS[this.playerRegion()].damageMul;
     const res = applyDamageToPlayer(s.vitals, amount * mul, { ignoreArmor: opts.ignoreArmor });
@@ -1253,7 +1276,7 @@ export class Game implements GameCtx {
 
   /** Caught in a blast: hurt, and shoved away from it (with a hop) in proportion to how close it was. */
   private blastPlayer(amount: number, x: number, z: number, closeness: number): void {
-    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam' || this.coop.role === 'spectator') return;
+    if (!this.playerAlive() || this.endingKind === 'board' || this.flying) return;
     const p = this.player;
     const dx = p.x - x;
     const dz = p.z - z;
@@ -1292,14 +1315,13 @@ export class Game implements GameCtx {
     this.weapons.cancelActions();
     this.interaction.closePanel(false);
     if (this.coop.live) {
-      this.coop.onLocalDeath(); // not the end: the wave decides
+      this.coop.onLocalDeath(); // not the end: a teammate can pick them up
       return;
     }
     this.endRun('defeat', this.session.extraction.phase === 'landed' ? 'Killed before boarding the helicopter' : 'Killed in action');
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {
-    if (this.coop.live && this.coop.onKill(z, head)) return; // another player's kill: they are paid, not the host
     if (this.squad.allyShooting) {
       // an ally's kill: it still counts for the contract, but it is not the player's
       if (z.isBoss) this.mission.onWardenKilled();
@@ -1426,17 +1448,37 @@ export class Game implements GameCtx {
     this.coopUi.refresh();
   }
 
-  /** Back on your feet at the insertion point (between waves, or when the host starts a new run). */
-  revivePlayer(): void {
-    const st = this.level.data.playerStart;
-    this.session.vitals.health = PLAYER.maxHealth;
-    this.session.vitals.armor = Math.max(this.session.vitals.armor, PLAYER.plateArmor);
-    this.player.teleport(st.x, st.z, st.yaw);
-    this.feed('BACK IN THE FIGHT', 'good');
+  /** A teammate picked this player up. */
+  coopRevived(by: string): void {
+    this.session.vitals.health = COOP.reviveHealth;
+    this.session.sinceDamage = 0;
+    this.banner('BACK ON YOUR FEET', `${by} revived you`, 'good', 3);
+    this.feed(`REVIVED BY ${by.toUpperCase()}`, 'good');
+    this.audio.play('pickup_plate', { priority: 2 });
   }
 
-  /** The host confirmed one of this player's kills. */
-  creditKill(cash: number, name: string, head: boolean): void {
+  /** This player made it aboard: the boarding cinematic, then the results. */
+  coopBoarded(): void {
+    this.beginBoarding();
+    this.endRun('victory', 'Extracted');
+  }
+
+  /** Cash the whole squad earns together (a survivor freed, an ember, the squad's extraction bonus). */
+  coopCash(cash: number, title: string, plates: number): void {
+    if (cash > 0) {
+      addCash(this.session.inv, cash);
+      this.hud.event({ type: 'cash', amount: cash });
+    }
+    if (plates > 0) this.session.inv.plates = Math.min(PLAYER.maxPlates, this.session.inv.plates + plates);
+    this.feed(`${title}  +$${cash}${plates > 0 ? `  +${plates} ARMOR PLATES` : ''}`, 'good');
+    if (plates > 0 || /COMPLETE/.test(title)) {
+      this.banner(title, `+$${cash}${plates > 0 ? `   +${plates} ARMOR PLATES` : ''}`, 'good', 4);
+      this.audio.play('contract_complete', { priority: 3 });
+    } else this.audio.play('pickup_cash', { priority: 2 });
+  }
+
+  /** The simulation confirmed one of this player's kills (and may leave a pickup where the body fell). */
+  creditKill(cash: number, name: string, head: boolean, x = NaN, z = NaN, dropChance = 0): void {
     const s = this.session;
     s.stats.kills++;
     if (head) s.stats.headshots++;
@@ -1444,15 +1486,10 @@ export class Game implements GameCtx {
     this.hud.event({ type: 'cash', amount: cash });
     this.hud.event({ type: 'hit', head, kill: true });
     this.feed(`+$${cash}  ${name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
-  }
-
-  /** A wave objective was completed: the squad bonus. */
-  grantBonus(cash: number, title: string): void {
-    addCash(this.session.inv, cash);
-    this.hud.event({ type: 'cash', amount: cash });
-    this.banner('OBJECTIVE COMPLETE', `${title}  +$${cash}`, 'good', 4);
-    this.feed(`OBJECTIVE COMPLETE  +$${cash}`, 'good');
-    this.audio.play('contract_complete', { priority: 3 });
+    if (Number.isFinite(x) && Number.isFinite(z) && this.rng.chance(dropChance * REGIONS[this.level.regionAt(x, z)].dropMul)) {
+      const r = this.rng.f();
+      this.entities.spawnPickup(r < 0.65 ? 'ammo' : r < 0.78 ? 'plate' : 'grenade', x, z);
+    }
   }
 
   /** An infected on the host struck this player. */
@@ -1518,6 +1555,12 @@ export class Game implements GameCtx {
       pitch += (Math.random() * 2 - 1) * k;
       yaw += (Math.random() * 2 - 1) * k;
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2.5);
+    }
+    // co-op: down (or bled out) - the view lies on the ground, tipped over, until someone comes
+    if (this.state !== 'ending' && this.coop.live && this.coop.life !== 1 && this.coop.life !== 4) {
+      ey = 0.45;
+      pitch = Math.min(pitch, 0.15);
+      roll = this.settings.reducedMotion ? 0.15 : 0.42;
     }
     if (this.state === 'ending') {
       if (this.endingKind === 'death') {

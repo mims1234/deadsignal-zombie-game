@@ -1,36 +1,29 @@
 /**
- * The co-op host, run by the server instead of a player's browser: waves, the infected, wave objectives, the squad's
- * relay and the Mazoku carriers, for every player at once. It speaks exactly the protocol a browser host speaks
- * (see `coop/coop.ts`), so to the players' browsers it is simply a host that never plays and never leaves.
+ * The co-op session simulation: one implementation of the host, run by the game server (a worker thread per session,
+ * `worker.ts`) or, for a self-hosted session, inside the owner's browser. Every player - the self-host included - is a
+ * client of it: they report where they are and what they hit, and draw what it reports back. Kinds of session:
+ *   mission  the map's story operation, as in Standard: two contracts, the extraction, the squad and survivors,
+ *            the Trials of Ignis on the Forge
+ *   mazoku   the same operation with the five card carriers walking the map (Standard Mazoku)
+ *   roam     no infected: fly around together
+ * A player who goes down can be revived by a teammate (they bleed out on their own client); the run is lost when
+ * nobody is left standing, won when the helicopter leaves with someone aboard.
  *
- * In:  `message(from, d)` - a player's report ('p'), hit, purge, card pick-up, relay start; the owner's 'cfg' and
- *      'restart'; `players(list)` - who is seated; `tick(dt)` - advance the simulation.
+ * In:  `message(from, d, owner)` - reports and requests (see each case); `players(list)`; `tick(dt)`.
  * Out: `send(to, d)` - to 'all' or one player id.
  */
 import * as THREE from 'three';
-import { CARD_MODE, COOP, ZOMBIES, type ZombieDef } from '../config';
+import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, SURVIVORS, VULCAN, ZOMBIES, type ZombieDef } from '../config';
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
-import { type CarrierState, createCarrier, downCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
-import { type ContractStatus, activateDefense, createDefense, updateDefense } from '../logic/contracts';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, survivorRoster } from '../game/allyBrain';
+import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
+import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
+import { type ExtractionPhase, callExtraction, createExtraction, extractionInProgress, unlockExtraction, updateExtraction } from '../logic/extraction';
+import { escalationPhase } from '../logic/mission';
 import { Rng } from '../logic/rng';
-import {
-  MISSION_KINDS,
-  MISSION_STATUSES,
-  MISSION_TEXT,
-  type WaveMission,
-  blocksWaveEnd,
-  closeMission,
-  createMission,
-  eliteKilled,
-  pickMission,
-  playerWentDown,
-  stepHold,
-  takeCore,
-} from '../logic/waveMissions';
-import { type WavePhase, createWaves, stepWaves, waveHpScale, waveType } from '../logic/waves';
 import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { buildLevel, type Level } from '../world/level';
@@ -39,16 +32,23 @@ import type { MaterialLib } from '../world/materials';
 import { FlowField } from '../world/nav';
 import { createNullRigFactory } from './nullRig';
 
+export type SessionKind = 'mission' | 'mazoku' | 'roam';
+export const SESSION_KINDS: readonly SessionKind[] = ['mission', 'mazoku', 'roam'];
+
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
-const PHASES: WavePhase[] = ['break', 'active', 'won', 'lost'];
 const RELAY_STATUSES: ContractStatus[] = ['available', 'active', 'complete'];
+export const EXTRACTION_PHASES: readonly ExtractionPhase[] = ['locked', 'available', 'called', 'inbound', 'landing', 'landed', 'boarding', 'extracted', 'failed'];
 const CARRIER_PHASES: readonly CarrierState['phase'][] = ['roaming', 'identified', 'downed', 'purged', 'recovered'];
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
 /** A player sends a report this often; one silent this long is treated as away (not a target, not "up"). */
 const AWAY_AFTER = 4;
+
+/** Player state in reports and snapshots: 1 up, 2 down (can be revived), 3 out (bled out), 4 aboard (extracted). */
+export const LIFE = { up: 1, down: 2, out: 3, aboard: 4 } as const;
+export type Life = (typeof LIFE)[keyof typeof LIFE];
 
 interface Peer {
   id: string;
@@ -59,6 +59,7 @@ interface Peer {
   kills: number;
   downs: number;
   seen: number;
+  life: Life;
   env: ZombieEnv;
   field: FlowField;
   fieldT: number;
@@ -74,7 +75,12 @@ interface CarrierUnit {
   lootZ: number;
 }
 
-/** The level builder wants materials; the server never draws, so one blank material stands in for all of them. */
+interface SimAlly extends AllyBody {
+  /** The player who freed them / whom they follow. */
+  leader: string | null;
+}
+
+/** The level builder wants materials; the simulation never draws, so one blank material stands in for all of them. */
 function blankMaterials(): MaterialLib {
   const m = new THREE.MeshStandardMaterial();
   m.userData.tile = 2;
@@ -83,45 +89,59 @@ function blankMaterials(): MaterialLib {
 }
 
 const noop = (): void => {};
-/** Sounds and effects go nowhere on the server. */
+/** Sounds and effects go nowhere in the simulation. */
 const silent: unknown = new Proxy({}, { get: () => () => ({ stop: noop, setPosition: noop, intensity: () => 0, setVolume: noop, active: false }) });
 
-export interface ServerHostOptions {
+export interface SessionOptions {
   map?: MapId;
+  kind?: SessionKind;
   seed?: number;
+  /** A level the caller already built (a self-hosting browser passes its own); otherwise one is built here. */
+  level?: Level;
   send(to: string, d: Record<string, unknown>): void;
 }
 
-export class ServerHost {
+export class SessionSim {
   readonly level: Level;
+  readonly map: MapId;
   readonly zombies: ZombieManager;
+  kind: SessionKind;
   private readonly rng: Rng;
   private readonly peers = new Map<string, Peer>();
   private seated = new Map<string, string>();
-  private readonly send: ServerHostOptions['send'];
+  private readonly send: SessionOptions['send'];
   private time = 0;
   private gen = 0;
   private running = false;
-  private waves = createWaves();
-  private mission: WaveMission | null = null;
-  private defense = createDefense();
-  private left = 0;
-  private spawnT = 0;
-  private sendT = 0;
-  private elitePending = false;
-  private carrierPending = -1;
-  private carrierOrder: number[] = [];
-  private readonly carriers: CarrierUnit[];
-  private killer: string | null = null;
   private ended = false;
-  mazoku = false;
+  private sendT = 0;
+  private killer: string | null = null;
+  private readonly carriers: CarrierUnit[];
+  private defense = createDefense();
+  private elapsed = 0;
+  private hunt = createHunt();
+  private extraction = createExtraction();
+  private outcome: { won: boolean; reason: string } | null = null;
+  private readonly aboard = new Set<string>();
+  private allies: SimAlly[] = [];
+  private embers: { x: number; z: number; taken: boolean }[] = [];
+  private shots: number[][] = [];
+  private directorTurn = 0;
+  private readonly allyWorld: AllyWorld;
+  private allyLeader: Peer | null = null;
 
-  constructor(opts: ServerHostOptions) {
+  constructor(opts: SessionOptions) {
     this.send = opts.send;
+    this.map = opts.map ?? 'district';
+    this.kind = opts.kind ?? 'mission';
     this.rng = new Rng(opts.seed ?? (Date.now() & 0x7fffffff));
-    this.level = buildLevel(blankMaterials(), opts.map ?? 'district');
-    // nothing is ever drawn here: let the geometry go
-    this.level.root.clear();
+    if (opts.level) {
+      this.level = opts.level;
+    } else {
+      this.level = buildLevel(blankMaterials(), this.map);
+      // nothing is ever drawn here: let the geometry go
+      this.level.root.clear();
+    }
     this.zombies = new ZombieManager(createNullRigFactory(), this.level);
     this.zombies.onKill = (z, head) => this.onKill(z, head);
     this.carriers = CARRIERS.map((def, index) => {
@@ -129,6 +149,16 @@ export class ServerHost {
       const stats: ZombieDef = { ...base, name: def.name, hp: def.hp, speedChase: def.speedChase, damage: def.damage, bodyMul: def.bodyMul, poise: def.poise, radius: 0.3, height: def.height, headRadius: 0.18, sightRange: 30, reward: 0, headshotBonus: 0, dropChance: 0 };
       return { index, stats, base: def.base, zombie: null, state: null, lootX: 0, lootZ: 0 };
     });
+    this.allyWorld = {
+      level: this.level,
+      zombies: this.zombies,
+      rng: this.rng,
+      followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
+    };
+  }
+
+  private get story(): boolean {
+    return this.kind === 'mission' || this.kind === 'mazoku';
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -139,8 +169,6 @@ export class ServerHost {
   players(list: readonly { id: string; name: string }[]): void {
     this.seated = new Map(list.map((p) => [p.id, p.name]));
     for (const id of [...this.peers.keys()]) if (!this.seated.has(id)) this.peers.delete(id);
-    // whoever just arrived learns which variant this is
-    this.send('all', { k: 'cfg', mz: this.mazoku });
   }
 
   /** A fresh run (the owner started the session, or asked for another go after the results). */
@@ -149,16 +177,11 @@ export class ServerHost {
     this.running = true;
     this.ended = false;
     this.time = 0;
-    this.waves = createWaves();
-    this.mission = null;
-    this.defense = createDefense();
-    this.left = 0;
-    this.spawnT = 0;
     this.sendT = 0;
-    this.elitePending = false;
-    this.carrierPending = -1;
-    this.carrierOrder = COOP.carrierWaves.map((_, i) => i).sort(() => this.rng.f() - 0.5);
+    this.defense = createDefense();
     this.zombies.clearAll();
+    this.zombies.namer = null;
+    this.zombies.sleepFar = this.story;
     for (const u of this.carriers) {
       u.zombie = null;
       u.state = null;
@@ -167,7 +190,68 @@ export class ServerHost {
       p.kills = 0;
       p.downs = 0;
       p.ref.alive = false;
+      p.life = LIFE.up;
     }
+    this.elapsed = 0;
+    this.hunt = createHunt();
+    this.extraction = createExtraction();
+    this.outcome = null;
+    this.aboard.clear();
+    this.allies = [];
+    this.embers = [];
+    this.shots = [];
+    if (this.story) this.setUpStory();
+  }
+
+  /** The story operation's world: residents and the boss, the Vulcan names, the squad, the cages, embers, carriers. */
+  private setUpStory(): void {
+    const level = this.level;
+    const rng = this.rng;
+    if (this.map === 'forge') {
+      let bag: string[] = [];
+      this.zombies.namer = () => {
+        if (rng.f() >= VULCAN.namedShare) return null;
+        const inUse = new Set(this.zombies.zombies.map((q) => q.tag));
+        if (bag.length === 0) bag = [...VULCAN.infected].sort(() => rng.f() - 0.5);
+        for (let i = 0; i < bag.length; i++) if (!inUse.has(bag[i]!)) return bag.splice(i, 1)[0]!;
+        return null;
+      };
+    }
+    this.zombies.populate(rng);
+    const st = level.data.playerStart;
+    if (this.map === 'forge') {
+      const at = soldierSpots(level, rng);
+      FORGE_SQUAD.allies.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length), leader: null }));
+      this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
+    }
+    const roster = survivorRoster(this.map);
+    cageSpots(level, rng, roster.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, roster[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length), leader: null }));
+    if (this.kind === 'mazoku') this.placeCarriers();
+  }
+
+  /** The five card carriers at spread-out resident spots, away from the start, the LZ, the boss and the relay. */
+  private placeCarriers(): void {
+    const data = this.level.data;
+    const far = (p: { x: number; z: number }, x: number, z: number, d: number): boolean => Math.hypot(p.x - x, p.z - z) > d;
+    let spots = data.ambient.filter(
+      (a) =>
+        far(a, data.playerStart.x, data.playerStart.z, CARD_MODE.minStartDistance) &&
+        far(a, data.extraction.lzX, data.extraction.lzZ, 28) &&
+        far(a, data.hunt.wardenX, data.hunt.wardenZ, 42) &&
+        far(a, data.defense.x, data.defense.z, data.defense.radius + 8),
+    );
+    if (spots.length < this.carriers.length) spots = data.ambient;
+    const rand = (): number => this.rng.f();
+    const picks = spreadPick(spots, this.carriers.length, rand);
+    const order = this.carriers.map((_, i) => i).sort(() => rand() - 0.5);
+    picks.forEach((spotIndex, n) => {
+      const u = this.carriers[order[n]!]!;
+      const spot = spots[spotIndex]!;
+      const at = this.level.nav.randomFreeNear(spot.x, spot.z, 3, rand) ?? spot;
+      u.zombie = this.zombies.spawn(u.base, at.x, at.z, this.rng, { ambient: true, def: u.stats, curable: true });
+      u.zombie.carrierIdx = u.index + 1;
+      u.state = createCarrier(CARRIERS[u.index]!.id);
+    });
   }
 
   /** The run is over (won or lost) and nobody has asked for another. */
@@ -180,11 +264,6 @@ export class ServerHost {
   // ---------------------------------------------------------------------------------------------
 
   message(from: string, d: Record<string, unknown>, owner: boolean): void {
-    if (owner && d.k === 'cfg') {
-      this.mazoku = d.mz === true;
-      this.send('all', { k: 'cfg', mz: this.mazoku });
-      return;
-    }
     if (owner && d.k === 'restart') {
       if (!this.running || this.ended) this.begin();
       return;
@@ -193,26 +272,27 @@ export class ServerHost {
     const name = this.seated.get(from);
     if (name === undefined) return;
     const p = this.peer(from, name);
+    const up = p.life === LIFE.up;
     switch (d.k) {
       case 'p': {
-        const up = d.up === true;
-        if (p.ref.alive && !up) {
-          p.downs++;
-          playerWentDown(this.mission);
-        }
         p.ref.x = Number(d.x) || 0;
         p.ref.y = Number(d.y) || 0;
         p.ref.z = Number(d.z) || 0;
         p.ref.eyeY = p.ref.y + 1.6;
-        p.ref.alive = up;
         p.yaw = Number(d.yaw) || 0;
         p.hp = Number(d.hp) || 0;
         p.seen = this.time;
+        if (p.life === LIFE.aboard) return; // aboard for good
+        const st = Number(d.st);
+        const life: Life = st === LIFE.up || st === LIFE.down || st === LIFE.out ? (st as Life) : d.up === true ? LIFE.up : LIFE.down;
+        if (p.life === LIFE.up && life !== LIFE.up) p.downs++;
+        p.life = life;
+        p.ref.alive = life === LIFE.up;
         return;
       }
       case 'hit': {
         const z = this.zombies.zombies.find((q) => q.id === d.z);
-        if (!z || !z.alive || !p.ref.alive) return;
+        if (!z || !z.alive || !up) return;
         this.killer = from;
         // a single hit can never do more than the strongest weapon plausibly could
         this.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, p.env, Number(d.y) || 0, Math.min(20, Number(d.pu) || 0), Math.min(15, Number(d.li) || 0));
@@ -223,7 +303,7 @@ export class ServerHost {
         // only someone standing next to her can purge her
         const u = this.carriers.find((q) => CARRIERS[q.index]!.id === String(d.id));
         const z = u?.zombie;
-        if (!u || !z || !u.state || !p.ref.alive || Math.hypot(z.x - p.ref.x, z.z - p.ref.z) > CARD_MODE.cureReach + 2.5) return;
+        if (!u || !z || !u.state || !up || Math.hypot(z.x - p.ref.x, z.z - p.ref.z) > CARD_MODE.cureReach + 2.5) return;
         if (!purgeCarrier(u.state)) return;
         u.lootX = z.x;
         u.lootZ = z.z;
@@ -233,14 +313,62 @@ export class ServerHost {
       }
       case 'take': {
         const u = this.carriers.find((q) => CARRIERS[q.index]!.id === String(d.id));
-        if (!u?.state || u.state.phase !== 'purged' || !p.ref.alive) return;
+        if (!u?.state || u.state.phase !== 'purged' || !up) return;
         if (Math.hypot(u.lootX - p.ref.x, u.lootZ - p.ref.z) > CARD_MODE.pickupRadius + 2.5) return;
         if (recoverCarrier(u.state)) this.send('all', { k: 'card', id: CARRIERS[u.index]!.id });
         return;
       }
       case 'relay': {
         const c = this.level.transmitter.console;
-        if (p.ref.alive && Math.hypot(c.x - p.ref.x, c.z - p.ref.z) < 5) activateDefense(this.defense);
+        if (up && Math.hypot(c.x - p.ref.x, c.z - p.ref.z) < 5) activateDefense(this.defense);
+        return;
+      }
+      case 'call': {
+        const e = this.level.data.extraction;
+        const inLz = Math.hypot(p.ref.x - e.lzX, p.ref.z - e.lzZ) <= e.lzRadius + 1;
+        const atRadio = Math.hypot(p.ref.x - e.terminalX, p.ref.z - e.terminalZ) < 6;
+        if (this.story && up && inLz && atRadio) callExtraction(this.extraction, this.elapsed, true, true);
+        return;
+      }
+      case 'board': {
+        const e = this.level.data.extraction;
+        if (!this.story || !up || this.extraction.phase !== 'landed') return;
+        if (Math.hypot(p.ref.x - e.heliX, p.ref.z - e.heliZ) > MISSION.extraction.boardRadius + 3.5) return;
+        this.aboard.add(from);
+        p.life = LIFE.aboard;
+        p.ref.alive = false;
+        this.send(from, { k: 'boarded' });
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} IS ABOARD` });
+        return;
+      }
+      case 'revive': {
+        const t = this.peers.get(String(d.id));
+        if (!this.story || !up || !t || t.life !== LIFE.down || Math.hypot(t.ref.x - p.ref.x, t.ref.z - p.ref.z) > 3.2) return;
+        t.life = LIFE.up;
+        t.ref.alive = true;
+        this.send(t.id, { k: 'revived', by: p.name });
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} REVIVED ${t.name.toUpperCase()}` });
+        return;
+      }
+      case 'rescue': {
+        const a = this.allies.find((q) => q.name === String(d.id) && q.trapped && q.ref.alive);
+        if (!this.story || !up || !a || Math.hypot(a.ref.x - p.ref.x, a.ref.z - p.ref.z) > 4) return;
+        a.trapped = false;
+        a.leader = from;
+        a.yaw = p.yaw;
+        a.ref.z -= 1.6; // step out of the door
+        const freed = this.allies.filter((q) => q.kind === 'survivor' && !q.trapped).length;
+        const total = this.allies.filter((q) => q.kind === 'survivor').length;
+        this.send('all', { k: 'cash', c: SURVIVORS.rescueCash, t: `${a.name.toUpperCase()} FREED ${freed}/${total}` });
+        return;
+      }
+      case 'ember': {
+        const e = this.embers[Number(d.i)];
+        if (!this.story || !up || !e || e.taken || Math.hypot(e.x - p.ref.x, e.z - p.ref.z) > FORGE_SQUAD.emberRadius + 2.5) return;
+        e.taken = true;
+        const got = this.embers.filter((q) => q.taken).length;
+        this.send('all', { k: 'cash', c: FORGE_SQUAD.emberCash, t: `IGNIS EMBER ${got}/${this.embers.length}` });
+        if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'TRIALS OF IGNIS COMPLETE', pl: 2 });
         return;
       }
       default:
@@ -253,8 +381,14 @@ export class ServerHost {
     if (p) return p;
     const ref: PlayerRef = { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false };
     const field = new FlowField(this.level.nav);
-    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, env: null as never, field, fieldT: 0 };
-    p.env = {
+    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, env: null as never, field, fieldT: 0 };
+    p.env = this.makeEnv(ref, field, (amount, sx, sz, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }));
+    this.peers.set(id, p);
+    return p;
+  }
+
+  private makeEnv(ref: PlayerRef, field: FlowField, hurt: (amount: number, sx: number, sz: number, knock: number) => void): ZombieEnv {
+    return {
       time: 0,
       world: this.level.world,
       nav: this.level.nav,
@@ -263,12 +397,10 @@ export class ServerHost {
       rng: this.rng,
       audio: silent as never,
       fx: silent as never,
-      hurtPlayer: (amount, sx, sz, _kind, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }),
+      hurtPlayer: (amount, sx, sz, _kind, knock) => hurt(amount, sx, sz, knock),
       alertNear: (x, z, r, srcId) => this.zombies.alertNear(x, z, r, srcId),
       shake: noop,
     };
-    this.peers.set(id, p);
-    return p;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -286,11 +418,19 @@ export class ServerHost {
       }
       return;
     }
+    if (this.kind === 'roam') {
+      this.time += dt;
+      for (const p of this.peers.values()) if (this.time - p.seen > AWAY_AFTER) p.ref.alive = false;
+      this.flush(dt);
+      return;
+    }
     const envs: ZombieEnv[] = [];
     let up = 0;
+    let reported = 0;
     for (const p of this.peers.values()) {
       // a player who stopped reporting (tab in the background, connection gone) is not a target
       if (this.time - p.seen > AWAY_AFTER) p.ref.alive = false;
+      else reported++;
       p.env.time = this.time;
       p.fieldT -= dt;
       if (p.ref.alive && p.fieldT <= 0) {
@@ -300,42 +440,14 @@ export class ServerHost {
       if (p.ref.alive) up++;
       envs.push(p.env);
     }
-    // nobody has deployed yet: hold everything (the first break starts when the first player is in)
-    if (envs.length === 0 || (this.waves.n === 0 && up === 0)) {
+    // nobody has deployed yet: hold everything (the clock starts when the first player is in)
+    if (envs.length === 0 || (this.elapsed === 0 && up === 0)) {
       this.flush(dt);
       return;
     }
     this.time += dt;
-    this.zombies.update(dt, envs[0]!, up > 0, envs);
-
-    const w = this.waves;
-    const m = this.mission;
-    // an open hold / collect objective (or a running uplink) keeps the wave alive with a trickle of infected
-    const trickle = w.phase === 'active' && (blocksWaveEnd(m) || this.defense.status === 'active') && w.toSpawn <= 1;
-    if (trickle) w.toSpawn = 1;
-    const event = stepWaves(w, dt, this.zombies.hostileCount, up, envs.length);
-    if (event === 'wave-start') this.onWaveStart();
-    else if ((event === 'wave-clear' || event === 'won') && m && closeMission(m)) this.payBonus(m);
-    if (w.phase === 'active') this.stepMission(dt);
-    this.stepCarriers(dt);
-
-    // the squad's relay: anyone who is up inside the zone keeps it going
-    if (this.defense.status === 'active') {
-      const s = this.level.data.defense;
-      const inside = [...this.peers.values()].some((p) => p.ref.alive && Math.hypot(p.ref.x - s.x, p.ref.z - s.z) < s.radius);
-      updateDefense(this.defense, dt, inside, true);
-    }
-
-    if (w.phase === 'active' && (w.toSpawn > 0 || w.bossPending || this.elitePending || this.carrierPending >= 0)) {
-      this.spawnT -= dt;
-      if (this.spawnT <= 0 && this.zombies.hostileCount < COOP.activeCap) {
-        this.spawnT = trickle ? COOP.mission.trickleEvery : COOP.spawnEvery;
-        this.spawnOne(envs);
-      }
-    }
-    this.left = w.toSpawn + (w.bossPending ? 1 : 0) + this.zombies.hostileCount - (trickle ? 1 : 0);
-    if (w.phase === 'won' || w.phase === 'lost') {
-      this.ended = true;
+    this.tickStory(dt, envs, up, reported);
+    if (this.ended) {
       this.snapshot(); // the outcome goes out at once
       this.sendT = 1;
       return;
@@ -350,52 +462,156 @@ export class ServerHost {
     this.snapshot();
   }
 
-  private upRefs(): PlayerRef[] {
-    return [...this.peers.values()].filter((p) => p.ref.alive).map((p) => p.ref);
+  private upPeers(): Peer[] {
+    return [...this.peers.values()].filter((p) => p.ref.alive);
   }
 
-  /** Free spots around the squad for an objective: not on top of anyone, not across the map. */
-  private sites(count: number): { x: number; z: number }[] {
-    const up = this.upRefs();
-    const cx = up.reduce((a, p) => a + p.x, 0) / Math.max(1, up.length);
-    const cz = up.reduce((a, p) => a + p.z, 0) / Math.max(1, up.length);
-    let pool = this.level.data.ambient.filter((a) => {
-      const d = Math.hypot(a.x - cx, a.z - cz);
-      return d > 14 && d < 60;
-    });
-    if (pool.length < count) pool = this.level.data.ambient;
-    return spreadPick(pool, count, () => this.rng.f()).map((i) => pool[i]!);
+  private stepRelay(dt: number): void {
+    if (this.defense.status !== 'active') return;
+    const s = this.level.data.defense;
+    const inside = this.upPeers().some((p) => Math.hypot(p.ref.x - s.x, p.ref.z - s.z) < s.radius);
+    updateDefense(this.defense, dt, inside, true);
   }
 
-  private onWaveStart(): void {
-    const n = this.waves.n;
-    const kind = pickMission(n, this.rng.f());
-    this.mission = kind ? createMission(kind, n, this.sites(COOP.mission.cores)) : null;
-    this.elitePending = kind === 'elite';
-    const slot = (COOP.carrierWaves as readonly number[]).indexOf(n);
-    if (slot >= 0 && this.mazoku) this.carrierPending = this.carrierOrder[slot] ?? -1;
-  }
+  // ---- story -----------------------------------------------------------------------------------
 
-  private stepMission(dt: number): void {
-    const m = this.mission;
-    if (!m || m.status !== 'active') return;
-    const up = this.upRefs();
-    let done = false;
-    if (m.kind === 'hold') {
-      done = stepHold(m, dt, up.filter((p) => Math.hypot(p.x - m.x, p.z - m.z) < m.radius).length);
-    } else if (m.kind === 'collect') {
-      m.items.forEach((item, i) => {
-        if (!item.taken && up.some((p) => Math.hypot(p.x - item.x, p.z - item.z) < COOP.mission.coreRadius)) done = takeCore(m, i) || done;
-      });
-    } else if (m.kind === 'elite' && m.eliteId > 0) {
-      const z = this.zombies.zombies.find((q) => q.id === m.eliteId);
-      if (!z || !z.alive) done = eliteKilled(m);
+  private tickStory(dt: number, envs: ZombieEnv[], up: number, reported: number): void {
+    this.elapsed += dt;
+    const peers = this.upPeers();
+    // the squad: allies who are fighting are targets too
+    const allyEnvs: ZombieEnv[] = [];
+    for (const a of this.allies) {
+      if (!a.ref.alive || a.trapped) continue;
+      a.env ??= this.makeEnv(a.ref, a.field, (amount, sx, sz) => this.hurtAlly(a, amount, sx, sz));
+      a.env.time = this.time;
+      allyEnvs.push(a.env);
     }
-    if (done) this.payBonus(m);
+    this.zombies.update(dt, envs[0]!, up > 0, envs.concat(allyEnvs));
+
+    // the director keeps the pressure on each player in turn
+    if (peers.length > 0) {
+      const p = peers[this.directorTurn++ % peers.length]!;
+      const ex = this.extraction;
+      const ctx: DirectorContext = {
+        elapsed: this.elapsed,
+        playerX: p.ref.x,
+        playerZ: p.ref.z,
+        playerYaw: p.yaw,
+        playerEyeY: p.ref.eyeY,
+        region: this.level.regionAt(p.ref.x, p.ref.z),
+        phase: escalationPhase(this.elapsed),
+        quality: 'medium',
+        defenseActive: this.defense.status === 'active',
+        extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? this.elapsed - ex.calledAt : null,
+        paused: false,
+      };
+      this.zombies.director(dt, ctx, p.env, this.rng);
+    }
+
+    // contracts
+    const boss = this.zombies.boss;
+    if (boss && boss.alive && this.hunt.status === 'active') {
+      let near = Infinity;
+      for (const p of peers) near = Math.min(near, Math.hypot(boss.x - p.ref.x, boss.z - p.ref.z));
+      updateHunt(this.hunt, near, true);
+    }
+    this.stepRelay(dt);
+    unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt));
+    this.stepExtraction(dt, up);
+    this.stepAllies(dt, peers);
+    this.stepCarriers(dt);
+    for (const u of this.carriers) {
+      const z = u.zombie;
+      if (!z || !u.state) continue;
+      let near = Infinity;
+      for (const p of peers) near = Math.min(near, Math.hypot(z.x - p.ref.x, z.z - p.ref.z));
+      identifyCarrier(u.state, near);
+    }
+
+    // the end: the district sealed, or nobody left standing
+    if (!this.outcome && !extractionInProgress(this.extraction) && this.elapsed > MISSION.deadline) this.finish(false, 'The district was sealed before extraction was called');
+    if (!this.outcome && up === 0 && reported > 0 && this.aboard.size === 0 && [...this.peers.values()].every((p) => p.life !== LIFE.up)) {
+      this.finish(false, 'The whole squad went down');
+    }
   }
 
-  private payBonus(m: WaveMission): void {
-    this.send('all', { k: 'bonus', c: m.reward, t: MISSION_TEXT[m.kind].title });
+  private stepExtraction(dt: number, up: number): void {
+    const ex = this.extraction;
+    if (!extractionInProgress(ex)) return;
+    for (const ev of updateExtraction(ex, dt)) {
+      if (ev === 'departed') {
+        // the boarding window ran out: whoever is aboard leaves with it
+        if (this.aboard.size > 0) {
+          ex.phase = 'extracted';
+          this.finish(true, 'Extracted');
+        } else this.finish(false, 'The helicopter departed without the squad');
+      }
+    }
+    // everyone still standing is aboard: the bird leaves now
+    if (ex.phase === 'landed' && this.aboard.size > 0 && up === 0) {
+      ex.phase = 'extracted';
+      this.finish(true, 'Extracted');
+    }
+  }
+
+  private finish(won: boolean, reason: string): void {
+    if (this.outcome) return;
+    this.outcome = { won, reason };
+    this.ended = true;
+    if (won) {
+      // the squad's bonuses go to everyone who made it out
+      const soldiers = this.allies.filter((a) => a.kind === 'soldier' && a.ref.alive).length;
+      const survivors = this.allies.filter((a) => a.kind === 'survivor' && a.ref.alive && !a.trapped).length;
+      for (const id of this.aboard) {
+        if (soldiers > 0) this.send(id, { k: 'cash', c: soldiers * FORGE_SQUAD.saveBonus, t: `SQUAD EXTRACTED ${soldiers}` });
+        if (survivors > 0) this.send(id, { k: 'cash', c: survivors * SURVIVORS.extractBonus, t: `SURVIVORS EXTRACTED ${survivors}` });
+      }
+    }
+  }
+
+  private stepAllies(dt: number, peers: Peer[]): void {
+    this.allies.forEach((a, i) => {
+      if (!a.ref.alive || a.trapped) return;
+      allyRecover(a, dt);
+      a.fieldT -= dt;
+      if (a.fieldT <= 0) {
+        a.field.compute(a.ref.x, a.ref.z);
+        a.fieldT = 1;
+      }
+      // follow whoever freed them while they are up, else the nearest player who is
+      let leader = a.leader ? this.peers.get(a.leader) : undefined;
+      if (!leader || !leader.ref.alive) {
+        let bd = Infinity;
+        leader = undefined;
+        for (const p of peers) {
+          const d = Math.hypot(p.ref.x - a.ref.x, p.ref.z - a.ref.z);
+          if (d < bd) {
+            bd = d;
+            leader = p;
+          }
+        }
+      }
+      if (leader) {
+        this.allyLeader = leader;
+        allyMove(a, this.allyWorld, dt, leader.ref.x, leader.ref.z, leader.yaw);
+        this.allyLeader = null;
+      }
+      const shot = allyFight(a, this.allyWorld, dt);
+      if (!shot) return;
+      if (shot.hit && shot.target.alive && a.env) allyHit(a, shot, this.zombies, a.env);
+      if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
+    });
+  }
+
+  private hurtAlly(a: SimAlly, amount: number, sx: number, sz: number): void {
+    if (!a.ref.alive) return;
+    a.hp -= amount * a.stats.damageTaken;
+    a.sinceHurt = 0;
+    if (a.hp > 0) return;
+    a.hp = 0;
+    a.ref.alive = false;
+    // facing the blow: the clients throw the body away from it
+    a.yaw = Math.atan2(-(sx - a.ref.x), -(sz - a.ref.z));
   }
 
   private stepCarriers(dt: number): void {
@@ -424,60 +640,12 @@ export class ServerHost {
     return best ? best.env : null;
   }
 
-  /** A spawn point a fair distance from `t` that its flow field can reach. */
-  private farSpot(t: PlayerRef, env: ZombieEnv): { x: number; z: number } | null {
-    const spots = this.level.data.spawnPoints.filter((s) => {
-      const d = Math.hypot(s.x - t.x, s.z - t.z);
-      return d > 24 && d < 75 && env.field.isReachable(s.x, s.z);
-    });
-    return spots[Math.floor(this.rng.f() * spots.length)] ?? null;
-  }
-
-  private spawnOne(envs: ZombieEnv[]): void {
-    const upEnvs = envs.filter((e) => e.player.alive);
-    if (upEnvs.length === 0) return;
-    const env = upEnvs[Math.floor(this.rng.f() * upEnvs.length)]!;
-    const t = env.player;
-    const w = this.waves;
-    if (w.bossPending) {
-      const s = this.farSpot(t, env);
-      if (!s) return;
-      const boss = this.zombies.spawn('warden', s.x, s.z, this.rng, { boss: true, hpScale: 0.3 + 0.2 * envs.length });
-      this.zombies.boss = boss;
-      boss.aggro(t.x, t.z);
-      w.bossPending = false;
-      return;
-    }
-    if (this.carrierPending >= 0) {
-      const s = this.farSpot(t, env);
-      if (!s) return;
-      const u = this.carriers[this.carrierPending];
-      if (u && !u.zombie && !u.state) {
-        u.zombie = this.zombies.spawn(u.base, s.x, s.z, this.rng, { def: u.stats, curable: true, hpScale: 0.75 + 0.25 * envs.length });
-        u.zombie.carrierIdx = u.index + 1;
-        u.state = createCarrier(CARRIERS[u.index]!.id);
-        u.state.phase = 'identified';
-        u.zombie.aggro(t.x, t.z);
-      }
-      this.carrierPending = -1;
-      return;
-    }
-    const ctx: DirectorContext = { elapsed: this.time, playerX: t.x, playerZ: t.z, playerYaw: 0, playerEyeY: t.eyeY, region: 'low', phase: 0, quality: 'medium', defenseActive: false, extractionElapsed: null, paused: false };
-    if (this.elitePending && this.mission) {
-      if (this.zombies.spawnForWave('armored', waveHpScale(w.n) * COOP.mission.eliteHp, ctx, env, this.rng)) {
-        this.mission.eliteId = this.zombies.zombies[this.zombies.zombies.length - 1]!.id;
-        this.elitePending = false;
-      }
-      return;
-    }
-    if (w.toSpawn > 0 && this.zombies.spawnForWave(waveType(w.n, this.rng.f()), waveHpScale(w.n), ctx, env, this.rng)) w.toSpawn--;
-  }
-
   private onKill(z: Zombie, head: boolean): void {
+    if (z.isBoss && this.story) completeHunt(this.hunt);
     const p = this.killer ? this.peers.get(this.killer) : null;
     if (!p) return;
     p.kills++;
-    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: killReward(z.def, head, 'low') });
+    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low'), x: r1(z.x), zz: r1(z.z), dc: z.def.dropChance });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -485,27 +653,55 @@ export class ServerHost {
   // ---------------------------------------------------------------------------------------------
 
   private snapshot(): void {
-    const w = this.waves;
-    const z = this.zombies.zombies.map((q) => {
+    const z: number[][] = [];
+    for (const q of this.zombies.zombies) {
+      // the story's sleeping residents are nobody's business until someone comes near
+      if (q.dormant) continue;
       const n = q.toNet();
       const row = [n.id, TYPES.indexOf(n.type), r1(n.x), r1(n.z), r2(n.yaw), MODES.indexOf(n.mode), r2(n.actionT), r2(n.staggerT), r1(n.speed), r2(n.hp), n.flags, n.carrier];
-      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
-      return row;
-    });
+      const tag = q.tag ? (VULCAN.infected as readonly string[]).indexOf(q.tag) : -1;
+      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0 || tag >= 0) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
+      if (tag >= 0) row.push(tag);
+      z.push(row);
+    }
     const p: unknown[][] = [];
-    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs]);
-    const m = this.mission;
-    const mission = m ? [MISSION_KINDS.indexOf(m.kind), MISSION_STATUSES.indexOf(m.status), r2(m.progress), r1(m.x), r1(m.z), m.eliteId, m.reward, ...m.items.flatMap((i) => [r1(i.x), r1(i.z), i.taken ? 1 : 0])] : null;
+    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs, q.life]);
     const c: number[][] = [];
     for (const u of this.carriers) {
       if (u.state) c.push([u.index, CARRIER_PHASES.indexOf(u.state.phase), Math.round(u.state.downLeft), r1(u.lootX), r1(u.lootZ)]);
     }
     const rl = [RELAY_STATUSES.indexOf(this.defense.status), r2(this.defense.progress)];
-    this.send('all', { k: 's', g: this.gen, w: [w.n, PHASES.indexOf(w.phase), r1(Math.max(0, w.breakLeft)), this.left], z, p, m: mission, c, rl });
+    const out: Record<string, unknown> = { k: 's', g: this.gen, kind: this.kind, z, p, c, rl };
+    if (this.story) {
+      const ex = this.extraction;
+      out.ms = [r1(this.elapsed), RELAY_STATUSES.indexOf(this.hunt.status), this.hunt.identified ? 1 : 0, EXTRACTION_PHASES.indexOf(ex.phase), r1(ex.countdown), r1(ex.windowLeft), ex.calledAt === null ? -1 : r1(ex.calledAt), this.outcome ? (this.outcome.won ? 1 : 2) : 0];
+      if (this.outcome) out.why = this.outcome.reason;
+      out.sq = this.allies.map((a, i) => [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]);
+      out.em = this.embers.reduce((m, e, i) => (e.taken ? m | (1 << i) : m), 0);
+      out.sh = this.shots;
+      this.shots = [];
+    }
+    this.send('all', out);
   }
 
   /** Diagnostics for the admin view and tests. */
-  stats(): { wave: number; phase: WavePhase; infected: number; players: number; up: number } {
-    return { wave: this.waves.n, phase: this.waves.phase, infected: this.zombies.aliveCount, players: this.peers.size, up: this.upRefs().length };
+  stats(): { kind: SessionKind; infected: number; players: number; up: number; elapsed: number; extraction: ExtractionPhase; outcome: string | null } {
+    return {
+      kind: this.kind,
+      infected: this.zombies.aliveCount,
+      players: this.peers.size,
+      up: this.upPeers().length,
+      elapsed: this.elapsed,
+      extraction: this.extraction.phase,
+      outcome: this.outcome ? `${this.outcome.won ? 'won' : 'lost'}: ${this.outcome.reason}` : null,
+    };
+  }
+
+  /** Tests: the story's internals. */
+  get debug(): { defense: ReturnType<typeof createDefense>; hunt: ReturnType<typeof createHunt>; extraction: ReturnType<typeof createExtraction>; allies: SimAlly[]; embers: { x: number; z: number; taken: boolean }[]; aboard: Set<string> } {
+    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, embers: this.embers, aboard: this.aboard };
   }
 }
+
+/** The name the server worker and the earlier tests know it by. */
+export { SessionSim as ServerHost };

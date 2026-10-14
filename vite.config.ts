@@ -8,6 +8,8 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
+    // the game, and the bestiary (every infected in 3D)
+    rollupOptions: { input: { main: 'index.html', bestiary: 'bestiary.html' } },
   },
   server: {
     host: '127.0.0.1',

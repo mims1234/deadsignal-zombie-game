@@ -9,7 +9,8 @@
  * watches unseen: a hidden admin is never listed, counted or announced.
  *
  * Client -> server                                Server -> client
- *   {t:'create', visibility, invites, hosting}      {t:'room', room, you}     full state, on every change
+ *   {t:'create', visibility, invites, hosting,      {t:'room', room, you}     full state, on every change
+ *            map, kind}  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
  *   {t:'join', code, as, hidden}                    {t:'relay', from, d}      a game message from another member / the host
  *   {t:'leave'}                                     {t:'closed', reason}      kicked / ended / host left
  *   {t:'manage', op, ...}   owner only              {t:'error', msg}
@@ -28,6 +29,8 @@ const MAX_PER_SECOND = 90;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** The host id of a server-hosted room. */
 export const SIM_ID = 'sim';
+const MAPS = ['district', 'forge'];
+const KINDS = ['mission', 'mazoku', 'roam'];
 const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
@@ -60,6 +63,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
       hostId: room.hostId,
       ownerId: room.ownerId,
       hosting: room.hosting,
+      map: room.map,
+      kind: room.kind,
       visibility: room.visibility,
       state: room.state,
       players: visible(room, 'player').map(person),
@@ -80,7 +85,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
 
   /** Server hosting: a worker thread that runs this room's session. */
   function startSim(room) {
-    const w = new Worker(SIM_FILE, { workerData: { map: 'district' }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
     room.sim = w;
     w.on('message', (msg) => {
       if (!msg || room.sim !== w) return;
@@ -180,6 +185,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         const r = {
           code: newCode(),
           hosting,
+          map: MAPS.includes(msg.map) ? msg.map : 'district',
+          kind: KINDS.includes(msg.kind) ? msg.kind : 'mission',
           ownerId: m.id,
           hostId: hosting === 'server' ? SIM_ID : m.id,
           hostName: m.name,
@@ -258,6 +265,12 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
           }
         } else if (msg.op === 'uninvite') {
           room.invites.delete(String(msg.id));
+        } else if (msg.op === 'config') {
+          // what the session plays; only between runs
+          if (room.state !== 'playing' && KINDS.includes(msg.value)) {
+            room.kind = msg.value;
+            room.sim?.postMessage({ type: 'kind', kind: room.kind });
+          }
         } else if (msg.op === 'state') {
           const was = room.state;
           room.state = msg.value === 'playing' ? 'playing' : 'lobby';
@@ -333,7 +346,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     info(code) {
       const r = rooms.get(String(code || '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, host: r.hostName, hosting: r.hosting, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
+      return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
     },
     /** Admin view of everything live, hidden watchers included. */
     live() {
@@ -342,6 +355,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         host: r.hostName,
         hostId: r.ownerId,
         hosting: r.hosting,
+        map: r.map,
+        kind: r.kind,
         simMs: r.simLoad ? r.simLoad.ms : null,
         infected: r.simLoad ? r.simLoad.infected : null,
         visibility: r.visibility,

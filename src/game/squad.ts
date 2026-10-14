@@ -5,51 +5,29 @@
  *    then they follow you and shoot; side contract, get them out alive. On the Forge they are Vulcan's leaders;
  *  - the Trials of Ignis (the Forge only): burning embers hidden around the map.
  * The infected treat every ally who is fighting exactly like a player (the co-op targeting path); a cage's occupant
- * is left alone until freed.
+ * is left alone until freed. How allies move and shoot lives in `allyBrain.ts`, shared with the co-op simulation.
+ *
+ * In co-op (`follow`) the session simulation runs all of this; here the squad, the cages and the embers are only drawn
+ * from its reports, and freeing someone or touching an ember is a request to it.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FORGE_SQUAD, PLAYER, QUALITY, RAGDOLL, SURVIVORS } from '../config';
+import { FORGE_SQUAD, PLAYER, QUALITY, SURVIVORS } from '../config';
 import { Avatar } from '../coop/avatar';
-import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
-import { spreadPick } from '../logic/carriers';
+import type { ZombieEnv } from '../enemies/zombie';
 import { addCash } from '../logic/economy';
 import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
-import { FlowField } from '../world/nav';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, survivorRoster } from './allyBrain';
 import type { Game } from './game';
 
-interface Stats {
-  hp: number;
-  damageTaken: number;
-  range: number;
-  fireInterval: number;
-  bodyDamage: number;
-  headDamage: number;
-}
-
-interface Ally {
-  name: string;
-  kind: 'soldier' | 'survivor';
-  stats: Stats;
-  ref: PlayerRef;
+interface Ally extends AllyBody {
   avatar: Avatar;
-  hp: number;
-  yaw: number;
-  field: FlowField;
-  fieldT: number;
-  env: ZombieEnv | null;
-  sinceHurt: number;
-  shootT: number;
-  pickT: number;
-  target: Zombie | null;
-  /** Follow slot behind the player: x to the right, z behind. */
-  slot: { x: number; z: number };
-  warned: boolean;
-  /** Survivors: still in the cage. */
-  trapped: boolean;
   cage: Cage | null;
 }
+
+/** What the co-op simulation reports for one ally: [index, x, z, yaw, state (0 dead, 1 fighting, 2 caged), hp]. */
+export type AllyRow = [number, number, number, number, number, number];
 
 interface Ember {
   x: number;
@@ -66,13 +44,7 @@ interface Cage {
   openT: number;
 }
 
-const tmpA = new THREE.Vector3();
-const tmpB = new THREE.Vector3();
-
-const SOLDIER: Stats = { ...FORGE_SQUAD, hp: FORGE_SQUAD.allyHp, damageTaken: FORGE_SQUAD.allyDamageTaken };
-const CIVILIAN: Stats = SURVIVORS;
-
-const THANKS = [
+export const THANKS = [
   'Took you long enough! I have your back.',
   "I owe you one. Point me at them.",
   'Get me out of here - and give me something to shoot.',
@@ -141,7 +113,12 @@ export class SquadRuntime {
   private time = 0;
   /** True while an ally's shot is being applied (the kill is theirs, not the player's). */
   allyShooting = false;
-  private readonly steer = { x: 0, z: 0 };
+  /** Co-op: the session simulation runs the squad; these ask it to free someone / take an ember. */
+  follow = false;
+  requestRescue: ((name: string) => void) | null = null;
+  requestEmber: ((index: number) => void) | null = null;
+  private askedAt = -9;
+  private readonly world: AllyWorld;
 
   constructor(private readonly g: Game) {
     const mat = new THREE.MeshStandardMaterial({ color: 0x401204, emissive: 0xff6a10, emissiveIntensity: 2.2, roughness: 0.4 });
@@ -155,16 +132,32 @@ export class SquadRuntime {
       g.worldRoot.add(obj);
       this.embers.push({ x, z, taken: false, obj, core });
     }
+    this.world = {
+      get level() {
+        return g.level;
+      },
+      get zombies() {
+        return g.zombies;
+      },
+      get rng() {
+        return g.rng;
+      },
+      followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
+    };
   }
 
   get active(): boolean {
     return this.soldiers || this.survivors;
   }
 
-  /** Start of a run. `forge`: the soldiers and the Trials. `survivors`: cages around the map. */
-  reset(forge: boolean, survivors: boolean): void {
+  /**
+   * Start of a run. `forge`: the soldiers and the Trials. `survivors`: cages around the map. `follow` (co-op): the
+   * squad is listed in the simulation's order and placed by its reports; nothing here decides anything.
+   */
+  reset(forge: boolean, survivors: boolean, follow = false): void {
     this.soldiers = forge;
     this.survivors = survivors;
+    this.follow = follow;
     this.time = 0;
     for (const a of this.allies) {
       a.avatar.dispose();
@@ -172,87 +165,54 @@ export class SquadRuntime {
     }
     this.allies.length = 0;
     const g = this.g;
-    const nav = g.level.nav;
-    const rand = (): number => g.rng.f();
-    for (const e of this.embers) {
-      // snap each ember onto open ground
-      const at = nav.isBlockedAt(e.x, e.z) ? (nav.randomFreeNear(e.x, e.z, 3, rand) ?? e) : e;
-      e.x = at.x;
-      e.z = at.z;
+    const spots = emberSpots(g.level);
+    this.embers.forEach((e, i) => {
+      e.x = spots[i]!.x;
+      e.z = spots[i]!.z;
       e.taken = false;
       e.obj.position.set(e.x, 0, e.z);
       e.obj.visible = forge;
-    }
+    });
     const st = g.level.data.playerStart;
     if (forge) {
-      FORGE_SQUAD.allies.forEach((name, i) => {
-        const slot = { x: i === 0 ? -2.2 : 2.2, z: 2.6 };
-        const at = nav.randomFreeNear(st.x + slot.x, st.z + slot.z, 2.5, rand) ?? { x: st.x + slot.x, z: st.z + slot.z };
-        this.addAlly(name, 'soldier', SOLDIER, new Avatar(name, i, { tag: 'SQUAD' , tagColor: '#8fd18a' }), at.x, at.z, st.yaw, slot, false);
-      });
+      const at = soldierSpots(g.level, g.rng);
+      FORGE_SQUAD.allies.forEach((name, i) => this.addAlly(makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length), new Avatar(name, i, { tag: 'SQUAD', tagColor: '#8fd18a' })));
     }
-    if (survivors) this.placeSurvivors();
+    if (!survivors) return;
+    const roster = survivorRoster(g.mapId);
+    // co-op: the simulation chooses where the cages go and says so in its first report
+    const cages = follow ? roster.map(() => null) : cageSpots(g.level, g.rng, roster.length);
+    roster.forEach((who, i) => {
+      const c = cages[i];
+      if (!follow && !c) return;
+      const a = this.addAlly(
+        makeAllyBody(g.level, who.name, 'survivor', c?.x ?? 0, c?.z ?? 0, 0, c?.slot ?? { x: 0, z: 3 }, true, this.allies.length),
+        new Avatar(who.name, i, { color: who.color, helmet: false, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : '#9fd0ff' }),
+      );
+      a.avatar.cowering = true;
+      if (c) this.placeCage(a, c.x, c.z);
+      else a.avatar.root.visible = false;
+    });
   }
 
-  private addAlly(name: string, kind: Ally['kind'], stats: Stats, avatar: Avatar, x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean): Ally {
+  private addAlly(body: AllyBody, avatar: Avatar): Ally {
     this.g.worldRoot.add(avatar.root);
-    const a: Ally = {
-      name,
-      kind,
-      stats,
-      ref: { x, y: 0, z, eyeY: 1.6, alive: true, sprinting: false },
-      avatar,
-      hp: stats.hp,
-      yaw,
-      field: new FlowField(this.g.level.nav),
-      fieldT: this.allies.length * 0.17,
-      env: null,
-      sinceHurt: 99,
-      shootT: 0.5,
-      pickT: 0,
-      target: null,
-      slot,
-      warned: false,
-      trapped,
-      cage: null,
-    };
-    avatar.set(x, 0, z, yaw, true);
+    const a: Ally = { ...body, avatar, cage: null };
+    avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
     this.allies.push(a);
     return a;
   }
 
-  /** Cages at spread-out resident spots well away from the insertion point, each reachable on foot. */
-  private placeSurvivors(): void {
-    const g = this.g;
-    const nav = g.level.nav;
-    const data = g.level.data;
-    const st = data.playerStart;
-    const roster = g.mapId === 'forge' ? SURVIVORS.forge : SURVIVORS.district;
-    const reach = new FlowField(nav);
-    reach.compute(st.x, st.z);
-    const clear = (x: number, z: number): boolean => {
-      for (const [ox, oz] of [[0, 0], [1.3, 1.3], [-1.3, 1.3], [1.3, -1.3], [-1.3, -1.3], [0, -2.2]] as const) if (nav.isBlockedAt(x + ox, z + oz)) return false;
-      const away = (q: { x: number; z: number }, r: number): boolean => Math.hypot(q.x - x, q.z - z) > r;
-      return data.crates.every((c) => away(c, 4)) && data.stations.every((s) => away(s, 6)) && reach.isReachable(x, z + -2.2);
-    };
-    const pool = data.ambient.map((a) => ({ x: a.x, z: a.z })).filter((p) => Math.hypot(p.x - st.x, p.z - st.z) > SURVIVORS.minStartDistance && clear(p.x, p.z));
-    const picks = spreadPick(pool, roster.length, () => g.rng.f());
-    picks.forEach((pi, i) => {
-      const who = roster[i]!;
-      const at = pool[pi]!;
-      const cage = makeCage();
-      cage.root.position.set(at.x, 0, at.z);
-      g.worldRoot.add(cage.root);
-      const slot = { x: (i % 2 === 0 ? -1 : 1) * (1.4 + i * 0.6), z: 3.4 + i * 0.8 };
-      const a = this.addAlly(who.name, 'survivor', CIVILIAN, new Avatar(who.name, i, { color: who.color, helmet: false, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : '#9fd0ff' }), at.x, at.z, 0, slot, true);
-      a.avatar.cowering = true;
-      a.cage = cage;
-    });
+  private placeCage(a: Ally, x: number, z: number): void {
+    const cage = makeCage();
+    cage.root.position.set(x, 0, z);
+    this.g.worldRoot.add(cage.root);
+    a.cage = cage;
   }
 
   /** Environments for the infected's targeting: the player first, then each ally who is fighting. */
   envs(base: ZombieEnv): ZombieEnv[] | undefined {
-    if (!this.active) return undefined;
+    if (!this.active || this.follow) return undefined;
     const list = [base];
     for (const a of this.allies) {
       if (!a.ref.alive || a.trapped) continue;
@@ -271,19 +231,25 @@ export class SquadRuntime {
     const g = this.g;
     if (a.hp <= 0) {
       a.hp = 0;
-      a.ref.alive = false;
-      a.avatar.fall(a.ref.x - sx, a.ref.z - sz, 1.5 + knock * 0.8);
-      g.fx.blood({ x: a.ref.x, y: 1.2, z: a.ref.z }, { x: a.ref.x - sx, y: 0.2, z: a.ref.z - sz }, { amount: 1, kill: true });
-      g.feed(`${a.name.toUpperCase()} KIA`, 'danger');
-      if (a.kind === 'soldier') {
-        g.banner(`${a.name.toUpperCase()} IS DOWN`, 'Killed in action', 'danger', 4);
-        g.radio('COMMAND', `We lost ${a.name}. Keep the other one breathing.`, 5);
-      } else {
-        g.banner(`${a.name.toUpperCase()} DIDN'T MAKE IT`, 'A survivor was killed', 'danger', 4);
-      }
+      this.killed(a, sx, sz, knock);
     } else if (a.hp < a.stats.hp * 0.35 && !a.warned) {
       a.warned = true;
       g.radio(a.name.toUpperCase(), "I'm hit bad - cover me!", 3.5);
+    }
+  }
+
+  /** An ally died: they fall where the blow sent them, and everyone hears about it. */
+  private killed(a: Ally, sx: number, sz: number, knock: number): void {
+    const g = this.g;
+    a.ref.alive = false;
+    a.avatar.fall(a.ref.x - sx, a.ref.z - sz, 1.5 + knock * 0.8);
+    g.fx.blood({ x: a.ref.x, y: 1.2, z: a.ref.z }, { x: a.ref.x - sx, y: 0.2, z: a.ref.z - sz }, { amount: 1, kill: true });
+    g.feed(`${a.name.toUpperCase()} KIA`, 'danger');
+    if (a.kind === 'soldier') {
+      g.banner(`${a.name.toUpperCase()} IS DOWN`, 'Killed in action', 'danger', 4);
+      g.radio('COMMAND', `We lost ${a.name}. Keep the other one breathing.`, 5);
+    } else {
+      g.banner(`${a.name.toUpperCase()} DIDN'T MAKE IT`, 'A survivor was killed', 'danger', 4);
     }
   }
 
@@ -308,20 +274,78 @@ export class SquadRuntime {
   rescue(id: string): void {
     const a = this.allies.find((q) => q.name === id && q.trapped);
     if (!a) return;
+    if (this.follow) {
+      this.requestRescue?.(id);
+      return;
+    }
     const g = this.g;
     a.trapped = false;
-    a.avatar.arm();
     a.yaw = g.player.yaw;
     addCash(g.session.inv, SURVIVORS.rescueCash);
     g.hudEvent({ type: 'cash', amount: SURVIVORS.rescueCash });
+    this.announceFreed(a, `+$${SURVIVORS.rescueCash}`);
+    // step out of the door
+    a.ref.z -= 1.6;
+  }
+
+  /** A cage opened: the survivor takes up a weapon and says thanks. */
+  private announceFreed(a: Ally, reward: string): void {
+    const g = this.g;
+    a.avatar.arm();
     g.audio.play('contract_complete', { priority: 3, volume: 0.8 });
     g.fx.sparkle({ x: a.ref.x, y: 1.2, z: a.ref.z }, 0x8fd18a, 18);
     const freed = this.allies.filter((q) => q.kind === 'survivor' && !q.trapped).length;
     const total = this.allies.filter((q) => q.kind === 'survivor').length;
-    g.banner(`${a.name.toUpperCase()} FREED`, `Survivor ${freed}/${total} - they fight with you now   +$${SURVIVORS.rescueCash}`, 'good', 4);
+    g.banner(`${a.name.toUpperCase()} FREED`, `Survivor ${freed}/${total} - they fight with you now${reward ? `   ${reward}` : ''}`, 'good', 4);
     g.radio(a.name.toUpperCase(), THANKS[Math.floor(g.rng.f() * THANKS.length)]!, 4);
-    // step out of the door
-    a.ref.z -= 1.6;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // co-op: the simulation's reports
+  // ---------------------------------------------------------------------------------------------
+
+  /** The squad as the simulation sees it; `shots` are the allies' shots since the last report ([index, x, y, z, hit]). */
+  applyRemote(rows: readonly AllyRow[], embersTaken: number, shots: readonly number[][]): void {
+    if (!this.follow) return;
+    const g = this.g;
+    for (const [i, x, z, yaw, state, hp] of rows) {
+      const a = this.allies[i];
+      if (!a) continue;
+      if (state === 2 && !a.cage) {
+        // first report: where the cage stands
+        a.ref.x = x;
+        a.ref.z = z;
+        this.placeCage(a, x, z);
+        a.avatar.root.visible = true;
+        a.avatar.set(x, 0, z, 0, true);
+      }
+      if (a.trapped && state !== 2) {
+        a.trapped = false;
+        this.announceFreed(a, '');
+      }
+      if (a.ref.alive && state === 0) {
+        a.hp = 0;
+        this.killed(a, a.ref.x + Math.sin(yaw), a.ref.z + Math.cos(yaw), 2);
+      }
+      a.ref.x = x;
+      a.ref.z = z;
+      a.yaw = yaw;
+      a.hp = hp;
+    }
+    for (const [i, tx, ty, tz, hit] of shots) {
+      const a = this.allies[i!];
+      if (!a || !a.ref.alive) continue;
+      const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
+      g.fx.tracer(from, { x: tx!, y: ty!, z: tz! }, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+      g.audio.play(a.kind === 'soldier' ? 'rifle_shot' : 'pistol_shot', { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
+      void hit;
+    }
+    this.embers.forEach((e, i) => {
+      const taken = (embersTaken & (1 << i)) !== 0;
+      if (taken && !e.taken) g.fx.sparkle({ x: e.x, y: 1, z: e.z }, 0xff7a1a, 20);
+      e.taken = taken;
+      e.obj.visible = this.soldiers && !taken;
+    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -353,18 +377,29 @@ export class SquadRuntime {
         a.avatar.update(dt);
         continue;
       }
-      a.sinceHurt += dt;
-      if (a.sinceHurt > 6) {
-        a.hp = Math.min(a.stats.hp, a.hp + 6 * dt);
-        if (a.hp > a.stats.hp * 0.6) a.warned = false;
+      if (this.follow) {
+        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        a.avatar.update(dt);
+        continue;
       }
+      allyRecover(a, dt);
       a.fieldT -= dt;
       if (a.fieldT <= 0) {
         a.field.compute(a.ref.x, a.ref.z);
         a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
-      if (alive) this.move(a, dt, p.x, p.z, p.yaw);
-      this.fight(a, dt);
+      if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw);
+      const shot = allyFight(a, this.world, dt);
+      if (shot) {
+        g.fx.tracer(shot.from, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+        g.audio.play(a.kind === 'soldier' ? 'rifle_shot' : 'pistol_shot', { pos: shot.from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
+        if (shot.hit) {
+          this.allyShooting = true;
+          allyHit(a, shot, g.zombies, g.zenv);
+          this.allyShooting = false;
+        }
+        if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
+      }
       a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
     }
@@ -374,89 +409,14 @@ export class SquadRuntime {
       if (e.taken || !this.soldiers) continue;
       e.core.rotation.y += dt * 1.6;
       e.core.position.y = 1 + Math.sin(this.time * 2 + e.x) * 0.12;
-      if (alive && Math.hypot(e.x - p.x, e.z - p.z) < FORGE_SQUAD.emberRadius) this.takeEmber(e);
-    }
-  }
-
-  private move(a: Ally, dt: number, px: number, pz: number, pyaw: number): void {
-    const g = this.g;
-    // the follow slot, behind and to the side of the player
-    const c = Math.cos(pyaw);
-    const s = Math.sin(pyaw);
-    const tx = px + a.slot.x * c + a.slot.z * s;
-    const tz = pz - a.slot.x * s + a.slot.z * c;
-    const toPlayer = Math.hypot(px - a.ref.x, pz - a.ref.z);
-    // lost (left far behind or stuck): regroup next to the player, out of sight
-    if (toPlayer > FORGE_SQUAD.regroupDistance) {
-      const at = g.level.nav.randomFreeNear(tx, tz, 3, () => g.rng.f());
-      if (at) {
-        a.ref.x = at.x;
-        a.ref.z = at.z;
-      }
-      return;
-    }
-    const dx = tx - a.ref.x;
-    const dz = tz - a.ref.z;
-    const d = Math.hypot(dx, dz);
-    if (d < 1.2 || toPlayer < 2.6) {
-      if (!a.target) a.yaw = pyaw;
-      return;
-    }
-    let gx = tx;
-    let gz = tz;
-    if (!g.level.nav.los(a.ref.x, a.ref.z, tx, tz) && g.flow.follow(a.ref.x, a.ref.z, this.steer, 10)) {
-      gx = this.steer.x;
-      gz = this.steer.z;
-    }
-    const sx = gx - a.ref.x;
-    const sz = gz - a.ref.z;
-    const sd = Math.hypot(sx, sz) || 1;
-    const speed = (d > 10 ? 6.2 : 4.4) * dt;
-    const step = { x: a.ref.x + (sx / sd) * Math.min(speed, sd), z: a.ref.z + (sz / sd) * Math.min(speed, sd) };
-    g.level.world.resolveCircle(step, 0.32, 0.5, 1.7, 3);
-    a.ref.x = step.x;
-    a.ref.z = step.z;
-    a.ref.eyeY = 1.6;
-    if (!a.target) a.yaw = Math.atan2(-sx, -sz);
-  }
-
-  private fight(a: Ally, dt: number): void {
-    const g = this.g;
-    a.pickT -= dt;
-    if (a.pickT <= 0 || (a.target && !a.target.active)) {
-      a.pickT = 0.3;
-      a.target = null;
-      let best: number = a.stats.range;
-      for (const z of g.zombies.zombies) {
-        if (!z.active || z.dormant) continue;
-        const d = Math.hypot(z.x - a.ref.x, z.z - a.ref.z);
-        if (d >= best) continue;
-        z.rig.getChestWorld(tmpA);
-        if (g.level.world.segmentBlocked(a.ref.x, 1.45, a.ref.z, tmpA.x, tmpA.y, tmpA.z, 'shots')) continue;
-        best = d;
-        a.target = z;
+      if (alive && Math.hypot(e.x - p.x, e.z - p.z) < FORGE_SQUAD.emberRadius) {
+        if (!this.follow) this.takeEmber(e);
+        else if (this.time - this.askedAt > 0.5) {
+          this.askedAt = this.time;
+          this.requestEmber?.(this.embers.indexOf(e));
+        }
       }
     }
-    const t = a.target;
-    if (!t) return;
-    a.yaw = Math.atan2(-(t.x - a.ref.x), -(t.z - a.ref.z));
-    a.shootT -= dt;
-    if (a.shootT > 0) return;
-    a.shootT = a.stats.fireInterval * (0.8 + g.rng.f() * 0.5);
-    const dist = Math.hypot(t.x - a.ref.x, t.z - a.ref.z);
-    const hit = g.rng.f() < (dist < 10 ? 0.8 : 0.6);
-    const head = hit && g.rng.f() < 0.18;
-    if (head) t.rig.getHeadWorld(tmpB);
-    else t.rig.getChestWorld(tmpB);
-    const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
-    const to = hit ? { x: tmpB.x, y: tmpB.y, z: tmpB.z } : { x: tmpB.x + (g.rng.f() - 0.5) * 2, y: tmpB.y + (g.rng.f() - 0.3) * 1.5, z: tmpB.z + (g.rng.f() - 0.5) * 2 };
-    g.fx.tracer(from, to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
-    g.audio.play(a.kind === 'soldier' ? 'rifle_shot' : 'pistol_shot', { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
-    if (!hit) return;
-    this.allyShooting = true;
-    g.zombies.damage(t, head ? a.stats.headDamage : a.stats.bodyDamage, head, g.zenv, a.yaw, RAGDOLL.push.ally, RAGDOLL.lift.ally);
-    this.allyShooting = false;
-    if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
   }
 
   private takeEmber(e: Ember): void {
@@ -480,7 +440,7 @@ export class SquadRuntime {
 
   /** Extraction succeeded: a bonus for every soldier and every freed survivor who made it. */
   onExtracted(): void {
-    if (!this.active) return;
+    if (!this.active || this.follow) return;
     const g = this.g;
     const soldiers = this.allies.filter((a) => a.kind === 'soldier');
     const savedS = soldiers.filter((a) => a.ref.alive).length;

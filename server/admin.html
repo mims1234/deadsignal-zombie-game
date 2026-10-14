@@ -203,6 +203,7 @@
           { label: 'Code', cell: (r) => r.code },
           { label: 'Owner', cell: (r) => r.host },
           { label: 'Hosting', cell: (r) => (r.hosting === 'server' ? `Server${r.simMs !== null && r.simMs !== undefined ? `  ${r.simMs} ms/tick, ${r.infected} infected` : ''}` : 'Self') },
+          { label: 'Plays', cell: (r) => `${r.kind === 'mazoku' ? 'Standard Mazoku' : r.kind === 'roam' ? 'Free roam' : 'Standard'} - ${r.map === 'forge' ? 'The Forge' : 'The District'}` },
           { label: 'Access', cell: (r) => (r.visibility === 'private' ? 'Invite-only' : 'Public') },
           { label: 'State', cell: (r) => r.state },
           { label: 'Open for', num: 1, cell: (r) => clock(r.ageSeconds) },

@@ -2,7 +2,7 @@
  * Contextual interactions: crates, stations (number-key panels), the transmitter console, the extraction terminal and the
  * helicopter door. Produces the HUD prompt / station panel each frame and executes actions exactly once.
  */
-import { CARD_MODE, ECONOMY, MISSION, PLAYER, SURVIVORS, WEAPONS } from '../config';
+import { CARD_MODE, COOP, ECONOMY, MISSION, PLAYER, SURVIVORS, WEAPONS } from '../config';
 import { buyMenu, purchaseBuy, purchaseUpgrade, upgradeMenu, type BuyItemId, type StationItem } from '../logic/economy';
 import type { Edges } from '../player/input';
 import type { HudPrompt, StationPanel } from '../ui/hudTypes';
@@ -22,10 +22,12 @@ export interface MissionApi {
   board(): boolean;
 }
 
-/** Trapped survivors: opening a cage. */
+/** Trapped survivors: opening a cage. Co-op: picking up a downed teammate. */
 export interface RescueApi {
   rescueTarget(): { id: string; name: string; dist: number } | null;
   rescue(id: string): void;
+  reviveTarget(): { id: string; name: string; dist: number } | null;
+  revive(id: string): void;
 }
 
 /** Card recovery: purging a downed carrier. */
@@ -257,6 +259,20 @@ export class Interaction {
         hold: CARD_MODE.cureHold,
         enabled: true,
         onUse: () => this.cards.cure(down.id),
+      });
+    }
+    // a downed teammate (co-op)
+    const mate = this.squad.reviveTarget();
+    if (mate) {
+      targets.push({
+        id: `revive:${mate.id}`,
+        dist: mate.dist - 1, // before anything else in reach
+        text: `REVIVE ${mate.name.toUpperCase()}`,
+        sub: 'Hold to pick them up',
+        tone: 'good',
+        hold: COOP.reviveHold,
+        enabled: true,
+        onUse: () => this.squad.revive(mate.id),
       });
     }
     // a trapped survivor

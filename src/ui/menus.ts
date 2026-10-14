@@ -26,7 +26,7 @@ const MODES: { id: GameMode; label: string; note: string }[] = [
   { id: 'standard', label: 'STANDARD', note: 'The operation as briefed.' },
   { id: 'cards', label: 'STANDARD MAZOKU', note: 'The standard operation, plus five Mazoku card carriers to put down, purge and collect.' },
   { id: 'roam', label: 'FREE ROAM', note: 'No mission and no damage. Fly anywhere and look around.' },
-  { id: 'coop', label: 'CO-OP', note: 'Up to three players survive ten waves together. Downed players return when a wave is cleared. The host can add the Mazoku carriers.' },
+  { id: 'coop', label: 'CO-OP', note: 'Up to three players run this map together: Standard, Standard Mazoku or Free Roam. Revive anyone who goes down, then extract together.' },
 ];
 
 const DISCORD_MARK =
@@ -296,10 +296,6 @@ class Menus implements MenusApi {
       });
       b.setAttribute('role', 'radio');
       b.setAttribute('aria-checked', m.id === mode ? 'true' : 'false');
-      if (m.id === 'coop' && this.info.map !== 'district') {
-        b.disabled = true;
-        b.title = 'Co-op runs on The District';
-      }
     }
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
@@ -310,6 +306,8 @@ class Menus implements MenusApi {
     let showTab: (w: 'controls' | 'settings') => void = () => {};
     this.button(actions, 'SETTINGS', '', () => showTab('settings'));
     this.button(actions, 'CONTROLS', '', () => showTab('controls'));
+    // every infected (and the people beside you) in 3D, on its own page
+    this.button(actions, 'BESTIARY', '', () => window.open('./bestiary.html', '_blank', 'noopener'));
     el(
       'div',
       'note',

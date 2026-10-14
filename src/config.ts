@@ -854,29 +854,17 @@ export const CARD_MODE = {
 
 export const COOP = {
   maxPlayers: 3,
-  /** Waves in a run; clearing the last one wins. */
-  waves: 10,
-  /** Seconds before the first wave, and between waves (downed players return at the start of a break). */
-  firstBreak: 12,
-  breakTime: 22,
-  /** Wave 1 size for one player, and how much each later wave adds (both scale with the player count). */
-  baseSize: 8,
-  sizePerWave: 4,
-  /** Extra infected health per wave (0.1 = +10%). */
-  hpPerWave: 0.1,
-  /** Every this many waves the Warden joins. */
-  bossEvery: 5,
-  /** Most infected alive at once, and seconds between spawns. */
-  activeCap: 26,
-  spawnEvery: 0.5,
-  /** World snapshots the host sends per second, and position reports each guest sends. */
+  /** World snapshots the simulation sends per second, and position reports each player sends. */
   snapshotHz: 10,
   reportHz: 12,
-  /** Wave objectives. While a hold / collect objective is open the wave keeps trickling infected in. */
-  mission: { holdSeconds: 28, holdRadius: 7, cores: 3, coreRadius: 1.7, rewardBase: 200, rewardPerWave: 50, trickleEvery: 2.2, eliteHp: 3.2 },
-  /** Waves on which a card carrier joins (one each), and the cash every player gets when her card is recovered. */
-  carrierWaves: [2, 4, 6, 8, 9],
+  /** Cash every player gets when a Mazoku carrier's card is recovered. */
   carrierReward: 350,
+  /** A downed player bleeds out after this long unless a teammate within `reviveReach` holds E for `reviveHold`. */
+  bleedOut: 30,
+  reviveHold: 3,
+  reviveReach: 2.6,
+  /** Health a revived player gets back up with. */
+  reviveHealth: 50,
 } as const;
 
 /** The Forge map: the two soldiers who deploy with you, and the Trials of Ignis. */

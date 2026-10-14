@@ -147,9 +147,10 @@ p3.inbox.length = 0;
 p2.send({ t: 'relay', to: 'host', d: { k: 'p', x: 1, y: 0, z: 1, yaw: 0, up: true, hp: 100 } });
 await sleep(150);
 check('a message to the host goes to the server, not to the other players', !p3.inbox.some((m) => m.t === 'relay' && m.from === p2.id));
+p2.send({ t: 'manage', op: 'state', value: 'playing' });
 const cfgSeen = await (async () => {
-  for (let i = 0; i < 40; i++) {
-    if (p3.inbox.concat(p2.inbox).some((m) => m.t === 'relay' && m.from === 'sim' && m.d.k === 'cfg')) return true;
+  for (let i = 0; i < 60; i++) {
+    if (p3.inbox.concat(p2.inbox).some((m) => m.t === 'relay' && m.from === 'sim' && m.d.k === 's')) return true;
     await sleep(100);
   }
   return false;

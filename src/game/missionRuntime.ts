@@ -18,6 +18,7 @@ import {
   updateHunt,
 } from '../logic/contracts';
 import { applyContractReward } from '../logic/economy';
+import type { ExtractionPhase } from '../logic/extraction';
 import {
   boardHelicopter,
   callExtraction,
@@ -81,6 +82,14 @@ export class MissionRuntime implements MissionApi {
    */
   shared = false;
   requestRelay: (() => void) | null = null;
+  /**
+   * Co-op story: the whole operation is the simulation's (contracts, extraction, the clock). This runtime only shows it:
+   * `applyMission` takes its reports and plays the banners, the flare and the helicopter on each change; calling the
+   * extraction and boarding are requests.
+   */
+  follow = false;
+  requestCall: (() => void) | null = null;
+  requestBoard: (() => void) | null = null;
   private tmp = new THREE.Vector3();
   private readonly lz;
   private readonly toLzDist: number;
@@ -165,7 +174,7 @@ export class MissionRuntime implements MissionApi {
   }
 
   terminalState(): 'locked' | 'available' | 'busy' {
-    if (this.shared) return 'busy'; // co-op is won on waves: no extraction to call
+    if (this.shared && !this.follow) return 'busy'; // co-op free roam: no extraction to call
     const ph = this.ctx.session.extraction.phase;
     if (ph === 'locked') return 'locked';
     if (ph === 'available') return 'available';
@@ -177,7 +186,18 @@ export class MissionRuntime implements MissionApi {
     const s = ctx.session;
     const p = ctx.player;
     const inLz = Math.hypot(p.x - this.lz.lzX, p.z - this.lz.lzZ) <= this.lz.lzRadius;
+    if (this.follow) {
+      if (inLz && ctx.playerAlive()) this.requestCall?.();
+      return false;
+    }
     if (!callExtraction(s.extraction, s.elapsed, inLz, ctx.playerAlive())) return false;
+    this.onCalled();
+    return true;
+  }
+
+  /** The flare is lit at the radio and the bird is on its way. */
+  private onCalled(): void {
+    const ctx = this.ctx;
     this.terminal.setState('called');
     const f = this.terminal.flareLocal.clone();
     this.terminal.root.localToWorld(f);
@@ -191,7 +211,6 @@ export class MissionRuntime implements MissionApi {
     ctx.radio('COMMAND', "Bird is inbound. Hold the perimeter - everything nearby is heading your way.");
     ctx.feed('EXTRACTION REQUESTED', 'danger');
     this.beam.visible = true;
-    return true;
   }
 
   heliDoorPos(): { x: number; z: number } | null {
@@ -212,6 +231,10 @@ export class MissionRuntime implements MissionApi {
     const door = this.heliDoorPos();
     if (!door) return false;
     const p = this.ctx.player;
+    if (this.follow) {
+      if (this.canBoard()) this.requestBoard?.();
+      return false;
+    }
     if (!boardHelicopter(this.ctx.session.extraction, Math.hypot(door.x - p.x, door.z - p.z), this.ctx.playerAlive())) return false;
     this.ctx.audio.play('boarding', { priority: 3 });
     this.ctx.beginBoarding();
@@ -236,6 +259,7 @@ export class MissionRuntime implements MissionApi {
   reset(): void {
     const ctx = this.ctx;
     this.shared = false;
+    this.follow = false;
     this.areaMarker.root.visible = true;
     this.areaMarker.setProgress(0);
     this.areaMarker.setActive(false);
@@ -286,7 +310,7 @@ export class MissionRuntime implements MissionApi {
     const ex = s.extraction;
     const data = ctx.level.data;
 
-    s.elapsed += dt;
+    if (!this.follow) s.elapsed += dt; // co-op: the simulation's clock arrives in its reports
     const region = ctx.playerRegion();
     bumpRegion(s, region);
     if (region !== this.lastRegion) {
@@ -322,7 +346,7 @@ export class MissionRuntime implements MissionApi {
 
     // ---- hunt contract ----
     const boss = ctx.zombies.boss;
-    if (s.hunt.status === 'active' && boss && boss.alive) {
+    if (!this.follow && s.hunt.status === 'active' && boss && boss.alive) {
       const dist = Math.hypot(boss.x - p.x, boss.z - p.z);
       if (updateHunt(s.hunt, dist, true)) {
         ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
@@ -332,17 +356,11 @@ export class MissionRuntime implements MissionApi {
     }
 
     // ---- unlock extraction ----
-    if (unlockExtraction(ex, allContractsComplete(s.defense, s.hunt))) {
-      ctx.banner('EXTRACTION AVAILABLE', `Proceed to ${data.text.lz} and signal the helicopter`, 'good', 5);
-      ctx.radio('COMMAND', `Both contracts complete. Move to ${data.text.lz} and radio the bird.`);
-      ctx.audio.play('contract_complete', { priority: 3 });
-      this.beam.visible = true;
-      this.terminal.setState('idle');
-    }
+    if (!this.follow && unlockExtraction(ex, allContractsComplete(s.defense, s.hunt))) this.onUnlocked();
 
     // ---- extraction sequence ----
     if (extractionInProgress(ex)) {
-      for (const ev of updateExtraction(ex, dt)) this.onExtractionEvent(ev);
+      if (!this.follow) for (const ev of updateExtraction(ex, dt)) this.onExtractionEvent(ev);
       this.animateHelicopter(dt, time, camera);
     } else if (ex.phase === 'extracted' || ex.phase === 'failed') {
       this.animateHelicopter(dt, time, camera);
@@ -370,8 +388,10 @@ export class MissionRuntime implements MissionApi {
     // ---- contamination ----
     this.updateHazard(dt, camera, time, alive);
 
-    // ---- deadline ----
-    if (!extractionInProgress(ex) && ex.phase !== 'extracted' && ex.phase !== 'failed') {
+    // ---- deadline (co-op: the simulation decides how the run ends) ----
+    if (this.follow) {
+      // nothing
+    } else if (!extractionInProgress(ex) && ex.phase !== 'extracted' && ex.phase !== 'failed') {
       const left = deadlineRemaining(s.elapsed);
       if (left <= 60 && !s.flags.has('deadline60')) {
         s.flags.add('deadline60');
@@ -381,8 +401,8 @@ export class MissionRuntime implements MissionApi {
       }
       if (left <= 0) ctx.endRun('defeat', 'The district was sealed before extraction was called');
     }
-    if (ex.phase === 'failed' && !s.ended) ctx.endRun('defeat', ex.failReason ?? 'Extraction failed');
-    if (ex.phase === 'extracted' && !s.ended) ctx.endRun('victory', 'Extracted');
+    if (!this.follow && ex.phase === 'failed' && !s.ended) ctx.endRun('defeat', ex.failReason ?? 'Extraction failed');
+    if (!this.follow && ex.phase === 'extracted' && !s.ended) ctx.endRun('victory', 'Extracted');
 
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
@@ -419,6 +439,53 @@ export class MissionRuntime implements MissionApi {
     this.areaMarker.update(dt, time);
     if (done) this.completeDefense();
     return done;
+  }
+
+  /** Both contracts are done: the LZ opens. */
+  private onUnlocked(): void {
+    const ctx = this.ctx;
+    const data = ctx.level.data;
+    ctx.banner('EXTRACTION AVAILABLE', `Proceed to ${data.text.lz} and signal the helicopter`, 'good', 5);
+    ctx.radio('COMMAND', `Both contracts complete. Move to ${data.text.lz} and radio the bird.`);
+    ctx.audio.play('contract_complete', { priority: 3 });
+    this.beam.visible = true;
+    this.terminal.setState('idle');
+  }
+
+  /**
+   * Co-op story: the simulation's view of the operation. Each change plays what the solo game plays at that moment
+   * (the target identified, the hunt's reward claimed once, the LZ opening, the flare, the helicopter's approach,
+   * touchdown and departure).
+   */
+  applyMission(m: { elapsed: number; huntStatus: 'available' | 'active' | 'complete'; huntIdentified: boolean; phase: ExtractionPhase; countdown: number; windowLeft: number; calledAt: number | null }): void {
+    const ctx = this.ctx;
+    const s = ctx.session;
+    const data = ctx.level.data;
+    s.elapsed = m.elapsed;
+    if (m.huntIdentified && !s.hunt.identified && s.hunt.status === 'active') {
+      s.hunt.identified = true;
+      ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
+      ctx.audio.play('objective_ping', { priority: 2 });
+    }
+    if (m.huntStatus === 'complete' && s.hunt.status !== 'complete') this.onWardenKilled();
+    const ex = s.extraction;
+    ex.countdown = m.countdown;
+    ex.windowLeft = m.windowLeft;
+    ex.calledAt = m.calledAt;
+    if (m.phase === ex.phase) return;
+    const order: ExtractionPhase[] = ['locked', 'available', 'called', 'inbound', 'landing', 'landed', 'boarding', 'extracted', 'failed'];
+    const from = order.indexOf(ex.phase);
+    const to = order.indexOf(m.phase);
+    ex.phase = m.phase;
+    // play every step that was passed (a late joiner can skip several at once)
+    const passed = (p: ExtractionPhase): boolean => from < order.indexOf(p) && to >= order.indexOf(p) && m.phase !== 'failed';
+    if (passed('available')) this.onUnlocked();
+    if (passed('called')) this.onCalled();
+    if (passed('inbound')) this.onExtractionEvent('heliVisible');
+    if (passed('landing')) this.onExtractionEvent('landingStart');
+    if (passed('landed')) this.onExtractionEvent('touchdown');
+    if (m.phase === 'extracted') this.departT = 0; // the bird leaves with whoever is aboard
+    if (m.phase === 'failed') this.onExtractionEvent('departed');
   }
 
   /** Co-op guest: the host's view of the relay. Starts and completes it here too (each player claims the reward once). */
@@ -547,7 +614,7 @@ export class MissionRuntime implements MissionApi {
       this.heliRotor = 0.85;
       this.heliDoor = Math.min(1, this.heliDoor + dt / 1.4);
       ctx.fx.downwash({ x: this.lz.heliX, y: 0, z: this.lz.heliZ }, 11, 0.35);
-    } else if (ex.phase === 'boarding' || ex.phase === 'extracted') {
+    } else if (!this.follow && (ex.phase === 'boarding' || ex.phase === 'extracted')) {
       // lift off with the player aboard
       const t = MISSION.extraction.boardingCinematic - ex.boardLeft;
       const lift = Math.max(0, t - 1.0);
@@ -555,7 +622,7 @@ export class MissionRuntime implements MissionApi {
       this.heliRotor = 1;
       this.heliDoor = Math.max(0, 1 - Math.max(0, t - 0.6) / 0.8);
       ctx.fx.downwash({ x: this.lz.heliX, y: 0, z: this.lz.heliZ }, 13, clamp01(1 - target.y / 20));
-    } else if (ex.phase === 'failed') {
+    } else if (ex.phase === 'failed' || ex.phase === 'extracted') {
       if (this.departT >= 0) {
         this.departT += dt;
         const t = this.departT;

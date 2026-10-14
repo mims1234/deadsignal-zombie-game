@@ -109,6 +109,8 @@ export class ZombieManager {
   /** Co-op guest: damage is not applied here but reported to the host through this. */
   netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
+  /** Multi-player simulation: let infected far from every player doze (see `update`). */
+  sleepFar = false;
   /** Hands out the names some infected carry (null: this one has none). Bosses and carriers never get one. */
   namer: (() => string | null) | null = null;
   private readonly tagSprites = new Map<Zombie, THREE.Sprite>();
@@ -180,7 +182,7 @@ export class ZombieManager {
   }
 
   /** A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. */
-  private tagZombie(z: Zombie, name: string): void {
+  tagZombie(z: Zombie, name: string): void {
     let mat = this.tagMats.get(name);
     if (!mat) {
       const c = document.createElement('canvas');
@@ -282,16 +284,23 @@ export class ZombieManager {
     this.grid.clear();
     for (const z of this.zombies) if (z.active && !z.dormant) this.grid.insert(z);
 
-    // LOD every 0.4 s
+    // LOD every 0.4 s. With several players (`envs`) distance is to the nearest one, and only `sleepFar` lets the
+    // far ones doze (the co-op mission simulation: the district's resident population is mostly far from everyone).
     this.lodTimer -= dt;
     if (this.lodTimer <= 0) {
       this.lodTimer = 0.4;
       for (const z of this.zombies) {
-        const d2 = (z.x - p.x) * (z.x - p.x) + (z.z - p.z) * (z.z - p.z);
+        let d2 = (z.x - p.x) * (z.x - p.x) + (z.z - p.z) * (z.z - p.z);
+        if (envs) {
+          for (const e of envs) {
+            if (!e.player.alive) continue;
+            d2 = Math.min(d2, (z.x - e.player.x) ** 2 + (z.z - e.player.z) ** 2);
+          }
+        }
         if (z.dormant && d2 < 78 * 78) {
           z.dormant = false;
           z.rig.setVisible(true);
-        } else if (!envs && !z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss && !z.curable) {
+        } else if ((!envs || this.sleepFar) && !z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss && !z.curable) {
           z.dormant = true;
           z.rig.setVisible(false);
         }
@@ -356,18 +365,24 @@ export class ZombieManager {
     return envs[Math.min(z.targetIdx, envs.length - 1)]!;
   }
 
-  /** Co-op guest: make the local infected match the host's list (create, update, remove). */
-  syncPuppets(list: readonly NetZombie[], rng: Rng): void {
+  /** Co-op guest: make the local infected match the host's list (create, update, remove). `tagOf` names a tag index. */
+  syncPuppets(list: readonly NetZombie[], rng: Rng, tagOf?: (i: number) => string | null): void {
     const seen = new Set<number>();
     for (const n of list) {
       seen.add(n.id);
       let z = this.byNet.get(n.id);
       if (!z) {
         const carrier = n.carrier > 0 ? (this.carrierRig?.(n.carrier - 1) ?? null) : null;
+        // a puppet carries the host's name for it, never one of its own
+        const namer = this.namer;
+        this.namer = null;
         z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : { yaw: n.yaw, boss: n.type === 'warden' });
+        this.namer = namer;
         z.carrierIdx = n.carrier;
         z.puppet = true;
         z.netId = n.id;
+        const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
+        if (tag) this.tagZombie(z, tag);
         this.byNet.set(n.id, z);
         if (z.isBoss) this.boss = z;
       }

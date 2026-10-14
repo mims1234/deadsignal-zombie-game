@@ -36,6 +36,8 @@ export interface NetZombie {
   fy: number;
   fp: number;
   fr: number;
+  /** Index of the name it carries (Vulcan's infected on the Forge), -1 for none. */
+  tag?: number;
 }
 
 export interface PlayerRef {
@@ -278,8 +280,19 @@ export class Zombie {
     };
   }
 
+  /** Co-op: sounds a puppet owes from its last report (it runs no AI, so it voices what the host says it does). */
+  private netSounds = 0;
+
   /** Co-op guest: take the host's latest report. */
   applyNet(n: NetZombie): void {
+    // what changed is what makes a noise: an attack, a roar or a slam starting, a stagger, a fall
+    if (n.mode !== this.netMode) {
+      if (n.mode === 'attack') this.netSounds |= 1;
+      else if (n.mode === 'roar' || n.mode === 'charge') this.netSounds |= 2;
+      else if (n.mode === 'slam') this.netSounds |= 4;
+      else if (n.mode === 'stagger') this.netSounds |= 8;
+    }
+    if (n.mode === 'death' && this.state !== 'dead' && this.state !== 'downed') this.netSounds |= n.flags & 16 ? 8 : 16;
     this.netX = n.x;
     this.netZ = n.z;
     this.netYaw = n.yaw;
@@ -312,8 +325,34 @@ export class Zombie {
     }
   }
 
+  /** Co-op: play the noises this puppet owes, and its groans and snarls while it hunts. */
+  private puppetVoice(dt: number, env: ZombieEnv): void {
+    const pos = { x: this.x, y: 1.4, z: this.z };
+    const s = this.netSounds;
+    this.netSounds = 0;
+    const boss = this.type === 'warden';
+    if (s & 1) env.audio.play('zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+    if (s & 2) env.audio.play(boss ? 'warden_roar' : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
+    if (s & 4) env.audio.play('warden_slam', { pos, volume: 1.2, priority: 3 });
+    if (s & 8) env.audio.play('zombie_hurt', { pos, volume: 0.8, priority: 1 });
+    if (s & 16) env.audio.play('zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
+    if (this.state === 'dead' || this.state === 'downed') return;
+    const p = env.player;
+    this.voiceTimer -= dt;
+    if (this.voiceTimer > 0 || Math.hypot(p.x - this.x, p.z - this.z) > 38) return;
+    if (this.netMode === 'idle') {
+      env.audio.play('zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
+      this.voiceTimer = 6 + env.rng.f() * 8;
+    } else {
+      const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : boss ? 'warden_roar' : 'zombie_groan';
+      env.audio.play(id, { pos, volume: boss ? 0.9 : 0.8, priority: boss ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
+      this.voiceTimer = boss ? 8 + env.rng.f() * 4 : 3.5 + env.rng.f() * 5;
+    }
+  }
+
   /** Co-op guest: glide toward the last report and pose. */
   puppetStep(dt: number, env: ZombieEnv): void {
+    this.puppetVoice(dt, env);
     const k = Math.min(1, dt * 12);
     this.x += (this.netX - this.x) * k;
     this.z += (this.netZ - this.z) * k;

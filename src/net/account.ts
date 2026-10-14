@@ -60,12 +60,15 @@ export async function reportPlayer(target: string, reason: string, context: stri
 }
 
 /** Is a co-op session with this code open right now? */
-export async function roomExists(code: string): Promise<boolean> {
+/** A co-op session's public details, or null when it has ended / never existed. */
+export async function roomInfo(code: string): Promise<{ map: 'district' | 'forge'; kind: string; hosting: string } | null> {
   try {
     const r = await fetch(`/api/rooms/${encodeURIComponent(code.toUpperCase().slice(0, 12))}`);
-    return r.ok;
+    if (!r.ok) return null;
+    const j = (await r.json()) as { map?: string; kind?: string; hosting?: string };
+    return { map: j.map === 'forge' ? 'forge' : 'district', kind: j.kind ?? 'mission', hosting: j.hosting ?? 'server' };
   } catch {
-    return false;
+    return null;
   }
 }
 

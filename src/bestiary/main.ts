@@ -1,0 +1,391 @@
+/**
+ * The bestiary (`/bestiary.html`): every infected in the game in 3D under the game's own lighting - the horde, the
+ * elites, the Mazoku card carriers - and the people who fight beside you. Pick an entry, orbit it, play its
+ * animations, read its stats and its story.
+ */
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { loadCardKits } from '../cards/cardArt';
+import { buildCarrierAssets } from '../cards/cosplay';
+import { CARRIERS } from '../cards/roster';
+import { RENDER, SURVIVORS, ZOMBIES } from '../config';
+import { Avatar } from '../coop/avatar';
+import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
+import { ZombieRigImpl } from '../enemies/zombie/rig';
+import { createZombieFactory } from '../enemies/zombieRig';
+import type { ZombieAnimState, ZombieMode, ZombieRig } from '../enemies/zombieRigTypes';
+import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from '../render/stage';
+import type { ZombieType } from '../types';
+import './bestiary.css';
+
+type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU';
+
+interface Entry {
+  id: string;
+  group: Group;
+  name: string;
+  tagline: string;
+  lore: string;
+  where: string;
+  stats: [string, string][];
+  /** Animations this entry can play (avatars only idle, walk and fall). */
+  modes: ZombieMode[] | 'avatar';
+  build(): THREE.Object3D;
+  /** Zombie rig, when the entry is one. */
+  rig?: ZombieRig;
+  avatar?: Avatar;
+  enraged?: boolean;
+  card?: string;
+  accent?: number;
+  height: number;
+}
+
+const ZOMBIE_MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death'];
+const BOSS_MODES: ZombieMode[] = ['idle', 'walk', 'roar', 'slam', 'charge', 'attack', 'death'];
+
+const pct = (mul: number): string => (mul >= 1 ? 'none' : `${Math.round((1 - mul) * 100)}% off body hits`);
+const zombieStats = (t: ZombieType, hpNote = ''): [string, string][] => {
+  const d = ZOMBIES[t];
+  return [
+    ['Health', `${d.hp}${hpNote}`],
+    ['Chase speed', `${d.speedChase.toFixed(1)} m/s`],
+    ['Hits for', `${d.damage}`],
+    ['Body armour', pct(d.bodyMul)],
+    ['Bounty', d.reward > 0 ? `$${d.reward}` : '--'],
+  ];
+};
+
+// ---------------------------------------------------------------------------------------------
+// stage
+// ---------------------------------------------------------------------------------------------
+
+const root = document.getElementById('bestiary')!;
+root.innerHTML = `
+  <header class="bh">
+    <a class="back" href="./">&larr; BACK TO THE GAME</a>
+    <div class="ttl"><span class="kick">DEAD SIGNAL // FIELD GUIDE</span><h1>BESTIARY</h1></div>
+  </header>
+  <nav class="list" aria-label="Entries"></nav>
+  <main class="view"><canvas aria-label="3D model"></canvas><div class="modes" role="toolbar" aria-label="Animation"></div><div class="hint">DRAG TO TURN  //  SCROLL TO ZOOM</div></main>
+  <aside class="info" aria-live="polite"></aside>
+`;
+const canvas = root.querySelector('canvas')!;
+const listEl = root.querySelector('.list') as HTMLElement;
+const modesEl = root.querySelector('.modes') as HTMLElement;
+const infoEl = root.querySelector('.info') as HTMLElement;
+
+const renderer = createRenderer(canvas);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.add(createSkyDome());
+scene.environment = createEnvironment(renderer);
+scene.environmentIntensity = 0.6;
+const light = setupBlueHour(scene, 8);
+light.setShadowQuality(true, 1024);
+scene.fog = new THREE.FogExp2(RENDER.fogColor, 0.045);
+// a pool of warm light on wet ground to stand in
+const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 48), new THREE.MeshStandardMaterial({ color: 0x23272b, roughness: 0.55, metalness: 0.1 }));
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+const spot = new THREE.SpotLight(0xffd6a0, 60, 14, 0.55, 0.6, 1.4);
+spot.position.set(1.8, 5.5, 3.2);
+spot.castShadow = true;
+spot.shadow.mapSize.set(1024, 1024);
+scene.add(spot, spot.target);
+const rim = new THREE.PointLight(0x6fb0ff, 18, 10, 1.6);
+rim.position.set(-2.4, 2.2, -2.6);
+scene.add(rim);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 200);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 1.6;
+controls.maxDistance = 9;
+controls.maxPolarAngle = Math.PI * 0.49;
+
+function resize(): void {
+  const r = canvas.parentElement!.getBoundingClientRect();
+  const w = Math.max(1, Math.floor(r.width));
+  const h = Math.max(1, Math.floor(r.height));
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement!);
+resize();
+
+// ---------------------------------------------------------------------------------------------
+// entries
+// ---------------------------------------------------------------------------------------------
+
+const factory = createZombieFactory();
+const carrierMaterial = createZombieMaterial(createDetailTexture());
+const kits = await loadCardKits(CARRIERS).catch(() => new Map());
+
+const zombie = (type: ZombieType, seed: number) => (): THREE.Object3D => {
+  const r = factory.create(type, seed);
+  current!.rig = r;
+  return r.root;
+};
+
+const entries: Entry[] = [
+  {
+    id: 'shambler', group: 'THE HORDE', name: 'Shambler', height: ZOMBIES.shambler.height,
+    tagline: 'Most of what is left of Sector 7.',
+    lore: 'Residents, guards and lab staff who were in the district when it was sealed nine days ago. Slow and clumsy on their own, they follow noise and each other, and a gunshot turns a quiet street into a crowd. A headshot drops one in a few rounds.',
+    where: 'Every map, every mode', stats: zombieStats('shambler'), modes: ZOMBIE_MODES, build: zombie('shambler', 11),
+  },
+  {
+    id: 'runner', group: 'THE HORDE', name: 'Runner', height: ZOMBIES.runner.height,
+    tagline: 'Fast, fragile, first to arrive.',
+    lore: 'The freshest of the turned, still lean and still quick. Runners sprint the moment they hear you and screech to bring the rest. They go down easily, so keep your back to a wall and your crosshair at head height.',
+    where: 'Every map; more of them later in a run', stats: zombieStats('runner'), modes: ZOMBIE_MODES, build: zombie('runner', 23),
+  },
+  {
+    id: 'armored', group: 'THE HORDE', name: 'Armored Infected', height: ZOMBIES.armored.height,
+    tagline: 'Riot gear, and still walking.',
+    lore: 'The quarantine detail. Their vests and helmets turn half of every body shot, they hit twice as hard as a shambler, and a grenade only staggers them. Shotguns at close range, or patience and headshots.',
+    where: 'High-threat zones, later waves', stats: zombieStats('armored'), modes: ZOMBIE_MODES, build: zombie('armored', 37),
+  },
+  {
+    id: 'warden', group: 'ELITES', name: 'The Warden', height: ZOMBIES.warden.height,
+    tagline: 'The compound\'s head of security, grown into something else.',
+    lore: 'Over two metres of armour plate and mutated muscle. The Warden slams the ground to throw you off your feet and charges across open ground. Below half health it rages: faster, brighter and angrier. Aim above the plate.',
+    where: 'The District (research compound); co-op waves 5 and 10', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 5),
+  },
+  {
+    id: 'infernus', group: 'ELITES', name: 'The Infernus', height: ZOMBIES.warden.height, enraged: true,
+    tagline: 'What the furnace made of the forge-master.',
+    lore: 'The Forge\'s own Warden, burning from the inside since the night Vulcan HQ fell. It walks the molten floor of the Crucible already enraged. Same slam, same charge, no warning.',
+    where: 'The Forge (the Crucible)', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 9),
+  },
+  ...CARRIERS.map((def, i): Entry => ({
+    id: `card-${def.id}`, group: 'MAZOKU CARRIERS', name: def.name, height: def.height, accent: def.accent, card: kits.get(def.id)?.url,
+    tagline: def.series,
+    lore: `An archive card from the Mazoku collection, carried by the signal that grew a body around it. A carrier cannot be killed: empty its health and it drops; get close and hold E to purge the signal before it gets back up, then take the card. ${def.base === 'runner' ? 'This one moves like a runner.' : 'This one walks like a shambler but takes a lot more to drop.'}`,
+    where: 'Standard Mazoku (and Mazoku co-op waves 2, 4, 6, 8, 9)',
+    stats: [['Health', `${def.hp} (cannot die)`], ['Chase speed', `${def.speedChase.toFixed(1)} m/s`], ['Hits for', `${def.damage}`], ['Body armour', pct(def.bodyMul)], ['Reward', 'the card + $350']],
+    modes: ZOMBIE_MODES,
+    build: () => {
+      const r = new ZombieRigImpl(buildCarrierAssets(def, i), carrierMaterial, { radius: 0.3, height: def.height, headRadius: 0.18 }, 77 + i);
+      current!.rig = r;
+      return r.root;
+    },
+  })),
+  {
+    id: 'squad', group: 'BESIDE YOU', name: 'Ash & Cinder', height: 1.85,
+    tagline: 'Ember squad\'s soldiers.',
+    lore: 'Two soldiers who deploy with you on the Forge. They follow you, pick targets with a clear line of sight and shoot, and the infected hunt them just like they hunt you. They can die for good: keep them alive to extraction for a bonus each.',
+    where: 'The Forge', stats: [['Health', '160'], ['Weapon', 'rifle'], ['Damage taken', '75%']], modes: 'avatar',
+    build: () => {
+      const a = new Avatar('Ash', 0, { tag: 'SQUAD', tagColor: '#8fd18a' });
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'survivors', group: 'BESIDE YOU', name: 'Trapped survivors', height: 1.85,
+    tagline: 'Caged in, waiting for anyone with bolt cutters.',
+    lore: `People who held out in holding cages around the map. Hold E at a cage to break the lock: they pick up a gun, follow you and fight. ${SURVIVORS.district.map((s) => s.name).join(', ')} are somewhere in the District; on the Forge it is Vulcan's own leadership - ${SURVIVORS.forge.map((s) => s.name).join(', ')}.`,
+    where: 'Standard and Standard Mazoku, both maps', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    build: () => {
+      const who = SURVIVORS.forge[0]!;
+      const a = new Avatar(who.name, 0, { color: who.color, helmet: false, tag: who.tag, tagColor: '#ff8a3a' });
+      a.arm();
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+];
+
+// ---------------------------------------------------------------------------------------------
+// selection, animation
+// ---------------------------------------------------------------------------------------------
+
+let current: Entry | null = null;
+let model: THREE.Object3D | null = null;
+let mode: ZombieMode = 'idle';
+let modeT = 0;
+let time = 0;
+const anim: ZombieAnimState = { mode: 'idle', speed: 0, time: 0, actionT: 0, staggerT: 0, deathT: 0, aggro: 0.6, hitKick: 0, deathStyle: 0, headshotDeath: false, enraged: false };
+
+const MODE_LABEL: Record<string, string> = { idle: 'IDLE', walk: 'WALK', run: 'RUN', attack: 'ATTACK', stagger: 'HIT', death: 'DEATH', roar: 'ROAR', slam: 'SLAM', charge: 'CHARGE' };
+const AVATAR_MODES = ['IDLE', 'WALK', 'FALL'];
+let avatarMode = 'IDLE';
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  parent.appendChild(e);
+  return e;
+}
+
+function renderList(): void {
+  listEl.replaceChildren();
+  let group = '';
+  for (const e of entries) {
+    if (e.group !== group) {
+      group = e.group;
+      el('div', 'grp', listEl, group);
+    }
+    const b = el('button', current === e ? 'item on' : 'item', listEl);
+    b.type = 'button';
+    if (e.accent !== undefined) b.style.setProperty('--accent', `#${e.accent.toString(16).padStart(6, '0')}`);
+    el('span', 'nm', b, e.name);
+    el('span', 'tg', b, e.tagline);
+    b.addEventListener('click', () => select(e));
+  }
+}
+
+function renderModes(): void {
+  modesEl.replaceChildren();
+  if (!current) return;
+  const labels = current.modes === 'avatar' ? AVATAR_MODES : current.modes.map((m) => MODE_LABEL[m]!);
+  labels.forEach((label, i) => {
+    const on = current!.modes === 'avatar' ? avatarMode === label : mode === (current!.modes as ZombieMode[])[i];
+    const b = el('button', on ? 'on' : '', modesEl, label);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      if (current!.modes === 'avatar') setAvatarMode(label);
+      else setMode((current!.modes as ZombieMode[])[i]!);
+      renderModes();
+    });
+  });
+  if (current.rig && current.modes !== 'avatar') {
+    const b = el('button', 'alt', modesEl, 'NEW LOOK');
+    b.type = 'button';
+    b.title = 'Every infected is built a little differently';
+    b.addEventListener('click', () => current!.rig!.reset(Math.floor(Math.random() * 1e6)));
+  }
+}
+
+function renderInfo(): void {
+  const e = current!;
+  infoEl.replaceChildren();
+  el('div', 'grp', infoEl, e.group);
+  el('h2', '', infoEl, e.name);
+  el('div', 'tagline', infoEl, e.tagline);
+  if (e.card) {
+    const img = el('img', 'card', infoEl);
+    img.src = e.card;
+    img.alt = `${e.name} card`;
+  }
+  el('p', 'lore', infoEl, e.lore);
+  const dl = el('dl', 'stats', infoEl);
+  for (const [k, v] of e.stats) {
+    el('dt', '', dl, k);
+    el('dd', '', dl, v);
+  }
+  el('div', 'where', infoEl, `FOUND IN  //  ${e.where.toUpperCase()}`);
+}
+
+function setMode(m: ZombieMode): void {
+  mode = m;
+  modeT = 0;
+}
+
+function setAvatarMode(m: string): void {
+  avatarMode = m;
+  modeT = 0;
+  const a = current?.avatar;
+  if (!a) return;
+  a.rise();
+  a.root.position.set(0, 0, 0);
+  a.set(0, 0, 0, Math.PI, true);
+  if (m === 'FALL') a.fall(0, -1, 1.5);
+}
+
+function select(e: Entry): void {
+  if (model) {
+    model.removeFromParent();
+    current?.avatar?.dispose();
+  }
+  current = e;
+  e.rig = undefined;
+  e.avatar = undefined;
+  model = e.build();
+  model.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) {
+      m.castShadow = true;
+      m.receiveShadow = true;
+    }
+  });
+  // models face -Z; turn them to the camera
+  if (e.rig) model.rotation.y = Math.PI;
+  scene.add(model);
+  const built = e.avatar as Avatar | undefined; // set by build()
+  if (built) {
+    built.set(0, 0, 0, Math.PI, true);
+    avatarMode = 'IDLE';
+  }
+  mode = 'idle';
+  modeT = 0;
+  anim.enraged = e.enraged === true;
+  // frame the whole figure
+  const h = e.height;
+  controls.target.set(0, h * 0.55, 0);
+  camera.position.set(h * 0.9, h * 0.8, h * 1.9 + 0.8);
+  controls.update();
+  spot.target.position.set(0, h * 0.5, 0);
+  history.replaceState(null, '', `#${e.id}`);
+  renderList();
+  renderModes();
+  renderInfo();
+}
+
+function step(dt: number): void {
+  time += dt;
+  modeT += dt;
+  const e = current;
+  if (!e || !model) return;
+  if (e.rig) {
+    const loopLen = mode === 'death' ? 3.2 : mode === 'stagger' ? 1.2 : mode === 'slam' || mode === 'charge' || mode === 'roar' ? 1.8 : 1.3;
+    const t = (modeT % loopLen) / loopLen;
+    anim.mode = mode;
+    anim.time = time;
+    anim.speed = mode === 'run' ? 4.6 : mode === 'walk' ? 1.2 : mode === 'charge' ? 7 : 0;
+    anim.actionT = mode === 'attack' || mode === 'slam' || mode === 'roar' || mode === 'charge' ? t : 0;
+    anim.staggerT = mode === 'stagger' ? t : 0;
+    anim.deathT = mode === 'death' ? (modeT % loopLen) : 0;
+    anim.deathStyle = (Math.floor(modeT / loopLen) % 3) as 0 | 1 | 2;
+    if (mode === 'death' && anim.deathT < dt * 1.5) {
+      // stand back up for the next fall: one upright frame clears the previous fall
+      anim.mode = 'idle';
+      e.rig.update(anim, dt);
+      anim.mode = 'death';
+    }
+    e.rig.update(anim, dt);
+  } else if (e.avatar) {
+    const a = e.avatar;
+    if (avatarMode === 'WALK') {
+      // walk a small circle so the legs swing
+      const ang = time * 0.6;
+      a.set(Math.sin(ang) * 0.9, 0, Math.cos(ang) * 0.9, ang - Math.PI / 2, true);
+    } else if (avatarMode === 'FALL' && modeT > 3) setAvatarMode('FALL');
+    a.update(dt);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// loop
+// ---------------------------------------------------------------------------------------------
+
+renderList();
+const fromHash = entries.find((e) => `#${e.id}` === location.hash);
+select(fromHash ?? entries[0]!);
+let last = performance.now();
+function frame(now: number): void {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  step(dt);
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+// dev / QA hook
+(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), select: (id: string) => select(entries.find((e) => e.id === id)!), setMode };

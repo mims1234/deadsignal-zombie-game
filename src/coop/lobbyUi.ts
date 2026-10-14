@@ -8,6 +8,13 @@ import type { Hosting } from '../net/room';
 import { el } from '../ui/dom';
 import type { CoopSession } from './coop';
 
+const MAP_NAME: Record<'district' | 'forge', string> = { district: 'THE DISTRICT', forge: 'THE FORGE' };
+const KIND_NOTE: Record<'mission' | 'mazoku' | 'roam', string> = {
+  mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
+  mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
+  roam: 'No infected and no clock: fly anywhere together.',
+};
+
 /** A ping readout, coloured: good under 80 ms, fair under 160, poor above. */
 function pingTag(parent: HTMLElement, ms: number | null, prefix = ''): HTMLElement {
   const cls = ms === null ? '' : ms < 80 ? 'good' : ms < 160 ? 'ok' : 'bad';
@@ -17,6 +24,8 @@ function pingTag(parent: HTMLElement, ms: number | null, prefix = ''): HTMLEleme
 export interface LobbyHost {
   /** Signed-in account id, or null (co-op needs an account). */
   userId(): string | null;
+  /** The map this page is on: a session created here plays it. */
+  mapId(): 'district' | 'forge';
   isAdmin(): boolean;
   /** The game is in a state where the lobby may show (title or results). */
   canShow(): boolean;
@@ -96,7 +105,7 @@ export class CoopUi {
     p.replaceChildren();
     const head = el('div', 'ds-panel-head big', p);
     el('span', '', head, 'CO-OP SESSION');
-    el('span', 'aux', head, `${COOP.maxPlayers} PLAYERS  //  ${COOP.waves} WAVES`);
+    el('span', 'aux', head, `UP TO ${COOP.maxPlayers} PLAYERS`);
     const body = el('div', 'body', p);
     const room = this.coop.room.room;
     const me = this.host.userId();
@@ -109,7 +118,7 @@ export class CoopUi {
     if (problem) el('div', 'problem', body, problem);
 
     if (!room) {
-      el('p', 'msg', body, 'Survive ten waves together. Anyone who goes down returns when the wave is cleared. Start a session and share the link, or join one with its code.');
+      el('p', 'msg', body, `Run the operation together on ${MAP_NAME[this.host.mapId()]}: the contracts, the extraction, and anyone who goes down can be revived by a teammate. Start a session and share the link, or join one with its code.`);
       const net = el('div', 'row', body);
       el('span', 'lbl inline', net, 'YOUR PING');
       pingTag(net, this.coop.room.ping === null ? null : Math.round(this.coop.room.ping));
@@ -135,7 +144,7 @@ export class CoopUi {
       const make = el('div', 'row', body);
       this.button(make, 'CREATE SESSION', 'primary', () => {
         this.notice = '';
-        void this.coop.room.create(this.visibility, this.hosting);
+        void this.coop.room.create(this.visibility, this.hosting, this.host.mapId(), 'mission');
       });
       const vis = this.button(make, this.visibility === 'public' ? 'ANYONE WITH THE LINK' : 'INVITE-ONLY', '', () => {
         this.visibility = this.visibility === 'public' ? 'private' : 'public';
@@ -202,16 +211,15 @@ export class CoopUi {
     list('PLAYERS', room.players, room.maxPlayers);
     list('SPECTATORS', room.spectators, room.maxSpectators);
 
-    el('div', 'lbl', body, 'MODE');
+    el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
     const variant = el('div', 'row', body);
-    if (isOwner) {
-      for (const [on, label] of [[false, 'STANDARD'], [true, 'STANDARD MAZOKU']] as const) {
-        this.button(variant, label, this.coop.mazoku === on ? 'on' : '', () => this.coop.setMazoku(on));
-      }
+    const kinds = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ['roam', 'FREE ROAM']] as const;
+    if (isOwner && room.state !== 'playing') {
+      for (const [kind, label] of kinds) this.button(variant, label, room.kind === kind ? 'on' : '', () => this.coop.setKind(kind));
     } else {
-      el('span', 'name', variant, this.coop.mazoku ? 'STANDARD MAZOKU' : 'STANDARD');
+      el('span', 'name', variant, kinds.find((k) => k[0] === room.kind)?.[1] ?? 'STANDARD');
     }
-    el('div', 'tag', body, this.coop.mazoku ? 'Mazoku card carriers join on waves 2, 4, 6, 8 and 9.' : 'Waves and squad objectives only.');
+    el('div', 'tag', body, KIND_NOTE[room.kind]);
 
     if (isOwner) {
       el('div', 'lbl', body, 'MANAGE SESSION');
@@ -268,7 +276,7 @@ export class CoopUi {
     const { rows, spectators } = this.coop.scoreboard();
     const b = this.board;
     b.replaceChildren();
-    el('div', 'ttl', b, `WAVE ${this.coop.waves.n} / ${COOP.waves}`);
+    el('div', 'ttl', b, this.coop.kind === 'roam' ? 'FREE ROAM' : this.coop.kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD');
     const table = el('div', 'grid', b);
     for (const h of ['PLAYER', 'KILLS', 'DOWNS', 'PING', 'STATUS']) el('span', 'h', table, h);
     for (const r of rows) {
@@ -276,7 +284,7 @@ export class CoopUi {
       el('span', 'n', table, String(r.kills));
       el('span', 'n', table, String(r.downs));
       pingTag(table, r.ping);
-      el('span', r.alive ? 'up' : 'down', table, r.alive ? 'UP' : 'DOWN');
+      el('span', r.status === 'up' || r.status === 'aboard' ? 'up' : 'down', table, r.status.toUpperCase());
     }
     if (this.coop.serverHosted) el('div', 'spec', b, 'SERVER HOSTED');
     el('div', 'spec', b, spectators.length > 0 ? `WATCHING:  ${spectators.join(',  ')}` : 'NOBODY IS WATCHING');

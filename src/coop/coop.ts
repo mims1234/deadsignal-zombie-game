@@ -1,51 +1,33 @@
 /**
- * Co-op session logic on the client. The room's host runs the real simulation (infected AI, waves, objectives,
- * damage) and broadcasts snapshots; guests and spectators render those snapshots, and guests report their own
- * position and the hits they land. Roles:
- *   host       simulates; every infected hunts the nearest player who is up
- *   guest      plays normally against puppet infected; hits, purges and deaths go through the host
+ * Co-op on the client. One session simulation (`sim/serverHost.ts`) runs the operation for the whole squad - on the
+ * game server, or for a self-hosted session inside its owner's browser - and every player is a client of it: they play
+ * against puppet infected, report where they are and what they hit, and draw what it reports. Roles:
+ *   host       a self-hosted session's owner: runs the simulation locally (and plays as a client of it, like anyone)
+ *   guest      a player; the simulation is on the server or on the host's device
  *   spectator  flies freely and watches (a hidden admin is a spectator nobody is told about)
+ * Kinds (the owner picks in the lobby): the map's story operation (Standard), the same with the Mazoku carriers, or
+ * free roam. A downed player bleeds out unless a teammate revives them; the run is lost when nobody is standing.
  */
-import type * as THREE from 'three';
-import { CARD_MODE, COOP, MISSION } from '../config';
-import type { NetZombie, PlayerRef, ZombieEnv } from '../enemies/zombie';
-import type { DirectorContext } from '../enemies/zombieManager';
+import { COOP, VULCAN } from '../config';
+import type { NetZombie, PlayerRef } from '../enemies/zombie';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import type { Game } from '../game/game';
-import { spreadPick } from '../logic/carriers';
+import type { AllyRow } from '../game/squad';
 import type { ContractStatus } from '../logic/contracts';
-import { killReward } from '../logic/economy';
-import {
-  MISSION_KINDS,
-  MISSION_STATUSES,
-  MISSION_TEXT,
-  type WaveMission,
-  blocksWaveEnd,
-  closeMission,
-  createMission,
-  eliteKilled,
-  missionDetail,
-  pickMission,
-  playerWentDown,
-  stepHold,
-  takeCore,
-} from '../logic/waveMissions';
-import { type WavePhase, createWaves, stepWaves, waveHpScale, waveType } from '../logic/waves';
 import { RoomClient, type RoomRole, type RoomView } from '../net/room';
+import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind } from '../sim/serverHost';
 import type { ZombieType } from '../types';
 import type { HudState, MapDynamic } from '../ui/hudTypes';
-import { type AreaMarker, createAreaMarker, createObjectiveBeam } from '../world/models';
-import { FlowField } from '../world/nav';
 import { Avatar } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
-const PHASES: WavePhase[] = ['break', 'active', 'won', 'lost'];
 const RELAY_STATUSES: ContractStatus[] = ['available', 'active', 'complete'];
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 
 export type CoopRole = 'none' | 'host' | 'guest' | 'spectator';
+export type { SessionKind };
 
 interface Peer {
   id: string;
@@ -55,11 +37,7 @@ interface Peer {
   hp: number;
   kills: number;
   downs: number;
-  /** Game time of the last report (host side). */
-  seen: number;
-  env: ZombieEnv | null;
-  field: FlowField | null;
-  fieldT: number;
+  life: Life;
 }
 
 export interface ScoreRow {
@@ -72,50 +50,15 @@ export interface ScoreRow {
   /** Created / manages the session. */
   host: boolean;
   ping: number | null;
+  /** 'up', 'down' (can be revived), 'out' (bled out) or 'aboard'. */
+  status: 'up' | 'down' | 'out' | 'aboard';
 }
 
-/** The objective's markers in the world: the hold circle and a beam over each data core. */
-class MissionProps {
-  private readonly ring: AreaMarker;
-  private readonly beams: THREE.Object3D[] = [];
-
-  constructor(root: THREE.Object3D) {
-    this.ring = createAreaMarker(COOP.mission.holdRadius, 0x8fd18a);
-    this.ring.root.visible = false;
-    root.add(this.ring.root);
-    for (let i = 0; i < COOP.mission.cores; i++) {
-      const b = createObjectiveBeam(0x6ec6d6);
-      b.visible = false;
-      root.add(b);
-      this.beams.push(b);
-    }
-  }
-
-  sync(m: WaveMission | null, inside: boolean, dt: number, time: number): void {
-    const hold = !!m && m.kind === 'hold' && m.status === 'active';
-    this.ring.root.visible = hold;
-    if (hold) {
-      this.ring.root.position.set(m.x, 0.06, m.z);
-      this.ring.setProgress(m.progress);
-      this.ring.setActive(inside);
-      this.ring.update(dt, time);
-    }
-    this.beams.forEach((b, i) => {
-      const item = m && m.kind === 'collect' && m.status === 'active' ? m.items[i] : undefined;
-      b.visible = !!item && !item.taken;
-      if (item) b.position.set(item.x, 0, item.z);
-    });
-  }
-}
+const STATUS: Record<number, ScoreRow['status']> = { 1: 'up', 2: 'down', 3: 'out', 4: 'aboard' };
 
 export class CoopSession {
   readonly room: RoomClient;
   role: CoopRole = 'none';
-  waves = createWaves();
-  /** The current wave's objective (kept through the following break so its result stays on screen). */
-  mission: WaveMission | null = null;
-  /** Infected still to deal with in the current wave. */
-  left = 0;
   /** This client has deployed into the session. */
   started = false;
   /** Shown by the lobby: the last refusal from the server, and why the session closed. */
@@ -123,23 +66,18 @@ export class CoopSession {
   closedReason = '';
   /** The lobby redraws on this. */
   onChange: () => void = () => {};
+  /** This player's state: up, down (bleeding out), out (bled out, watching), aboard (extracted). */
+  life: Life = LIFE.up;
+  /** Seconds left before a downed player bleeds out. */
+  bleed = 0;
   private gen = 0;
   private endedGen = -1;
   private readonly peers = new Map<string, Peer>();
   private readonly avatars = new Map<string, Avatar>();
   private me = { kills: 0, downs: 0 };
-  private killer: string | null = null;
-  private spawnT = 0;
   private sendT = 0;
-  private seenWave = 0;
-  private seenPhase: WavePhase = 'break';
-  private props: MissionProps | null = null;
-  private elitePending = false;
-  /** Carrier (0-based) waiting for a spawn spot, or -1. */
-  private carrierPending = -1;
-  private carrierOrder: number[] = [];
-  /** Mazoku co-op: the card carriers join on their waves. Chosen by the host in the lobby; the others are told. */
-  mazoku = false;
+  /** A self-hosted session's simulation (owner's browser only). */
+  private sim: SessionSim | null = null;
 
   constructor(private readonly g: Game) {
     this.room = new RoomClient({
@@ -168,9 +106,29 @@ export class CoopSession {
     return this.started && this.role !== 'none';
   }
 
-  /** The host has started the session, so this client may deploy into it. */
+  /** The owner has started the session, so this client may deploy into it. */
   get canDeploy(): boolean {
     return this.room.room?.state === 'playing';
+  }
+
+  /** What the session plays: the story operation (Standard), with the Mazoku carriers, or free roam. */
+  get kind(): SessionKind {
+    return this.room.room?.kind ?? 'mission';
+  }
+
+  /** The story kinds: contracts, extraction, revives. */
+  get story(): boolean {
+    return this.kind === 'mission' || this.kind === 'mazoku';
+  }
+
+  /** A live free-roam session: fly, no damage, no HUD. */
+  get roaming(): boolean {
+    return this.live && this.kind === 'roam';
+  }
+
+  /** The session runs on the game server, not on anyone's device. */
+  get serverHosted(): boolean {
+    return this.room.room?.hosting === 'server';
   }
 
   private onRoom(room: RoomView | null, you: { id: string; role: RoomRole; hidden: boolean } | null): void {
@@ -179,34 +137,35 @@ export class CoopSession {
     } else {
       this.lastError = '';
       this.closedReason = '';
+      // joined with a code while on another map: switch to the session's map and come back to it
+      if (room.map !== this.g.mapId) {
+        this.g.switchMapForRoom(room.code, room.map);
+        return;
+      }
       this.role = you.role === 'spectator' ? 'spectator' : room.hostId === you.id ? 'host' : 'guest';
-      // whoever just joined learns which variant this is
-      if (this.role === 'host') this.room.send('all', { k: 'cfg', mz: this.mazoku });
+      // a self-hosted session's owner runs the simulation, on the map they are on
+      if (this.role === 'host') {
+        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, send: (to, d) => this.fromSim(to, d) });
+        if (!this.sim.finished && this.sim.stats().elapsed === 0) this.sim.kind = room.kind;
+        this.sim.players(room.players.map((p) => ({ id: p.id, name: p.name })));
+      }
       // drop anyone who is no longer a player
       for (const id of [...this.peers.keys()]) if (!room.players.some((p) => p.id === id)) this.dropPeer(id);
     }
     this.onChange();
   }
 
-  /** Owner: switch the Mazoku carriers on or off (takes effect from the next carrier wave). */
-  setMazoku(on: boolean): void {
-    if (!this.room.isOwner) return;
-    this.mazoku = on;
-    // a self-hosted owner is the host and tells everyone; a server-hosted session hears it and tells everyone itself
-    this.room.send(this.role === 'host' ? 'all' : 'host', { k: 'cfg', mz: on });
-    this.onChange();
-  }
-
-  /** The session runs on the game server, not on anyone's device. */
-  get serverHosted(): boolean {
-    return this.room.room?.hosting === 'server';
+  /** Owner: what the session plays (lobby only). */
+  setKind(kind: SessionKind): void {
+    if (!this.room.isOwner || !this.room.room || this.room.room.state === 'playing') return;
+    this.room.manage('config', { value: kind });
   }
 
   /** Owner: open the session for play. */
   start(): void {
     if (!this.room.isOwner || !this.room.room) return;
     this.room.manage('state', { value: 'playing' });
-    this.room.room.state = 'playing'; // the server will confirm; the host deploys in the same click
+    this.room.room.state = 'playing'; // the server will confirm; the owner deploys in the same click
   }
 
   leave(): void {
@@ -216,13 +175,12 @@ export class CoopSession {
 
   private cleanup(): void {
     this.role = 'none';
-    this.mazoku = false;
     this.started = false;
-    this.mission = null;
+    this.sim = null;
     this.g.mission.shared = false;
+    this.g.mission.follow = false;
     this.g.zombies.netDamage = null;
     this.g.cards.coopMode = 'off';
-    this.props?.sync(null, false, 0, 0);
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
   }
 
@@ -232,277 +190,89 @@ export class CoopSession {
     this.avatars.delete(id);
   }
 
+  /** Everything this client says to the simulation (a self-host's own goes straight in). */
+  private toHost(d: Record<string, unknown>): void {
+    if (this.role === 'host' && this.sim) this.sim.message(this.room.you?.id ?? '', d, true);
+    else this.room.send('host', d);
+  }
+
+  /** A self-hosted simulation's output: out to the room, and to this client as if it came from the host. */
+  private fromSim(to: string, d: Record<string, unknown>): void {
+    const me = this.room.you?.id;
+    const hostId = this.room.room?.hostId ?? '';
+    if (to === 'all') {
+      this.room.send('all', d);
+      this.onRelay(hostId, d);
+    } else if (to === me) this.onRelay(hostId, d);
+    else this.room.send(to, d);
+  }
+
   /** A run is starting on this client (called from the game's reset). */
   begin(): void {
     const g = this.g;
     this.started = this.role !== 'none';
-    const remote = this.role === 'guest' || this.role === 'spectator';
-    g.zombies.netDamage = remote ? (z, a, h, y, pu, li) => this.room.send('host', { k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li) }) : null;
+    // every hit goes to the simulation, which decides it and pays for it
+    g.zombies.netDamage = this.started ? (z, a, h, y, pu, li) => this.toHost({ k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li) }) : null;
     g.zombies.carrierRig = (i) => g.cards.rigFor(i);
-    g.cards.coopMode = this.role === 'host' ? 'host' : remote ? 'remote' : 'off';
-    g.cards.onCoopCure = (id) => this.room.send('host', { k: 'cure', id });
-    g.cards.onCoopTake = (id) => this.room.send('host', { k: 'take', id });
-    g.cards.onCoopRecovered = (id) => {
-      this.room.send('all', { k: 'card', id });
-      g.cards.award(id, COOP.carrierReward);
-    };
-    this.props ??= new MissionProps(g.worldRoot);
-    // the relay is the squad's: one uplink for everyone, started by anyone, paid to everyone
+    g.cards.coopMode = this.started ? 'remote' : 'off';
+    g.cards.onCoopCure = (id) => this.toHost({ k: 'cure', id });
+    g.cards.onCoopTake = (id) => this.toHost({ k: 'take', id });
     g.mission.shared = this.started;
-    g.mission.requestRelay = () => this.requestRelay();
+    g.mission.follow = this.started && this.story;
+    g.mission.requestRelay = () => this.toHost({ k: 'relay' });
+    g.mission.requestCall = () => this.toHost({ k: 'call' });
+    g.mission.requestBoard = () => this.toHost({ k: 'board' });
+    g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
+    g.squad.requestEmber = (i) => this.toHost({ k: 'ember', i });
     this.me = { kills: 0, downs: 0 };
-    this.mission = null;
-    this.seenWave = 0;
-    this.seenPhase = 'break';
-    this.spawnT = 0;
+    this.life = LIFE.up;
+    this.bleed = 0;
     this.sendT = 0;
-    this.elitePending = false;
-    this.carrierPending = -1;
-    // a server-hosted session: the owner asks it for another run (it ignores this while one is still going)
-    if (this.role === 'guest' && this.serverHosted && this.room.isOwner) this.room.send('host', { k: 'restart' });
-    if (this.role === 'host') {
-      this.gen++;
-      this.endedGen = -1;
-      this.waves = createWaves();
-      this.carrierOrder = COOP.carrierWaves.map((_, i) => i).sort(() => g.rng.f() - 0.5);
-      for (const p of this.peers.values()) {
-        p.kills = 0;
-        p.downs = 0;
-        p.env = null;
-      }
+    if (this.role === 'host' && this.sim) {
+      this.sim.kind = this.kind;
+      this.sim.begin();
+    } else if (this.role === 'guest' && this.room.isOwner) {
+      // the owner asks a server-hosted session for another run (it ignores this while one is still going)
+      this.toHost({ k: 'restart' });
     }
   }
 
   // ---------------------------------------------------------------------------------------------
-  // host simulation
+  // per frame
   // ---------------------------------------------------------------------------------------------
 
-  private peer(id: string): Peer | null {
-    let p = this.peers.get(id);
-    if (p) return p;
-    const person = this.room.room?.players.find((q) => q.id === id);
-    if (!person || id === this.room.you?.id) return null;
-    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, seen: 0, env: null, field: null, fieldT: 0 };
-    this.peers.set(id, p);
-    return p;
+  /** The infected are the simulation's: here they only follow its reports. */
+  updateEnemies(dt: number): void {
+    this.g.zombies.updatePuppets(dt, this.g.zenv);
   }
 
-  /** Every player who is up, the local one included (host side). */
-  private upPlayers(): PlayerRef[] {
-    const out: PlayerRef[] = [];
-    if (this.g.playerAlive()) out.push(this.g.zenv.player);
-    for (const p of this.peers.values()) if (p.ref.alive) out.push(p.ref);
-    return out;
-  }
-
-  /** Free spots around the squad for an objective: not on top of anyone, not across the map. */
-  private sites(count: number): { x: number; z: number }[] {
-    const g = this.g;
-    const up = this.upPlayers();
-    const cx = up.reduce((a, p) => a + p.x, 0) / Math.max(1, up.length);
-    const cz = up.reduce((a, p) => a + p.z, 0) / Math.max(1, up.length);
-    let pool = g.level.data.ambient.filter((a) => {
-      const d = Math.hypot(a.x - cx, a.z - cz);
-      return d > 14 && d < 60;
-    });
-    if (pool.length < count) pool = g.level.data.ambient;
-    return spreadPick(pool, count, () => g.rng.f()).map((i) => pool[i]!);
-  }
-
-  /** Replaces the single-player enemy update while a session is live. */
-  updateEnemies(dt: number, alive: boolean): void {
-    const g = this.g;
-    if (this.role !== 'host') {
-      g.zombies.updatePuppets(dt, g.zenv);
-      return;
-    }
-    const envs: ZombieEnv[] = [g.zenv];
-    let up = alive ? 1 : 0;
-    for (const p of this.peers.values()) {
-      // a guest that stopped reporting (tab in the background, connection gone) is not a target
-      if (g.time - p.seen > 4) p.ref.alive = false;
-      if (!p.field) p.field = new FlowField(g.level.nav);
-      if (!p.env) {
-        const id = p.id;
-        p.env = { ...g.zenv, player: p.ref, field: p.field, hurtPlayer: (amount, sx, sz, _kind, knock) => this.room.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }) };
-      }
-      p.env.time = g.zenv.time;
-      p.env.rng = g.zenv.rng;
-      p.fieldT -= dt;
-      if (p.ref.alive && p.fieldT <= 0) {
-        p.field.compute(p.ref.x, p.ref.z);
-        p.fieldT = 0.4;
-      }
-      if (p.ref.alive) up++;
-      envs.push(p.env);
-    }
-    g.zombies.update(dt, g.zenv, up > 0, envs.length > 1 ? envs : undefined);
-
-    const w = this.waves;
-    const m = this.mission;
-    // an open hold / collect objective (or a running uplink) keeps the wave alive with a trickle of infected
-    const trickle = w.phase === 'active' && (blocksWaveEnd(m) || g.session.defense.status === 'active') && w.toSpawn <= 1;
-    if (trickle) w.toSpawn = 1;
-    const event = stepWaves(w, dt, g.zombies.hostileCount, up, envs.length);
-    if (event === 'wave-start') this.onWaveStart();
-    else if ((event === 'wave-clear' || event === 'won') && m && closeMission(m)) this.payBonus(m);
-    if (w.phase === 'active') this.stepMission(dt);
-
-    if (w.phase === 'active' && (w.toSpawn > 0 || w.bossPending || this.elitePending || this.carrierPending >= 0)) {
-      this.spawnT -= dt;
-      if (this.spawnT <= 0 && g.zombies.hostileCount < COOP.activeCap) {
-        this.spawnT = trickle ? COOP.mission.trickleEvery : COOP.spawnEvery;
-        this.spawnOne(envs);
-      }
-    }
-    this.left = w.toSpawn + (w.bossPending ? 1 : 0) + g.zombies.hostileCount - (trickle ? 1 : 0);
-  }
-
-  private onWaveStart(): void {
-    const g = this.g;
-    const n = this.waves.n;
-    const kind = pickMission(n, g.rng.f());
-    this.mission = kind ? createMission(kind, n, this.sites(COOP.mission.cores)) : null;
-    this.elitePending = kind === 'elite';
-    const slot = (COOP.carrierWaves as readonly number[]).indexOf(n);
-    if (slot >= 0 && this.mazoku) this.carrierPending = this.carrierOrder[slot] ?? -1;
-  }
-
-  private stepMission(dt: number): void {
-    const g = this.g;
-    const m = this.mission;
-    if (!m || m.status !== 'active') return;
-    const up = this.upPlayers();
-    let done = false;
-    if (m.kind === 'hold') {
-      done = stepHold(m, dt, up.filter((p) => Math.hypot(p.x - m.x, p.z - m.z) < m.radius).length);
-    } else if (m.kind === 'collect') {
-      m.items.forEach((item, i) => {
-        if (!item.taken && up.some((p) => Math.hypot(p.x - item.x, p.z - item.z) < COOP.mission.coreRadius)) {
-          done = takeCore(m, i) || done;
-          g.fx.sparkle({ x: item.x, y: 0.8, z: item.z }, 0x6ec6d6, 16);
-        }
-      });
-    } else if (m.kind === 'elite' && m.eliteId > 0) {
-      const z = g.zombies.zombies.find((q) => q.id === m.eliteId);
-      if (!z || !z.alive) done = eliteKilled(m);
-    }
-    if (done) this.payBonus(m);
-  }
-
-  /** Someone held E at the relay console. Host: start it for the squad; others ask the host. */
-  private requestRelay(): void {
-    if (this.role === 'host') this.g.mission.beginDefense();
-    else if (this.role === 'guest') this.room.send('host', { k: 'relay' });
-  }
-
-  /** Objective complete: every player is paid. */
-  private payBonus(m: WaveMission): void {
-    const title = MISSION_TEXT[m.kind].title;
-    this.room.send('all', { k: 'bonus', c: m.reward, t: title });
-    this.g.grantBonus(m.reward, title);
-  }
-
-  /** A spawn point a fair distance from `t` that its flow field can reach. */
-  private farSpot(t: PlayerRef, env: ZombieEnv): { x: number; z: number } | null {
-    const g = this.g;
-    const spots = g.level.data.spawnPoints.filter((s) => {
-      const d = Math.hypot(s.x - t.x, s.z - t.z);
-      return d > 24 && d < 75 && env.field.isReachable(s.x, s.z);
-    });
-    return spots[Math.floor(g.rng.f() * spots.length)] ?? null;
-  }
-
-  private spawnOne(envs: ZombieEnv[]): void {
-    const g = this.g;
-    const upEnvs = envs.filter((e) => e.player.alive);
-    if (upEnvs.length === 0) return;
-    const env = upEnvs[Math.floor(g.rng.f() * upEnvs.length)]!;
-    const t = env.player;
-    const w = this.waves;
-    if (w.bossPending) {
-      const s = this.farSpot(t, env);
-      if (!s) return;
-      const boss = g.zombies.spawn('warden', s.x, s.z, g.rng, { boss: true, hpScale: 0.3 + 0.2 * envs.length });
-      g.zombies.boss = boss;
-      boss.aggro(t.x, t.z);
-      w.bossPending = false;
-      return;
-    }
-    if (this.carrierPending >= 0) {
-      const s = this.farSpot(t, env);
-      if (!s) return;
-      const z = g.cards.coopSpawn(this.carrierPending, s.x, s.z, 0.75 + 0.25 * envs.length);
-      z?.aggro(t.x, t.z);
-      this.carrierPending = -1;
-      return;
-    }
-    const ctx: DirectorContext = { elapsed: g.session.elapsed, playerX: t.x, playerZ: t.z, playerYaw: 0, playerEyeY: t.eyeY, region: 'low', phase: 0, quality: g.settings.quality, defenseActive: false, extractionElapsed: null, paused: false };
-    if (this.elitePending && this.mission) {
-      if (g.zombies.spawnForWave('armored', waveHpScale(w.n) * COOP.mission.eliteHp, ctx, env, g.rng)) {
-        this.mission.eliteId = g.zombies.zombies[g.zombies.zombies.length - 1]!.id;
-        this.elitePending = false;
-      }
-      return;
-    }
-    if (w.toSpawn > 0 && g.zombies.spawnForWave(waveType(w.n, g.rng.f()), waveHpScale(w.n), ctx, env, g.rng)) w.toSpawn--;
-  }
-
-  // ---------------------------------------------------------------------------------------------
-  // per-frame, every role
-  // ---------------------------------------------------------------------------------------------
-
-  /** Networking, avatars, objective markers and the wave banners. Call once per simulated frame while live. */
+  /** Networking, the simulation (self-host), avatars, the relay, bleeding out. Once per simulated frame while live. */
   update(dt: number): void {
     const g = this.g;
     const room = this.room.room;
     if (!room || !this.live) return;
-    g.session.elapsed += dt;
+    this.sim?.tick(dt);
     for (const a of this.avatars.values()) a.update(dt);
-    const m = this.mission;
-    this.props?.sync(m, !!m && Math.hypot(g.player.x - m.x, g.player.z - m.z) < m.radius, dt, g.time);
-    // the squad's relay: anyone who is up inside the zone keeps it going
+    // the squad's relay: anyone who is up inside the zone keeps it going (the simulation decides)
     const rd = g.level.data.defense;
-    const atRelay = this.upPlayers().some((q) => Math.hypot(q.x - rd.x, q.z - rd.z) < rd.radius);
-    g.mission.sharedRelay(dt, g.time, atRelay, this.role === 'host');
+    const atRelay = [...this.peers.values()].some((q) => q.ref.alive && Math.hypot(q.ref.x - rd.x, q.ref.z - rd.z) < rd.radius) || (g.playerAlive() && Math.hypot(g.player.x - rd.x, g.player.z - rd.z) < rd.radius);
+    if (this.story) g.mission.sharedRelay(dt, g.time, atRelay, false);
+
+    // bleeding out
+    if (this.life === LIFE.down) {
+      this.bleed -= dt;
+      if (this.bleed <= 0) {
+        this.life = LIFE.out;
+        g.banner('YOU BLED OUT', 'Watch the squad - you are back on the next run', 'danger', 5);
+        g.audio.play('defeat_sting', { priority: 2, volume: 0.5 });
+      }
+    }
 
     this.sendT -= dt;
-    if (this.sendT <= 0) {
-      if (this.role === 'host') {
-        this.sendT = 1 / COOP.snapshotHz;
-        this.sendSnapshot(room);
-      } else if (this.role === 'guest') {
-        this.sendT = 1 / COOP.reportHz;
-        const p = g.player;
-        this.room.send('host', { k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: g.playerAlive(), hp: Math.round(g.session.vitals.health) });
-      }
-    }
-    if (this.role === 'host') {
-      for (const p of this.peers.values()) this.showAvatar(p);
-    }
-
-    // wave changes, the same for everyone
-    const w = this.waves;
-    if (w.n !== this.seenWave && w.phase === 'active') {
-      this.seenWave = w.n;
-      const boss = w.n % COOP.bossEvery === 0;
-      g.banner(`WAVE ${w.n}`, boss ? 'The Warden is with them' : m ? MISSION_TEXT[m.kind].title : `${this.left} infected inbound`, boss ? 'danger' : 'warn', 3.4);
-      g.audio.play('klaxon', { priority: 2, volume: 0.5 });
-    }
-    if (w.phase !== this.seenPhase) {
-      const was = this.seenPhase;
-      this.seenPhase = w.phase;
-      if (w.phase === 'break' && was === 'active') {
-        g.banner(`WAVE ${w.n} CLEARED`, `Next wave in ${COOP.breakTime} seconds - resupply`, 'good', 3.5);
-        g.audio.play('contract_complete', { priority: 3 });
-        if (this.role !== 'spectator' && !g.playerAlive()) g.revivePlayer();
-      } else if ((w.phase === 'won' || w.phase === 'lost') && this.endedGen !== this.gen) {
-        this.endedGen = this.gen;
-        // the host stops simulating once its results are up, so the outcome has to go out now
-        if (this.role === 'host') this.sendSnapshot(room);
-        if (this.role === 'spectator') g.banner(w.phase === 'won' ? 'SESSION COMPLETE' : 'SQUAD WIPED OUT', undefined, w.phase === 'won' ? 'good' : 'danger', 6);
-        else g.finishCoop(w.phase === 'won' ? 'victory' : 'defeat', w.phase === 'won' ? `Survived all ${COOP.waves} waves` : `Squad wiped out on wave ${w.n}`);
-      }
+    if (this.sendT <= 0 && this.role !== 'spectator') {
+      this.sendT = 1 / COOP.reportHz;
+      const p = g.player;
+      this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health) });
     }
   }
 
@@ -513,122 +283,84 @@ export class CoopSession {
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
     }
-    // a teammate who goes down falls where they stood (and gets up again when they come back)
-    if (!p.ref.alive && a.root.visible && !a.fallen) a.fall(Math.sin(p.yaw), Math.cos(p.yaw), 1.5);
-    else if (p.ref.alive && a.fallen) a.rise();
-    a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.ref.alive || a.fallen);
+    // a teammate who goes down falls where they stood (and gets up again when revived); aboard means gone
+    const down = p.life === LIFE.down || p.life === LIFE.out;
+    if (down && a.root.visible && !a.fallen) a.fall(Math.sin(p.yaw), Math.cos(p.yaw), 1.5);
+    else if (p.life === LIFE.up && a.fallen) a.rise();
+    a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.life !== LIFE.aboard && (p.ref.alive || a.fallen));
   }
 
   // ---------------------------------------------------------------------------------------------
-  // messages
+  // messages from the simulation
   // ---------------------------------------------------------------------------------------------
-
-  private sendSnapshot(room: RoomView): void {
-    const g = this.g;
-    const w = this.waves;
-    const z = g.zombies.zombies.map((q) => {
-      const n = q.toNet();
-      const row = [n.id, TYPES.indexOf(n.type), r1(n.x), r1(n.z), r2(n.yaw), MODES.indexOf(n.mode), r2(n.actionT), r2(n.staggerT), r1(n.speed), r2(n.hp), n.flags, n.carrier];
-      // a body in the air: its height and tumble ride along
-      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
-      return row;
-    });
-    const me = g.player;
-    const p: unknown[][] = [[room.hostId, r1(me.x), r1(me.y), r1(me.z), r2(me.yaw), g.playerAlive() ? 1 : 0, Math.round(g.session.vitals.health), this.me.kills, this.me.downs]];
-    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs]);
-    const m = this.mission;
-    const mission = m ? [MISSION_KINDS.indexOf(m.kind), MISSION_STATUSES.indexOf(m.status), r2(m.progress), r1(m.x), r1(m.z), m.eliteId, m.reward, ...m.items.flatMap((i) => [r1(i.x), r1(i.z), i.taken ? 1 : 0])] : null;
-    const rl = [RELAY_STATUSES.indexOf(g.session.defense.status), r2(g.session.defense.progress)];
-    this.room.send('all', { k: 's', g: this.gen, w: [w.n, PHASES.indexOf(w.phase), r1(Math.max(0, w.breakLeft)), this.left], z, p, m: mission, c: g.cards.coopState(), rl });
-  }
 
   private onRelay(from: string, d: Record<string, unknown>): void {
     const g = this.g;
     const room = this.room.room;
-    if (room && from === room.hostId && d.k === 'cfg') {
-      this.mazoku = d.mz === true;
-      this.onChange();
+    if (!room) return;
+    // a self-host's simulation hears the other players (it runs even before the owner has deployed)
+    if (this.role === 'host' && this.sim && from !== room.hostId) {
+      if (room.players.some((p) => p.id === from)) this.sim.message(from, d, from === room.ownerId);
       return;
     }
-    if (!room || !this.live) return;
-    if (this.role === 'host') {
-      if (from === 'server') {
-        if (d.k === 'left') this.dropPeer(String(d.id));
+    if (!this.live || from !== room.hostId) return;
+    if (d.k === 's') {
+      this.applySnapshot(d);
+      return;
+    }
+    if (this.role === 'spectator') return;
+    switch (d.k) {
+      case 'hurt':
+        if (this.life === LIFE.up) g.takeRemoteHit(Number(d.a) || 0, Number(d.sx) || 0, Number(d.sz) || 0, Number(d.kn) || 0);
         return;
-      }
-      const p = this.peer(from);
-      if (!p) return;
-      if (d.k === 'p') {
-        const up = d.up === true;
-        if (p.ref.alive && !up) {
-          p.downs++;
-          playerWentDown(this.mission);
-        }
-        p.ref.x = Number(d.x) || 0;
-        p.ref.y = Number(d.y) || 0;
-        p.ref.z = Number(d.z) || 0;
-        p.ref.eyeY = p.ref.y + 1.6;
-        p.ref.alive = up;
-        p.yaw = Number(d.yaw) || 0;
-        p.hp = Number(d.hp) || 0;
-        p.seen = g.time;
-      } else if (d.k === 'hit') {
-        const z = g.zombies.zombies.find((q) => q.id === d.z);
-        if (!z || !z.alive) return;
-        this.killer = from;
-        // a single hit can never do more than the strongest weapon plausibly could
-        g.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, g.zenv, Number(d.y) || 0, Math.min(20, Number(d.pu) || 0), Math.min(15, Number(d.li) || 0));
-        this.killer = null;
-      } else if (d.k === 'cure') {
-        // only someone standing next to her can purge her
-        const at = g.cards.downedAt(String(d.id));
-        if (at && p.ref.alive && Math.hypot(at.x - p.ref.x, at.z - p.ref.z) < CARD_MODE.cureReach + 2.5) g.cards.cure(String(d.id));
-      } else if (d.k === 'take') {
-        if (p.ref.alive) g.cards.coopTake(String(d.id), p.ref.x, p.ref.z);
-      } else if (d.k === 'relay') {
-        // only someone standing at the console can start the uplink
-        const c = g.mission.transmitterPos();
-        if (p.ref.alive && Math.hypot(c.x - p.ref.x, c.z - p.ref.z) < 5) g.mission.beginDefense();
-      }
-      return;
+      case 'kill':
+        g.creditKill(Number(d.c) || 0, String(d.n || 'INFECTED'), d.h === true, Number(d.x), Number(d.zz), Number(d.dc) || 0);
+        return;
+      case 'cash':
+        g.coopCash(Number(d.c) || 0, String(d.t || ''), Number(d.pl) || 0);
+        return;
+      case 'card':
+        g.cards.award(String(d.id), COOP.carrierReward);
+        return;
+      case 'boarded':
+        this.life = LIFE.aboard;
+        g.coopBoarded();
+        return;
+      case 'revived':
+        if (this.life !== LIFE.down) return;
+        this.life = LIFE.up;
+        g.coopRevived(String(d.by || 'A teammate'));
+        return;
+      case 'note':
+        g.feed(String(d.t || ''), 'good');
+        return;
+      default:
+        return;
     }
-    if (from !== room.hostId) return;
-    if (d.k === 's') this.applySnapshot(d);
-    else if (this.role !== 'guest') return;
-    else if (d.k === 'hurt') g.takeRemoteHit(Number(d.a) || 0, Number(d.sx) || 0, Number(d.sz) || 0, Number(d.kn) || 0);
-    else if (d.k === 'kill') g.creditKill(Number(d.c) || 0, String(d.n || 'INFECTED'), d.h === true);
-    else if (d.k === 'bonus') g.grantBonus(Number(d.c) || 0, String(d.t || 'OBJECTIVE'));
-    else if (d.k === 'card') g.cards.award(String(d.id), COOP.carrierReward);
   }
 
   private applySnapshot(d: Record<string, unknown>): void {
     const g = this.g;
-    const w = d.w as number[];
     const gen = Number(d.g) || 0;
-    if (gen !== this.gen) {
-      // the host started a fresh run
-      this.gen = gen;
-      this.seenWave = 0;
-      this.seenPhase = 'break';
-      if (this.role === 'guest' && !g.playerAlive()) g.revivePlayer();
-    }
-    this.waves.n = w[0] ?? 0;
-    this.waves.phase = PHASES[w[1] ?? 0] ?? 'break';
-    this.waves.breakLeft = w[2] ?? 0;
-    this.left = w[3] ?? 0;
-    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0, fy: q[12] ?? 0, fp: q[13] ?? 0, fr: q[14] ?? 0 }));
-    g.zombies.syncPuppets(list, g.rng);
+    if (gen !== this.gen) this.gen = gen; // a fresh run on the simulation
+    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0, fy: q[12] ?? 0, fp: q[13] ?? 0, fr: q[14] ?? 0, tag: q[15] ?? -1 }));
+    g.zombies.syncPuppets(list, g.rng, (i) => VULCAN.infected[i] ?? null);
     g.cards.coopApply((d.c as number[][] | undefined) ?? [], (carrier) => g.zombies.zombies.find((z) => z.carrierIdx === carrier) ?? null);
     const rl = d.rl as number[] | undefined;
-    if (rl && this.gen === gen) g.mission.applySharedRelay(RELAY_STATUSES[rl[0]!] ?? 'available', Number(rl[1]) || 0);
+    if (rl) g.mission.applySharedRelay(RELAY_STATUSES[rl[0]!] ?? 'available', Number(rl[1]) || 0);
 
-    const q = d.m as number[] | null | undefined;
-    if (!q) {
-      this.mission = null;
-    } else {
-      const items: WaveMission['items'] = [];
-      for (let i = 7; i + 2 < q.length; i += 3) items.push({ x: q[i]!, z: q[i + 1]!, taken: q[i + 2] === 1 });
-      this.mission = { kind: MISSION_KINDS[q[0]!] ?? 'flawless', status: MISSION_STATUSES[q[1]!] ?? 'active', progress: q[2]!, x: q[3]!, z: q[4]!, radius: COOP.mission.holdRadius, eliteId: q[5]!, reward: q[6]!, items };
+    const ms = d.ms as number[] | undefined;
+    if (ms) {
+      g.mission.applyMission({
+        elapsed: ms[0]!,
+        huntStatus: RELAY_STATUSES[ms[1]!] ?? 'active',
+        huntIdentified: ms[2] === 1,
+        phase: EXTRACTION_PHASES[ms[3]!] ?? 'locked',
+        countdown: ms[4]!,
+        windowLeft: ms[5]!,
+        calledAt: ms[6]! < 0 ? null : ms[6]!,
+      });
+      g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], Number(d.em) || 0, (d.sh as number[][] | undefined) ?? []);
     }
 
     const myId = this.room.you?.id;
@@ -651,30 +383,59 @@ export class CoopSession {
       p.hp = Number(row[6]);
       p.kills = Number(row[7]);
       p.downs = Number(row[8]);
+      p.life = (Number(row[9]) || LIFE.up) as Life;
       this.showAvatar(p);
     }
     for (const id of [...this.peers.keys()]) if (!seen.has(id)) this.dropPeer(id);
-  }
 
-  /** Host: who gets the kill. True when it was another player's (they are paid; the host is not). */
-  onKill(z: { def: { name: string; reward: number; headshotBonus: number } }, head: boolean): boolean {
-    if (this.role !== 'host') return false;
-    const p = this.killer ? this.peers.get(this.killer) : null;
-    if (!p) {
-      this.me.kills++;
-      return false;
+    // the end of the run
+    const outcome = ms ? ms[7]! : 0;
+    if (outcome !== 0 && this.endedGen !== gen) {
+      this.endedGen = gen;
+      const won = outcome === 1;
+      const why = String(d.why || (won ? 'Extracted' : 'Mission failed'));
+      if (this.role === 'spectator') g.banner(won ? 'THE SQUAD GOT OUT' : 'MISSION FAILED', why, won ? 'good' : 'danger', 6);
+      else if (this.life !== LIFE.aboard) g.finishCoop('defeat', won ? 'Left behind - the helicopter left without you' : why);
     }
-    p.kills++;
-    this.room.send(p.id, { k: 'kill', n: z.def.name, h: head, c: killReward(z.def as never, head, 'low') });
-    return true;
   }
 
+  private peer(id: string): Peer | null {
+    let p = this.peers.get(id);
+    if (p) return p;
+    const person = this.room.room?.players.find((q) => q.id === id);
+    if (!person || id === this.room.you?.id) return null;
+    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, life: LIFE.up };
+    this.peers.set(id, p);
+    return p;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // going down and getting back up
+  // ---------------------------------------------------------------------------------------------
+
+  /** This player's health ran out. In the story kinds they are down, not dead. */
   onLocalDeath(): void {
-    if (this.role === 'host') {
-      this.me.downs++;
-      playerWentDown(this.mission);
+    this.life = LIFE.down;
+    this.bleed = COOP.bleedOut;
+    const others = [...this.peers.values()].some((p) => p.life === LIFE.up);
+    this.g.banner('YOU ARE DOWN', others ? `A teammate can revive you - ${COOP.bleedOut} seconds` : 'Nobody is left standing', 'danger', 5);
+  }
+
+  /** The downed teammate in reach of this player, if any. */
+  reviveTarget(): { id: string; name: string; dist: number } | null {
+    if (!this.live || !this.story || this.life !== LIFE.up) return null;
+    const me = this.g.player;
+    let best: { id: string; name: string; dist: number } | null = null;
+    for (const p of this.peers.values()) {
+      if (p.life !== LIFE.down) continue;
+      const d = Math.hypot(p.ref.x - me.x, p.ref.z - me.z);
+      if (d < COOP.reviveReach && (!best || d < best.dist)) best = { id: p.id, name: p.name, dist: d };
     }
-    this.g.banner('YOU ARE DOWN', 'You return when the wave is cleared', 'danger', 5);
+    return best;
+  }
+
+  revive(id: string): void {
+    this.toHost({ k: 'revive', id });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -693,72 +454,25 @@ export class CoopSession {
     if (!room) return { rows, spectators: [] };
     const myId = this.room.you?.id ?? '';
     const ping = (id: string): number | null => (id === myId ? (this.room.ping === null ? null : Math.round(this.room.ping)) : (room.players.find((q) => q.id === id)?.ping ?? null));
-    if (this.role !== 'spectator') rows.push({ id: myId, name: this.g.account.user?.name ?? 'You', kills: this.me.kills, downs: this.me.downs, alive: this.g.playerAlive(), you: true, host: room.ownerId === myId, ping: ping(myId) });
-    for (const p of this.peers.values()) rows.push({ id: p.id, name: p.name, kills: p.kills, downs: p.downs, alive: p.ref.alive, you: false, host: room.ownerId === p.id, ping: ping(p.id) });
+    if (this.role !== 'spectator') rows.push({ id: myId, name: this.g.account.user?.name ?? 'You', kills: this.me.kills, downs: this.me.downs, alive: this.life === LIFE.up, you: true, host: room.ownerId === myId, ping: ping(myId), status: STATUS[this.life]! });
+    for (const p of this.peers.values()) rows.push({ id: p.id, name: p.name, kills: p.kills, downs: p.downs, alive: p.life === LIFE.up, you: false, host: room.ownerId === p.id, ping: ping(p.id), status: STATUS[p.life] ?? 'up' });
     return { rows, spectators: room.spectators.map((s) => s.name) };
   }
 
-  /** Swap the solo mission readouts for the wave ones. */
+  /** The squad on the HUD and the map: teammates, who is down, and this player's own bleed-out clock. */
   decorateHud(st: HudState, md: MapDynamic): void {
     const g = this.g;
-    const w = this.waves;
-    const m = this.mission;
-    const resting = w.phase === 'break';
-    const cards = st.objectives.filter((o) => o.id === 'cards');
-    st.objectives = [
-      {
-        id: 'wave',
-        title: resting ? (w.n === 0 ? 'GET READY' : `WAVE ${w.n} CLEARED`) : `WAVE ${w.n} / ${COOP.waves}`,
-        detail: resting ? `Next wave in ${Math.ceil(w.breakLeft)}s` : `${Math.max(0, this.left)} infected left`,
-        state: 'active',
-        progress: w.n / COOP.waves,
-        tracked: !m || m.status !== 'active',
-        distance: -1,
-      },
-    ];
-    if (m) {
-      const far = m.kind === 'hold' ? Math.hypot(m.x - g.player.x, m.z - g.player.z) : -1;
-      st.objectives.push({
-        id: 'mission',
-        title: MISSION_TEXT[m.kind].title,
-        detail: missionDetail(m),
-        state: m.status === 'done' ? 'complete' : m.status === 'failed' ? 'failed' : 'active',
-        progress: m.kind === 'hold' || m.kind === 'collect' ? m.progress : -1,
-        tracked: m.status === 'active',
-        distance: m.status === 'active' ? far : -1,
-      });
-    }
-    const relay = g.session.defense;
-    st.objectives.push({
-      id: 'relay',
-      title: `${MISSION.defense.title}  (SQUAD)`,
-      detail: relay.status === 'complete' ? 'Complete - paid to everyone' : relay.status === 'active' ? `Keep one of you in the zone - ${Math.round(relay.progress * 100)}%` : 'Optional - start it at the console; it counts for the whole squad',
-      state: relay.status === 'complete' ? 'complete' : 'active',
-      progress: relay.status === 'active' ? relay.progress : -1,
-      tracked: relay.status === 'active' && (!m || m.status !== 'active'),
-      distance: relay.status === 'complete' ? -1 : Math.hypot(g.level.data.defense.x - g.player.x, g.level.data.defense.z - g.player.z),
-    });
-    st.objectives.push(...cards);
     const squad = [...this.peers.values()];
     if (squad.length > 0) {
-      st.objectives.push({ id: 'squad', title: 'SQUAD', detail: squad.map((p) => `${p.name}${p.ref.alive ? '' : ' (down)'}`).join('   '), state: 'active', progress: -1, tracked: false, distance: -1 });
+      const label = (p: Peer): string => (p.life === LIFE.down ? `${p.name} DOWN` : p.life === LIFE.out ? `${p.name} (out)` : p.life === LIFE.aboard ? `${p.name} (aboard)` : p.name);
+      st.objectives.push({ id: 'coop-squad', title: 'SQUAD', detail: squad.map(label).join('   '), state: squad.some((p) => p.life === LIFE.down) ? 'failed' : 'active', progress: -1, tracked: false, distance: -1 });
     }
-    st.timer = resting ? { label: 'NEXT WAVE IN', seconds: w.breakLeft, urgent: w.breakLeft < 5 } : { label: `WAVE ${w.n} OF ${COOP.waves}`, seconds: g.session.elapsed, urgent: false };
-    st.subTimer = null;
-    const boss = g.zombies.boss;
-    st.boss = boss && boss.alive ? { name: 'THE WARDEN', fraction: Math.max(0, boss.hp / boss.maxHp), enraged: boss.enraged } : g.cards.bossInfo();
-
-    md.markers = md.markers.filter((k) => k.kind === 'buy' || k.kind === 'upgrade' || k.kind === 'crate' || k.kind === 'start' || (k.kind === 'transmitter' && g.session.defense.status !== 'complete') || k.id.startsWith('card:'));
-    for (const p of this.peers.values()) {
-      if (p.ref.alive) md.markers.push({ id: `mate:${p.id}`, kind: 'objective', x: p.ref.x, z: p.ref.z, label: p.name.toUpperCase(), color: '#8fd18a', visible: true, compass: true });
+    if (this.life === LIFE.down) st.subTimer = { label: 'BLEEDING OUT', seconds: Math.max(0, this.bleed), urgent: true };
+    for (const p of squad) {
+      if (p.life === LIFE.aboard) continue;
+      const down = p.life === LIFE.down;
+      md.markers.push({ id: `mate:${p.id}`, kind: 'objective', x: p.ref.x, z: p.ref.z, label: down ? `REVIVE ${p.name.toUpperCase()}` : p.name.toUpperCase(), color: down ? '#ff5a4d' : '#8fd18a', visible: p.life !== LIFE.out, compass: down || p.ref.alive, pulse: down });
     }
-    if (m && m.status === 'active') {
-      if (m.kind === 'hold') md.markers.push({ id: 'm:hold', kind: 'objective', x: m.x, z: m.z, label: 'HOLD', color: '#8fd18a', radius: m.radius, visible: true, compass: true, pulse: true });
-      m.items.forEach((item, i) => {
-        if (!item.taken) md.markers.push({ id: `m:core${i}`, kind: 'objective', x: item.x, z: item.z, label: 'CORE', color: '#6ec6d6', visible: true, compass: true });
-      });
-      const elite = m.kind === 'elite' ? g.zombies.zombies.find((z) => (z.puppet ? z.netId : z.id) === m.eliteId && z.alive) : undefined;
-      if (elite) md.markers.push({ id: 'm:elite', kind: 'hunt', x: elite.x, z: elite.z, label: 'THE HUNTER', color: '#ff5a4d', visible: true, compass: true, pulse: true });
-    }
+    void g;
   }
 }

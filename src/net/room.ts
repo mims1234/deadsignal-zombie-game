@@ -18,6 +18,10 @@ export interface RoomView {
   /** Who created and manages the session (kick, invites, start, end). */
   ownerId: string;
   hosting: Hosting;
+  /** What it plays: the story operation (Standard), with the Mazoku carriers, or free roam. */
+  kind: 'mission' | 'mazoku' | 'roam';
+  /** The map; fixed when the session is created (players on another map reload onto it). */
+  map: 'district' | 'forge';
   visibility: 'public' | 'private';
   state: 'lobby' | 'playing';
   players: RoomPerson[];
@@ -153,8 +157,8 @@ export class RoomClient {
     }
   }
 
-  create(visibility: 'public' | 'private', hosting: Hosting = 'server'): Promise<void> {
-    return this.command({ t: 'create', visibility, hosting });
+  create(visibility: 'public' | 'private', hosting: Hosting = 'server', map: RoomView['map'] = 'district', kind: RoomView['kind'] = 'mission'): Promise<void> {
+    return this.command({ t: 'create', visibility, hosting, map, kind });
   }
 
   join(code: string, as: RoomRole, hidden = false): Promise<void> {
@@ -169,7 +173,7 @@ export class RoomClient {
     this.handlers.onRoom(null, null);
   }
 
-  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state', arg: { id?: string; value?: string } = {}): void {
+  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config', arg: { id?: string; value?: string } = {}): void {
     void this.command({ t: 'manage', op, ...arg });
   }
 

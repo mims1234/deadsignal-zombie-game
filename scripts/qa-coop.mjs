@@ -1,167 +1,207 @@
 #!/usr/bin/env node
 /**
- * Self-hosted co-op end to end in real headless Chrome: a host, a guest and a hidden admin spectator, three separate
- * browser sessions against the dev stack. Needs both running:
+ * Co-op end to end in real headless Chrome: an owner, a guest and a hidden admin run the story operation together,
+ * then a Forge session and a free-roam session. HOSTING=server (default) or self picks who runs the simulation.
+ * Needs the sim built (`pnpm build:sim`) and both servers running:
  *   DEV_LOGIN=1 ADMIN_IDS=9000000009 DB_FILE=/tmp/coop.db pnpm server      (port 3061)
  *   pnpm dev                                                               (QA_URL, default http://127.0.0.1:5173/)
- * Usage: node scripts/qa-coop.mjs [--shots dir]
  */
 import { chromium } from 'playwright-core';
 import { CHROME, sleep } from './lib/browser.mjs';
 
 const URL = (process.env.QA_URL || 'http://127.0.0.1:5173/').replace(/\/$/, '');
-const args = process.argv.slice(2);
-const shotDir = args.includes('--shots') ? args[args.indexOf('--shots') + 1] : null;
+const HOSTING = process.env.HOSTING === 'self' ? 'self' : 'server';
 const results = [];
 const check = (name, ok, detail = '') => {
   results.push(ok);
-  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  -> ' + detail : ''}`);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  [${HOSTING}] ${name}${detail ? '  -> ' + detail : ''}`);
 };
 
 const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
-async function client(id, name, query = '') {
+async function client(id, name, { query = '', map = 'district' } = {}) {
   const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(`${name}: ${e.message}`));
+  await page.addInitScript((m) => {
+    if (!sessionStorage.getItem('qa-map')) {
+      localStorage.setItem('deadsignal.map.v1', m);
+      sessionStorage.setItem('qa-map', '1');
+    }
+    localStorage.setItem('deadsignal.mode.v1', 'standard');
+  }, map);
   await page.goto(`${URL}/auth/dev?id=${id}&name=${name}`);
   await page.goto(`${URL}/${query}`);
-  await page.waitForFunction(() => window.__dead && window.__dead.game.state === 'title', null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__dead && window.__dead.game.state === 'title', null, { timeout: 150000 });
   return page;
 }
-const until = (page, fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, { timeout }).then(() => true, () => false);
+const until = (page, fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, { timeout, polling: 250 }).then(() => true, () => false);
+const lobby = (page) => page.evaluate(() => document.querySelector('.ds-lobby')?.innerText.replace(/\n/g, ' | ') ?? '');
+// lobby buttons first: the title screen has its own STANDARD / STANDARD MAZOKU / FREE ROAM row
+const click = (page, label) => page.evaluate((l) => ([...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === l) ?? [...document.querySelectorAll('.modes button')].find((b) => b.textContent === l))?.click(), label);
+const keepAlive = (page) => page.evaluate(() => window.__dead.setHealth(1e6, 100));
 
-const host = await client('4000000001', 'Hosty');
-await host.evaluate(() => [...document.querySelectorAll('.modes button')].find((b) => b.textContent === 'CO-OP').click());
-check('choosing CO-OP opens the lobby', await host.evaluate(() => !document.querySelector('.ds-lobby').hidden));
-// this suite covers self-hosting (the creator's browser runs the session); qa-coop-server.mjs covers server hosting
-await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'SELF HOST').click());
-await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'CREATE SESSION').click());
-await until(host, () => window.__dead.game.coop.room.room !== null);
-const code = await host.evaluate(() => window.__dead.game.coop.room.room.code);
-check('the host creates a session', /^[A-Z0-9]{6}$/.test(code), code);
+/** Open a session as the owner and bring a guest in through the invite link. */
+async function session(ownerId, guestId, map, kind) {
+  const owner = await client(ownerId, 'Owner', { map });
+  await click(owner, 'CO-OP');
+  await until(owner, () => !document.querySelector('.ds-lobby').hidden);
+  if (HOSTING === 'self') await click(owner, 'SELF HOST');
+  await click(owner, 'CREATE SESSION');
+  await until(owner, () => window.__dead.game.coop.room.room !== null);
+  const code = await owner.evaluate(() => window.__dead.game.coop.room.room.code);
+  if (kind !== 'mission') {
+    await click(owner, kind === 'roam' ? 'FREE ROAM' : 'STANDARD MAZOKU');
+    await until(owner, (k) => window.__dead.game.coop.room.room.kind === k, kind);
+  }
+  // the guest starts on the District whatever the session plays: the link takes them to the right map
+  const guest = await client(guestId, 'Guest', { query: `?room=${code}` });
+  await click(guest, 'JOIN');
+  await until(owner, () => window.__dead.game.coop.room.room.players.length === 2);
+  return { owner, guest, code };
+}
 
-const guest = await client('4000000002', 'Guesty', `?room=${code}`);
-check('an invite link opens the lobby with the code filled in', await guest.evaluate(() => document.querySelector('.ds-lobby input.code')?.value) === code);
-await guest.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'JOIN').click());
-await until(host, () => window.__dead.game.coop.room.room.players.length === 2);
-check('the guest joins and both lobbies list two players', await until(guest, () => window.__dead.game.coop.room.room?.players.length === 2));
-check('the guest waits for the host', await guest.evaluate(() => document.querySelector('.ds-lobby .wait') !== null));
-check('sessions start as plain Standard (no carriers)', await host.evaluate(() => window.__dead.game.coop.mazoku === false));
-await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'STANDARD MAZOKU').click());
-check('the host switches to Standard Mazoku and the guest is told', await until(guest, () => window.__dead.game.coop.mazoku === true && /STANDARD MAZOKU/.test(document.querySelector('.ds-lobby').innerText)));
-if (shotDir) await host.screenshot({ path: `${shotDir}/coop-1-lobby.png` });
+async function deployBoth(owner, guest) {
+  await owner.evaluate(() => {
+    window.__dead.game.coop.start();
+    window.__dead.start();
+  });
+  await until(guest, () => window.__dead.game.coop.canDeploy);
+  await guest.evaluate(() => window.__dead.start());
+  for (const p of [owner, guest]) await keepAlive(p);
+}
 
-// start: host first, then the guest deploys into the started session
-await host.evaluate(() => { const g = window.__dead.game; g.coop.start(); window.__dead.start(); });
-await until(guest, () => window.__dead.game.coop.canDeploy);
-await guest.evaluate(() => window.__dead.start());
-// a long test: nobody should die of standing around while the other browsers load
-for (const pg of [host, guest]) await pg.evaluate(() => window.__dead.setHealth(1e6, 100));
-check('both are playing with the right roles', (await host.evaluate(() => window.__dead.game.coop.role)) === 'host' && (await guest.evaluate(() => window.__dead.game.coop.role)) === 'guest');
+try {
+  // ---------------------------------------------------------------------------------------------
+  // the District, Standard
+  // ---------------------------------------------------------------------------------------------
+  const { owner, guest, code } = await session('6100000001', '6100000002', 'district', 'mission');
+  check('the lobby shows the mode and map, and pings', /MODE \/\/ THE DISTRICT/i.test(await lobby(owner)) && (await until(owner, () => [...document.querySelectorAll('.ds-lobby .person .ping')].every((p) => /\d+ ms/.test(p.textContent)), null, 15000)), await lobby(owner));
+  await click(owner, 'STANDARD MAZOKU');
+  check('the owner switches the mode and the guest sees it', await until(guest, () => window.__dead.game.coop.room.room.kind === 'mazoku'));
+  await click(owner, 'STANDARD');
+  await until(guest, () => window.__dead.game.coop.room.room.kind === 'mission');
+  await deployBoth(owner, guest);
+  const roles = [await owner.evaluate(() => window.__dead.game.coop.role), await guest.evaluate(() => window.__dead.game.coop.role)];
+  check('roles', roles[1] === 'guest' && roles[0] === (HOSTING === 'self' ? 'host' : 'guest'), roles.join(' / '));
 
-// the hidden admin
-const admin = await client('9000000009', 'Boss', `?room=${code}&watch=admin`);
-await until(admin, () => window.__dead.game.coop.canDeploy);
-await admin.evaluate(() => window.__dead.start());
-check('the admin is in as an unseen spectator', await admin.evaluate(() => window.__dead.game.coop.role === 'spectator' && window.__dead.game.coop.room.you.hidden));
+  const admin = await client('9000000009', 'Boss', { query: `?room=${code}&watch=admin` });
+  await until(admin, () => window.__dead.game.coop.canDeploy);
+  await admin.evaluate(() => window.__dead.start());
 
-// wave 1 arrives on its own
-check('wave 1 starts and the host spawns infected', await until(host, () => { const g = window.__dead.game; return g.coop.waves.n === 1 && g.zombies.aliveCount >= 3; }, null, 40000));
-check('the guest sees the same infected as puppets', await until(guest, () => { const g = window.__dead.game; return g.zombies.zombies.length >= 3 && g.zombies.zombies.every((z) => z.puppet); }));
-check('the guest sees the host as a player, and the host sees the guest', (await until(guest, () => window.__dead.game.coop.scoreboard().rows.length === 2)) && (await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && r.alive))));
-check('the hidden admin sees both players and the infected', await until(admin, () => { const g = window.__dead.game; return g.coop.scoreboard().rows.length === 2 && g.zombies.zombies.length >= 3; }));
-check('nobody is told about the admin', (await host.evaluate(() => JSON.stringify(window.__dead.game.coop.scoreboard()) + JSON.stringify(window.__dead.game.coop.room.room))).includes('Boss') === false);
-const hud = await guest.evaluate(() => document.querySelector('.ds-obj')?.innerText.replace(/\n/g, ' | '));
-check('the guest HUD shows the wave and the squad', /WAVE 1/.test(hud || '') && /Hosty/.test(hud || ''), hud);
+  check('both see the district\'s infected as puppets', (await until(owner, () => { const z = window.__dead.game.zombies.zombies; return z.length >= 3 && z.every((q) => q.puppet); }, null, 40000)) && (await until(guest, () => window.__dead.game.zombies.zombies.length >= 3, null, 40000)));
+  check('the hidden admin watches it', await until(admin, () => window.__dead.game.zombies.zombies.length >= 3 && window.__dead.game.coop.scoreboard().rows.length === 2));
+  await guest.evaluate(() => {
+    const a = window.__dead.game.audio;
+    const play = a.play.bind(a);
+    window.__heard = [];
+    a.play = (id, o) => (/^(zombie|warden)_/.test(id) && window.__heard.push(id), play(id, o));
+  });
+  check('the guest hears the infected (groans, snarls)', await until(guest, () => window.__heard.length > 0, null, 20000), JSON.stringify(await guest.evaluate(() => window.__heard.slice(0, 6))));
+  const hud = await guest.evaluate(() => document.querySelector('.ds-obj')?.innerText.replace(/\n/g, ' | ') ?? '');
+  check('the guest HUD shows the operation and the squad', /RESTORE THE RELAY/i.test(hud) && /ELIMINATE THE WARDEN/i.test(hud) && /SQUAD/i.test(hud) && /Owner/i.test(hud), hud);
+  check('the operation clock runs from the simulation', await until(guest, () => window.__dead.game.session.elapsed > 2, null, 20000));
 
-// a guest's shot kills on the host, and the guest is paid
-const before = await guest.evaluate(() => ({ kills: window.__dead.game.session.stats.kills, cash: window.__dead.game.session.inv.cash }));
-await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.alive); g.zombies.damage(z, 590, true, g.zenv, 0); });
-check('a guest hit kills the infected on the host and pays the guest', await until(guest, (b) => { const s = window.__dead.game.session; return s.stats.kills === b.kills + 1 && s.inv.cash > b.cash; }, before));
-check('the host scoreboard credits the guest, not the host', await host.evaluate(() => { const r = window.__dead.game.coop.scoreboard().rows; return r.find((x) => !x.you).kills === 1 && r.find((x) => x.you).kills === 0; }));
+  // a kill, credited to the shooter
+  const before = await guest.evaluate(() => ({ kills: window.__dead.game.session.stats.kills, cash: window.__dead.game.session.inv.cash }));
+  await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.alive && !q.isBoss); g.zombies.damage(z, 590, true, g.zenv, 0); });
+  check('a guest\'s hit kills on the simulation and the guest is paid', await until(guest, (b) => { const s = window.__dead.game.session; return s.stats.kills === b.kills + 1 && s.inv.cash > b.cash; }, before));
 
-// infected hunt the guest and hurt it through the host
-await host.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); window.__dead.setHealth(1e6, 100); });
-const hurt = await until(guest, () => {
-  const g = window.__dead.game;
-  const z = g.zombies.zombies.find((q) => q.alive);
-  if (z && Math.hypot(z.x - g.player.x, z.z - g.player.z) > 3) g.player.teleport(z.x + 1.2, z.z);
-  return g.session.vitals.health < 1e6 || g.session.vitals.armor < 100;
-}, null, 45000);
-check('an infected on the host attacks the guest and the damage arrives', hurt);
-if (shotDir) { await guest.screenshot({ path: `${shotDir}/coop-2-guest.png` }); await admin.screenshot({ path: `${shotDir}/coop-3-admin.png` }); }
+  // infected attack a player
+  const hurt = await until(owner, () => {
+    const g = window.__dead.game;
+    const z = g.zombies.zombies.find((q) => q.alive && !q.isBoss);
+    if (z && Math.hypot(z.x - g.player.x, z.z - g.player.z) > 2.5) g.player.teleport(z.x + 1.2, z.z);
+    return g.session.vitals.health < 1e6 || g.session.vitals.armor < 100;
+  }, null, 45000);
+  check('the simulation\'s infected hurt a player', hurt);
+  await owner.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); window.__dead.setHealth(1e6, 100); });
 
-// down, then back when the wave is cleared
-await guest.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(1, 0); g.hurtPlayer(9999, null, null, {}); });
-check('a downed guest stays in the session (no results screen)', (await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && !r.alive))) && (await guest.evaluate(() => window.__dead.game.state)) === 'playing');
-await host.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(100, 100); g.coop.waves.toSpawn = 0; for (const z of g.zombies.zombies) if (z.alive) g.zombies.damage(z, 99999, false, g.zenv, 0); });
-check('clearing the wave starts a break', await until(host, () => window.__dead.game.coop.waves.phase === 'break' && window.__dead.game.coop.waves.n === 1));
-check('the downed guest is back on their feet', await until(guest, () => window.__dead.game.playerAlive() && window.__dead.game.session.vitals.health === 100));
+  // revive
+  await guest.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(1, 0); g.hurtPlayer(9999, null, null, {}); });
+  check('a downed player stays in the run, bleeding out', (await guest.evaluate(() => window.__dead.game.coop.life)) === 2 && (await guest.evaluate(() => window.__dead.game.state)) === 'playing');
+  check('the teammate sees them down', await until(owner, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && r.status === 'down')));
+  const gp = await guest.evaluate(() => ({ x: window.__dead.game.player.x, z: window.__dead.game.player.z }));
+  await owner.evaluate((p) => window.__dead.game.player.teleport(p.x + 1, p.z), gp);
+  await sleep(500);
+  check('the revive prompt appears next to them', await until(owner, () => !!window.__dead.game.coop.reviveTarget()));
+  await owner.evaluate(() => { const c = window.__dead.game.coop; c.revive(c.reviveTarget().id); });
+  check('the revive brings them back up', await until(guest, () => window.__dead.game.coop.life === 1 && window.__dead.game.playerAlive()));
+  await guest.evaluate(() => window.__dead.setHealth(1e6, 100));
 
-check('wave 2 starts', await until(host, () => window.__dead.game.coop.waves.n === 2 && window.__dead.game.coop.waves.phase === 'active', null, 40000));
+  // the relay
+  const relay = await guest.evaluate(() => { const g = window.__dead.game; const c = g.mission.transmitterPos(); g.player.teleport(c.x, c.z + 1.2); return { x: g.level.data.defense.x, z: g.level.data.defense.z }; });
+  await sleep(500);
+  await guest.evaluate(() => window.__dead.game.mission.activateTransmitter());
+  check('the relay starts for the squad', (await until(owner, () => window.__dead.game.session.defense.status === 'active')) && (await until(guest, () => window.__dead.game.session.defense.status === 'active')));
+  await guest.evaluate((r) => window.__dead.game.player.teleport(r.x + 2, r.z + 2), relay);
+  const cash0 = await owner.evaluate(() => window.__dead.game.session.inv.cash);
+  const done = await until(guest, () => { window.__dead.setHealth(1e6, 100); return window.__dead.game.session.defense.status === 'complete'; }, null, 90000);
+  check('holding the zone completes it', done);
+  check('and everyone is paid once', await until(owner, (c) => window.__dead.game.session.defense.rewardClaimed && window.__dead.game.session.inv.cash >= c + 1200, cash0));
 
-// a wave objective: the host is given a one-core collect objective at the guest's feet
-const cashBefore = await guest.evaluate(() => window.__dead.game.session.inv.cash);
-const at = await guest.evaluate(() => ({ x: window.__dead.game.player.x, z: window.__dead.game.player.z }));
-await host.evaluate((p) => { const c = window.__dead.game.coop; c.elitePending = false; c.mission = { kind: 'collect', status: 'active', progress: 0, x: p.x, z: p.z, radius: 7, items: [{ x: p.x, z: p.z, taken: false }], eliteId: 0, reward: 300 }; }, at);
-check('a guest completing the objective pays the whole squad', (await until(guest, (c) => window.__dead.game.session.inv.cash >= c + 300, cashBefore)) && (await until(host, () => window.__dead.game.coop.mission.status === 'done')));
-check('the guest HUD shows the objective as complete', await until(guest, () => /RECOVER THE DATA CORES[\s\S]*Complete/.test(document.querySelector('.ds-obj').innerText)));
+  // the boss
+  await owner.evaluate(() => { const g = window.__dead.game; const b = g.level.data.hunt; g.player.teleport(b.wardenX + 6, b.wardenZ + 6); window.__dead.setHealth(1e6, 100); });
+  const sawBoss = await until(owner, () => { const b = window.__dead.game.zombies.zombies.find((z) => z.type === 'warden' && z.alive); return !!b; }, null, 30000);
+  check('the Warden shows up as the squad nears him', sawBoss);
+  for (let i = 0; i < 12; i++) {
+    await owner.evaluate(() => { const g = window.__dead.game; const b = g.zombies.zombies.find((z) => z.type === 'warden' && z.alive); if (b) g.zombies.damage(b, 600, true, g.zenv, 0); window.__dead.setHealth(1e6, 100); });
+    await sleep(250);
+  }
+  check('killing him completes the hunt for both', (await until(owner, () => window.__dead.game.session.hunt.status === 'complete', null, 20000)) && (await until(guest, () => window.__dead.game.session.hunt.status === 'complete', null, 20000)));
+  check('the extraction opens', await until(guest, () => window.__dead.game.session.extraction.phase === 'available', null, 15000));
 
-// a card carrier: spawned by the host, downed and purged by the guest, the card goes to both
-await host.evaluate(() => { window.__dead.game.coop.carrierPending = 1; });
-check('the carrier appears for the guest as a carrier puppet', await until(guest, () => window.__dead.game.zombies.zombies.some((z) => z.carrierIdx === 2 && z.curable && z.puppet), null, 30000));
-await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.carrierIdx === 2); for (let i = 0; i < 4; i++) g.zombies.damage(z, 590, true, g.zenv, 0); });
-check('the guest knocks her down (she is not killed)', await until(guest, () => window.__dead.game.zombies.zombies.find((q) => q.carrierIdx === 2)?.state === 'downed'));
-await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.carrierIdx === 2); g.player.teleport(z.x + 1, z.z); });
-check('the guest gets the purge prompt', await until(guest, () => window.__dead.game.cards.cureTarget() !== null));
-await sleep(400); // let the host hear where the guest now stands
-await guest.evaluate(() => { const g = window.__dead.game; g.cards.cure(g.cards.cureTarget().id); });
-check('the purge happens on the host and the card drops', await until(host, () => window.__dead.game.session.carriers.some((c) => c.phase === 'purged')));
-const lootAt = await host.evaluate(() => { const g = window.__dead.game; const u = g.cards.units.find((q) => q.state && q.state.phase === 'purged'); return { x: u.loot.position.x, z: u.loot.position.z, id: u.def.id }; });
-await guest.evaluate((p) => window.__dead.game.player.teleport(p.x + 0.3, p.z), lootAt);
-check('when the guest takes the card, both players get it', (await until(guest, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)) && (await until(host, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)));
+  // extraction: call, wait for the bird, board
+  const ex = await owner.evaluate(() => { const g = window.__dead.game; const e = g.level.data.extraction; g.player.teleport(e.terminalX - 1.2, e.terminalZ); return e; });
+  await sleep(500);
+  await owner.evaluate(() => window.__dead.game.mission.callExtraction());
+  check('the owner calls the helicopter from the radio', await until(guest, () => window.__dead.game.session.extraction.phase === 'called', null, 10000));
+  for (const p of [owner, guest]) await p.evaluate((e) => { window.__dead.game.player.teleport(e.heliX + 3, e.heliZ + 3); window.__dead.setHealth(1e6, 100); }, ex);
+  const landed = await until(guest, () => { window.__dead.setHealth(1e6, 100); return window.__dead.game.session.extraction.phase === 'landed'; }, null, 90000);
+  await owner.evaluate(() => window.__dead.setHealth(1e6, 100));
+  check('the helicopter lands for everyone', landed && (await owner.evaluate(() => window.__dead.game.session.extraction.phase)) === 'landed');
+  await guest.evaluate(() => { const g = window.__dead.game; const d = g.mission.heliDoorPos(); g.player.teleport(d.x, d.z); });
+  await sleep(400);
+  await guest.evaluate(() => window.__dead.game.mission.board());
+  check('a player boards on their own', await until(guest, () => window.__dead.game.coop.life === 4 && window.__dead.game.state === 'ending'));
+  await owner.evaluate(() => { const g = window.__dead.game; const d = g.mission.heliDoorPos(); g.player.teleport(d.x, d.z); });
+  await sleep(400);
+  await owner.evaluate(() => window.__dead.game.mission.board());
+  const wonBoth = (await until(owner, () => window.__dead.game.state === 'results', null, 15000)) && (await until(guest, () => window.__dead.game.state === 'results', null, 15000));
+  const res = await guest.evaluate(() => document.querySelector('.ds-results, .results, [class*=result]')?.innerText.slice(0, 120) ?? '');
+  check('everyone aboard: extracted, both see the results', wonBoth && /EXTRACT|SUCCESS|COMPLETE/i.test(res), res.replace(/\n/g, ' '));
+  for (const p of [owner, guest, admin]) await p.context().close();
 
-// the relay is the squad's: the guest starts it, anyone in the zone keeps it going, it pays everyone once
-check('nobody calls extraction in co-op', (await guest.evaluate(() => window.__dead.game.mission.terminalState())) === 'busy');
-await host.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(100, 100); g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); });
-const relay = await guest.evaluate(() => { const g = window.__dead.game; const c = g.mission.transmitterPos(); g.player.teleport(c.x, c.z + 1.2); return { x: g.level.data.defense.x, z: g.level.data.defense.z }; });
-await sleep(400); // the host hears where the guest stands
-await guest.evaluate(() => window.__dead.game.mission.activateTransmitter());
-check('a guest at the console starts the uplink for the whole squad', (await until(host, () => window.__dead.game.session.defense.status === 'active')) && (await until(guest, () => window.__dead.game.session.defense.status === 'active')));
-await guest.evaluate((r) => window.__dead.game.player.teleport(r.x + 2, r.z + 2), relay);
-const p0 = await host.evaluate(() => window.__dead.game.session.defense.progress);
-await sleep(2500);
-const p1 = await host.evaluate(() => { window.__dead.setHealth(100, 100); return window.__dead.game.session.defense.progress; });
-check('the uplink fills while only the guest is in the zone (host far away)', p1 > p0, `${p0.toFixed(3)} -> ${p1.toFixed(3)}`);
-check('the guest sees the same progress', await until(guest, (p) => Math.abs(window.__dead.game.session.defense.progress - p) < 0.05 && window.__dead.game.session.defense.progress > 0, p1));
-await guest.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x + 3, g.level.data.playerStart.z); window.__dead.setHealth(100, 100); });
-await sleep(800);
-const p2 = await host.evaluate(() => window.__dead.game.session.defense.progress);
-await sleep(2000);
-const p3 = await host.evaluate(() => window.__dead.game.session.defense.progress);
-check('with the whole squad out of the zone it drains', p3 < p2, `${p2.toFixed(3)} -> ${p3.toFixed(3)}`);
-const relayCash = await guest.evaluate(() => window.__dead.game.session.inv.cash);
-await host.evaluate(() => { window.__dead.game.session.defense.progress = 0.995; });
-await guest.evaluate((r) => window.__dead.game.player.teleport(r.x + 2, r.z + 2), relay);
-check('completing it pays the guest', await until(guest, (c) => window.__dead.game.session.defense.status === 'complete' && window.__dead.game.session.defense.rewardClaimed && window.__dead.game.session.inv.cash >= c + 1200, relayCash));
-check('and the host, once each', await host.evaluate(() => window.__dead.game.session.defense.status === 'complete' && window.__dead.game.session.defense.rewardClaimed));
-check('the relay cannot be started again', (await guest.evaluate(() => window.__dead.game.mission.canActivateTransmitter())) === false);
+  // ---------------------------------------------------------------------------------------------
+  // the Forge: the squad, cages and embers in co-op
+  // ---------------------------------------------------------------------------------------------
+  const f = await session('6100000003', '6100000004', 'forge', 'mission');
+  check('a District player following a Forge invite lands on the Forge', (await f.guest.evaluate(() => window.__dead.game.mapId)) === 'forge');
+  await deployBoth(f.owner, f.guest);
+  check('the Forge squad and cages appear for the guest', await until(f.guest, () => { const s = window.__dead.squad(); return s.filter((a) => a.kind === 'soldier').length === 2 && s.filter((a) => a.kind === 'survivor' && a.trapped).length === 4; }, null, 30000));
+  const cage = await f.guest.evaluate(() => window.__dead.squad().find((a) => a.trapped && a.x !== 0));
+  await f.guest.evaluate((c) => { window.__dead.game.player.teleport(c.x, c.z - 2.2); window.__dead.setHealth(1e6, 100); }, cage);
+  await sleep(500);
+  await f.guest.evaluate((c) => window.__dead.game.squad.rescue(c.name), cage);
+  check('freeing a survivor frees them for both', (await until(f.owner, (n) => window.__dead.squad().some((a) => a.name === n && !a.trapped), cage.name)) && (await until(f.guest, (n) => window.__dead.squad().some((a) => a.name === n && !a.trapped), cage.name)));
+  const tagged = await until(f.guest, () => window.__dead.game.zombies.zombies.some((z) => z.tag), null, 30000);
+  check('Vulcan\'s named infected carry their names to the guest', tagged);
+  for (const p of [f.owner, f.guest]) await p.context().close();
 
-// everyone down in a wave: lost, for everyone
-await guest.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });
-await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && !r.alive));
-await host.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });
-check('with everyone down the session is lost and both see the results', (await until(host, () => window.__dead.game.state === 'results')) && (await until(guest, () => window.__dead.game.state === 'results')));
-const res = await guest.evaluate(() => document.querySelector('.ds-results-panel')?.innerText.replace(/\n/g, ' ').slice(0, 90));
-check('the results name the wave', /WAVE 2/i.test(res || ''), res);
-if (shotDir) await host.screenshot({ path: `${shotDir}/coop-4-results.png` });
+  // ---------------------------------------------------------------------------------------------
+  // free roam
+  // ---------------------------------------------------------------------------------------------
+  const r = await session('6100000005', '6100000006', 'district', 'roam');
+  await deployBoth(r.owner, r.guest);
+  await r.owner.evaluate(() => { window.__dead.game.player.y = 20; });
+  check('free roam: no infected, flying, and each sees the other', (await until(r.guest, () => window.__dead.game.flying && window.__dead.game.zombies.zombies.length === 0 && window.__dead.game.coop.scoreboard().rows.length === 2, null, 20000)));
+  for (const p of [r.owner, r.guest]) await p.context().close();
 
-// the host leaving ends it for the guest
-await host.close();
-check('when the host leaves, the guest is returned to the lobby with the reason', await until(guest, () => window.__dead.game.coop.role === 'none' && /host/i.test(document.querySelector('.ds-lobby .problem')?.textContent || '')));
-
-check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
-console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);
-await browser.close();
+  check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
+} catch (err) {
+  check('script ran to the end', false, err.stack || err.message);
+} finally {
+  await browser.close();
+}
+console.log(`${results.filter(Boolean).length}/${results.length} passed`);
 process.exit(results.every(Boolean) ? 0 : 1);
