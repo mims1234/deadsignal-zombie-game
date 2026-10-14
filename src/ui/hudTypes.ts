@@ -297,6 +297,8 @@ export interface MenusApi {
   showResults(stats: MissionStats, best: BestRun | null, isNewBest: boolean): void;
   showLoading(fraction: number, text: string): void;
   hideLoading(): void;
+  /** A short message over whatever screen is showing (fades after a few seconds). */
+  flash(text: string): void;
   showError(title: string, message: string, details?: string): void;
   hide(): void;
   setSettings(settings: Settings): void;

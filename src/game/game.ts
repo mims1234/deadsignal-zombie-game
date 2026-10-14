@@ -21,7 +21,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
-import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit } from '../net/account';
+import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit, roomExists } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -385,7 +385,12 @@ export class Game implements GameCtx {
     // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
     const invite = new URLSearchParams(window.location.search);
     const code = invite.get('room');
-    if (code && this.account.user && this.mapId !== 'district') {
+    // a link to a session that has ended (or never existed) is just the main page, with a word about why
+    const live = code && this.account.user ? await roomExists(code) : false;
+    if (code && this.account.user && !live) {
+      window.history.replaceState(null, '', window.location.pathname);
+      this.menus.flash(`Session ${code.toUpperCase().slice(0, 6)} has ended or does not exist.`);
+    } else if (code && this.account.user && this.mapId !== 'district') {
       // co-op runs on the District: switch maps and come back to the same link
       saveMap('district');
       window.location.reload();
@@ -395,7 +400,7 @@ export class Game implements GameCtx {
       // the invite has been read: drop it from the address so a later reload (a map change) does not replay it
       window.history.replaceState(null, '', window.location.pathname);
     }
-    if (code && this.account.user) {
+    if (code && live) {
       this.setMode('coop');
       this.coopUi.open(code);
       if (invite.get('watch') === 'admin' && this.account.admin) void this.coop.room.join(code, 'spectator', true);

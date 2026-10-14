@@ -499,6 +499,14 @@ class Menus implements MenusApi {
     this.loadFill.style.transform = `scaleX(${Math.max(0, Math.min(1, fraction)).toFixed(3)})`;
   }
 
+  flash(text: string): void {
+    if (!this.root) return;
+    const box = el('div', 'ds-flash', this.layer, text);
+    box.setAttribute('role', 'status');
+    window.setTimeout(() => box.classList.add('out'), 5000);
+    window.setTimeout(() => box.remove(), 5600);
+  }
+
   hideLoading(): void {
     this.loading?.remove();
     this.loading = null;

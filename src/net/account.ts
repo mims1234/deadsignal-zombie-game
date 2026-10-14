@@ -59,6 +59,16 @@ export async function reportPlayer(target: string, reason: string, context: stri
   return (await post<{ ok: boolean }>('/api/reports', { target, reason, context }))?.ok === true;
 }
 
+/** Is a co-op session with this code open right now? */
+export async function roomExists(code: string): Promise<boolean> {
+  try {
+    const r = await fetch(`/api/rooms/${encodeURIComponent(code.toUpperCase().slice(0, 12))}`);
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function logout(): Promise<void> {
   await post('/auth/logout', {});
 }
