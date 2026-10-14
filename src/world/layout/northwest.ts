@@ -30,7 +30,7 @@ export function buildLandingZone(c: Ctx): void {
   jerseyBarrier(b, { x: -52.4, z: -21.8, rot: -0.35 });
   jerseyBarrier(b, { x: -37.6, z: -24.2, rot: 0.1 });
   sandbagWall(b, { x0: -30.6, z0: -18.6, x1: -30.6, z1: -13.6, height: 1.1 });
-  sandbagWall(b, { x0: -53.6, z0: -18.4, x1: -53.6, z1: -14.2, height: 1.1 });
+  sandbagWall(b, { x0: -51.8, z0: -18.4, x1: -51.8, z1: -14.2, height: 1.1 }); // clear of the hangar's east gate
   tent(b, { x: -14, z: -14.4, rot: 0, kind: 'small', w: 4, d: 3.4 });
   crateGroup(b, { x: -14.4, z: -19.6, count: 4, radius: 2, kind: 'mil', seed: 51 });
   barrelGroup(b, { x: -58.6, z: -8.8, count: 4, radius: 1.4, seed: 52, colors: ['green', 'rust'] });
@@ -134,6 +134,8 @@ export function buildNorthStrip(c: Ctx): void {
   // bus depot at the east end
   vehicle(b, { x: -13, z: -47.8, rot: 0.02, kind: 'bus', paint: 'yellow', wrecked: true, seed: 71 });
   vehicle(b, { x: -13.6, z: -43.6, rot: -0.03, kind: 'bus', paint: 'yellow', seed: 72 });
+  // the strip between the wrecked bus and the north wall is a dead end: fill it
+  b.collide({ x: -14, z: -50.3, hx: 5, hz: 0.5, y1: 3, blocksShots: false, mapKind: 'none' });
   chainlinkFence(b, { x0: -19.5, z0: -50.6, x1: -19.5, z1: -37, height: 2.4, gaps: [{ at: 8, width: 3.4 }], damaged: true });
   dumpster(b, { x: -8, z: -39.2, rot: 0 });
   for (const [x, z] of [[-62, -38.6], [-28, -38.5], [-8.6, -49.6]] as const) deadTree(b, { x, z, scale: rng.range(1, 1.5), seed: Math.floor(x * 7 + z) });

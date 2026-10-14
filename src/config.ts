@@ -4,6 +4,7 @@
  * Angles are in degrees unless the field name says otherwise; distances in metres; times in seconds.
  */
 import type { QualityLevel, Region, Settings, WeaponId, ZombieType } from './types';
+import type { MapId } from './world/layout/data';
 
 // ---------------------------------------------------------------------------------------------
 // Weapons
@@ -937,6 +938,21 @@ export const FORGE_SQUAD = {
   trialsBonus: 600,
 } as const;
 
+/** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */
+export interface SquadDef {
+  names: readonly string[];
+  tag: string;
+  tagColor: string;
+  weapons: readonly ('rifle' | 'shotgun' | 'pistol')[];
+  helmets: readonly boolean[];
+  colors?: readonly number[];
+}
+export const SQUADS: Partial<Record<MapId, SquadDef>> = {
+  forge: { names: FORGE_SQUAD.allies, tag: 'SQUAD', tagColor: '#8fd18a', weapons: ['rifle', 'rifle'], helmets: [true, true] },
+  // Lantern team: Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
+  asylum: { names: ['Vance', 'Okafor'], tag: 'LANTERN', tagColor: '#9fd0ff', weapons: ['rifle', 'shotgun'], helmets: [true, false], colors: [0x3e4a3c, 0xc9d1cd] },
+};
+
 /**
  * Trapped survivors (Standard, Standard Mazoku and the Forge): caged in around the map, freed with a hold of E, then
  * they fight alongside you. Side contract: get them out alive.
@@ -947,6 +963,11 @@ export const SURVIVORS = {
     { name: 'Dr. Lena Ortiz', tag: 'FIELD MEDIC', color: 0xb8c4c8 },
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
     { name: 'Mika Reyes', tag: 'COURIER', color: 0x7a4a6a },
+  ],
+  asylum: [
+    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xd8dccf },
+    { name: 'Elias Crane', tag: 'PATIENT 117', color: 0x8a9a8c },
+    { name: 'Father Doyle', tag: 'CHAPLAIN', color: 0x2a2a30 },
   ],
   forge: [
     { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },

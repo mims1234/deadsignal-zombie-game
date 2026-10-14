@@ -6,7 +6,7 @@
 import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS, TEAM_SKILL, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY } from '../config';
 import type { BestRun, GameMode, MissionStats, Settings } from '../types';
-import { MAP_TEXT } from '../world/layout/data';
+import { MAP_IDS, MAP_TEXT } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
@@ -278,7 +278,7 @@ class Menus implements MenusApi {
     const maps = el('div', 'modes', main);
     el('span', 'lbl', maps, 'MAP');
     const mapSeg = el('div', 'seg', maps);
-    for (const id of ['district', 'forge'] as const) {
+    for (const id of MAP_IDS) {
       const b = this.button(mapSeg, MAP_TEXT[id].name, id === this.info.map ? 'on' : '', () => {
         if (id !== this.info.map) this.cb.onMapChange(id);
       });

@@ -17,7 +17,7 @@ import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILLS, VULCAN, 
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, survivorRoster } from '../game/allyBrain';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
@@ -241,11 +241,10 @@ export class SessionSim {
     }
     this.zombies.populate(rng);
     const st = level.data.playerStart;
-    if (this.map === 'forge') {
-      const at = soldierSpots(level, rng);
-      FORGE_SQUAD.allies.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
-      this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
-    }
+    const squad = squadRoster(this.map);
+    const at = soldierSpots(level, rng, squad.length);
+    squad.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
+    if (this.map === 'forge') this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
     const roster = survivorRoster(this.map);
     cageSpots(level, rng, roster.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, roster[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
     if (this.kind === 'mazoku') this.placeCarriers();

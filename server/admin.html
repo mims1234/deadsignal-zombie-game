@@ -183,7 +183,7 @@
           { label: 'On touch', num: 1, cell: (m) => pct(m.touch, m.runs) },
         ], o.modes, 'No runs in this range yet.');
         table($('maps'), [
-          { label: 'Map', cell: (m) => (m.map === 'forge' ? 'The Forge' : 'The District') },
+          { label: 'Map', cell: (m) => (m.map === 'forge' ? 'The Forge' : m.map === 'asylum' ? 'The Asylum' : 'The District') },
           { label: 'Runs', num: 1, cell: (m) => num(m.runs) },
           { label: 'Players', num: 1, cell: (m) => num(m.players) },
           { label: 'Extracted', num: 1, cell: (m) => pct(m.wins, m.runs) },
@@ -203,7 +203,7 @@
           { label: 'Code', cell: (r) => r.code },
           { label: 'Owner', cell: (r) => r.host },
           { label: 'Hosting', cell: (r) => (r.hosting === 'server' ? `Server${r.simMs !== null && r.simMs !== undefined ? `  ${r.simMs} ms/tick, ${r.infected} infected` : ''}` : 'Self') },
-          { label: 'Plays', cell: (r) => `${r.kind === 'mazoku' ? 'Standard Mazoku' : r.kind === 'roam' ? 'Free roam' : 'Standard'} - ${r.map === 'forge' ? 'The Forge' : 'The District'}${r.kind !== 'roam' && r.zombies ? ` (${r.zombies} / ${r.team})` : ''}` },
+          { label: 'Plays', cell: (r) => `${r.kind === 'mazoku' ? 'Standard Mazoku' : r.kind === 'roam' ? 'Free roam' : 'Standard'} - ${r.map === 'forge' ? 'The Forge' : r.map === 'asylum' ? 'The Asylum' : 'The District'}${r.kind !== 'roam' && r.zombies ? ` (${r.zombies} / ${r.team})` : ''}` },
           { label: 'Access', cell: (r) => (r.visibility === 'private' ? 'Invite-only' : 'Public') },
           { label: 'State', cell: (r) => r.state },
           { label: 'Open for', num: 1, cell: (r) => clock(r.ageSeconds) },
@@ -223,7 +223,7 @@
           { label: 'Started', cell: (r) => when(r.started_at) },
           { label: 'Player', cell: (r) => r.name },
           { label: 'Mode', cell: (r) => MODE[r.mode] || r.mode },
-          { label: 'Map', cell: (r) => (r.map === 'forge' ? 'Forge' : 'District') },
+          { label: 'Map', cell: (r) => (r.map === 'forge' ? 'Forge' : r.map === 'asylum' ? 'Asylum' : 'District') },
           { label: 'Result', cell: (r) => h('span', { class: `pill ${r.outcome || ''}` }, r.outcome || (Date.now() / 1000 - r.started_at > 3600 ? 'no result' : 'in progress')) },
           { label: 'Detail', cell: (r) => r.reason || '' },
           { label: 'Length', num: 1, cell: (r) => clock(r.duration) },

@@ -147,7 +147,7 @@ export function openDb(file) {
     },
     dropSession: (token) => q.dropSession.run(token),
     visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
-    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), map === 'forge' ? 'forge' : 'district').lastInsertRowid),
+    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), ['forge', 'asylum'].includes(map) ? map : 'district').lastInsertRowid),
     /** Close a run with the client's numbers. They are for analytics only: nothing is granted from them. */
     endRun(userId, id, body) {
       const run = q.run.get(id);

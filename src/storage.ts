@@ -1,4 +1,5 @@
 /** Local persistence for settings and the best successful run. Every access is guarded: storage failure never blocks play. */
+import { asMapId, type MapId } from './world/layout/data';
 import { DEFAULT_SETTINGS, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, type TeamSkill, type ZombieDifficulty } from './config';
 import type { BestRun, GameMode, QualityLevel, Settings } from './types';
 
@@ -106,15 +107,15 @@ export function loadMode(): GameMode {
   }
 }
 
-export function loadMap(): 'district' | 'forge' {
+export function loadMap(): MapId {
   try {
-    return window.localStorage.getItem(KEY_MAP) === 'forge' ? 'forge' : 'district';
+    return asMapId(window.localStorage.getItem(KEY_MAP));
   } catch {
     return 'district';
   }
 }
 
-export function saveMap(map: 'district' | 'forge'): void {
+export function saveMap(map: MapId): void {
   try {
     window.localStorage.setItem(KEY_MAP, map);
   } catch {

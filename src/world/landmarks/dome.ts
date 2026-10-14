@@ -177,6 +177,12 @@ export function buildContainmentDome(b: LevelBuilder, o: Place & { radius?: numb
       const pos = asm.world(Math.cos(a) * cr, Math.sin(a) * cr);
       b.collide({ x: pos.x, z: pos.z, hx: thick / 2, hz: len / 2, rot: rot - a, y0: asm.y, y1: asm.y + drumH + 0.3, mapKind: 'tank', tag: 'dome-drum' });
     }
+    // the door is sealed: fill the floor inside the ring (two crossed squares make an octagon) so nothing stands in there
+    const fill = (cr - thick / 2) * 0.86;
+    const mid = asm.world(0, 0);
+    for (const a of [0, Math.PI / 4]) {
+      b.collide({ x: mid.x, z: mid.z, hx: fill, hz: fill, rot: rot + a, y0: asm.y, y1: asm.y + drumH + 0.3, blocksShots: false, mapKind: 'none', tag: 'dome-drum' });
+    }
   }
 
   // ---- toxic ooze puddles + cables around the base --------------------------------------------------------------------------------------------

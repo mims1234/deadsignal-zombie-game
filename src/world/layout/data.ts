@@ -39,7 +39,13 @@ export interface AmbientZombieDef {
   region: Region;
 }
 
-export type MapId = 'district' | 'forge';
+export type MapId = 'district' | 'forge' | 'asylum';
+export const MAP_IDS: readonly MapId[] = ['district', 'forge', 'asylum'];
+
+/** A valid map id from anything (storage, a URL, a message); unknown means the District. */
+export function asMapId(v: unknown): MapId {
+  return (MAP_IDS as readonly unknown[]).includes(v) ? (v as MapId) : 'district';
+}
 
 /** Everything the mission says out loud that depends on the map. */
 export interface MapText {
@@ -57,6 +63,8 @@ export interface MapText {
   lz: string;
   surge: string;
   hazardSite: string;
+  /** The mission clock's label. */
+  sealed: string;
   regions: Record<Region, string>;
   /** Opening radio line. */
   brief: string;
@@ -84,6 +92,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     lz: 'LZ ECHO',
     surge: 'CONTAMINATION SURGE',
     hazardSite: 'SPIRE',
+    sealed: 'DISTRICT SEALED IN',
     regions: { low: 'Outer streets', medium: 'Industrial depot - armored infected sighted', high: 'Contaminated research compound' },
     brief: 'Insertion confirmed. Two contracts: restore the depot relay and eliminate the Warden. Three civilians are caged in out there - free them and they will fight. Then radio for extraction at LZ Echo.',
     kicker: 'SECTOR 7  //  QUARANTINE PERIMETER  //  BLUE HOUR',
@@ -110,6 +119,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     lz: 'THE PAD',
     surge: 'FIRESTORM',
     hazardSite: 'FLUE',
+    sealed: 'THE FORGE SEALS IN',
     regions: { low: 'Ember Market', medium: 'Phoenix Plaza - the forge hall', high: 'The Crucible - molten floor' },
     kicker: 'VULCAN HQ  //  EMBER NIGHT  //  RISE FROM THE FORGE',
     signal: 'VULCAN HQ DARK  -  LAST KNOWN POSITION: THE CRUCIBLE',
@@ -120,6 +130,33 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold the circle while it catches.' },
       { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The burning elite walks the molten floor of the Crucible.' },
       { tag: 'EXTRACT', title: 'RISE FROM THE FORGE', text: 'Signal the bird at the Pad, hold out, and board before the firestorm takes the district.' },
+    ],
+  },
+  asylum: {
+    name: 'THE ASYLUM',
+    defenseTitle: 'RESTORE THE POWER',
+    defenseSite: 'BOILER HOUSE',
+    defensePrompt: 'START THE GENERATORS',
+    defenseStart: 'GENERATORS SPINNING UP',
+    defenseDone: 'POWER RESTORED',
+    huntTitle: 'PUT DOWN THE MATRON',
+    boss: 'THE MATRON',
+    huntSite: 'the isolation block',
+    extractTitle: 'EXTRACT FROM THE LAWN',
+    lz: 'THE LAWN',
+    surge: 'THE BLACK FOG',
+    hazardSite: 'CREMATORIUM',
+    sealed: 'THE GATES CLOSE IN',
+    regions: { low: 'The front grounds', medium: 'The wards and the yard', high: 'Isolation, chapel and morgue - her rounds' },
+    kicker: 'BLACKWOOD HILL  //  ASYLUM GROUNDS  //  THE LONG NIGHT',
+    signal: 'POWER OUT  -  LAST KNOWN POSITION: ISOLATION BLOCK',
+    premise: 'Blackwood Hill took its last patient in 1961 and lost its last orderly forty days ago. The power went first, then the screaming started. Go over the wall with two of Lantern team, bring the lights back, and end the woman who still does the rounds.',
+    foot: 'Close quarters: two ward wings, a walled yard, a chapel and a morgue. Vance and Dr. Okafor walk with you and can die. Patients are still locked in. The black fog seeps from the crematorium late in the night.',
+    brief: 'Lantern team, you are inside the walls. Get the boiler house generators running, then find the Matron in the isolation block and put her down. Patients are still locked in - let them out and they will fight. Keep Vance and Okafor alive and call the bird to the front lawn.',
+    rows: [
+      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE POWER', text: 'Start the boiler house generators and hold the yard while they spin up.' },
+      { tag: 'CONTRACT BRAVO', title: 'PUT DOWN THE MATRON', text: 'She walks the isolation block behind the yard. She has never missed a round.' },
+      { tag: 'EXTRACT', title: 'THE LAWN', text: 'Radio from the gatehouse lawn, hold the front grounds, and board before the black fog reaches the gate.' },
     ],
   },
 };

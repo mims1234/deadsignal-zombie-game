@@ -85,7 +85,7 @@ export function buildDepot(c: Ctx): DepotResult {
   const transmitter = transmitterSite(b, { x: DEPOT.arena.x, z: DEPOT.arena.z, rot: 0, radius: DEPOT.arena.radius });
   floodlightTower(b, { x: 30, z: 22.4, rot: 0, height: 9, on: true });
   floodlightTower(b, { x: 40.9, z: 30.2, rot: 0, height: 9, on: true });
-  crateGroup(b, { x: 20, z: 29, count: 3, radius: 1.5, kind: 'mil', seed: 91 });
+  crateGroup(b, { x: 17.6, z: 28.9, count: 3, radius: 1.5, kind: 'mil', seed: 91 }); // tucked into the corner: nothing to hide behind
   generator(b, { x: 33.4, z: 38.4, rot: 0.2, running: true });
   sandbagWall(b, { x0: 21.4, z0: 30, x1: 23.6, z1: 30, height: 1.0 });
   jerseyBarrier(b, { x: 24, z: 22.4, rot: 0.15 });
@@ -147,6 +147,8 @@ export function buildDepot(c: Ctx): DepotResult {
   vehicle(b, { x: x0 + 14, z: z0 - 4.6, rot: HALF_PI + 0.06, kind: 'trailer', paint: 'grey', seed: 86 });
   vehicle(b, { x: x0 + 14, z: z0 - 11.5, rot: HALF_PI + 0.06, kind: 'semiCab', paint: 'red', seed: 87 });
   reserve(c, x0 + 9, z0 - 6, 8);
+  // the apron between the backed-up trucks is boxed in by them and the horizontal tank: fill it
+  b.collide({ x: x0 + 8.9, z: z0 - 3.35, hx: 3.7, hz: 1.35, y1: 1.2, blocksShots: false, mapKind: 'none' });
 
   // ---- warehouse (enterable) ----
   building(b, {
@@ -187,10 +189,10 @@ export function buildDepot(c: Ctx): DepotResult {
   barrelGroup(b, { x: 62.6, z: 31.4, count: 4, radius: 1.3, seed: 99, colors: ['blue', 'rust'] });
   crateGroup(b, { x: 60.6, z: 47.6, count: 3, radius: 1.5, kind: 'wood', seed: 100 });
   corpse(b, { x: 49, z: 39.4, rot: 1.5, kind: 'civilian', seed: 61 });
-  // caged armory bench at the back of the warehouse
-  chainlinkFence(b, { x0: 58.4, z0: 35.6, x1: 58.4, z1: 42.6, height: 2.6, gaps: [{ at: 3.5, width: 3 }] });
-  chainlinkFence(b, { x0: 58.4, z0: 35.6, x1: 63.6, z1: 35.6, height: 2.6 });
-  chainlinkFence(b, { x0: 58.4, z0: 42.6, x1: 63.6, z1: 42.6, height: 2.6 });
+  // caged armory bench at the back of the warehouse (set off the racks: the walkway between leads to both back corners)
+  chainlinkFence(b, { x0: 59.6, z0: 35.6, x1: 59.6, z1: 42.6, height: 2.6, gaps: [{ at: 3.5, width: 3 }] });
+  chainlinkFence(b, { x0: 59.6, z0: 35.6, x1: 63.6, z1: 35.6, height: 2.6 });
+  chainlinkFence(b, { x0: 59.6, z0: 42.6, x1: 63.6, z1: 42.6, height: 2.6 });
   d.station({ kind: 'upgrade', name: 'ARMORY BENCH', x: 62.5, z: 39, yaw: yawFacing(-1, 0), region: 'medium' });
   // light: caged bay lamps (some dead) and red emergency beacons
   const lampModes: ('steady' | 'flicker' | 'fail')[] = ['steady', 'fail', 'steady', 'steady', 'flicker', 'steady', 'fail', 'steady', 'steady'];

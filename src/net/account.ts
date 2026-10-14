@@ -3,6 +3,7 @@
  * Every call is best-effort. When there is no server behind the page (a plain static host, or the Vite dev server
  * on its own) `online` is false and the game runs as a local, signed-out build that reports nothing.
  */
+import { asMapId, type MapId } from '../world/layout/data';
 import type { GameMode, MissionStats } from '../types';
 
 export interface AccountUser {
@@ -61,12 +62,12 @@ export async function reportPlayer(target: string, reason: string, context: stri
 
 /** Is a co-op session with this code open right now? */
 /** A co-op session's public details, or null when it has ended / never existed. */
-export async function roomInfo(code: string): Promise<{ map: 'district' | 'forge'; kind: string; hosting: string } | null> {
+export async function roomInfo(code: string): Promise<{ map: MapId; kind: string; hosting: string } | null> {
   try {
     const r = await fetch(`/api/rooms/${encodeURIComponent(code.toUpperCase().slice(0, 12))}`);
     if (!r.ok) return null;
     const j = (await r.json()) as { map?: string; kind?: string; hosting?: string };
-    return { map: j.map === 'forge' ? 'forge' : 'district', kind: j.kind ?? 'mission', hosting: j.hosting ?? 'server' };
+    return { map: asMapId(j.map), kind: j.kind ?? 'mission', hosting: j.hosting ?? 'server' };
   } catch {
     return null;
   }

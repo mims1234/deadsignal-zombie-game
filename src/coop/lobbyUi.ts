@@ -3,12 +3,13 @@
  * server, or self-hosted on the creator's device), see who is in it and everyone's ping, and (for its owner) manage
  * it. The scoreboard shows while Tab is held during play.
  */
+import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import type { Hosting } from '../net/room';
 import { el } from '../ui/dom';
 import type { CoopSession } from './coop';
 
-const MAP_NAME: Record<'district' | 'forge', string> = { district: 'THE DISTRICT', forge: 'THE FORGE' };
+const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM' };
 const KIND_NOTE: Record<'mission' | 'mazoku' | 'roam', string> = {
   mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
@@ -25,7 +26,7 @@ export interface LobbyHost {
   /** Signed-in account id, or null (co-op needs an account). */
   userId(): string | null;
   /** The map this page is on: a session created here plays it. */
-  mapId(): 'district' | 'forge';
+  mapId(): MapId;
   /** The player's own difficulty picks: a session created here starts with them. */
   difficulty(): { zombies: ZombieDifficulty; team: TeamSkill };
   isAdmin(): boolean;

@@ -99,7 +99,8 @@ export function buildCompound(c: Ctx): CompoundResult {
 
   // ---- decon funnel at the south gate ----
   barrierLine(b, { x0: 12, z0: -11.4, x1: 22.6, z1: -11.4 });
-  barrierLine(b, { x0: 31.4, z0: -11.4, x1: 44, z1: -11.4 });
+  // (stops short of the van: the lane along the wall behind it leads to the dome's hazard door)
+  barrierLine(b, { x0: 31.4, z0: -11.4, x1: 40, z1: -11.4 });
   sandbagWall(b, { x0: 22.8, z0: -14.6, x1: 22.8, z1: -12.2, height: 1.2 });
   sandbagWall(b, { x0: 31.2, z0: -14.6, x1: 31.2, z1: -12.2, height: 1.2 });
   cones(b, { x0: 24.4, z0: -10, x1: 29.6, z1: -10, spacing: 1.7 });
@@ -194,6 +195,9 @@ export function buildCompound(c: Ctx): CompoundResult {
   chainlinkFence(b, { x0: 43.6, z0: -30, x1: 43.6, z1: -14, height: 2.4, barbed: true, gaps: [{ at: 8, width: 3.6 }] });
   toxicPool(b, { x: 39, z: -17.8, w: 6, d: 4 });
   toxicPool(b, { x: 60, z: -30, w: 5, d: 3.6 });
+  // the slot between the drum and the east wall (and behind the APC) is shut off by the pool and the wreck: fill it
+  b.collide({ x: 63.6, z: -21.45, hx: 1.2, hz: 8.85, y1: 2.9, blocksShots: false, mapKind: 'none' });
+  b.collide({ x: 60.3, z: -10.95, hx: 4.5, hz: 2.05, y1: 2.9, blocksShots: false, mapKind: 'none' });
   barrelGroup(b, { x: 47, z: -12.6, count: 6, radius: 1.8, seed: 111, colors: ['bio', 'yellow'] });
   barrelGroup(b, { x: 62, z: -21, count: 5, radius: 1.6, seed: 112, colors: ['bio', 'rust'] });
   generator(b, { x: 47.6, z: -47.6, rot: 0, running: true });
@@ -245,12 +249,12 @@ export function buildCompound(c: Ctx): CompoundResult {
       [46, -46],
       [36, -30],
       [14, -46],
-      [63, -26],
+      [62.8, -34],
     ],
     1,
   );
   d.zombies('high', 'shambler', [[20, -14], [38, -13], [46, -21], [52, -31], [16, -28], [36, -27], [58, -40], [26, -24], [28, -44], [20, -36.5], [40, -44]]);
   d.zombies('high', 'runner', [[24, -22], [44, -28], [50, -14], [14, -44], [35, -44], [40, -36.5]]);
-  d.zombies('high', 'armored', [[32, -36.5], [12, -20], [56, -22]]);
+  d.zombies('high', 'armored', [[32, -36.5], [12, -20], [52.5, -11.6]]);
   return { spire: spireHandle };
 }

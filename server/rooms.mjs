@@ -30,7 +30,7 @@ const MAX_PER_SECOND = 90;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** The host id of a server-hosted room. */
 export const SIM_ID = 'sim';
-const MAPS = ['district', 'forge'];
+const MAPS = ['district', 'forge', 'asylum'];
 const KINDS = ['mission', 'mazoku', 'roam'];
 const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
 const TEAM_LEVELS = ['rookie', 'regular', 'veteran', 'elite'];

@@ -12,6 +12,7 @@ import type { GlowField } from './glow';
 import type { SpireHandle, TransmitterHandle } from './landmarks';
 import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, type MapId } from './layout/data';
 import { buildForge, FORGE, FORGE_BOUNDS } from './layout/forge';
+import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
@@ -58,16 +59,28 @@ interface Sites {
 
 export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level {
   const forge = mapId === 'forge';
-  const WORLD = forge ? FORGE_BOUNDS : WORLD_BOUNDS;
+  const asylum = mapId === 'asylum';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : WORLD_BOUNDS;
   const world = new CollisionWorld(WORLD);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : 20240928), mats, placed: [] };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : 20240928), mats, placed: [] };
 
   let transmitter: TransmitterHandle;
   let spireHandle: SpireHandle;
   let site: Sites;
-  if (forge) {
+  if (asylum) {
+    const r = buildAsylum(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    site = {
+      start: { x: ASYLUM.start.x, z: ASYLUM.start.z, yaw: yawFacing(0, -1) },
+      lz: { ...ASYLUM.lz, terminalYaw: yawFacing(-0.8, 0.6) },
+      defense: { ...ASYLUM.power },
+      hunt: { wardenX: ASYLUM.matron.x, wardenZ: ASYLUM.matron.z, searchX: ASYLUM.isolation.x, searchZ: ASYLUM.isolation.z, searchRadius: 16 },
+      hazard: { ...ASYLUM.stack },
+    };
+  } else if (forge) {
     const r = buildForge(c);
     transmitter = r.transmitter;
     spireHandle = r.spire;

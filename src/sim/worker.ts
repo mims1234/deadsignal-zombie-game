@@ -9,6 +9,7 @@
  */
 import './stubs';
 import { SESSION_KINDS, SessionSim, type SessionKind, sessionDifficulty } from './serverHost';
+import type { MapId } from '../world/layout/data';
 
 interface Port {
   postMessage(m: unknown): void;
@@ -19,7 +20,7 @@ const TICK_HZ = 30;
 
 async function main(): Promise<void> {
   // typed loosely on purpose: the browser build's type settings know nothing about Node
-  const wt = (await import('node:worker_threads' as string)) as { parentPort: Port; workerData: { map?: 'district' | 'forge'; kind?: SessionKind; zombies?: string; team?: string } };
+  const wt = (await import('node:worker_threads' as string)) as { parentPort: Port; workerData: { map?: MapId; kind?: SessionKind; zombies?: string; team?: string } };
   const port = wt.parentPort;
   const host = new SessionSim({ map: wt.workerData?.map ?? 'district', kind: wt.workerData?.kind ?? 'mission', difficulty: sessionDifficulty(wt.workerData), send: (to, d) => port.postMessage({ type: 'relay', to, d }) });
   port.on('message', (m) => {

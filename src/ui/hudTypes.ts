@@ -2,6 +2,7 @@
  * HUD / menu contract. The game builds a plain `HudState` + `MapDynamic` every frame (cheap object reuse is fine) and
  * pushes discrete `HudEvent`s; the UI layer (HTML/CSS + canvas maps) renders them. The UI never reads game internals.
  */
+import type { MapId } from '../world/layout/data';
 import type { TeamSkill, ZombieDifficulty } from '../config';
 import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
 
@@ -185,7 +186,7 @@ export interface AccountInfo {
 export interface ModeInfo {
   mode: GameMode;
   /** Which map the next deploy uses. */
-  map: 'district' | 'forge';
+  map: MapId;
   cards: CardCollectionEntry[];
   /** The infected's difficulty and the AI squad's skill. */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill };
@@ -285,7 +286,7 @@ export interface MenuCallbacks {
   onModeChange(mode: GameMode): void;
   onLogout(): void;
   /** Title screen only: switch maps (the page reloads to build the other one). */
-  onMapChange(map: 'district' | 'forge'): void;
+  onMapChange(map: MapId): void;
   /** Title screen: the difficulty picks changed. */
   onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }

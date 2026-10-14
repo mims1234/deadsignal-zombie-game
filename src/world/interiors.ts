@@ -632,7 +632,11 @@ export function specimenCage(b: LevelBuilder, o: Place & { w?: number; d?: numbe
     asm.collide(b, hx, -(doorHalf + segLen / 2), t, segLen, H, wallOpts);
     asm.collide(b, hx, doorHalf + segLen / 2, t, segLen, H, wallOpts);
   }
-  if (!o.open) asm.collide(b, hx, 0, t, doorW, H, wallOpts);
+  if (!o.open) {
+    asm.collide(b, hx, 0, t, doorW, H, wallOpts);
+    // a shut cage is solid to the nav (nothing walks in or out of it)
+    asm.collide(b, 0, 0, w, d, H, { ...wallOpts, mapKind: 'none' });
+  }
   asm.commit(b, { cast: false });
 }
 

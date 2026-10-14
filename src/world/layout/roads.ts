@@ -148,7 +148,7 @@ function streetFurniture(c: Ctx): void {
   // south street & north road (west block), west avenue
   for (let x = -58; x <= -10; x += 24) {
     lamp(x, 17.6, -HALF_PI, i++);
-    lamp(x + 12, 28.4, HALF_PI, i++);
+    lamp(x + 12 === -22 ? -24.6 : x + 12, 28.4, HALF_PI, i++); // (not on the corner store's doorstep)
     lamp(x, -25.6, -HALF_PI, i++);
     lamp(x + 12, -36.4, HALF_PI, i++);
   }
@@ -257,6 +257,8 @@ export function buildBoundary(c: Ctx): void {
   // collapsed roads at both ends of Route 9
   collapsedRoad(b, { x: -60.5, z: 0, rot: 0, w: 9, d: 16, seed: 3 });
   b.collideBox(-64.6, 0, 1.8, 16, 6, { mapKind: 'wall', tag: 'collapse-backstop' });
+  // the rubble between the west barrier line and the slabs is fenced in by mounds, a lamp and a wreck: fill it
+  b.collide({ x: -61.3, z: -4.15, hx: 2.7, hz: 3.15, y1: 2, blocksShots: false, mapKind: 'none' });
   overpassRuin(b, { x: -62, z: -36, rot: HALF_PI, length: 28, width: 9 });
   wallDecal(b, 'stencilQuarantine', -X + 0.62, 2.6, -30, 8, 2.2, HALF_PI);
   wallDecal(b, 'stencilDanger', X - 0.62, 2.6, 30, 8, 2.2, -HALF_PI);

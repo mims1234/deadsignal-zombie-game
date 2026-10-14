@@ -5,7 +5,7 @@
  * each shot and decides what to show.
  */
 import * as THREE from 'three';
-import { FORGE_SQUAD, RAGDOLL, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
+import { FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
@@ -192,13 +192,18 @@ export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
 
 /** Who waits in the cages on a map. */
 export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number }[] {
-  return map === 'forge' ? SURVIVORS.forge : SURVIVORS.district;
+  return SURVIVORS[map];
 }
 
-/** Where the two Forge soldiers start: either side of and behind the insertion point. */
-export function soldierSpots(level: Level, rng: Rng): { x: number; z: number; slot: { x: number; z: number } }[] {
+/** The helpers who deploy with you on a map (none on the District). */
+export function squadRoster(map: MapId): readonly string[] {
+  return SQUADS[map]?.names ?? [];
+}
+
+/** Where the squad starts: either side of and behind the insertion point. */
+export function soldierSpots(level: Level, rng: Rng, count = 2): { x: number; z: number; slot: { x: number; z: number } }[] {
   const st = level.data.playerStart;
-  return FORGE_SQUAD.allies.map((_, i) => {
+  return Array.from({ length: count }, (_, i) => {
     const slot = { x: i === 0 ? -2.2 : 2.2, z: 2.6 };
     const at = level.nav.randomFreeNear(st.x + slot.x, st.z + slot.z, 2.5, () => rng.f()) ?? { x: st.x + slot.x, z: st.z + slot.z };
     return { x: at.x, z: at.z, slot };

@@ -58,6 +58,11 @@ export function buildCheckpoint(c: Ctx): void {
   tent(b, { x: -60, z: 34.5, rot: 0, kind: 'command', w: 8, d: 5.6 });
   tent(b, { x: -59.6, z: 47, rot: 0, kind: 'medical', w: 8, d: 4.6 });
   tent(b, { x: -47.4, z: 48.6, rot: 0, kind: 'small', w: 4, d: 3 });
+  // dead ground nobody can reach: behind the command tent along the HESCO line, the slit between the medical tent and the
+  // west wall, and the nook between the small tent, the jeep and the floodlight
+  b.collide({ x: -60.7, z: 30.3, hx: 4.1, hz: 1.3, y1: 1.7, blocksShots: false, mapKind: 'none' });
+  b.collide({ x: -64.2, z: 47, hx: 0.6, hz: 2.3, y1: 1.7, blocksShots: false, mapKind: 'none' });
+  b.collide({ x: -44, z: 49.6, hx: 1.4, hz: 1.2, y1: 1.7, blocksShots: false, mapKind: 'none' });
 
   // vehicles: an APC husk at the gate, a jeep, a supply truck against the west wall
   vehicle(b, { x: -47.3, z: 35.4, rot: 0.42, kind: 'apc', paint: 'olive', wrecked: false, seed: 4 });
@@ -135,8 +140,8 @@ export function buildCornerStore(c: Ctx): void {
     tag: 'store',
   });
   void info;
-  // shop floor: gondolas, coolers, counter
-  storeShelf(b, { x: -24, z: 31.9, rot: 0, length: 6, stocked: true, seed: 11 });
+  // shop floor: gondolas, coolers, counter (the front gondola ends short of the door so the aisle past the till is open)
+  storeShelf(b, { x: -24.6, z: 31.9, rot: 0, length: 4.8, stocked: true, seed: 11 });
   storeShelf(b, { x: -24, z: 34.5, rot: 0, length: 6, stocked: true, seed: 12 });
   storeShelf(b, { x: -18.2, z: 34.2, rot: HALF_PI, length: 3.2, stocked: true, seed: 13 });
   fridgeCase(b, { x: -28.1, z: 33.2, rot: HALF_PI, length: 5 });
@@ -145,7 +150,7 @@ export function buildCornerStore(c: Ctx): void {
   storeShelf(b, { x: -26.4, z: 39.9, rot: 0, length: 3.2, stocked: true, seed: 14 });
   storeShelf(b, { x: -19.4, z: 39.9, rot: 0, length: 3.2, stocked: true, seed: 15 });
   crate(b, { x: -22.8, z: 39.6, size: 0.8, kind: 'wood', stack: 2, seed: 4 });
-  officeDesk(b, { x: -16.6, z: 38.4, rot: -HALF_PI, chair: true });
+  officeDesk(b, { x: -16.2, z: 39.7, rot: -HALF_PI, chair: true }); // beside the side door, not in it
   // light: failing tubes make the shop tense
   ceilingLight(b, { x: -24, z: 32.6, y: 4.0, kind: 'tube', mode: 'flicker', rot: 0 });
   ceilingLight(b, { x: -19.6, z: 32.6, y: 4.0, kind: 'tube', mode: 'steady', rot: 0 });
@@ -161,6 +166,8 @@ export function buildCornerStore(c: Ctx): void {
   crate(b, { x: -12.6, z: 47.6, size: 0.7, kind: 'wood', seed: 7 });
   barrel(b, { x: -14.3, z: 49.3, color: 'blue' });
   chainlinkFence(b, { x0: -15, z0: 50.4, x1: -12, z1: 50.4, height: 2.4 });
+  // past the crates, the ground behind the garage is closed off by the gate's booth and bollards: fill it
+  b.collide({ x: -10.4, z: 49, hx: 2.6, hz: 1.4, y1: 2, blocksShots: false, mapKind: 'none' });
 
   // garage: closed building mass beside the alley
   solidBlock(b, {

@@ -727,7 +727,7 @@ export class MissionRuntime implements MissionApi {
     else if (ex.phase === 'boarding' || ex.phase === 'extracted') timer = { label: 'EXTRACTING', seconds: Math.max(0, ex.boardLeft), urgent: false };
     else {
       const left = deadlineRemaining(s.elapsed);
-      timer = { label: surgeActive(s.elapsed, ex.calledAt) ? 'FRONT REACHES LZ IN' : 'DISTRICT SEALED IN', seconds: left, urgent: left < 90 };
+      timer = { label: surgeActive(s.elapsed, ex.calledAt) ? 'FRONT REACHES LZ IN' : this.ctx.level.data.text.sealed, seconds: left, urgent: left < 90 };
     }
     let subTimer: HudTimer | null = null;
     if (s.defense.status === 'active') {

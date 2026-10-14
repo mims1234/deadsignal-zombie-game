@@ -4,6 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
+import type { MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
@@ -84,7 +85,7 @@ export class Game implements GameCtx {
   coop!: CoopSession;
   squad!: SquadRuntime;
   /** Which map was built this page load. */
-  mapId: 'district' | 'forge' = 'district';
+  mapId: MapId = 'district';
   private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
@@ -248,6 +249,13 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.color.set(0x9a6a52);
       this.renderer.light.hemi.groundColor.set(0x4a1c08);
       this.renderer.light.fill.color.set(0xff7a2a);
+    } else if (this.mapId === 'asylum') {
+      // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x141c1c);
+      this.renderer.light.hemi.color.set(0x7d8fa0);
+      this.renderer.light.hemi.groundColor.set(0x141a12);
+      this.renderer.light.fill.color.set(0x9fb6d0);
     }
     this.worldRoot.add(this.level.root);
     this.renderer.lightPool.setLamps(this.level.lights);
@@ -575,7 +583,7 @@ export class Game implements GameCtx {
   }
 
   /** Title screen only: the other map is built on a fresh page load. */
-  setMap(map: 'district' | 'forge'): void {
+  setMap(map: MapId): void {
     if (this.state !== 'title' || map === this.mapId) return;
     saveMap(map);
     // a clean address: any invite or sign-in parameters belong to the page that is being left
@@ -583,7 +591,7 @@ export class Game implements GameCtx {
   }
 
   /** Joined a co-op session that plays another map: build that map and come straight back into the session. */
-  switchMapForRoom(code: string, map: 'district' | 'forge'): void {
+  switchMapForRoom(code: string, map: MapId): void {
     saveMap(map);
     this.coop.room.leave();
     window.location.assign(`${window.location.pathname}?room=${encodeURIComponent(code)}`);
@@ -762,6 +770,8 @@ export class Game implements GameCtx {
           // watching: no briefing
         } else if (kind === 'roam') this.banner('CO-OP  //  FREE ROAM', 'Fly anywhere together. No infected, no clock.', 'info', 4.5);
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
+      } else if (this.mapId === 'asylum' && !roam) {
+        this.banner('BLACKWOOD HILL', 'The power is out and she is still doing her rounds. Light the place up, put her down, get out.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
@@ -852,7 +862,7 @@ export class Game implements GameCtx {
     // the squad: solo runs it here; a co-op story run shows the simulation's
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
-    this.squad.reset(this.mapId === 'forge' && (solo || coopStory), solo || coopStory, coopStory, this.runDifficulty.team);
+    this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team);
     this.weapons.hidden = this.flying;
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;

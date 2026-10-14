@@ -27,6 +27,10 @@ export function buildRailYard(c: Ctx): void {
   perimeterWall(b, Y.x1, Y.z0, Y.x1, Y.z1);
   wallDecal(b, 'stencilDanger', Y.x1 - 0.62, 2.6, 0, 8, 2.2, -HALF_PI);
   wallDecal(b, 'stencilKeepOut', 88, 2.6, Y.z0 + 0.62, 8, 2.2, 0);
+  // the world bounds are a rectangle: the ground beyond the yard's north and south walls is outside the fence, so fill it
+  const outside = (52 - Y.z1) / 2;
+  b.collide({ x: (Y.x0 + 110) / 2, z: Y.z0 - 0.6 - outside, hx: (110 - Y.x0) / 2, hz: outside, y1: 5, blocksShots: false, mapKind: 'none' });
+  b.collide({ x: (Y.x0 + 110) / 2, z: Y.z1 + 0.6 + outside, hx: (110 - Y.x0) / 2, hz: outside, y1: 5, blocksShots: false, mapKind: 'none' });
 
   // ---- freight lanes: rows of containers end to end, with gaps to cut through ----
   // each row is a list of slots along X; a missing slot is a crossing, `2` is a double stack

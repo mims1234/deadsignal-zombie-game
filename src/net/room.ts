@@ -1,4 +1,5 @@
 /** Client side of a co-op room: one WebSocket to the game server (see `server/rooms.mjs` for the protocol). */
+import type { MapId } from '../world/layout/data';
 import type { TeamSkill, ZombieDifficulty } from '../config';
 
 export interface RoomPerson {
@@ -22,7 +23,7 @@ export interface RoomView {
   /** What it plays: the story operation (Standard), with the Mazoku carriers, or free roam. */
   kind: 'mission' | 'mazoku' | 'roam';
   /** The map; fixed when the session is created (players on another map reload onto it). */
-  map: 'district' | 'forge';
+  map: MapId;
   /** Difficulty: the infected's and the AI squad's (the owner sets both in the lobby). */
   zombies?: ZombieDifficulty;
   team?: TeamSkill;
