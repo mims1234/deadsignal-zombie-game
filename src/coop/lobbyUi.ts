@@ -1,10 +1,18 @@
 /**
- * Co-op lobby and scoreboard. The lobby is a panel over the title screen: create or join a session, see who is in
- * it, and (for the host) manage it. The scoreboard shows while Tab is held during play.
+ * Co-op lobby and scoreboard. The lobby is a panel over the title screen: create or join a session (hosted by the game
+ * server, or self-hosted on the creator's device), see who is in it and everyone's ping, and (for its owner) manage
+ * it. The scoreboard shows while Tab is held during play.
  */
 import { COOP } from '../config';
+import type { Hosting } from '../net/room';
 import { el } from '../ui/dom';
 import type { CoopSession } from './coop';
+
+/** A ping readout, coloured: good under 80 ms, fair under 160, poor above. */
+function pingTag(parent: HTMLElement, ms: number | null, prefix = ''): HTMLElement {
+  const cls = ms === null ? '' : ms < 80 ? 'good' : ms < 160 ? 'ok' : 'bad';
+  return el('span', `ping ${cls}`.trim(), parent, ms === null ? `${prefix}-- ms` : `${prefix}${ms} ms`);
+}
 
 export interface LobbyHost {
   /** Signed-in account id, or null (co-op needs an account). */
@@ -24,6 +32,7 @@ export class CoopUi {
   private readonly board: HTMLElement;
   private wanted = false;
   private visibility: 'public' | 'private' = 'public';
+  private hosting: Hosting = 'server';
   private codeDraft = '';
   private notice = '';
 
@@ -53,6 +62,8 @@ export class CoopUi {
   open(code = ''): void {
     this.wanted = true;
     if (code) this.codeDraft = code.toUpperCase();
+    // measure the ping right away, before anyone creates or joins anything
+    if (this.host.userId()) this.coop.room.connect();
     this.render();
   }
 
@@ -99,12 +110,32 @@ export class CoopUi {
 
     if (!room) {
       el('p', 'msg', body, 'Survive ten waves together. Anyone who goes down returns when the wave is cleared. Start a session and share the link, or join one with its code.');
-      // the session runs on its creator's device: a phone host carries everyone
-      if (document.documentElement.classList.contains('ds-touch')) el('p', 'msg', body, 'Tip: the session runs on the device of whoever creates it. On a phone, joining works best - let someone on a computer host, and keep the game on screen while you play.');
+      const net = el('div', 'row', body);
+      el('span', 'lbl inline', net, 'YOUR PING');
+      pingTag(net, this.coop.room.ping === null ? null : Math.round(this.coop.room.ping));
+      el('div', 'lbl', body, 'HOSTING');
+      const hostRow = el('div', 'row', body);
+      this.button(hostRow, 'SERVER HOSTED', this.hosting === 'server' ? 'on' : '', () => {
+        this.hosting = 'server';
+        this.render();
+      });
+      this.button(hostRow, 'SELF HOST', this.hosting === 'self' ? 'on' : '', () => {
+        this.hosting = 'self';
+        this.render();
+      });
+      el(
+        'div',
+        'tag',
+        body,
+        this.hosting === 'server'
+          ? 'The game server runs the session: fair for everyone, nobody needs a strong device, and it carries on if you leave.'
+          : 'Your device runs the session for everyone: the others play at your ping plus theirs, and it ends if you leave or put the game in the background.' +
+              (document.documentElement.classList.contains('ds-touch') ? ' On a phone, server hosting is the better choice.' : ''),
+      );
       const make = el('div', 'row', body);
       this.button(make, 'CREATE SESSION', 'primary', () => {
         this.notice = '';
-        void this.coop.room.create(this.visibility);
+        void this.coop.room.create(this.visibility, this.hosting);
       });
       const vis = this.button(make, this.visibility === 'public' ? 'ANYONE WITH THE LINK' : 'INVITE-ONLY', '', () => {
         this.visibility = this.visibility === 'public' ? 'private' : 'public';
@@ -128,7 +159,9 @@ export class CoopUi {
     }
 
     // ---- in a session ----
-    const isHost = this.coop.room.isHost;
+    const isOwner = this.coop.room.isOwner;
+    const server = room.hosting === 'server';
+    const owner = room.players.find((q) => q.id === room.ownerId);
     const hidden = this.coop.room.you?.hidden === true;
     const top = el('div', 'row', body);
     el('span', 'codebig', top, room.code);
@@ -138,14 +171,20 @@ export class CoopUi {
       this.render();
     });
     el('span', 'tag', top, room.visibility === 'private' ? 'INVITE-ONLY' : 'OPEN TO ANYONE WITH THE LINK');
+    el('div', 'tag', body, server ? 'SERVER HOSTED  -  the game server runs this session for everyone' : `SELF HOSTED  -  runs on ${owner ? owner.name : 'the owner'}'s device`);
     if (hidden) el('div', 'problem ok', body, 'You are watching unseen. Nobody in this session can tell.');
 
-    const list = (title: string, people: { id: string; name: string }[], max: number): void => {
+    const list = (title: string, people: { id: string; name: string; ping: number | null }[], max: number): void => {
       el('div', 'lbl', body, `${title}  ${people.length} / ${max}`);
       const ul = el('div', 'people', body);
       for (const person of people) {
         const row = el('div', 'person', ul);
-        el('span', 'name', row, person.name + (person.id === room.hostId ? '  (host)' : '') + (person.id === me ? '  (you)' : ''));
+        el('span', 'name', row, person.name + (person.id === room.ownerId ? (server ? '  (owner)' : '  (host)') : '') + (person.id === me ? '  (you)' : ''));
+        // the ping that matters: to the server, or (self-hosted) through the server to the host's device
+        const own = person.id === me && this.coop.room.ping !== null ? Math.round(this.coop.room.ping) : person.ping;
+        const hostPing = owner?.id === me && this.coop.room.ping !== null ? Math.round(this.coop.room.ping) : (owner?.ping ?? null);
+        if (!server && person.id !== room.ownerId && own !== null && hostPing !== null) pingTag(row, own + hostPing, 'to host ');
+        else pingTag(row, own);
         if (person.id !== me) {
           this.button(row, 'REPORT', 'mini', () => {
             const reason = window.prompt(`Report ${person.name} to the admins. What happened?`);
@@ -155,7 +194,7 @@ export class CoopUi {
               this.render();
             });
           });
-          if (isHost) this.button(row, 'KICK', 'mini', () => this.coop.room.manage('kick', { id: person.id }));
+          if (isOwner) this.button(row, 'KICK', 'mini', () => this.coop.room.manage('kick', { id: person.id }));
         }
       }
       if (people.length === 0) el('div', 'person empty', ul, 'Nobody yet');
@@ -165,7 +204,7 @@ export class CoopUi {
 
     el('div', 'lbl', body, 'MODE');
     const variant = el('div', 'row', body);
-    if (isHost) {
+    if (isOwner) {
       for (const [on, label] of [[false, 'STANDARD'], [true, 'STANDARD MAZOKU']] as const) {
         this.button(variant, label, this.coop.mazoku === on ? 'on' : '', () => this.coop.setMazoku(on));
       }
@@ -174,7 +213,7 @@ export class CoopUi {
     }
     el('div', 'tag', body, this.coop.mazoku ? 'Mazoku card carriers join on waves 2, 4, 6, 8 and 9.' : 'Waves and squad objectives only.');
 
-    if (isHost) {
+    if (isOwner) {
       el('div', 'lbl', body, 'MANAGE SESSION');
       const manage = el('div', 'row', body);
       this.button(manage, room.visibility === 'public' ? 'MAKE INVITE-ONLY' : 'OPEN TO ANYONE WITH THE LINK', '', () => this.coop.room.manage('visibility', { value: room.visibility === 'public' ? 'private' : 'public' }));
@@ -199,15 +238,22 @@ export class CoopUi {
     const spectator = this.coop.role === 'spectator';
     if (room.state === 'playing') {
       this.button(actions, spectator ? 'START WATCHING' : 'DEPLOY INTO SESSION', 'primary', () => this.host.deploy());
-    } else if (isHost) {
+    } else if (isOwner) {
       this.button(actions, 'START SESSION', 'primary', () => {
         this.coop.start();
         this.host.deploy();
       });
     } else {
-      el('span', 'wait', actions, 'Waiting for the host to start...');
+      el('span', 'wait', actions, `Waiting for ${owner ? owner.name : 'the owner'} to start...`);
     }
-    this.button(actions, isHost ? 'END SESSION' : 'LEAVE', '', () => {
+    // a server-hosted session carries on without its owner: they may leave it to the others, or end it for all
+    if (isOwner && server) {
+      this.button(actions, 'END SESSION', '', () => {
+        this.notice = '';
+        this.coop.room.manage('end');
+      });
+    }
+    this.button(actions, isOwner && !server ? 'END SESSION' : 'LEAVE', '', () => {
       this.notice = '';
       this.coop.leave();
       this.render();
@@ -224,13 +270,15 @@ export class CoopUi {
     b.replaceChildren();
     el('div', 'ttl', b, `WAVE ${this.coop.waves.n} / ${COOP.waves}`);
     const table = el('div', 'grid', b);
-    for (const h of ['PLAYER', 'KILLS', 'DOWNS', 'STATUS']) el('span', 'h', table, h);
+    for (const h of ['PLAYER', 'KILLS', 'DOWNS', 'PING', 'STATUS']) el('span', 'h', table, h);
     for (const r of rows) {
-      el('span', r.you ? 'you' : '', table, r.name + (r.host ? '  (host)' : ''));
+      el('span', r.you ? 'you' : '', table, r.name + (r.host ? (this.coop.serverHosted ? '  (owner)' : '  (host)') : ''));
       el('span', 'n', table, String(r.kills));
       el('span', 'n', table, String(r.downs));
+      pingTag(table, r.ping);
       el('span', r.alive ? 'up' : 'down', table, r.alive ? 'UP' : 'DOWN');
     }
+    if (this.coop.serverHosted) el('div', 'spec', b, 'SERVER HOSTED');
     el('div', 'spec', b, spectators.length > 0 ? `WATCHING:  ${spectators.join(',  ')}` : 'NOBODY IS WATCHING');
     b.hidden = false;
   }

@@ -69,7 +69,9 @@ export interface ScoreRow {
   downs: number;
   alive: boolean;
   you: boolean;
+  /** Created / manages the session. */
   host: boolean;
+  ping: number | null;
 }
 
 /** The objective's markers in the world: the hold circle and a beam over each data core. */
@@ -153,6 +155,7 @@ export class CoopSession {
         this.lastError = msg;
         this.onChange();
       },
+      onPing: () => this.onChange(),
     });
   }
 
@@ -185,17 +188,23 @@ export class CoopSession {
     this.onChange();
   }
 
-  /** Host: switch the Mazoku carriers on or off (takes effect from the next carrier wave). */
+  /** Owner: switch the Mazoku carriers on or off (takes effect from the next carrier wave). */
   setMazoku(on: boolean): void {
-    if (this.role !== 'host') return;
+    if (!this.room.isOwner) return;
     this.mazoku = on;
-    this.room.send('all', { k: 'cfg', mz: on });
+    // a self-hosted owner is the host and tells everyone; a server-hosted session hears it and tells everyone itself
+    this.room.send(this.role === 'host' ? 'all' : 'host', { k: 'cfg', mz: on });
     this.onChange();
   }
 
-  /** Host: open the session for play. */
+  /** The session runs on the game server, not on anyone's device. */
+  get serverHosted(): boolean {
+    return this.room.room?.hosting === 'server';
+  }
+
+  /** Owner: open the session for play. */
   start(): void {
-    if (this.role !== 'host' || !this.room.room) return;
+    if (!this.room.isOwner || !this.room.room) return;
     this.room.manage('state', { value: 'playing' });
     this.room.room.state = 'playing'; // the server will confirm; the host deploys in the same click
   }
@@ -249,6 +258,8 @@ export class CoopSession {
     this.sendT = 0;
     this.elitePending = false;
     this.carrierPending = -1;
+    // a server-hosted session: the owner asks it for another run (it ignores this while one is still going)
+    if (this.role === 'guest' && this.serverHosted && this.room.isOwner) this.room.send('host', { k: 'restart' });
     if (this.role === 'host') {
       this.gen++;
       this.endedGen = -1;
@@ -681,8 +692,9 @@ export class CoopSession {
     const rows: ScoreRow[] = [];
     if (!room) return { rows, spectators: [] };
     const myId = this.room.you?.id ?? '';
-    if (this.role !== 'spectator') rows.push({ id: myId, name: this.g.account.user?.name ?? 'You', kills: this.me.kills, downs: this.me.downs, alive: this.g.playerAlive(), you: true, host: room.hostId === myId });
-    for (const p of this.peers.values()) rows.push({ id: p.id, name: p.name, kills: p.kills, downs: p.downs, alive: p.ref.alive, you: false, host: room.hostId === p.id });
+    const ping = (id: string): number | null => (id === myId ? (this.room.ping === null ? null : Math.round(this.room.ping)) : (room.players.find((q) => q.id === id)?.ping ?? null));
+    if (this.role !== 'spectator') rows.push({ id: myId, name: this.g.account.user?.name ?? 'You', kills: this.me.kills, downs: this.me.downs, alive: this.g.playerAlive(), you: true, host: room.ownerId === myId, ping: ping(myId) });
+    for (const p of this.peers.values()) rows.push({ id: p.id, name: p.name, kills: p.kills, downs: p.downs, alive: p.ref.alive, you: false, host: room.ownerId === p.id, ping: ping(p.id) });
     return { rows, spectators: room.spectators.map((s) => s.name) };
   }
 

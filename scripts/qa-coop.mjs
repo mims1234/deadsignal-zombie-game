@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Co-op end to end in real headless Chrome: a host, a guest and a hidden admin spectator, three separate browser
- * sessions against the dev stack. Needs both running:
+ * Self-hosted co-op end to end in real headless Chrome: a host, a guest and a hidden admin spectator, three separate
+ * browser sessions against the dev stack. Needs both running:
  *   DEV_LOGIN=1 ADMIN_IDS=9000000009 DB_FILE=/tmp/coop.db pnpm server      (port 3061)
  *   pnpm dev                                                               (QA_URL, default http://127.0.0.1:5173/)
  * Usage: node scripts/qa-coop.mjs [--shots dir]
@@ -34,6 +34,8 @@ const until = (page, fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, 
 const host = await client('4000000001', 'Hosty');
 await host.evaluate(() => [...document.querySelectorAll('.modes button')].find((b) => b.textContent === 'CO-OP').click());
 check('choosing CO-OP opens the lobby', await host.evaluate(() => !document.querySelector('.ds-lobby').hidden));
+// this suite covers self-hosting (the creator's browser runs the session); qa-coop-server.mjs covers server hosting
+await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'SELF HOST').click());
 await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'CREATE SESSION').click());
 await until(host, () => window.__dead.game.coop.room.room !== null);
 const code = await host.evaluate(() => window.__dead.game.coop.room.room.code);
@@ -54,6 +56,8 @@ if (shotDir) await host.screenshot({ path: `${shotDir}/coop-1-lobby.png` });
 await host.evaluate(() => { const g = window.__dead.game; g.coop.start(); window.__dead.start(); });
 await until(guest, () => window.__dead.game.coop.canDeploy);
 await guest.evaluate(() => window.__dead.start());
+// a long test: nobody should die of standing around while the other browsers load
+for (const pg of [host, guest]) await pg.evaluate(() => window.__dead.setHealth(1e6, 100));
 check('both are playing with the right roles', (await host.evaluate(() => window.__dead.game.coop.role)) === 'host' && (await guest.evaluate(() => window.__dead.game.coop.role)) === 'guest');
 
 // the hidden admin
@@ -78,18 +82,18 @@ check('a guest hit kills the infected on the host and pays the guest', await unt
 check('the host scoreboard credits the guest, not the host', await host.evaluate(() => { const r = window.__dead.game.coop.scoreboard().rows; return r.find((x) => !x.you).kills === 1 && r.find((x) => x.you).kills === 0; }));
 
 // infected hunt the guest and hurt it through the host
-await host.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); window.__dead.setHealth(100, 100); });
+await host.evaluate(() => { const g = window.__dead.game; g.player.teleport(g.level.data.playerStart.x, g.level.data.playerStart.z); window.__dead.setHealth(1e6, 100); });
 const hurt = await until(guest, () => {
   const g = window.__dead.game;
   const z = g.zombies.zombies.find((q) => q.alive);
   if (z && Math.hypot(z.x - g.player.x, z.z - g.player.z) > 3) g.player.teleport(z.x + 1.2, z.z);
-  return g.session.vitals.health < 100 || g.session.vitals.armor < 50;
+  return g.session.vitals.health < 1e6 || g.session.vitals.armor < 100;
 }, null, 45000);
 check('an infected on the host attacks the guest and the damage arrives', hurt);
 if (shotDir) { await guest.screenshot({ path: `${shotDir}/coop-2-guest.png` }); await admin.screenshot({ path: `${shotDir}/coop-3-admin.png` }); }
 
 // down, then back when the wave is cleared
-await guest.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });
+await guest.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(1, 0); g.hurtPlayer(9999, null, null, {}); });
 check('a downed guest stays in the session (no results screen)', (await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && !r.alive))) && (await guest.evaluate(() => window.__dead.game.state)) === 'playing');
 await host.evaluate(() => { const g = window.__dead.game; window.__dead.setHealth(100, 100); g.coop.waves.toSpawn = 0; for (const z of g.zombies.zombies) if (z.alive) g.zombies.damage(z, 99999, false, g.zenv, 0); });
 check('clearing the wave starts a break', await until(host, () => window.__dead.game.coop.waves.phase === 'break' && window.__dead.game.coop.waves.n === 1));

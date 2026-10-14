@@ -4,11 +4,20 @@ export interface RoomPerson {
   id: string;
   name: string;
   avatar: string | null;
+  /** Their round trip to the game server in ms (null until measured). */
+  ping: number | null;
 }
+
+/** 'server': the game server runs the session (everyone is an equal client). 'self': the owner's browser runs it. */
+export type Hosting = 'server' | 'self';
 
 export interface RoomView {
   code: string;
+  /** Who runs the simulation: the owner (self-hosted) or the server ('sim'). Game messages come from here. */
   hostId: string;
+  /** Who created and manages the session (kick, invites, start, end). */
+  ownerId: string;
+  hosting: Hosting;
   visibility: 'public' | 'private';
   state: 'lobby' | 'playing';
   players: RoomPerson[];
@@ -29,18 +38,58 @@ export interface RoomHandlers {
   /** Kicked, ended, or the host left. */
   onClosed(reason: string): void;
   onError(message: string): void;
+  /** A new ping measurement. */
+  onPing?(ms: number): void;
 }
+
+const PING_EVERY = 2000;
+const REPORT_EVERY = 5000;
 
 export class RoomClient {
   private ws: WebSocket | null = null;
   private opening: Promise<void> | null = null;
   room: RoomView | null = null;
   you: { id: string; role: RoomRole; hidden: boolean } | null = null;
+  /** Smoothed round trip to the game server (ms), or null before the first answer. */
+  ping: number | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private reportedAt = 0;
 
   constructor(private readonly handlers: RoomHandlers) {}
 
+  /** This browser runs the session's simulation (a self-hosted session's owner). */
   get isHost(): boolean {
     return !!this.room && !!this.you && this.room.hostId === this.you.id;
+  }
+
+  /** This player created the session and manages it. */
+  get isOwner(): boolean {
+    return !!this.room && !!this.you && this.room.ownerId === this.you.id;
+  }
+
+  /** Connect without joining anything, so the ping is known before a session is created or joined. */
+  connect(): void {
+    void this.open().catch(() => {});
+  }
+
+  private startPing(ws: WebSocket): void {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+    const ping = (): void => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: 'ping', n: performance.now() }));
+    };
+    ping();
+    this.pingTimer = setInterval(ping, PING_EVERY);
+  }
+
+  private onPong(sent: number): void {
+    const rtt = Math.max(0, performance.now() - sent);
+    this.ping = this.ping === null ? rtt : this.ping * 0.7 + rtt * 0.3;
+    const ms = Math.round(this.ping);
+    this.handlers.onPing?.(ms);
+    if (performance.now() - this.reportedAt > REPORT_EVERY && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.reportedAt = performance.now();
+      this.ws.send(JSON.stringify({ t: 'rtt', ms }));
+    }
   }
 
   private open(): Promise<void> {
@@ -51,6 +100,7 @@ export class RoomClient {
       ws.onopen = () => {
         this.ws = ws;
         this.opening = null;
+        this.startPing(ws);
         resolve();
       };
       ws.onerror = () => {
@@ -59,6 +109,8 @@ export class RoomClient {
       };
       ws.onclose = () => {
         const was = this.room;
+        if (this.pingTimer) clearInterval(this.pingTimer);
+        this.pingTimer = null;
         this.ws = null;
         this.room = null;
         this.you = null;
@@ -84,6 +136,8 @@ export class RoomClient {
           this.handlers.onClosed(String(m.reason));
         } else if (m.t === 'error') {
           this.handlers.onError(String(m.msg));
+        } else if (m.t === 'pong') {
+          this.onPong(Number(m.n) || 0);
         }
       };
     });
@@ -99,8 +153,8 @@ export class RoomClient {
     }
   }
 
-  create(visibility: 'public' | 'private'): Promise<void> {
-    return this.command({ t: 'create', visibility });
+  create(visibility: 'public' | 'private', hosting: Hosting = 'server'): Promise<void> {
+    return this.command({ t: 'create', visibility, hosting });
   }
 
   join(code: string, as: RoomRole, hidden = false): Promise<void> {

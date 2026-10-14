@@ -49,9 +49,10 @@ const rooms = createRooms({
     return m ? db.sessionUser(decodeURIComponent(m[1])) : null;
   },
   isAdmin: (u) => isAdmin(u),
-  onEvent(kind, { room, reason }) {
-    if (kind === 'room-start') room.dbId = db.roomStart(room.code, room.hostId, room.visibility);
+  onEvent(kind, { room, reason, message }) {
+    if (kind === 'room-start') room.dbId = db.roomStart(room.code, room.ownerId, room.visibility);
     else if (kind === 'room-end' && room.dbId) db.roomEnd(room.dbId, { ...room, reason });
+    else if (kind === 'sim-error') console.error(`[sim ${room.code}]`, message);
   },
 });
 

@@ -2826,6 +2826,30 @@ html.ds-rm .ds-menus {
   letter-spacing: 0.1em;
   color: var(--ds-ink-dim);
 }
+.ds-lobby .lbl.inline {
+  margin-top: 0;
+}
+/* ping readouts: lobby rows and the scoreboard */
+.ds-lobby .ping,
+.ds-scoreboard .ping {
+  font-size: max(9px, 0.72em);
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ds-ink-faint);
+}
+.ds-lobby .ping.good,
+.ds-scoreboard .ping.good {
+  color: var(--ds-green);
+}
+.ds-lobby .ping.ok,
+.ds-scoreboard .ping.ok {
+  color: var(--ds-amber);
+}
+.ds-lobby .ping.bad,
+.ds-scoreboard .ping.bad {
+  color: var(--ds-red);
+}
 
 /* ---- co-op scoreboard (held Tab) ---- */
 .ds-scoreboard {
@@ -2846,7 +2870,7 @@ html.ds-rm .ds-menus {
 }
 .ds-scoreboard .grid {
   display: grid;
-  grid-template-columns: 1fr 5em 5em 5em;
+  grid-template-columns: 1fr 4em 4em 5em 4.5em;
   gap: 0.35em 0.8em;
   font-variant-numeric: tabular-nums;
 }

@@ -1,18 +1,24 @@
 /**
  * Co-op rooms over WebSocket: who is in which room, who may join, and relaying game messages between them.
- * The server does not simulate the game; it owns membership, permissions and limits.
  *
- * A room has one host (its creator), up to MAX_PLAYERS players, up to MAX_SPECTATORS visible spectators, and one
- * extra seat reserved for an admin who watches unseen: a hidden admin is never listed, counted or announced.
+ * A room has an owner (its creator: manages it - kick, invites, start, end) and a host (runs the simulation):
+ *  - server-hosted (the default): the host is a worker thread here (`sim/worker.mjs`, id SIM_ID). Every player is an
+ *    equal client, nobody's device carries the session, and the owner leaving hands the room to another player;
+ *  - self-hosted: the owner's browser is the host, as before (the session ends if they leave).
+ * Up to MAX_PLAYERS players, up to MAX_SPECTATORS visible spectators, and one extra seat reserved for an admin who
+ * watches unseen: a hidden admin is never listed, counted or announced.
  *
- * Client -> server                               Server -> client
- *   {t:'create', visibility, invites}              {t:'room', room, you}     full state, on every change
- *   {t:'join', code, as, hidden}                   {t:'relay', from, d}      a game message from another member
- *   {t:'leave'}                                    {t:'closed', reason}      kicked / ended / host left
- *   {t:'manage', op, ...}   host only              {t:'error', msg}
- *   {t:'relay', to, d}      to: 'all'|'host'|<id>
+ * Client -> server                                Server -> client
+ *   {t:'create', visibility, invites, hosting}      {t:'room', room, you}     full state, on every change
+ *   {t:'join', code, as, hidden}                    {t:'relay', from, d}      a game message from another member / the host
+ *   {t:'leave'}                                     {t:'closed', reason}      kicked / ended / host left
+ *   {t:'manage', op, ...}   owner only              {t:'error', msg}
+ *   {t:'relay', to, d}      to: 'all'|'host'|<id>   {t:'pong', n}             answer to a ping
+ *   {t:'ping', n} / {t:'rtt', ms}                   (rtt: the client's measured round trip, shown to the room)
  */
+import { existsSync } from 'node:fs';
 import { randomInt } from 'node:crypto';
+import { Worker } from 'node:worker_threads';
 import { WebSocketServer } from 'ws';
 
 export const MAX_PLAYERS = 3;
@@ -20,6 +26,11 @@ export const MAX_SPECTATORS = 3;
 const MAX_MESSAGE = 16 * 1024;
 const MAX_PER_SECOND = 90;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** The host id of a server-hosted room. */
+export const SIM_ID = 'sim';
+const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
+/** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
+const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
 
 export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
   /** @type {Map<string, any>} */
@@ -38,7 +49,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
   const send = (ws, msg) => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg));
   };
-  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar });
+  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar, ping: m.ping ?? null });
+  const simRooms = () => [...rooms.values()].filter((r) => r.sim).length;
   const visible = (room, role) => [...room.members.values()].filter((m) => m.role === role && !m.hidden);
 
   /** What members are told about their room. The invite list goes to the host only; hidden admins appear nowhere. */
@@ -46,13 +58,15 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     return {
       code: room.code,
       hostId: room.hostId,
+      ownerId: room.ownerId,
+      hosting: room.hosting,
       visibility: room.visibility,
       state: room.state,
       players: visible(room, 'player').map(person),
       spectators: visible(room, 'spectator').map(person),
       maxPlayers: MAX_PLAYERS,
       maxSpectators: MAX_SPECTATORS,
-      invites: forMember.id === room.hostId ? [...room.invites] : undefined,
+      invites: forMember.id === room.ownerId ? [...room.invites] : undefined,
     };
   }
 
@@ -60,10 +74,51 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     for (const m of room.members.values()) send(m.ws, { t: 'room', room: view(room, m), you: { id: m.id, role: m.role, hidden: m.hidden } });
     room.peakPlayers = Math.max(room.peakPlayers, visible(room, 'player').length);
     room.peakSpectators = Math.max(room.peakSpectators, visible(room, 'spectator').length);
+    // the server host only simulates seated players
+    room.sim?.postMessage({ type: 'players', list: visible(room, 'player').map((m) => ({ id: m.id, name: m.name })) });
+  }
+
+  /** Server hosting: a worker thread that runs this room's session. */
+  function startSim(room) {
+    const w = new Worker(SIM_FILE, { workerData: { map: 'district' }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    room.sim = w;
+    w.on('message', (msg) => {
+      if (!msg || room.sim !== w) return;
+      if (msg.type === 'relay') {
+        const out = { t: 'relay', from: SIM_ID, d: msg.d };
+        if (msg.to === 'all') for (const o of room.members.values()) send(o.ws, out);
+        else {
+          const target = room.members.get(String(msg.to));
+          if (target) send(target.ws, out);
+        }
+      } else if (msg.type === 'ready') {
+        room.simReady = true;
+        w.postMessage({ type: 'players', list: visible(room, 'player').map((m) => ({ id: m.id, name: m.name })) });
+        if (room.state === 'playing') w.postMessage({ type: 'begin' });
+      } else if (msg.type === 'load') {
+        room.simLoad = { ms: Number(msg.ms) || 0, infected: Number(msg.infected) || 0 };
+      } else if (msg.type === 'error') {
+        onEvent('sim-error', { room, message: String(msg.message).slice(0, 2000) });
+      }
+    });
+    const fail = (why) => {
+      if (room.sim !== w) return;
+      room.sim = null;
+      closeRoom(room, `The session's server simulation stopped (${why}) - start a new session`);
+    };
+    w.on('error', (err) => fail(err && err.message ? err.message : 'error'));
+    w.on('exit', (code) => fail(`exit ${code}`));
+  }
+
+  function stopSim(room) {
+    const w = room.sim;
+    room.sim = null;
+    if (w) void w.terminate();
   }
 
   function closeRoom(room, reason) {
     if (!rooms.delete(room.code)) return;
+    stopSim(room);
     for (const m of room.members.values()) {
       members.delete(m.id);
       m.room = null;
@@ -73,11 +128,20 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     room.members.clear();
   }
 
-  /** Take a member out of its room. The host leaving ends the room for everyone. */
+  /**
+   * Take a member out of its room. A self-hosted room ends when its host leaves; a server-hosted one passes to another
+   * player (and ends only when no player is left).
+   */
   function remove(m, reason) {
     const room = m.room;
     if (!room) return;
     if (m.id === room.hostId) return closeRoom(room, reason === 'left' ? 'The host ended the session' : 'The host disconnected');
+    if (m.id === room.ownerId) {
+      const next = visible(room, 'player').find((x) => x.id !== m.id);
+      if (!next) return closeRoom(room, 'Everyone left the session');
+      room.ownerId = next.id;
+      room.hostName = next.name;
+    }
     room.members.delete(m.id);
     members.delete(m.id);
     m.room = null;
@@ -87,6 +151,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
       if (host) send(host.ws, { t: 'relay', from: 'server', d: { k: 'left', id: m.id } });
       broadcast(room);
     }
+    // a server-hosted room with nobody left to play ends
+    if (room.hosting === 'server' && visible(room, 'player').length === 0) closeRoom(room, 'Everyone left the session');
   }
 
   function place(m, room, role, hidden) {
@@ -107,9 +173,15 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     switch (msg.t) {
       case 'create': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
+        let hosting = msg.hosting === 'self' ? 'self' : 'server';
+        if (hosting === 'server' && (!existsSync(SIM_FILE) || simRooms() >= SIM_MAX)) {
+          return send(m.ws, { t: 'error', msg: 'Server hosting is busy right now - choose SELF HOST to start a session on your own device' });
+        }
         const r = {
           code: newCode(),
-          hostId: m.id,
+          hosting,
+          ownerId: m.id,
+          hostId: hosting === 'server' ? SIM_ID : m.id,
           hostName: m.name,
           visibility: msg.visibility === 'private' ? 'private' : 'public',
           invites: new Set(cleanIds(msg.invites)),
@@ -123,6 +195,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
           peakSpectators: 0,
         };
         rooms.set(r.code, r);
+        if (hosting === 'server') startSim(r);
+        else r.sim = undefined;
         onEvent('room-start', { room: r });
         return place(m, r, 'player', false);
       }
@@ -146,9 +220,23 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
       }
       case 'leave':
         return remove(m, 'left');
+      case 'ping':
+        return send(m.ws, { t: 'pong', n: msg.n });
+      case 'rtt': {
+        const ms = Math.round(Number(msg.ms));
+        if (!(ms >= 0 && ms < 10000)) return;
+        const changed = m.ping === undefined || Math.abs(ms - m.ping) >= 10;
+        m.ping = ms;
+        // members see each other's ping; tell the room when it moved, at most every few seconds
+        if (room && changed && !m.hidden && Date.now() - (m.pingSent ?? 0) > 3000) {
+          m.pingSent = Date.now();
+          broadcast(room);
+        }
+        return;
+      }
       case 'manage': {
-        if (!room || room.hostId !== m.id) return send(m.ws, { t: 'error', msg: 'Only the host can manage the session' });
-        if (msg.op === 'end') return closeRoom(room, 'The host ended the session');
+        if (!room || room.ownerId !== m.id) return send(m.ws, { t: 'error', msg: 'Only the session owner can manage it' });
+        if (msg.op === 'end') return closeRoom(room, 'The session owner ended the session');
         if (msg.op === 'kick') {
           const target = room.members.get(String(msg.id));
           // a hidden admin cannot be kicked: to the host it does not exist
@@ -156,7 +244,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
           room.kicks++;
           room.banned.add(target.id);
           room.invites.delete(target.id);
-          send(target.ws, { t: 'closed', reason: 'You were removed by the host' });
+          send(target.ws, { t: 'closed', reason: 'You were removed by the session owner' });
           room.members.delete(target.id);
           members.delete(target.id);
           target.room = null;
@@ -171,7 +259,9 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         } else if (msg.op === 'uninvite') {
           room.invites.delete(String(msg.id));
         } else if (msg.op === 'state') {
+          const was = room.state;
           room.state = msg.value === 'playing' ? 'playing' : 'lobby';
+          if (room.state === 'playing' && was !== 'playing' && room.simReady) room.sim?.postMessage({ type: 'begin' });
         }
         return broadcast(room);
       }
@@ -180,7 +270,9 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         const out = { t: 'relay', from: m.id, d: msg.d };
         // spectators (and a hidden admin) only listen: nothing they send reaches the game
         if (m.role !== 'player') return;
-        if (msg.to === 'all') {
+        if (room.sim && (msg.to === 'host' || msg.to === SIM_ID)) {
+          room.sim.postMessage({ type: 'msg', from: m.id, d: msg.d, owner: m.id === room.ownerId });
+        } else if (msg.to === 'all') {
           for (const o of room.members.values()) if (o !== m) send(o.ws, out);
         } else {
           const target = room.members.get(msg.to === 'host' ? room.hostId : String(msg.to));
@@ -241,14 +333,17 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     info(code) {
       const r = rooms.get(String(code || '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, host: r.hostName, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
+      return { code: r.code, host: r.hostName, hosting: r.hosting, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
     },
     /** Admin view of everything live, hidden watchers included. */
     live() {
       return [...rooms.values()].map((r) => ({
         code: r.code,
         host: r.hostName,
-        hostId: r.hostId,
+        hostId: r.ownerId,
+        hosting: r.hosting,
+        simMs: r.simLoad ? r.simLoad.ms : null,
+        infected: r.simLoad ? r.simLoad.infected : null,
         visibility: r.visibility,
         state: r.state,
         ageSeconds: Math.round((Date.now() - r.createdAt) / 1000),
@@ -261,7 +356,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     counts() {
       let people = 0;
       for (const r of rooms.values()) people += r.members.size;
-      return { rooms: rooms.size, people };
+      return { rooms: rooms.size, people, serverHosted: simRooms() };
     },
     /** Shutting down: tell every session why, so nobody just sees a dropped connection. */
     closeAll(reason) {

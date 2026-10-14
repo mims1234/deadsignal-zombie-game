@@ -50,10 +50,11 @@ const p4 = await connect('3000000004', 'Four');
 const s1 = await connect('3000000005', 'Watcher');
 const adm = await connect('9000000009', 'Boss');
 
-host.send({ t: 'create', visibility: 'public' });
+// ---- a self-hosted session: the creator's browser is the host ----
+host.send({ t: 'create', visibility: 'public', hosting: 'self' });
 await sleep(150);
 const code = host.room?.code;
-check('host creates a session and is its first player', !!code && host.room.players.length === 1 && host.room.hostId === host.id, code);
+check('host creates a self-hosted session and is its first player', !!code && host.room.players.length === 1 && host.room.hostId === host.id && host.room.ownerId === host.id && host.room.hosting === 'self', code);
 p2.send({ t: 'join', code });
 p3.send({ t: 'join', code: code.toLowerCase() });
 await sleep(150);
@@ -91,13 +92,13 @@ check('spectators and the hidden admin cannot send into the game', !host.inbox.c
 // host powers
 p2.send({ t: 'manage', op: 'kick', id: p3.id });
 await sleep(100);
-check('only the host can manage', host.room.players.length === 3 && /Only the host/.test(p2.last('error')?.msg || ''));
+check('only the owner can manage', host.room.players.length === 3 && /Only the session owner/.test(p2.last('error')?.msg || ''));
 host.send({ t: 'manage', op: 'kick', id: adm.id });
 await sleep(100);
 check('kicking the hidden admin does nothing', adm.closed === null);
 host.send({ t: 'manage', op: 'kick', id: p3.id });
 await sleep(150);
-check('the host can kick a player', p3.closed === 'You were removed by the host' && host.room.players.length === 2);
+check('the owner can kick a player', p3.closed === 'You were removed by the session owner' && host.room.players.length === 2);
 check('the host game is told the seat emptied', host.inbox.some((m) => m.t === 'relay' && m.from === 'server' && m.d.k === 'left' && m.d.id === p3.id));
 p3.send({ t: 'join', code });
 await sleep(100);
@@ -130,6 +131,47 @@ const gone = await fetch(`${B}/api/rooms/${code}`, { headers: { cookie: p4.cooki
 check('an ended session can no longer be found', gone.status === 404);
 const o = await (await fetch(`${B}/api/admin/overview?days=7`, { headers: { cookie: adm.cookie } })).json();
 check('the session is recorded for analytics', o.coop.sessions === 1 && o.coop.kicks === 1, JSON.stringify(o.coop));
+
+// ---- a server-hosted session (the default): the game server is the host ----
+for (const c of [p2, p3, p4, s1]) if (c.room) c.send({ t: 'leave' });
+await sleep(100);
+for (const c of [p2, p3, p4, s1]) c.closed = null;
+p2.send({ t: 'create', visibility: 'public' });
+await sleep(300);
+const code2 = p2.room?.code;
+check('sessions are server-hosted by default: the server hosts, the creator owns', p2.room?.hosting === 'server' && p2.room.hostId === 'sim' && p2.room.ownerId === p2.id, JSON.stringify(p2.room && { hosting: p2.room.hosting, hostId: p2.room.hostId, ownerId: p2.room.ownerId }));
+p3.send({ t: 'join', code: code2 });
+p4.send({ t: 'join', code: code2 });
+await sleep(200);
+p3.inbox.length = 0;
+p2.send({ t: 'relay', to: 'host', d: { k: 'p', x: 1, y: 0, z: 1, yaw: 0, up: true, hp: 100 } });
+await sleep(150);
+check('a message to the host goes to the server, not to the other players', !p3.inbox.some((m) => m.t === 'relay' && m.from === p2.id));
+const cfgSeen = await (async () => {
+  for (let i = 0; i < 40; i++) {
+    if (p3.inbox.concat(p2.inbox).some((m) => m.t === 'relay' && m.from === 'sim' && m.d.k === 'cfg')) return true;
+    await sleep(100);
+  }
+  return false;
+})();
+check('the server host speaks to the room (as "sim")', cfgSeen);
+p3.send({ t: 'ping', n: 1234.5 });
+await sleep(100);
+check('ping is answered at once', p3.last('pong')?.n === 1234.5);
+p3.send({ t: 'rtt', ms: 42 });
+await sleep(150);
+check('a measured ping is shown to the room', p2.room.players.find((q) => q.id === p3.id)?.ping === 42, JSON.stringify(p2.room.players));
+p2.send({ t: 'leave' });
+await sleep(200);
+check('the owner leaving hands the session to another player', p3.closed === null && p3.room?.ownerId === p3.id && p3.room.players.length === 2, JSON.stringify(p3.room && { ownerId: p3.room.ownerId, players: p3.room.players.length }));
+p4.send({ t: 'manage', op: 'kick', id: p3.id });
+await sleep(100);
+check('only the new owner can manage it', /Only the session owner/.test(p4.last('error')?.msg || ''));
+p4.send({ t: 'leave' });
+p3.send({ t: 'leave' });
+await sleep(200);
+const gone2 = await fetch(`${B}/api/rooms/${code2}`, { headers: { cookie: p4.cookie } });
+check('a server-hosted session ends when nobody is left in it', gone2.status === 404);
 
 for (const c of [p2, p3, p4, s1, adm]) c.ws.close();
 console.log(`\n${results.filter(Boolean).length}/${results.length} passed`);

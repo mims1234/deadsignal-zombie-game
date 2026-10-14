@@ -98,8 +98,17 @@ Pick one on the title screen before you deploy. The choice is remembered.
   The session's creator can kick players, end the session, and switch it between "anyone with the link" and
   invite-only (a list of Discord ids). Any player can report another from the lobby.
 
-  The creator's browser runs the simulation and the server relays it, so the session ends if the creator leaves, and
-  it stalls while the creator's tab is in the background.
+  **Hosting.** When you create a session you choose who runs it:
+  - **Server hosted** (the default): the game server runs the session - the infected, the waves, the objectives and
+    who hit what - and every player is an equal client. Nobody needs a strong device, a phone plays as well as a PC,
+    and the session carries on if its creator leaves (another player becomes its owner).
+  - **Self host**: the creator's browser runs the session for everyone, as co-op worked before. The others play at
+    the creator's ping plus their own, and the session ends if the creator leaves or puts the game in the background.
+
+  The lobby shows your ping before you create or join anything, and every player's ping once you are in (for a
+  self-hosted session, each player's ping to the host). Hold `Tab` in a run to see everyone's ping on the scoreboard.
+  Your shots are still judged on your own screen, so aiming feels the same either way; the host (server or creator)
+  applies the damage and pays the kill.
 
 ## Controls
 
@@ -166,6 +175,14 @@ Run statistics come from the player's browser, so treat them as analytics, not a
 
 For local work, `DEV_LOGIN=1 pnpm server` adds `/auth/dev?id=<discord id>&name=<name>`, a sign-in that skips Discord,
 and `pnpm dev` proxies `/api`, `/auth` and `/admin` to it. `scripts/qa-server.mjs` checks the API end to end.
+
+### Server-hosted co-op
+
+`pnpm build` also builds `server/sim/worker.mjs`, the co-op host for Node (`src/sim/`). Each server-hosted session
+runs it in its own worker thread: about 130 MB of memory and a few milliseconds of CPU per tick (30 ticks a second).
+`SIM_MAX_ROOMS` (default 8) caps how many run at once; when the cap is reached, creating a server-hosted session asks
+the player to self-host instead. The admin dashboard's live sessions show each one's hosting, CPU per tick and the
+players' pings.
 
 ### Deploying
 
