@@ -72,6 +72,9 @@
         <div class="card tablewrap"><h3>Why runs fail</h3><div class="sub">Defeats in the range, by cause</div><div id="fails"></div></div>
         <div class="card tablewrap"><h3>Cards recovered</h3><div class="sub">All time</div><div id="cards"></div></div>
       </div>
+      <h2>Co-op sessions</h2>
+      <div class="tiles" id="coopTiles"></div>
+      <div class="card tablewrap" style="margin-top: 10px"><h3>Live now</h3><div class="sub">Open the game with the link to watch unseen</div><div id="live"></div></div>
       <h2>Most active players</h2>
       <div class="card tablewrap" id="top"></div>
       <h2>Recent runs</h2>
@@ -180,6 +183,24 @@
         ], o.modes, 'No runs in this range yet.');
         table($('fails'), [{ label: 'Cause', cell: (r) => r.reason }, { label: 'Runs', num: 1, cell: (r) => num(r.n) }], o.failReasons, 'No defeats recorded.');
         table($('cards'), [{ label: 'Card', cell: (r) => r.card_id }, { label: 'Recovered', num: 1, cell: (r) => num(r.n) }, { label: 'Players', num: 1, cell: (r) => num(r.owners) }], o.cardTotals, 'No cards recovered yet.');
+        const c = o.coop;
+        $('coopTiles').replaceChildren(
+          tile(num(c.sessions), 'Sessions created', `${num(c.private)} invite-only`),
+          tile(c.sessions ? c.avgPlayers.toFixed(1) : '--', 'Avg players', 'peak per session'),
+          tile(clock(c.avgSeconds), 'Avg session length', 'ended sessions'),
+          tile(num(c.kicks), 'Kicks', 'by hosts'),
+        );
+        const { rooms } = await api('/api/admin/rooms');
+        table($('live'), [
+          { label: 'Code', cell: (r) => r.code },
+          { label: 'Host', cell: (r) => r.host },
+          { label: 'Access', cell: (r) => (r.visibility === 'private' ? 'Invite-only' : 'Public') },
+          { label: 'State', cell: (r) => r.state },
+          { label: 'Open for', num: 1, cell: (r) => clock(r.ageSeconds) },
+          { label: 'Players', cell: (r) => r.players.map((p) => p.name).join(', ') },
+          { label: 'Spectators', cell: (r) => r.spectators.map((p) => p.name).join(', ') || '--' },
+          { label: '', cell: (r) => (r.watchedByAdmin ? h('span', { class: 'pill' }, 'admin watching') : h('a', { href: `/?room=${r.code}&watch=admin` }, 'Watch unseen')) },
+        ], rooms, 'No sessions are open right now.');
         table($('top'), [
           { label: 'Player', cell: (r) => r.name },
           { label: 'Discord ID', cell: (r) => r.id },

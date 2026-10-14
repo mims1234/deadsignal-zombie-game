@@ -77,6 +77,17 @@ export function openDb(file) {
       resolved_at INTEGER,
       resolution TEXT
     );
+    CREATE TABLE IF NOT EXISTS coop_rooms (
+      id INTEGER PRIMARY KEY,
+      code TEXT NOT NULL,
+      host_id TEXT NOT NULL,
+      visibility TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      day TEXT NOT NULL,
+      ended_at INTEGER,
+      end_reason TEXT,
+      peak_players INTEGER, peak_spectators INTEGER, joins INTEGER, kicks INTEGER
+    );
     CREATE TABLE IF NOT EXISTS audit (
       id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, admin_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT
     );
@@ -175,6 +186,9 @@ export function openDb(file) {
       q.setBan.run(0, null, null, userId);
       q.audit.run(now(), adminId, 'unban', userId, null);
     },
+    roomStart: (code, hostId, visibility) => Number(db.prepare('INSERT INTO coop_rooms (code, host_id, visibility, created_at, day) VALUES (?, ?, ?, ?, ?)').run(code, hostId, visibility, now(), day()).lastInsertRowid),
+    roomEnd: (id, r) =>
+      db.prepare('UPDATE coop_rooms SET ended_at = ?, end_reason = ?, visibility = ?, peak_players = ?, peak_spectators = ?, joins = ?, kicks = ? WHERE id = ?').run(now(), r.reason, r.visibility, r.peakPlayers, r.peakSpectators, r.joins, r.kicks, id),
     resolveReport(adminId, id, resolution) {
       q.resolveReport.run(adminId, now(), resolution, id);
       q.audit.run(now(), adminId, 'resolve-report', String(id), resolution);
@@ -223,7 +237,13 @@ export function openDb(file) {
         `SELECT r.id, r.started_at, r.mode, r.touch, r.outcome, r.reason, r.duration, r.kills, r.cards, u.display_name name, u.id user_id
          FROM runs r JOIN users u ON u.id = r.user_id ORDER BY r.id DESC LIMIT 40`,
       );
-      return { days, totals, daily, modes, failReasons, topPlayers, cardTotals, recentRuns };
+      const coop = one(
+        `SELECT COUNT(*) sessions, COALESCE(AVG(peak_players), 0) avgPlayers, COALESCE(AVG(ended_at - created_at), 0) avgSeconds,
+           COALESCE(SUM(kicks), 0) kicks, COALESCE(SUM(visibility = 'private'), 0) private
+         FROM coop_rooms WHERE day >= ?`,
+        since,
+      );
+      return { days, totals, daily, modes, failReasons, topPlayers, cardTotals, recentRuns, coop };
     },
     users(search) {
       const like = `%${(search ?? '').replace(/[%_]/g, '')}%`;

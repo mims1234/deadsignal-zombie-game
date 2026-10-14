@@ -14,6 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MODES, openDb } from './db.mjs';
+import { createRooms } from './rooms.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -40,6 +41,19 @@ function userOf(req) {
   const t = req.cookies.ds_sess;
   return t ? db.sessionUser(t) : null;
 }
+
+const rooms = createRooms({
+  // a WebSocket upgrade is a raw Node request: read the session cookie from the header
+  userOf(req) {
+    const m = /(?:^|;\s*)ds_sess=([^;]+)/.exec(req.headers.cookie || '');
+    return m ? db.sessionUser(decodeURIComponent(m[1])) : null;
+  },
+  isAdmin: (u) => isAdmin(u),
+  onEvent(kind, { room, reason }) {
+    if (kind === 'room-start') room.dbId = db.roomStart(room.code, room.hostId, room.visibility);
+    else if (kind === 'room-end' && room.dbId) db.roomEnd(room.dbId, { ...room, reason });
+  },
+});
 
 function signIn(reply, profile) {
   const user = db.upsertUser(profile);
@@ -176,11 +190,14 @@ app.post('/api/reports', { preHandler: player }, async (req, reply) => {
   return { ok: true };
 });
 
+app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code) ?? reply.code(404).send({ error: 'no such session' }));
+
 // ---- admin -------------------------------------------------------------------------------------------
 
 app.get('/admin', { preHandler: admin }, async (_req, reply) => reply.type('text/html').send(readFileSync(join(here, 'admin.html'))));
 app.get('/api/admin/overview', { preHandler: admin }, async (req) => db.overview(Math.max(1, Math.min(90, Number(req.query.days) || 30))));
 app.get('/api/admin/users', { preHandler: admin }, async (req) => ({ users: db.users(String(req.query.q || '')), admins: [...ADMIN_IDS] }));
+app.get('/api/admin/rooms', { preHandler: admin }, async () => ({ rooms: rooms.live() }));
 app.get('/api/admin/reports', { preHandler: admin }, async (req) => ({ reports: db.reports(String(req.query.status || 'open')) }));
 
 app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {
@@ -188,6 +205,7 @@ app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) =
   if (ADMIN_IDS.has(id)) return reply.code(400).send({ error: 'an admin cannot be banned' });
   if (!db.user(id)) return reply.code(404).send({ error: 'no such player' });
   db.ban(req.user.id, id, String(req.body?.reason || '').slice(0, 200) || 'No reason given');
+  rooms.drop(id);
   return { ok: true };
 });
 
@@ -207,6 +225,7 @@ const dist = join(root, 'dist');
 if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1h', immutable: false });
 else app.log.warn('dist/ not found: run "pnpm build" to serve the game from this server');
 
+rooms.attach(app.server);
 const port = Number(env.PORT) || 3061;
 await app.listen({ port, host: env.HOST || '0.0.0.0' });
 console.log(`DEAD SIGNAL server on ${PUBLIC_URL} (port ${port})  admins: ${ADMIN_IDS.size}  discord: ${env.DISCORD_CLIENT_ID ? 'configured' : 'NOT configured'}${DEV_LOGIN ? '  DEV LOGIN ON' : ''}`);
