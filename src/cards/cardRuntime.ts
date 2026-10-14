@@ -51,7 +51,10 @@ const PORTRAIT_H = 0.72;
 export class CardRuntime {
   readonly root = new THREE.Group();
   private readonly units: Unit[] = [];
-  private owned: string[] = [];
+  /** Times each card has been recovered (from the account when signed in, otherwise from this browser). */
+  private counts: Record<string, number> = {};
+  /** Called with the card id whenever one is picked up. */
+  onRecovered: (id: string) => void = () => {};
   private passive = false;
   private time = 0;
   private readonly head = new THREE.Vector3();
@@ -68,7 +71,7 @@ export class CardRuntime {
   /** Load the art and build every carrier's model once. */
   async load(): Promise<void> {
     const kits = await loadCardKits(CARRIERS);
-    this.owned = loadCards(CARRIERS.map((c) => c.id));
+    for (const id of loadCards(CARRIERS.map((c) => c.id))) this.counts[id] = 1;
     CARRIERS.forEach((def, i) => {
       const kit = kits.get(def.id)!;
       const rig = new ZombieRigImpl(buildCarrierAssets(def, i), this.material, { radius: 0.3, height: def.height, headRadius: 0.18 }, 77 + i);
@@ -223,10 +226,9 @@ export class CardRuntime {
     const s = ctx.session;
     if (!recoverCarrier(st)) return;
     u.loot.visible = false;
-    if (!this.owned.includes(u.def.id)) {
-      this.owned.push(u.def.id);
-      saveCards(this.owned);
-    }
+    this.counts[u.def.id] = (this.counts[u.def.id] ?? 0) + 1;
+    saveCards(Object.keys(this.counts));
+    this.onRecovered(u.def.id);
     const cash = recoveryReward(s.carriers);
     addCash(s.inv, cash);
     const got = recoveredCount(s.carriers);
@@ -351,8 +353,13 @@ export class CardRuntime {
     return { name: best.def.name.toUpperCase(), fraction: down ? 0 : z.hp / z.maxHp, enraged: false, portrait: best.kit.url, accent: cssColor(best.def.accent), note: down ? 'DOWN - PURGE' : undefined };
   }
 
-  /** Every card and whether it has ever been recovered (title screen). */
+  /** Replace the card counts with the account's. */
+  setCounts(counts: Record<string, number>): void {
+    this.counts = { ...counts };
+  }
+
+  /** Every card and how often it has been recovered (title screen). */
   collection(): CardCollectionEntry[] {
-    return this.units.map((u) => ({ id: u.def.id, name: u.def.name, series: u.def.series, image: u.kit.url, accent: cssColor(u.def.accent), owned: this.owned.includes(u.def.id) }));
+    return this.units.map((u) => ({ id: u.def.id, name: u.def.name, series: u.def.series, image: u.kit.url, accent: cssColor(u.def.accent), owned: (this.counts[u.def.id] ?? 0) > 0, count: this.counts[u.def.id] ?? 0 }));
   }
 }

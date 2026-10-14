@@ -7,11 +7,6 @@ import { type CarrierDef, cssColor } from './roster';
 
 const ART = import.meta.glob('./art/*.webp', { eager: true, query: '?url', import: 'default' }) as Record<string, string>;
 
-/** Address of the emblem image, or undefined when it is not in `art/`. */
-export function emblemUrl(): string | undefined {
-  return ART['./art/emblem.webp'];
-}
-
 export interface CardKit {
   front: THREE.Texture;
   back: THREE.Texture;

@@ -84,6 +84,32 @@ infected in plain view.
 
 Add `?touch=1` to the URL to try the touch layout on a desktop, or `?touch=0` to force keyboard and mouse.
 
+## Server: accounts, analytics and the admin dashboard
+
+The game can be hosted two ways.
+
+- **Static** (any file host, or `pnpm dev` on its own): no accounts. Everyone plays signed out and nothing is recorded.
+- **With the game server** (`pnpm server`): players sign in with Discord before they can deploy, runs and visits are
+  recorded, recovered cards are kept on the account, and the admins get a dashboard at `/admin`.
+
+```bash
+cp .env.example .env     # fill in PUBLIC_URL, the Discord application id and secret, and ADMIN_IDS
+pnpm build
+pnpm server              # serves dist/ and the API on PORT (3061)
+```
+
+In the Discord developer portal, add `<PUBLIC_URL>/auth/discord/callback` as an OAuth2 redirect. Only the `identify`
+scope is requested. The database is one SQLite file in `DATA_DIR`; back that folder up.
+
+The dashboard shows visits, players, runs per mode with outcomes and lengths, why runs fail, cards recovered, the
+most active players and recent runs, plus a player list with ban / unban and the report queue. `/admin` answers 404
+to anyone who is not in `ADMIN_IDS`. A banned account is signed out and cannot start a run.
+
+Run statistics come from the player's browser, so treat them as analytics, not as proof: nothing is granted from them.
+
+For local work, `DEV_LOGIN=1 pnpm server` adds `/auth/dev?id=<discord id>&name=<name>`, a sign-in that skips Discord,
+and `pnpm dev` proxies `/api`, `/auth` and `/admin` to it. `scripts/qa-server.mjs` checks the API end to end.
+
 ## Development
 
 ```bash

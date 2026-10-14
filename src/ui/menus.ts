@@ -7,7 +7,7 @@ import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS } from '../config';
 import type { BestRun, GameMode, MissionStats, Settings } from '../types';
 import { el, fmtClock, fmtInt, fmtMoney } from './dom';
-import type { MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
+import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
@@ -58,6 +58,7 @@ class Menus implements MenusApi {
   private touch = false;
   private info: ModeInfo = { mode: 'standard', cards: [] };
   private lastBest: BestRun | null = null;
+  private account: AccountInfo = { online: false, name: null, admin: false, loginUrl: '', loginFailed: false };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -98,6 +99,16 @@ class Menus implements MenusApi {
 
   setTouchMode(touch: boolean): void {
     this.touch = touch;
+  }
+
+  setAccount(info: AccountInfo): void {
+    this.account = info;
+    if (this.kind === 'title') this.showTitle(this.lastBest);
+  }
+
+  /** Playing needs a signed-in account whenever there is a server to sign in to. */
+  private get locked(): boolean {
+    return this.account.online && this.account.name === null;
   }
 
   setModeInfo(info: ModeInfo): void {
@@ -146,6 +157,7 @@ class Menus implements MenusApi {
   }
 
   private deploy(): void {
+    if (this.locked) return;
     const t = performance.now();
     if (t - this.deployStamp < 400) return;
     this.deployStamp = t;
@@ -256,12 +268,28 @@ class Menus implements MenusApi {
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
     const actions = el('div', 'actions', main);
-    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
-    deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
+    const deployBtn = this.locked
+      ? this.button(actions, 'SIGN IN WITH DISCORD', 'primary big', () => window.location.assign(this.account.loginUrl))
+      : this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
+    if (!this.locked) deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
     let showTab: (w: 'controls' | 'settings') => void = () => {};
     this.button(actions, 'SETTINGS', '', () => showTab('settings'));
     this.button(actions, 'CONTROLS', '', () => showTab('controls'));
-    el('div', 'note', main, this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.');
+    if (this.locked) {
+      el('div', 'note', main, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE. TRY AGAIN.' : 'A Discord account is needed to play. Only your name and avatar are read.');
+    } else {
+      el('div', 'note', main, this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.');
+    }
+    if (this.account.name !== null) {
+      const acct = el('div', 'acct', main);
+      el('span', 'lbl', acct, 'SIGNED IN AS');
+      el('span', 'who', acct, this.account.name);
+      if (this.account.admin) {
+        const a = el('a', 'ds-btn', acct, 'ADMIN');
+        a.href = '/admin';
+      }
+      this.button(acct, 'SIGN OUT', '', () => this.cb.onLogout());
+    }
 
     const bestEl = el('div', 'best', main);
     if (best) {
@@ -304,11 +332,12 @@ class Menus implements MenusApi {
       for (const c of this.info.cards) {
         const slot = el('div', c.owned ? 'card owned' : 'card', strip);
         slot.style.setProperty('--cc', c.accent);
-        slot.title = c.owned ? `${c.name} - ${c.series}` : 'Not recovered yet';
+        slot.title = c.owned ? `${c.name} - ${c.series} (recovered ${c.count} ${c.count === 1 ? 'time' : 'times'})` : 'Not recovered yet';
         const img = el('img', '', slot);
         img.src = c.image;
         img.alt = c.owned ? c.name : 'Unrecovered card';
         img.draggable = false;
+        if (c.count > 1) el('span', 'n', slot, `x${c.count}`);
       }
     } else {
       el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');

@@ -163,6 +163,20 @@ export interface CardCollectionEntry {
   accent: string;
   /** Recovered in some earlier (or the current) run. */
   owned: boolean;
+  /** How many times. */
+  count: number;
+}
+
+/** What the title screen needs to know about the player's account. */
+export interface AccountInfo {
+  /** A game server is behind the page; without one the game is a local build with no sign-in. */
+  online: boolean;
+  /** Display name, or null when signed out. */
+  name: string | null;
+  admin: boolean;
+  loginUrl: string;
+  /** The last sign-in attempt did not complete. */
+  loginFailed: boolean;
 }
 
 export interface ModeInfo {
@@ -262,6 +276,7 @@ export interface MenuCallbacks {
   onSettingsChange(settings: Settings): void;
   /** The player picked what DEPLOY starts (title screen only). */
   onModeChange(mode: GameMode): void;
+  onLogout(): void;
 }
 
 export interface MenusApi {
@@ -283,6 +298,8 @@ export interface MenusApi {
   setTouchMode(touch: boolean): void;
   /** Current mode and card collection; redraws the title screen if it is showing. */
   setModeInfo(info: ModeInfo): void;
+  /** Who is signed in; redraws the title screen if it is showing. */
+  setAccount(info: AccountInfo): void;
   readonly visible: boolean;
   dispose(): void;
 }

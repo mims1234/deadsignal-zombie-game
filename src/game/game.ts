@@ -8,7 +8,6 @@ import * as THREE from 'three';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
-import { createEmblemDecor } from '../cards/emblems';
 import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, REGIONS, RENDER, ZOMBIE_AI } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
@@ -20,6 +19,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
+import { type Account, RunTracker, loadAccount, logout, ping, reportVisit } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -79,6 +79,8 @@ export class Game implements GameCtx {
   cards!: CardRuntime;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
+  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
+  private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
   session: Session = newSession();
@@ -172,10 +174,25 @@ export class Game implements GameCtx {
       onQuitToTitle: () => this.quitToTitle(),
       onSettingsChange: (s) => this.applySettings(s, true),
       onModeChange: (m) => this.setMode(m),
+      onLogout: () => void logout().then(() => window.location.reload()),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
     this.menus.setSettings(this.settings);
+
+    this.account = await loadAccount();
+    reportVisit(this.touchMode);
+    this.menus.setAccount({
+      online: this.account.online,
+      name: this.account.user?.name ?? null,
+      admin: this.account.admin,
+      loginUrl: this.account.loginUrl,
+      loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',
+    });
+    if (this.account.banned) {
+      this.menus.showError('ACCOUNT BANNED', 'This Discord account has been banned from DEAD SIGNAL.', this.account.banReason || undefined);
+      return false;
+    }
 
     const caps = checkCapabilities(this.touchMode);
     if (!caps.ok) {
@@ -238,8 +255,11 @@ export class Game implements GameCtx {
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     this.cards = new CardRuntime(this, this.zombieFactory.material, () => this.zenv);
     await this.cards.load();
-    const emblems = await createEmblemDecor(this.level);
-    if (emblems) this.worldRoot.add(emblems);
+    if (this.account.user) this.cards.setCounts(this.account.cards);
+    this.cards.onRecovered = (id) =>
+      void this.tracker.card(id).then((counts) => {
+        if (counts) this.cards.setCounts(counts);
+      });
 
     this.grenades = new GrenadeSystem(
       {
@@ -346,6 +366,10 @@ export class Game implements GameCtx {
     window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onVisibility);
     document.addEventListener('keydown', this.onKeyDownGlobal);
+    window.addEventListener('pagehide', () => this.closeRun(true));
+    window.setInterval(() => {
+      if (this.account.user && document.visibilityState === 'visible') ping();
+    }, 60000);
     if (typeof ResizeObserver === 'function') {
       this.resizeObserver = new ResizeObserver(() => this.renderer.resize());
       this.resizeObserver.observe(this.deps.canvas);
@@ -459,6 +483,7 @@ export class Game implements GameCtx {
 
   /** Deploy / restart button (inside a click). */
   requestStart(restart: boolean): void {
+    if (this.account.online && !this.account.user) return; // the title screen offers sign-in instead
     this.audio.init(); // needs the user gesture
     if (restart || this.dirty) this.resetRun(false);
     this.dirty = true;
@@ -542,6 +567,10 @@ export class Game implements GameCtx {
     this.input.fireSuppressed = false;
     this.lastT = 0; // next frame gets dt = 0: no accumulated delta after pause / lock acquisition
     this.audio.resume();
+    if (fresh) {
+      this.closeRun();
+      this.tracker.start(this.mode, this.touchMode);
+    }
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
       if (!this.ambience || !this.ambience.active) this.ambience = this.audio.startLoop('ambience', { volume: 0.8, fadeIn: 2 });
@@ -585,7 +614,14 @@ export class Game implements GameCtx {
   // ---------------------------------------------------------------------------------------------
 
   /** Reset the world and the player for a fresh mission. Never stacks listeners or loops. */
+  /** Report the run in progress as abandoned (restart, quit to title, tab closing). No-op when none is open. */
+  private closeRun(keepalive = false): void {
+    if (!this.tracker.running) return;
+    this.tracker.end('abandoned', 'Left the run', buildStats(this.session, 'defeat', 'Left the run', this.mission.contractsDone()), keepalive);
+  }
+
   resetRun(initial: boolean): void {
+    if (!initial) this.closeRun();
     this.session = newSession();
     this.session.vitals.health = PLAYER.maxHealth;
     this.session.vitals.armor = PLAYER.plateArmor;
@@ -1168,6 +1204,7 @@ export class Game implements GameCtx {
   private showResults(): void {
     const pr = this.pendingResults!;
     this.pendingResults = null;
+    this.tracker.end(pr.outcome, pr.stats.reason, pr.stats);
     this.state = 'results';
     this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
     this.hud.setVisible(false);

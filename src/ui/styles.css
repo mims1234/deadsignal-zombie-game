@@ -2607,3 +2607,39 @@ html.ds-rm .ds-menus {
     margin-bottom: 0.5em;
   }
 }
+
+/* ---- account line (title) ---- */
+.ds-title-main .acct {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 0.9em;
+  margin-top: 1em;
+  font-size: max(10px, 0.78em);
+  letter-spacing: 0.16em;
+}
+.ds-title-main .acct .lbl {
+  color: var(--ds-ink-faint);
+}
+.ds-title-main .acct .who {
+  color: #f4f7ea;
+  font-weight: 700;
+}
+.ds-title-main .acct .ds-btn {
+  padding: 0.35em 0.8em;
+  font-size: 0.9em;
+  text-decoration: none;
+}
+.ds-brief .cards .card {
+  position: relative;
+}
+.ds-brief .cards .card .n {
+  position: absolute;
+  right: -0.2em;
+  bottom: -0.3em;
+  padding: 0 0.35em;
+  font: 700 max(9px, 0.7em) / 1.5 var(--ds-font-num);
+  color: #17130a;
+  background: var(--ds-amber);
+  text-shadow: none;
+}

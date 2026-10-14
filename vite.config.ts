@@ -9,7 +9,14 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
   },
-  server: { host: '127.0.0.1', port: 5173, strictPort: false, hmr: process.env.VITE_NO_HMR === '1' ? false : undefined },
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: false,
+    hmr: process.env.VITE_NO_HMR === '1' ? false : undefined,
+    // the game server (pnpm server), when it is running; without it the game plays as a local, signed-out build
+    proxy: { '/api': 'http://127.0.0.1:3061', '/auth': 'http://127.0.0.1:3061', '/admin': 'http://127.0.0.1:3061' },
+  },
   preview: { host: '127.0.0.1', port: 4173 },
   test: {
     include: ['tests/**/*.test.ts'],

@@ -290,6 +290,7 @@ const menus = createMenus({
   onRestart: () => calls.push('restart'),
   onQuitToTitle: () => calls.push('title'),
   onModeChange: (m) => calls.push(`mode:${m}`),
+  onLogout: () => calls.push('logout'),
   onSettingsChange: (s) => {
     settings = s;
     calls.push(`settings:${JSON.stringify(s)}`);
