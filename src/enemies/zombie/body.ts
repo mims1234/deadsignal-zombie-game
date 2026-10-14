@@ -73,6 +73,9 @@ const TRX = [0.16, 0.166, 0.148, 0.152, 0.178, 0.19, 0.165, 0.075];
 const TRZ = [0.098, 0.104, 0.092, 0.096, 0.112, 0.108, 0.088, 0.062];
 const TY0 = 0.86;
 const TY1 = 1.49;
+/** `Dims.fem` (the Asylum's infected): per-row width / depth multipliers - slight hips, slim waist, narrow shoulders. */
+const FEM_X = [1.06, 1.08, 0.92, 0.9, 0.92, 0.93, 0.88, 0.9];
+const FEM_Z = [1.03, 1.03, 0.9, 0.9, 0.98, 1.0, 0.94, 0.94];
 
 export function torsoPath(D: Dims): THREE.Vector3[] {
   return [V(0, D.k * TY0, 0), V(0, D.k * TY1, 0)];
@@ -85,7 +88,7 @@ export function torsoT(D: Dims, y: number): number {
 export function torsoProf(ctx: Ctx, widthMul = 1, depthMul = 1): (t: number, out: { rx: number; rz: number }) => void {
   const { D } = ctx;
   const g = ctx.girth;
-  return profile(TY.map((y, i) => [(y - TY0) / (TY1 - TY0), TRX[i]! * D.k * D.torsoW * g * widthMul, TRZ[i]! * D.k * D.torsoD * g * depthMul] as [number, number, number]));
+  return profile(TY.map((y, i) => [(y - TY0) / (TY1 - TY0), TRX[i]! * D.k * D.torsoW * g * widthMul * (D.fem ? FEM_X[i]! : 1), TRZ[i]! * D.k * D.torsoD * g * depthMul * (D.fem ? FEM_Z[i]! : 1)] as [number, number, number]));
 }
 
 export function addTorsoSkin(ctx: Ctx, colorFn?: (t: number, ang: number, p: THREE.Vector3, n: THREE.Vector3) => THREE.Color, rib = 0): void {

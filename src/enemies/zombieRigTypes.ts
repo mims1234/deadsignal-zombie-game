@@ -57,8 +57,11 @@ export interface ZombieRig {
   dispose(): void;
 }
 
+/** A map's own look for its infected (the Asylum: `zombie/asylum.ts`); none means the standard variants. */
+export type ZombieTheme = 'asylum';
+
 export interface ZombieFactory {
-  create(type: ZombieType, seed: number): ZombieRig;
+  create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig;
   /** The Asylum's boss, the Matron (`matron.ts`): animates as a 'warden'. Absent: a Warden's model stands in. */
   createMatron?(seed: number): ZombieRig;
   dispose(): void;

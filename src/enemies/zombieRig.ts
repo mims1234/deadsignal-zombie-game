@@ -9,11 +9,11 @@ import { createDetailTexture, createZombieMaterial } from './zombie/material';
 import { disposeShapeCache } from './zombie/mesh';
 import { type TypeAssets, ZombieRigImpl, makeTypeAssets, variantGeometry } from './zombie/rig';
 import { MatronRig } from './matronRig';
-import type { ZombieFactory, ZombieRig } from './zombieRigTypes';
+import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
 
 export interface ZombieFactoryExt extends ZombieFactory {
-  /** Bake every appearance variant now (avoids a few ms of hitching on first spawn of each variant). */
-  prewarm(): void;
+  /** Bake every appearance variant now (avoids a few ms of hitching on first spawn of each variant); with a theme, its looks instead. */
+  prewarm(theme?: ZombieTheme): void;
   /** The Asylum's boss, the Matron. */
   createMatron(seed: number): ZombieRig;
   /** Shared material (debug / harness). */
@@ -23,21 +23,22 @@ export interface ZombieFactoryExt extends ZombieFactory {
 export function createZombieFactory(): ZombieFactoryExt {
   const texture = createDetailTexture();
   const material = createZombieMaterial(texture);
-  const assets = new Map<ZombieType, TypeAssets>();
+  const assets = new Map<string, TypeAssets>();
   const rigs = new Set<ZombieRig>();
-  const get = (type: ZombieType): TypeAssets => {
-    let a = assets.get(type);
+  const get = (type: ZombieType, theme?: ZombieTheme): TypeAssets => {
+    const key = theme ? `${type}:${theme}` : type;
+    let a = assets.get(key);
     if (!a) {
-      a = makeTypeAssets(type);
-      assets.set(type, a);
+      a = makeTypeAssets(type, theme);
+      assets.set(key, a);
     }
     return a;
   };
   return {
     material,
-    create(type: ZombieType, seed: number): ZombieRig {
+    create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig {
       const def = ZOMBIES[type];
-      const rig = new ZombieRigImpl(get(type), material, { radius: def.radius, height: def.height, headRadius: def.headRadius }, seed);
+      const rig = new ZombieRigImpl(get(type, type === 'warden' ? undefined : theme), material, { radius: def.radius, height: def.height, headRadius: def.headRadius }, seed);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {
@@ -57,9 +58,9 @@ export function createZombieFactory(): ZombieFactoryExt {
       };
       return rig;
     },
-    prewarm(): void {
-      for (const type of ['shambler', 'runner', 'armored', 'warden'] as ZombieType[]) {
-        const a = get(type);
+    prewarm(theme?: ZombieTheme): void {
+      for (const type of (theme ? ['shambler', 'runner', 'armored'] : ['shambler', 'runner', 'armored', 'warden']) as ZombieType[]) {
+        const a = get(type, theme);
         for (let i = 0; i < a.variants.length; i++) variantGeometry(a, i);
       }
     },

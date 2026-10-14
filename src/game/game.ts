@@ -279,7 +279,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm();
+    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : undefined); // the Asylum's infected have their own looks
     this.viewmodels = createViewmodels();
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');

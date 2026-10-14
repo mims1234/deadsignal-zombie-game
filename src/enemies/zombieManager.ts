@@ -12,7 +12,7 @@ import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
 import { MATRON_DEF, MatronBrain, createMatronRig, isMatronMap } from './matron';
 import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
-import type { ZombieFactory, ZombieRig } from './zombieRigTypes';
+import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
 
 export interface ZombieHit {
   zombie: Zombie;
@@ -167,6 +167,8 @@ export class ZombieManager {
   damageFilter: ((z: Zombie, amount: number) => number) | null = null;
   /** The Asylum: its boss is the Matron (`matron.ts`) - every 'warden' here gets her model and stats - and these are her abilities. Null elsewhere. */
   readonly matron: MatronBrain | null;
+  /** The map's own look for its infected (the Asylum's women, `zombie/asylum.ts`); puppets get it the same way. */
+  readonly theme: ZombieTheme | undefined;
 
   constructor(
     private readonly factory: ZombieFactory,
@@ -174,6 +176,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
+    this.theme = level.data.id === 'asylum' ? 'asylum' : undefined;
     const b = level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -186,7 +189,7 @@ export class ZombieManager {
     const pool = this.pools.get(type);
     const rig = pool?.pop();
     if (rig) return rig;
-    const created = type === 'warden' && this.matron ? createMatronRig(this.factory, this.nextId * 131) : this.factory.create(type, this.nextId * 131);
+    const created = type === 'warden' && this.matron ? createMatronRig(this.factory, this.nextId * 131) : this.factory.create(type, this.nextId * 131, this.theme);
     this.root.add(created.root);
     return created;
   }
