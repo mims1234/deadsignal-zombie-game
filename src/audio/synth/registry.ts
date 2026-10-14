@@ -104,6 +104,18 @@ import {
   uiPause,
   upgradeOk,
 } from './world';
+import {
+  boardClimb,
+  boardHammer,
+  boardRip,
+  powerupCarpenter,
+  powerupDoublePoints,
+  powerupEnd,
+  powerupInstaKill,
+  powerupMaxAmmo,
+  powerupNuke,
+  powerupSpawn,
+} from './zombiesMode';
 
 /** Sample-rate class: hi = context rate (max 48 kHz), mid = 32 kHz, lo = 22.05 kHz, xlo = 11.025 kHz. */
 export type RateClass = 'hi' | 'mid' | 'lo' | 'xlo';
@@ -248,6 +260,17 @@ export const SOUND_SPECS: Record<SoundId, SoundSpec> = {
   ui_hover: S(1, 'mid', 3, 'ui', 0.02, 0.05, 0, true, uiHover),
   ui_deploy: S(1, 'mid', 3, 'ui', 0, 0.02, 0, true, uiDeploy),
   ui_pause: S(1, 'mid', 3, 'ui', 0, 0.02, 0, true, uiPause),
+  // ---- barricades and power-ups ----
+  board_rip: S(3, 'mid', 2, 'sfx', 0.06, 0.08, 0.25, false, boardRip),
+  board_hammer: S(2, 'mid', 2, 'sfx', 0.05, 0.06, 0.2, false, boardHammer),
+  board_climb: S(2, 'lo', 1, 'sfx', 0.06, 0.08, 0.2, false, boardClimb),
+  powerup_spawn: S(1, 'mid', 2, 'sfx', 0.02, 0.03, 0.3, false, powerupSpawn),
+  powerup_end: S(1, 'mid', 2, 'ui', 0, 0.02, 0, false, powerupEnd),
+  powerup_max_ammo: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, powerupMaxAmmo),
+  powerup_insta_kill: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, powerupInstaKill),
+  powerup_double_points: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, powerupDoublePoints),
+  powerup_nuke: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, powerupNuke),
+  powerup_carpenter: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, powerupCarpenter),
 };
 
 /** Per-sound distance rolloff (Web Audio 'inverse' model factor; default 1). Lower = carries farther. Threat cues carry further so the player can hear the horde coming. */

@@ -103,6 +103,17 @@ export const SOUND_IDS = [
   'ui_hover',
   'ui_deploy',
   'ui_pause',
+  // ---- barricades (the Asylum) and power-up drops ----
+  'board_rip', // a board wrenched off a window (spatial)
+  'board_hammer', // a board nailed back (spatial)
+  'board_climb', // an infected climbing in over the sill (spatial)
+  'powerup_spawn', // a power-up drop appears (spatial)
+  'powerup_end', // a timed power-up runs out
+  'powerup_max_ammo', // announcer-like call + stinger for each power-up taken
+  'powerup_insta_kill',
+  'powerup_double_points',
+  'powerup_nuke',
+  'powerup_carpenter',
 ] as const;
 
 export type SoundId = (typeof SOUND_IDS)[number];

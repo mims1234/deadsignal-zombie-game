@@ -35,6 +35,8 @@ const DOOR = 1.6;
 const DOOR_H = 2.4;
 const door = (at: number, width = DOOR, height = DOOR_H): Opening => ({ at, width, height, kind: 'door', frame: 'wood' });
 const win = (at: number, lit = false): Opening => ({ at, width: 1.3, height: 1.7, sill: 1.1, kind: 'window', frame: 'steelDark', lit });
+/** A boarded window (barricade): the infected tear the boards off and climb in; players nail them back (src/asylum). */
+const boarded = (o: Opening): Opening => ({ ...o, barricade: true });
 
 /** The hill: flat inside the walls, falling away beyond them, under a ring of black pines (no colliders). */
 function hillside(c: Ctx): void {
@@ -106,7 +108,7 @@ function upperStorey(c: Ctx, x: number, z: number, w: number, d: number, y0: num
  * A ward wing: one long corridor down the middle, six cells either side. `inner` is the side facing the yard (and
  * the admin block). Cells by the doors to the outside are vestibules (a door to the corridor and one outside).
  */
-function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string): void {
+function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string, boards: { inner: number[]; outer: number[] }): void {
   const { b } = c;
   const w = 14;
   const z0 = -22;
@@ -127,6 +129,8 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string): void {
   // inner side: to the admin block (cell 5) and the yard (cell 2); outer side: to the grounds (cell 1); windows elsewhere
   const innerOpen = [door(at(inner, mid(5)), 1.6), door(at(inner, mid(2)), 1.6), win(at(inner, mid(0))), win(at(inner, mid(3)), true), win(at(inner, mid(4)))];
   const outerOpen = [door(at(outer, mid(1)), 1.6), win(at(outer, mid(0))), win(at(outer, mid(2))), win(at(outer, mid(3))), win(at(outer, mid(4)), true), win(at(outer, mid(5)))];
+  // barricades: the chosen cells' windows are boarded instead of glazed
+  const board = (list: Opening[], side: 'E' | 'W', ks: number[]): Opening[] => list.map((o) => (o.kind === 'window' && ks.some((k) => Math.abs(o.at - at(side, mid(k))) < 0.01) ? boarded(o) : o));
   const corridorL = cx - 1.6;
   const corridorR = cx + 1.6;
   const partitions = [];
@@ -141,8 +145,8 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string): void {
   building(b, {
     x: cx, z: (z0 + z1) / 2, w, d: z1 - z0, height: H, wallMaterial: 'brick', roofMaterial: 'roof', floorMaterial: 'tile', ceilingMaterial: 'plaster', parapet: 0.4,
     sides: {
-      [inner]: { openings: innerOpen },
-      [outer]: { openings: outerOpen },
+      [inner]: { openings: board(innerOpen, inner, boards.inner) },
+      [outer]: { openings: board(outerOpen, outer, boards.outer) },
       // the corridor runs out of both ends; S measures from the east end, N from the west end
       S: { openings: [door(ix1 + t - cx, 1.8, 2.6)] },
       N: { openings: [door(cx - (ix0 - t), 1.8, 2.6)] },
@@ -274,7 +278,7 @@ export function buildAsylum(c: Ctx): AsylumResult {
   building(b, {
     x: 0, z: 11, w: 24, d: 14, height: 5.2, wallMaterial: 'brick', roofMaterial: 'roof', floorMaterial: 'wood', ceilingMaterial: 'plaster', parapet: 0.5,
     sides: {
-      S: { openings: [door(12, 2.6, 3), win(5, true), win(19)] },
+      S: { openings: [door(12, 2.6, 3), boarded(win(5, true)), boarded(win(19))] },
       N: { openings: [door(12, 2, 2.6)] },
       W: { openings: [door(17.6 - 7, 1.6)] },
       E: { openings: [door(7 - 4.4, 1.6)] },
@@ -311,8 +315,9 @@ export function buildAsylum(c: Ctx): AsylumResult {
   lockerRow(b, { x: -11.2, z: 14.5, rot: HALF_PI, count: 4 });
 
   // ---- the ward wings ----
-  wardWing(c, -22, 'E', 'west-ward');
-  wardWing(c, 22, 'W', 'east-ward');
+  // the boarded windows avoid the cells whose cot or lockers stand under the sill
+  wardWing(c, -22, 'E', 'west-ward', { inner: [0, 4], outer: [2, 4, 5] });
+  wardWing(c, 22, 'W', 'east-ward', { inner: [4], outer: [0, 3, 4] });
 
   // ---- the yard: flagstones, a dead elm, planters and benches for cover ----
   deadTree(b, { x: 0, z: -9, scale: 1.5, seed: 311 });
@@ -361,7 +366,7 @@ export function buildAsylum(c: Ctx): AsylumResult {
     sides: {
       S: { openings: [door(8, 2.4, 3.4)] },
       E: { openings: [door(5.6, 1.6), win(9, true)] },
-      W: { openings: [win(3, true), win(8)] },
+      W: { openings: [boarded(win(3, true)), boarded(win(8))] },
     },
     tag: 'chapel',
   });

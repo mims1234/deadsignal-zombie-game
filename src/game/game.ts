@@ -51,6 +51,8 @@ import { SquadRuntime } from './squad';
 import { Interaction, type InteractionOutput } from './interaction';
 import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
+import { BarricadeRuntime } from '../asylum/barricadeRuntime';
+import { PowerupRuntime } from './powerupRuntime';
 
 export type GameState = 'boot' | 'title' | 'playing' | 'paused' | 'ending' | 'results';
 
@@ -84,6 +86,9 @@ export class Game implements GameCtx {
   cards!: CardRuntime;
   coop!: CoopSession;
   squad!: SquadRuntime;
+  /** Power-up drops (every map) and the Asylum's barricades (null on other maps). */
+  powerups!: PowerupRuntime;
+  barricades: BarricadeRuntime | null = null;
   /** Which map was built this page load. */
   mapId: MapId = 'district';
   private coopUi!: CoopUi;
@@ -396,6 +401,17 @@ export class Game implements GameCtx {
 
     this.hud = createHud();
     this.hud.mount(uiRoot);
+    // ---- power-up drops (every map) and the Asylum's boarded windows ----
+    if (this.mapId === 'asylum') this.barricades = new BarricadeRuntime(this, { cashMul: () => this.powerups.cashMul, remote: () => this.coop.live });
+    this.powerups = new PowerupRuntime(this, {
+      hudRoot: uiRoot.querySelector<HTMLElement>('.ds-hud') ?? uiRoot,
+      remote: () => this.coop.live,
+      barricades: () => this.barricades,
+      speaker: this.mapId === 'asylum' ? 'OKAFOR' : 'COMMAND',
+      zombieEnv: () => this.zenv,
+    });
+    this.zombies.damageFilter = (z, amount) => this.powerups.filterDamage(z, amount);
+    if (this.barricades) this.interaction.providers.push(() => this.barricades?.target() ?? null);
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
     if (this.touchMode) {
@@ -843,6 +859,8 @@ export class Game implements GameCtx {
     this.entities.reset();
     this.mission.reset();
     this.interaction.reset();
+    this.powerups.reset();
+    this.barricades?.reset();
     this.heartbeat?.stop(0.2);
     this.heartbeat = null;
     if (!initial) {
@@ -1095,6 +1113,8 @@ export class Game implements GameCtx {
     // ---- world ----
     this.grenades.update(dt);
     this.entities.update(dt, this.time);
+    this.powerups.update(dt, this.time);
+    this.barricades?.update(dt);
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
     this.fx.update(dt, this.renderer.camera);
 
@@ -1396,9 +1416,10 @@ export class Game implements GameCtx {
     }
     const s = this.session;
     s.stats.kills++;
+    if (this.powerups.nuking) return; // a nuke's kills count, but pay nothing and drop nothing (the nuke pays)
     if (head) s.stats.headshots++;
     const region = this.level.regionAt(z.x, z.z);
-    const cash = killReward(z.def, head, region);
+    const cash = Math.round(killReward(z.def, head, region) * this.powerups.cashMul); // double points
     addCash(s.inv, cash);
     this.hud.event({ type: 'cash', amount: cash });
     this.feed(`+$${cash}  ${z.tag ? `${z.tag.toUpperCase()} (INFECTED)` : z.def.name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
@@ -1409,6 +1430,7 @@ export class Game implements GameCtx {
       const kind = r < 0.65 ? 'ammo' : r < 0.78 ? 'plate' : 'grenade';
       this.entities.spawnPickup(kind, z.x, z.z);
     }
+    this.powerups.onKill(z);
     if (z.isBoss && !this.coop.live) this.mission.onWardenKilled();
   }
 

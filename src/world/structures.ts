@@ -90,6 +90,11 @@ export interface Opening {
   frame?: MaterialName;
   /** Window glows warm from inside. */
   lit?: boolean;
+  /**
+   * Windows only: a barricade (the Asylum). No glass: an open hole the infected climb through once its boards are torn
+   * down (see `src/asylum`). Its collider (tag 'barricade') still stops every walker, but not shots, sight or blasts.
+   */
+  barricade?: boolean;
 }
 
 export interface WallSpec {
@@ -151,9 +156,14 @@ export function wall(b: LevelBuilder, s: WallSpec): WallInfo {
       solid(a, e, y0 + top, y0 + H); // above the window
       // glass pane (blocks movement and shots) + frame
       const [cx, cz] = at(o.at);
-      const paneMat: MatRef = o.lit ? 'windowLit' : 'glassDark';
-      addBox(b, paneMat, cx, y0 + sill + (top - sill) / 2, cz, o.width - 0.1, top - sill - 0.1, 0.06, rot, { cast: false });
-      b.collide({ x: cx, z: cz, hx: o.width / 2, hz: t / 2, rot, y0: y0 + sill, y1: y0 + top, mapKind: 'none', surface: 'glass', tag: 'window' });
+      if (o.barricade) {
+        // barricade: an open hole; walkers are stopped here (the infected are scripted over the sill), bullets are not
+        b.collide({ x: cx, z: cz, hx: o.width / 2, hz: t / 2, rot, y0: y0 + sill, y1: y0 + top, mapKind: 'none', blocksShots: false, surface: 'wood', tag: 'barricade' });
+      } else {
+        const paneMat: MatRef = o.lit ? 'windowLit' : 'glassDark';
+        addBox(b, paneMat, cx, y0 + sill + (top - sill) / 2, cz, o.width - 0.1, top - sill - 0.1, 0.06, rot, { cast: false });
+        b.collide({ x: cx, z: cz, hx: o.width / 2, hz: t / 2, rot, y0: y0 + sill, y1: y0 + top, mapKind: 'none', surface: 'glass', tag: 'window' });
+      }
       const fm = o.frame ?? 'steelDark';
       const ft = 0.07;
       addBox(b, fm, cx, y0 + sill + ft / 2, cz, o.width, ft, t + 0.06, rot, { cast: false });

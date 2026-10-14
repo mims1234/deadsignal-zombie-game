@@ -9,6 +9,7 @@ import { createCarried } from '../logic/economy';
 import type { Game } from '../game/game';
 import type { Edges } from '../player/input';
 import type { WeaponId, ZombieType } from '../types';
+import type { PowerupKind } from '../logic/powerups';
 
 function emptyEdges(): Edges {
   return {
@@ -210,6 +211,28 @@ export function installTestApi(game: Game): void {
     },
     closePanel(): void {
       game.interaction.closePanel(false);
+    },
+    /** The Asylum's barricades: every window with its points and boards left. */
+    barricades() {
+      const b = game.barricades;
+      if (!b) return [];
+      return b.defs.map((d) => ({ id: d.id, x: d.x, z: d.z, nx: d.nx, nz: d.nz, inX: d.inX, inZ: d.inZ, outX: d.outX, outZ: d.outZ, spawnX: d.spawnX, spawnZ: d.spawnZ, boards: b.state[d.id], queue: b.director.queueLength(d.id) }));
+    },
+    /** Send a fresh infected of `type` to barricade `window` (from its outside spawn point). Returns its id, or -1. */
+    sendToWindow(window: number, type: ZombieType = 'shambler'): number {
+      const b = game.barricades;
+      const d = b?.defs[window];
+      if (!b || !d) return -1;
+      const z = game.zombies.spawn(type, d.spawnX, d.spawnZ, game.rng, { yaw: Math.atan2(d.nx, d.nz) });
+      return b.director.attach(z, window) ? z.id : -1;
+    },
+    /** Drop a power-up of `kind` at (x, z). */
+    dropPowerup(kind: PowerupKind, x: number, z: number): number {
+      return game.powerups.placeDrop(kind, x, z).id;
+    },
+    powerups() {
+      const s = game.powerups.state;
+      return { drops: s.drops.map((d) => ({ ...d })), timers: { ...s.timers }, dry: s.dry, cash: game.session.inv.cash };
     },
     freeze(v: boolean): void {
       game.devFrozen = v;
