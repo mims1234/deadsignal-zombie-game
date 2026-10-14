@@ -14,7 +14,7 @@ import { MATRON, MATRON_DEF } from '../enemies/matron';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
 import { ZombieRigImpl } from '../enemies/zombie/rig';
 import { createZombieFactory } from '../enemies/zombieRig';
-import type { ZombieAnimState, ZombieMode, ZombieRig } from '../enemies/zombieRigTypes';
+import type { ZombieAnimState, ZombieMode, ZombieRig, ZombieTheme } from '../enemies/zombieRigTypes';
 import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from '../render/stage';
 import type { ZombieType } from '../types';
 import './bestiary.css';
@@ -127,8 +127,8 @@ const factory = createZombieFactory();
 const carrierMaterial = createZombieMaterial(createDetailTexture());
 const kits = await loadCardKits(CARRIERS).catch(() => new Map());
 
-const zombie = (type: ZombieType, seed: number) => (): THREE.Object3D => {
-  const r = factory.create(type, seed);
+const zombie = (type: ZombieType, seed: number, theme?: ZombieTheme) => (): THREE.Object3D => {
+  const r = factory.create(type, seed, theme);
   current!.rig = r;
   return r.root;
 };
@@ -151,6 +151,25 @@ const entries: Entry[] = [
     tagline: 'Riot gear, and still walking.',
     lore: 'The quarantine detail. Their vests and helmets turn half of every body shot, they hit twice as hard as a shambler, and a grenade only staggers them. Shotguns at close range, or patience and headshots.',
     where: 'High-threat zones, later waves', stats: zombieStats('armored'), modes: ZOMBIE_MODES, build: zombie('armored', 37),
+  },
+  // Blackwood's lost: the Asylum's own looks for the same three kinds (src/enemies/zombie/asylum.ts)
+  {
+    id: 'blackwood-nurses', group: 'THE HORDE', name: "Blackwood's night nurses", height: ZOMBIES.shambler.height * 0.95,
+    tagline: 'They stayed with the Lantern Ward.',
+    lore: "Head Nurse Mourne's night staff never left the hill. Caps pinned, aprons tied, they still drift between the wards with their lamps long out, smiling at nothing, and they are glad of company. They walk like shamblers and go down like them - a headshot is kindest.",
+    where: 'The Asylum', stats: zombieStats('shambler'), modes: ZOMBIE_MODES, build: zombie('shambler', 8, 'asylum'),
+  },
+  {
+    id: 'blackwood-patients', group: 'THE HORDE', name: "Blackwood's patients", height: ZOMBIES.runner.height * 0.95,
+    tagline: 'Sundown cases. Quiet by day.',
+    lore: 'The Lantern Program kept them under light that was never put out, and they slept in it for sixty years. Then the lamps died. Barefoot in their gowns and bandages, the girls of Ward Nine run at anything still awake after lights-out - quick, light, and easy to put down if you keep your aim up.',
+    where: 'The Asylum', stats: zombieStats('runner'), modes: ZOMBIE_MODES, build: zombie('runner', 8, 'asylum'),
+  },
+  {
+    id: 'blackwood-orderlies', group: 'THE HORDE', name: "Blackwood's orderlies", height: ZOMBIES.armored.height * 0.93,
+    tagline: 'Padded whites, buckled tight.',
+    lore: 'The orderlies who held the doors of the isolation block the night the power failed. Their quilted jackets turn half of every body shot, as riot gear does, and they hit as hard as they ever restrained anyone. Patience, and headshots.',
+    where: 'The Asylum', stats: zombieStats('armored'), modes: ZOMBIE_MODES, build: zombie('armored', 0, 'asylum'),
   },
   {
     id: 'warden', group: 'ELITES', name: 'The Warden', height: ZOMBIES.warden.height,
@@ -436,6 +455,8 @@ function frame(now: number): void {
 requestAnimationFrame(frame);
 // dev / QA hook
 (window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), select: (id: string) => select(entries.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
+  /** Re-roll the shown infected's look (as NEW LOOK does) with a given seed. */
+  look: (seed: number) => current?.rig?.reset(seed),
   /** Look from `yaw` (0 = in front) at `dist` metres, the camera at `height`. */
   view: (yaw: number, dist: number, height: number) => {
     camera.position.set(Math.sin(yaw) * dist, height, Math.cos(yaw) * dist);

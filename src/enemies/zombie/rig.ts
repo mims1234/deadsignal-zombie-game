@@ -5,7 +5,8 @@
  */
 import * as THREE from 'three';
 import type { ZombieType } from '../../types';
-import type { ZombieAnimState, ZombieRig } from '../zombieRigTypes';
+import type { ZombieAnimState, ZombieRig, ZombieTheme } from '../zombieRigTypes';
+import { ASYLUM_VARIANT_COUNT, asylumDims, buildAsylumVariant } from './asylum';
 import { PO, type RigAnimState, evalPose, makeRigAnimState } from './anim';
 import { B, BONE_NAMES, BONE_PARENT, type Dims, NB, restPositions } from './dims';
 import { type ProbeSets, computeProbes } from './probes';
@@ -14,6 +15,8 @@ import { VARIANT_COUNT, buildVariant, dimsFor } from './variants';
 
 export interface TypeAssets {
   type: ZombieType;
+  /** Themed variants (the Asylum's), or the standard ones. */
+  theme?: ZombieTheme;
   D: Dims;
   rest: ReturnType<typeof restPositions>;
   inverses: THREE.Matrix4[] | null;
@@ -23,15 +26,17 @@ export interface TypeAssets {
   boundSphere: THREE.Sphere;
 }
 
-export function makeTypeAssets(type: ZombieType): TypeAssets {
-  const D = dimsFor(type);
+export function makeTypeAssets(type: ZombieType, theme?: ZombieTheme): TypeAssets {
+  const D = theme === 'asylum' ? asylumDims(type) : dimsFor(type);
+  const count = theme === 'asylum' ? ASYLUM_VARIANT_COUNT[type] : VARIANT_COUNT[type];
   return {
     type,
+    theme,
     D,
     rest: restPositions(D),
     inverses: null,
-    variants: new Array<THREE.BufferGeometry | null>(VARIANT_COUNT[type]).fill(null),
-    probes: new Array<ProbeSets | null>(VARIANT_COUNT[type]).fill(null),
+    variants: new Array<THREE.BufferGeometry | null>(count).fill(null),
+    probes: new Array<ProbeSets | null>(count).fill(null),
     legLen: D.hipY,
     boundSphere: new THREE.Sphere(new THREE.Vector3(0, D.H * 0.5, 0), D.H * 1.0),
   };
@@ -41,7 +46,7 @@ export function variantGeometry(a: TypeAssets, index: number): THREE.BufferGeome
   const i = index % a.variants.length;
   let g = a.variants[i];
   if (!g) {
-    g = buildVariant(a.type, i);
+    g = a.theme === 'asylum' ? buildAsylumVariant(a.type, i) : buildVariant(a.type, i);
     a.variants[i] = g;
     a.probes[i] = computeProbes(g, a.rest);
   }

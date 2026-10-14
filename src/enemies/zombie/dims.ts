@@ -102,6 +102,8 @@ export interface Dims {
   armAngle: number;
   /** Head sphere centre relative to the head bone origin. */
   headCenterUp: number;
+  /** The Asylum's infected (`asylum.ts`): a woman's figure - slimmer waist and shoulders, slight hips. */
+  fem?: boolean;
 }
 
 /** Base human proportions at H = 1.8 m; per-type multipliers below. */
