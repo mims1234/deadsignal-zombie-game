@@ -1,30 +1,46 @@
 /** Mission clock, escalation phases and the contamination front (pure). */
+import { ASYLUM_CLOCK } from '../asylum/nightConfig';
 import { MISSION } from '../config';
+import type { MapId } from '../world/layout/data';
+
+/**
+ * The timings a run is held to. Every map uses `MISSION`'s except the Asylum, whose night needs longer
+ * (`asylum/nightConfig.ts`). Each function below takes one and defaults to `MISSION`.
+ */
+export interface MissionClock {
+  deadline: number;
+  surgeStart: number;
+  phases: readonly number[];
+}
+
+export function missionClock(map: MapId): MissionClock {
+  return map === 'asylum' ? ASYLUM_CLOCK : MISSION;
+}
 
 /** 0 before the first escalation threshold, then 1..3. */
-export function escalationPhase(elapsed: number): number {
+export function escalationPhase(elapsed: number, clock: MissionClock = MISSION): number {
   let p = 0;
-  for (const t of MISSION.phases) if (elapsed >= t) p++;
+  for (const t of clock.phases) if (elapsed >= t) p++;
   return p;
 }
 
 /** Elapsed time at which the contamination surge begins. Calling extraction early starts it early. */
-export function surgeStartTime(calledAt: number | null): number {
-  return calledAt === null ? MISSION.surgeStart : Math.min(MISSION.surgeStart, calledAt);
+export function surgeStartTime(calledAt: number | null, clock: MissionClock = MISSION): number {
+  return calledAt === null ? clock.surgeStart : Math.min(clock.surgeStart, calledAt);
 }
 
-export function surgeActive(elapsed: number, calledAt: number | null): boolean {
-  return elapsed >= surgeStartTime(calledAt);
+export function surgeActive(elapsed: number, calledAt: number | null, clock: MissionClock = MISSION): boolean {
+  return elapsed >= surgeStartTime(calledAt, clock);
 }
 
 /**
  * Radius of the toxic zone around the contamination source, or 0 before the surge.
  * The front reaches the LZ exactly at the mission deadline; once an extraction is underway it stalls short of the LZ.
  */
-export function hazardRadius(elapsed: number, calledAt: number | null, extractionActive: boolean, distanceToLz: number): number {
-  const start = surgeStartTime(calledAt);
+export function hazardRadius(elapsed: number, calledAt: number | null, extractionActive: boolean, distanceToLz: number, clock: MissionClock = MISSION): number {
+  const start = surgeStartTime(calledAt, clock);
   if (elapsed < start) return 0;
-  const span = Math.max(1, MISSION.deadline - start);
+  const span = Math.max(1, clock.deadline - start);
   const p = Math.min(1, (elapsed - start) / span);
   const r0 = MISSION.hazard.startRadius;
   const rEnd = distanceToLz + 8;
@@ -41,6 +57,6 @@ export function isInsideHazard(x: number, z: number, cx: number, cz: number, rad
 }
 
 /** Seconds left before the district is sealed (last chance to call extraction). */
-export function deadlineRemaining(elapsed: number): number {
-  return Math.max(0, MISSION.deadline - elapsed);
+export function deadlineRemaining(elapsed: number, clock: MissionClock = MISSION): number {
+  return Math.max(0, clock.deadline - elapsed);
 }

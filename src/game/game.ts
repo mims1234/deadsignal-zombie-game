@@ -771,7 +771,7 @@ export class Game implements GameCtx {
         } else if (kind === 'roam') this.banner('CO-OP  //  FREE ROAM', 'Fly anywhere together. No infected, no clock.', 'info', 4.5);
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
-        this.banner('BLACKWOOD HILL', 'The power is out and she is still doing her rounds. Light the place up, put her down, get out.', 'info', 5);
+        this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
@@ -1278,7 +1278,7 @@ export class Game implements GameCtx {
           playerYaw: p.yaw,
           playerEyeY: p.eyeY(),
           region: this.playerRegion(),
-          phase: escalationPhase(s.elapsed),
+          phase: escalationPhase(s.elapsed, this.mission.clock), // the Asylum's clock runs longer
           quality: this.settings.quality,
           defenseActive: s.defense.status === 'active',
           extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? s.elapsed - ex.calledAt : null,

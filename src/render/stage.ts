@@ -78,6 +78,7 @@ const skyFragment = /* glsl */ `
   uniform float uTime;
   uniform float uHazeStrength;
   uniform vec3 uHazeColor;
+  uniform float uStars;
 
   float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
   float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
@@ -118,7 +119,7 @@ const skyFragment = /* glsl */ `
     float starMask = smoothstep(0.35, 0.8, h);
     vec3 sp = floor(d * 240.0);
     float s = step(0.9985, hash3(sp));
-    col += vec3(0.75, 0.85, 1.0) * s * starMask * 0.6;
+    col += vec3(0.75, 0.85, 1.0) * s * starMask * 0.6 * uStars;
 
     // moon disc and halo
     float md = dot(d, normalize(uMoonDir));
@@ -154,6 +155,8 @@ export function createSkyDome(): SkyDome {
     uTime: { value: 0 },
     uHazeStrength: { value: 0.9 },
     uHazeColor: { value: new THREE.Color(BLUE_HOUR.fog) },
+    /** 1 = the night's stars, 0 = none (daylight, see `render/dayNight.ts`). */
+    uStars: { value: 1 },
   };
   const mat = new THREE.ShaderMaterial({
     uniforms,
@@ -204,6 +207,8 @@ export interface BlueHourRig {
   hemi: THREE.HemisphereLight;
   moon: THREE.DirectionalLight;
   fill: THREE.DirectionalLight;
+  /** Unit vector toward the key light (the moon; the sun by day on the Asylum). Change it in place; normalised. */
+  keyDir: THREE.Vector3;
   /** Re-centre the moon shadow frustum on `focus` (snapped to shadow texels to avoid shimmering). */
   focusShadow(focus: THREE.Vector3): void;
   setShadowQuality(enabled: boolean, size: number): void;
@@ -253,6 +258,7 @@ export function setupBlueHour(scene: THREE.Scene, shadowExtent = 46): BlueHourRi
     hemi,
     moon,
     fill,
+    keyDir: dir,
     focusShadow,
     setShadowQuality(enabled: boolean, size: number) {
       moon.castShadow = enabled;

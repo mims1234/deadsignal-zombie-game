@@ -51,6 +51,11 @@ export class LightPool {
   private active: number;
   private timer = 0;
   private readonly scores: { i: number; s: number }[] = [];
+  /**
+   * Per-lamp brightness multiplier (same order as the lamps), or null for all 1. A lamp at 0 is switched off: it never
+   * takes a light. The Asylum's street lamps are off by day and come on at dusk (`render/dayNight.ts`).
+   */
+  lampGain: Float32Array | null = null;
 
   constructor(parent: THREE.Object3D, maxCount: number, active = maxCount) {
     this.active = Math.min(active, maxCount);
@@ -66,6 +71,7 @@ export class LightPool {
 
   setLamps(lamps: LampSpec[]): void {
     this.lamps = lamps;
+    this.lampGain = null;
     this.assigned.fill(-1);
     this.fade.fill(0);
     this.timer = 0;
@@ -98,7 +104,7 @@ export class LightPool {
         light.position.set(lamp.x, lamp.y, lamp.z);
         light.color.set(lamp.color);
         light.distance = lamp.distance;
-        light.intensity = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]!;
+        light.intensity = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]! * (this.lampGain ? this.lampGain[lampIdx]! : 1);
       } else {
         light.intensity = 0;
         if (!enabled && this.fade[k]! <= 0.003) this.assigned[k] = -1;
@@ -117,7 +123,9 @@ export class LightPool {
       const d2 = dx * dx + dz * dz + (l.y - focus.y) * (l.y - focus.y);
       const reach = l.distance * 1.15;
       if (d2 > reach * reach) continue;
-      scores.push({ i, s: ((l.weight ?? 1) * l.intensity) / (d2 + 30) });
+      const gain = this.lampGain ? this.lampGain[i]! : 1;
+      if (gain < 0.01) continue; // switched off
+      scores.push({ i, s: ((l.weight ?? 1) * l.intensity * gain) / (d2 + 30) });
     }
     scores.sort((a, b) => b.s - a.s);
     const wanted = new Set<number>();

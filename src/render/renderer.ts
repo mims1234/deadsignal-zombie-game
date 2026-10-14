@@ -52,7 +52,7 @@ export class GameRenderer {
   readonly viewFlash: THREE.PointLight;
   readonly viewLamp: THREE.PointLight;
   readonly viewSun: THREE.DirectionalLight;
-  private readonly viewHemi: THREE.HemisphereLight;
+  readonly viewHemi: THREE.HemisphereLight;
   /** 0 outdoors .. 1 fully indoors (smoothed); interiors are lit by their own lamps, not by the sky. */
   private indoor = 0;
   private indoorTarget = 0;
@@ -122,18 +122,33 @@ export class GameRenderer {
     this.indoorTarget = indoor ? 1 : 0;
   }
 
+  /**
+   * Sky light levels outdoors (hemisphere, key light, warm fill, environment) and how much brighter interiors are than
+   * at night (`indoor`, 1 = the night's). The blue-hour defaults; the Asylum's day / night cycle changes them
+   * (`render/dayNight.ts`) through `setSkyLevels`.
+   */
+  private readonly sky0 = { hemi: 4.4, key: 4.2, fill: 1.1, env: 0.5, indoor: 1 };
+  private skyDirty = false;
+
+  setSkyLevels(v: { hemi: number; key: number; fill: number; env: number; indoor: number }): void {
+    Object.assign(this.sky0, v);
+    this.skyDirty = true;
+  }
+
   private applyIndoor(dt: number): void {
     const k = this.indoor + (this.indoorTarget - this.indoor) * Math.min(1, dt * 4);
-    if (Math.abs(k - this.indoor) < 0.0005 && k === this.indoorTarget) return;
+    if (Math.abs(k - this.indoor) < 0.0005 && k === this.indoorTarget && !this.skyDirty) return;
+    this.skyDirty = false;
     this.indoor = k;
     const lerp = (a: number, b: number): number => a + (b - a) * k;
-    this.light.hemi.intensity = lerp(4.4, 1.15);
-    this.light.moon.intensity = lerp(4.2, 0.25);
-    this.light.fill.intensity = lerp(1.1, 0.05);
-    this.scene.environmentIntensity = lerp(0.5, 0.11);
-    this.viewHemi.intensity = lerp(2.6, 1.1);
-    this.viewSun.intensity = lerp(2.4, 0.25);
-    this.viewScene.environmentIntensity = lerp(0.85, 0.15);
+    const o = this.sky0;
+    this.light.hemi.intensity = lerp(o.hemi, 1.15 * o.indoor);
+    this.light.moon.intensity = lerp(o.key, 0.25 * o.indoor);
+    this.light.fill.intensity = lerp(o.fill, 0.05);
+    this.scene.environmentIntensity = lerp(o.env, 0.11 * o.indoor);
+    this.viewHemi.intensity = lerp(2.6 * (o.hemi / 4.4), 1.1 * o.indoor);
+    this.viewSun.intensity = lerp(2.4 * (o.key / 4.2), 0.25 * o.indoor);
+    this.viewScene.environmentIntensity = lerp(0.85 * (o.env / 0.5), 0.15 * o.indoor);
     this.viewLamp.intensity = lerp(0, 1.4);
   }
 

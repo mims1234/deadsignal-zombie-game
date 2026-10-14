@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type ZombieDef, type ZombieTuning } from '../config';
 import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
 import type { Rng } from '../logic/rng';
+import { combineTuning, IDENTITY_TUNING, type PhaseTuning } from '../logic/timeOfDay';
 import type { QualityLevel, Region, ZombieType } from '../types';
 import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
@@ -116,8 +117,40 @@ export class ZombieManager {
   /** Where the Warden lives (his hunt's lair); he is brought back here when he strays and nobody is near. */
   private lair: { x: number; z: number; yaw: number } | null = null;
   private strayT = 0;
-  /** The difficulty every new infected is made with, and how many the director sends. */
-  tuning: ZombieTuning = ZOMBIE_DIFFICULTY.normal;
+  /**
+   * The difficulty every new infected is made with, and how many the director sends. Setting it sets the difficulty;
+   * reading it gives the difficulty with the time of day on top (`phaseTuning`).
+   */
+  get tuning(): ZombieTuning {
+    return this.effTuning;
+  }
+  set tuning(t: ZombieTuning) {
+    this.baseTuning = t;
+    this.effTuning = combineTuning(t, this.phaseMul);
+  }
+  private baseTuning: ZombieTuning = ZOMBIE_DIFFICULTY.normal;
+  private effTuning: ZombieTuning = ZOMBIE_DIFFICULTY.normal;
+  private phaseMul: PhaseTuning = IDENTITY_TUNING;
+  /** The time-of-day multiplier on top of the difficulty (identity except on the Asylum, see `logic/timeOfDay.ts`). */
+  get phaseTuning(): PhaseTuning {
+    return this.phaseMul;
+  }
+  /**
+   * Change the time-of-day multiplier. New infected are made with it; the living ones change speed, sight and bite
+   * with it too (their health stays what it was), so nightfall wakes the whole hill, not just the newcomers.
+   */
+  setPhaseTuning(p: PhaseTuning): void {
+    const old = this.phaseMul;
+    if (old.speed === p.speed && old.sight === p.sight && old.damage === p.damage && old.hp === p.hp && old.count === p.count) return;
+    for (const z of this.zombies) {
+      if (!z.alive || z.puppet) continue;
+      z.speedScale *= p.speed / old.speed;
+      z.sightScale *= p.sight / old.sight;
+      z.dmgScale *= p.damage / old.damage;
+    }
+    this.phaseMul = { ...p };
+    this.effTuning = combineTuning(this.baseTuning, this.phaseMul);
+  }
   private readonly tagSprites = new Map<Zombie, THREE.Sprite>();
   private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */

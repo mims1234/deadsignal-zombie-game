@@ -360,7 +360,8 @@ class Menus implements MenusApi {
     el('span', '', bh, 'OPERATION BRIEF');
     el('span', 'aux', bh, 'PRIORITY ALPHA');
     const rows = MAP_TEXT[this.info.map].rows;
-    const briefRows = mode === 'cards' ? [rows[0]!, rows[1]!, CARD_BRIEF, rows[2]!] : rows;
+    // the card hunt goes in before the extraction (the last row; the Asylum has four)
+    const briefRows = mode === 'cards' ? [...rows.slice(0, -1), CARD_BRIEF, rows[rows.length - 1]!] : rows;
     for (let i = 0; i < briefRows.length; i++) {
       const item = briefRows[i]!;
       const row = el('div', 'row', brief);

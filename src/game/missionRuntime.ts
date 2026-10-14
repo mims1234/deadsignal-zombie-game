@@ -28,7 +28,8 @@ import {
   unlockExtraction,
   updateExtraction,
 } from '../logic/extraction';
-import { deadlineRemaining, escalationPhase, hazardRadius, isInsideHazard, surgeActive, surgeStartTime } from '../logic/mission';
+import { deadlineRemaining, escalationPhase, hazardRadius, isInsideHazard, missionClock, surgeActive, surgeStartTime, type MissionClock } from '../logic/mission';
+import { AsylumNight } from '../asylum/nightRuntime';
 import type { HudObjective, HudTimer, MapMarker } from '../ui/hudTypes';
 import {
   createAreaMarker,
@@ -93,6 +94,12 @@ export class MissionRuntime implements MissionApi {
   private tmp = new THREE.Vector3();
   private readonly lz;
   private readonly toLzDist: number;
+  /** This map's deadline, black fog / surge and escalation timings (the Asylum's night runs longer). */
+  readonly clock: MissionClock;
+  /** The Asylum only: the day / night cycle, the records, the Matron's hours (`asylum/nightRuntime.ts`). */
+  readonly night: AsylumNight | null;
+  /** The defense contract completed: on the Asylum the boiler house power is back (wire to the power switch here). */
+  onPowerRestored: (() => void) | null = null;
 
   constructor(
     private readonly ctx: GameCtx,
@@ -100,6 +107,8 @@ export class MissionRuntime implements MissionApi {
   ) {
     void this.entities;
     const data = ctx.level.data;
+    this.clock = missionClock(data.id);
+    this.night = data.id === 'asylum' ? new AsylumNight(ctx) : null;
     this.lz = data.extraction;
     this.toLzDist = Math.hypot(data.hazardCenter.x - this.lz.lzX, data.hazardCenter.z - this.lz.lzZ);
     ctx.worldRoot.add(this.root);
@@ -286,6 +295,7 @@ export class MissionRuntime implements MissionApi {
     this.coughTimer = 0;
     this.wasInsideDefense = true;
     this.lastRegion = 'low';
+    this.night?.reset();
   }
 
   private stopLoops(): void {
@@ -311,6 +321,11 @@ export class MissionRuntime implements MissionApi {
     const data = ctx.level.data;
 
     if (!this.follow) s.elapsed += dt; // co-op: the simulation's clock arrives in its reports
+    if (this.night) {
+      // the Asylum: the light, the records, and the hunt kept closed until nightfall (before the hunt below)
+      this.night.follow = this.follow;
+      this.night.update(dt, time);
+    }
     const region = ctx.playerRegion();
     bumpRegion(s, region);
     if (region !== this.lastRegion) {
@@ -347,6 +362,7 @@ export class MissionRuntime implements MissionApi {
     // ---- hunt contract ----
     if (!this.follow && dt > 0 && s.hunt.status === 'active') {
       // never unwinnable: a Warden who died uncredited completes it; one who is gone is back at his lair
+      // (the Asylum's hunt is only `active` at night, so the Matron is never brought back by day)
       const b = ctx.zombies.boss;
       if (b && !b.alive) this.onWardenKilled();
       else if (!b) ctx.zombies.spawnWarden(ctx.rng);
@@ -400,7 +416,7 @@ export class MissionRuntime implements MissionApi {
     if (this.follow) {
       // nothing
     } else if (!extractionInProgress(ex) && ex.phase !== 'extracted' && ex.phase !== 'failed') {
-      const left = deadlineRemaining(s.elapsed);
+      const left = deadlineRemaining(s.elapsed, this.clock);
       if (left <= 60 && !s.flags.has('deadline60')) {
         s.flags.add('deadline60');
         ctx.banner('LAST CALL', 'The district seals in 60 seconds - call extraction', 'danger', 4);
@@ -536,6 +552,8 @@ export class MissionRuntime implements MissionApi {
       ctx.radio('COMMAND', 'Relay restored. Nice work.');
     }
     this.areaMarker.setProgress(1);
+    this.onPowerRestored?.();
+    this.night?.powerRestored();
   }
 
   /** Called when the Warden dies. */
@@ -664,7 +682,7 @@ export class MissionRuntime implements MissionApi {
     const p = ctx.player;
     const data = ctx.level.data;
     const calledAt = ex.calledAt;
-    const start = surgeStartTime(calledAt);
+    const start = surgeStartTime(calledAt, this.clock);
     // advance warning
     if (!s.flags.has('surgeWarn') && s.elapsed >= start - MISSION.hazard.warningLead && calledAt === null) {
       s.flags.add('surgeWarn');
@@ -672,7 +690,7 @@ export class MissionRuntime implements MissionApi {
       ctx.radio('COMMAND', 'Containment is failing at the compound. Surge in twenty seconds.');
       ctx.audio.play('klaxon', { priority: 3 });
     }
-    const active = surgeActive(s.elapsed, calledAt);
+    const active = surgeActive(s.elapsed, calledAt, this.clock);
     if (active && !s.flags.has('surge')) {
       s.flags.add('surge');
       ctx.banner(data.text.surge, 'A toxic front is spreading - reach extraction', 'danger', 6);
@@ -681,7 +699,7 @@ export class MissionRuntime implements MissionApi {
       this.sirenLoop = ctx.audio.startLoop('siren', { volume: 0.3 });
       ctx.level.spire.setSurge(true);
     }
-    const r = active ? hazardRadius(s.elapsed, calledAt, extractionInProgress(ex), this.toLzDist) : 0;
+    const r = active ? hazardRadius(s.elapsed, calledAt, extractionInProgress(ex), this.toLzDist, this.clock) : 0;
     this.hazardR = r;
     this.wall.setRadius(r);
     this.wall.setIntensity(active ? clamp01((s.elapsed - start) / 5) : 0);
@@ -725,9 +743,10 @@ export class MissionRuntime implements MissionApi {
     if (ex.phase === 'landed') timer = { label: 'BOARD - HELICOPTER LEAVES IN', seconds: ex.windowLeft, urgent: ex.windowLeft < 15 };
     else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') timer = { label: 'HELICOPTER ETA', seconds: Math.max(0, ex.countdown), urgent: ex.countdown < 15 };
     else if (ex.phase === 'boarding' || ex.phase === 'extracted') timer = { label: 'EXTRACTING', seconds: Math.max(0, ex.boardLeft), urgent: false };
+    else if (this.night?.timer()) timer = this.night.timer()!;
     else {
-      const left = deadlineRemaining(s.elapsed);
-      timer = { label: surgeActive(s.elapsed, ex.calledAt) ? 'FRONT REACHES LZ IN' : this.ctx.level.data.text.sealed, seconds: left, urgent: left < 90 };
+      const left = deadlineRemaining(s.elapsed, this.clock);
+      timer = { label: surgeActive(s.elapsed, ex.calledAt, this.clock) ? 'FRONT REACHES LZ IN' : this.ctx.level.data.text.sealed, seconds: left, urgent: left < 90 };
     }
     let subTimer: HudTimer | null = null;
     if (s.defense.status === 'active') {
@@ -808,6 +827,7 @@ export class MissionRuntime implements MissionApi {
     if (open.length > 0) tracked = open.reduce((a, b) => (a.distance <= b.distance ? a : b));
     else tracked = list.find((o) => o.id === 'extract');
     if (tracked) tracked.tracked = true;
+    this.night?.objectives(list); // the Asylum: day and night missions, in order
     return list;
   }
 
@@ -866,6 +886,7 @@ export class MissionRuntime implements MissionApi {
       out.push({ id: c.def.id, kind: 'crate', x: c.def.x, z: c.def.z, visible: c.discovered && !c.opened || (!c.opened && Math.hypot(c.def.x - player.x, c.def.z - player.z) < 30) });
     }
     out.push({ id: 'spire', kind: 'landmark', x: data.hazardCenter.x, z: data.hazardCenter.z, label: data.text.hazardSite, color: '#5fe08a', visible: true, dim: true });
+    this.night?.markers(out, tracked);
   }
 
   contractsDone(): number {
@@ -884,5 +905,6 @@ export class MissionRuntime implements MissionApi {
     this.wall.dispose();
     this.areaMarker.dispose();
     this.terminal.dispose();
+    this.night?.dispose();
   }
 }
