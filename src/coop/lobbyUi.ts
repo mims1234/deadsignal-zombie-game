@@ -3,7 +3,7 @@
  * server, or self-hosted on the creator's device), see who is in it and everyone's ping, and (for its owner) manage
  * it. The scoreboard shows while Tab is held during play.
  */
-import { COOP } from '../config';
+import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import type { Hosting } from '../net/room';
 import { el } from '../ui/dom';
 import type { CoopSession } from './coop';
@@ -26,6 +26,8 @@ export interface LobbyHost {
   userId(): string | null;
   /** The map this page is on: a session created here plays it. */
   mapId(): 'district' | 'forge';
+  /** The player's own difficulty picks: a session created here starts with them. */
+  difficulty(): { zombies: ZombieDifficulty; team: TeamSkill };
   isAdmin(): boolean;
   /** The game is in a state where the lobby may show (title or results). */
   canShow(): boolean;
@@ -146,7 +148,7 @@ export class CoopUi {
       const make = el('div', 'row', body);
       this.button(make, 'CREATE SESSION', 'primary', () => {
         this.notice = '';
-        void this.coop.room.create(this.visibility, this.hosting, this.host.mapId(), 'mission');
+        void this.coop.room.create(this.visibility, this.hosting, this.host.mapId(), 'mission', this.host.difficulty());
       });
       const vis = this.button(make, this.visibility === 'public' ? 'ANYONE WITH THE LINK' : 'INVITE-ONLY', '', () => {
         this.visibility = this.visibility === 'public' ? 'private' : 'public';
@@ -222,6 +224,22 @@ export class CoopUi {
       el('span', 'name', variant, kinds.find((k) => k[0] === room.kind)?.[1] ?? 'STANDARD');
     }
     el('div', 'tag', body, KIND_NOTE[room.kind]);
+
+    // ---- difficulty: the infected and the AI squad ----
+    const zd = room.zombies ?? 'normal';
+    const ts = room.team ?? 'regular';
+    const editable = isOwner && room.state !== 'playing' && room.kind !== 'roam';
+    if (room.kind !== 'roam') {
+      el('div', 'lbl', body, 'INFECTED');
+      const zr = el('div', 'row', body);
+      if (editable) for (const id of ZOMBIE_DIFFICULTIES) this.button(zr, ZOMBIE_DIFFICULTY[id].label, zd === id ? 'on' : '', () => this.coop.setDifficulty({ zombies: id })).title = ZOMBIE_DIFFICULTY[id].note;
+      else el('span', 'name', zr, ZOMBIE_DIFFICULTY[zd].label);
+      el('div', 'lbl', body, 'SQUAD AI');
+      const tr = el('div', 'row', body);
+      if (editable) for (const id of TEAM_SKILLS) this.button(tr, TEAM_SKILL[id].label, ts === id ? 'on' : '', () => this.coop.setDifficulty({ team: id })).title = TEAM_SKILL[id].note;
+      else el('span', 'name', tr, TEAM_SKILL[ts].label);
+      el('div', 'tag', body, `${ZOMBIE_DIFFICULTY[zd].note} ${TEAM_SKILL[ts].note}`);
+    }
 
     if (isOwner) {
       el('div', 'lbl', body, 'MANAGE SESSION');

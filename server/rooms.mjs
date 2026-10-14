@@ -10,7 +10,8 @@
  *
  * Client -> server                                Server -> client
  *   {t:'create', visibility, invites, hosting,      {t:'room', room, you}     full state, on every change
- *            map, kind}  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
+ *            map, kind,  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
+ *            zombies, team}  difficulty: the infected (easy..nightmare) and the AI squad (rookie..elite)
  *   {t:'join', code, as, hidden}                    {t:'relay', from, d}      a game message from another member / the host
  *   {t:'leave'}                                     {t:'closed', reason}      kicked / ended / host left
  *   {t:'manage', op, ...}   owner only              {t:'error', msg}
@@ -31,6 +32,8 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const SIM_ID = 'sim';
 const MAPS = ['district', 'forge'];
 const KINDS = ['mission', 'mazoku', 'roam'];
+const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
+const TEAM_LEVELS = ['rookie', 'regular', 'veteran', 'elite'];
 const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
@@ -65,6 +68,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
       hosting: room.hosting,
       map: room.map,
       kind: room.kind,
+      zombies: room.zombies,
+      team: room.team,
       visibility: room.visibility,
       state: room.state,
       players: visible(room, 'player').map(person),
@@ -85,7 +90,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
 
   /** Server hosting: a worker thread that runs this room's session. */
   function startSim(room) {
-    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind, zombies: room.zombies, team: room.team }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
     room.sim = w;
     w.on('message', (msg) => {
       if (!msg || room.sim !== w) return;
@@ -187,6 +192,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
           hosting,
           map: MAPS.includes(msg.map) ? msg.map : 'district',
           kind: KINDS.includes(msg.kind) ? msg.kind : 'mission',
+          zombies: ZOMBIE_LEVELS.includes(msg.zombies) ? msg.zombies : 'normal',
+          team: TEAM_LEVELS.includes(msg.team) ? msg.team : 'regular',
           ownerId: m.id,
           hostId: hosting === 'server' ? SIM_ID : m.id,
           hostName: m.name,
@@ -266,10 +273,15 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         } else if (msg.op === 'uninvite') {
           room.invites.delete(String(msg.id));
         } else if (msg.op === 'config') {
-          // what the session plays; only between runs
+          // what the session plays and how hard; only between runs
           if (room.state !== 'playing' && KINDS.includes(msg.value)) {
             room.kind = msg.value;
             room.sim?.postMessage({ type: 'kind', kind: room.kind });
+          }
+          if (room.state !== 'playing' && (ZOMBIE_LEVELS.includes(msg.zombies) || TEAM_LEVELS.includes(msg.team))) {
+            if (ZOMBIE_LEVELS.includes(msg.zombies)) room.zombies = msg.zombies;
+            if (TEAM_LEVELS.includes(msg.team)) room.team = msg.team;
+            room.sim?.postMessage({ type: 'difficulty', zombies: room.zombies, team: room.team });
           }
         } else if (msg.op === 'state') {
           const was = room.state;
@@ -346,7 +358,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
     info(code) {
       const r = rooms.get(String(code || '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
+      return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, zombies: r.zombies, team: r.team, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
     },
     /** Admin view of everything live, hidden watchers included. */
     live() {
@@ -357,6 +369,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
         hosting: r.hosting,
         map: r.map,
         kind: r.kind,
+        zombies: r.zombies,
+        team: r.team,
         simMs: r.simLoad ? r.simLoad.ms : null,
         infected: r.simLoad ? r.simLoad.infected : null,
         visibility: r.visibility,

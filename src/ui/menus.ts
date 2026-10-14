@@ -4,7 +4,7 @@
  * request pointer lock and start audio inside the user gesture.
  */
 import './styles.css';
-import { DEFAULT_SETTINGS, REGIONS } from '../config';
+import { DEFAULT_SETTINGS, REGIONS, TEAM_SKILL, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY } from '../config';
 import type { BestRun, GameMode, MissionStats, Settings } from '../types';
 import { MAP_TEXT } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
@@ -44,7 +44,7 @@ class Menus implements MenusApi {
   private readonly panels = new Set<SettingsPanel>();
   private deployStamp = 0;
   private touch = false;
-  private info: ModeInfo = { mode: 'standard', map: 'district', cards: [] };
+  private info: ModeInfo = { mode: 'standard', map: 'district', cards: [], difficulty: { zombies: 'normal', team: 'regular' } };
   private lastBest: BestRun | null = null;
   private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
@@ -299,6 +299,29 @@ class Menus implements MenusApi {
     }
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
+    // ---- difficulty: the infected and the AI squad, picked separately (nothing to fight in free roam) ----
+    if (mode !== 'roam') {
+      const d = this.info.difficulty;
+      const row = (label: string, ids: readonly string[], on: string, name: (id: string) => string, note: (id: string) => string, pick: (id: string) => void): void => {
+        const r = el('div', 'modes diff', main);
+        el('span', 'lbl', r, label);
+        const s = el('div', 'seg', r);
+        s.setAttribute('role', 'radiogroup');
+        s.setAttribute('aria-label', label);
+        for (const id of ids) {
+          const b = this.button(s, name(id), id === on ? 'on' : '', () => {
+            if (id !== on) pick(id);
+          });
+          b.title = note(id);
+          b.setAttribute('role', 'radio');
+          b.setAttribute('aria-checked', id === on ? 'true' : 'false');
+        }
+      };
+      row('INFECTED', ZOMBIE_DIFFICULTIES, d.zombies, (id) => ZOMBIE_DIFFICULTY[id as keyof typeof ZOMBIE_DIFFICULTY].label, (id) => ZOMBIE_DIFFICULTY[id as keyof typeof ZOMBIE_DIFFICULTY].note, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
+      row('SQUAD AI', TEAM_SKILLS, d.team, (id) => TEAM_SKILL[id as keyof typeof TEAM_SKILL].label, (id) => TEAM_SKILL[id as keyof typeof TEAM_SKILL].note, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
+      el('div', 'modenote', main, mode === 'coop' ? 'Co-op: these are the defaults for a session you create; its owner can change them in the lobby.' : `${ZOMBIE_DIFFICULTY[d.zombies].note} ${TEAM_SKILL[d.team].note}`);
+    }
+
     const actions = el('div', 'actions', main);
     const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : mode === 'coop' ? 'LOBBY' : 'DEPLOY', 'primary big', () => this.deploy());
     deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
@@ -380,16 +403,16 @@ class Menus implements MenusApi {
     resume.focus({ preventScroll: true });
   }
 
-  showResumePrompt(reason: string, withMenu = false): void {
+  showResumePrompt(reason: string, withMenu = false, text: { title?: string; note?: string } = {}): void {
     this.clearScreen();
     const root = el('div', '');
     el('div', 'ds-scrim light', root);
     const box = el('div', 'ds-resume-box ds-panel ds-brk', root);
-    el('div', 'ttl', box, 'SIGNAL INTERRUPTED');
+    el('div', 'ttl', box, text.title ?? 'SIGNAL INTERRUPTED');
     el('div', 'why', box, reason);
-    const btn = this.button(box, this.touch ? 'TAP TO RESUME' : 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
+    const btn = this.button(box, text.title ? (this.touch ? 'TAP TO JOIN' : 'CLICK TO JOIN') : this.touch ? 'TAP TO RESUME' : 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
     const menu = withMenu ? this.button(box, 'SETTINGS AND OPTIONS', '', () => this.showPause()) : null;
-    el('div', 'note', box, 'The simulation is frozen until you resume.');
+    el('div', 'note', box, text.note ?? 'The simulation is frozen until you resume.');
     root.addEventListener('click', (e) => {
       if (e.target !== btn && e.target !== menu) this.cb.onResume();
     });

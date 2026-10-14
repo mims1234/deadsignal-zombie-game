@@ -8,17 +8,17 @@
  * Kinds (the owner picks in the lobby): the map's story operation (Standard), the same with the Mazoku carriers, or
  * free roam. A downed player bleeds out unless a teammate revives them; the run is lost when nobody is standing.
  */
-import { COOP, VULCAN } from '../config';
+import { COOP, type TeamSkill, VULCAN, type ZombieDifficulty } from '../config';
 import type { NetZombie, PlayerRef } from '../enemies/zombie';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import type { Game } from '../game/game';
 import type { AllyRow } from '../game/squad';
 import type { ContractStatus } from '../logic/contracts';
 import { RoomClient, type RoomRole, type RoomView } from '../net/room';
-import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind } from '../sim/serverHost';
+import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind, sessionDifficulty } from '../sim/serverHost';
 import type { ZombieType } from '../types';
 import type { HudState, MapDynamic } from '../ui/hudTypes';
-import { Avatar } from './avatar';
+import { AVATAR_WEAPONS, Avatar } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
@@ -38,6 +38,8 @@ interface Peer {
   kills: number;
   downs: number;
   life: Life;
+  /** Weapon (index into AVATAR_WEAPONS), view pitch, shots fired (a counter; -1 before the first report). */
+  gear: [number, number, number];
 }
 
 export interface ScoreRow {
@@ -145,8 +147,11 @@ export class CoopSession {
       this.role = you.role === 'spectator' ? 'spectator' : room.hostId === you.id ? 'host' : 'guest';
       // a self-hosted session's owner runs the simulation, on the map they are on
       if (this.role === 'host') {
-        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, send: (to, d) => this.fromSim(to, d) });
-        if (!this.sim.finished && this.sim.stats().elapsed === 0) this.sim.kind = room.kind;
+        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, difficulty: sessionDifficulty(room), send: (to, d) => this.fromSim(to, d) });
+        if (!this.sim.finished && this.sim.stats().elapsed === 0) {
+          this.sim.kind = room.kind;
+          this.sim.difficulty = sessionDifficulty(room);
+        }
         this.sim.players(room.players.map((p) => ({ id: p.id, name: p.name })));
       }
       // drop anyone who is no longer a player
@@ -159,6 +164,12 @@ export class CoopSession {
   setKind(kind: SessionKind): void {
     if (!this.room.isOwner || !this.room.room || this.room.room.state === 'playing') return;
     this.room.manage('config', { value: kind });
+  }
+
+  /** Owner: how hard the session is (lobby only). */
+  setDifficulty(d: { zombies?: ZombieDifficulty; team?: TeamSkill }): void {
+    if (!this.room.isOwner || !this.room.room || this.room.room.state === 'playing') return;
+    this.room.manage('config', d);
   }
 
   /** Owner: open the session for play. */
@@ -230,6 +241,7 @@ export class CoopSession {
     this.sendT = 0;
     if (this.role === 'host' && this.sim) {
       this.sim.kind = this.kind;
+      if (this.room.room) this.sim.difficulty = sessionDifficulty(this.room.room);
       this.sim.begin();
     } else if (this.role === 'guest' && this.room.isOwner) {
       // the owner asks a server-hosted session for another run (it ignores this while one is still going)
@@ -272,11 +284,13 @@ export class CoopSession {
     if (this.sendT <= 0 && this.role !== 'spectator') {
       this.sendT = 1 / COOP.reportHz;
       const p = g.player;
-      this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health) });
+      const inv = g.session.inv;
+      const w = Math.max(0, AVATAR_WEAPONS.indexOf(inv.slots[inv.activeSlot]?.id ?? 'none'));
+      this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health), w, pi: r2(p.pitch), f: g.session.stats.shotsFired % 4096 });
     }
   }
 
-  private showAvatar(p: Peer): void {
+  private showAvatar(p: Peer, fired = false): void {
     let a = this.avatars.get(p.id);
     if (!a) {
       a = new Avatar(p.name, this.avatars.size);
@@ -288,6 +302,13 @@ export class CoopSession {
     if (down && a.root.visible && !a.fallen) a.fall(Math.sin(p.yaw), Math.cos(p.yaw), 1.5);
     else if (p.life === LIFE.up && a.fallen) a.rise();
     a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.life !== LIFE.aboard && (p.ref.alive || a.fallen));
+    a.setWeapon(AVATAR_WEAPONS[p.gear[0]] ?? 'rifle');
+    a.pitch = p.gear[1];
+    if (fired && p.life === LIFE.up && a.root.visible) {
+      // a teammate's shot: their weapon kicks and flashes, and you hear it from where they stand
+      const muzzle = a.fire();
+      this.g.audio.play(a.shotSound, { pos: muzzle, volume: 0.6, priority: 1, rate: 0.97 + this.g.rng.f() * 0.06 });
+    }
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -384,7 +405,10 @@ export class CoopSession {
       p.kills = Number(row[7]);
       p.downs = Number(row[8]);
       p.life = (Number(row[9]) || LIFE.up) as Life;
-      this.showAvatar(p);
+      const shots = Number(row[12] ?? 0);
+      const fired = p.gear[2] >= 0 && shots !== p.gear[2];
+      p.gear = [Number(row[10]) || 0, Number(row[11]) || 0, shots];
+      this.showAvatar(p, fired);
     }
     for (const id of [...this.peers.keys()]) if (!seen.has(id)) this.dropPeer(id);
 
@@ -404,7 +428,7 @@ export class CoopSession {
     if (p) return p;
     const person = this.room.room?.players.find((q) => q.id === id);
     if (!person || id === this.room.you?.id) return null;
-    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, life: LIFE.up };
+    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, life: LIFE.up, gear: [0, 0, -1] };
     this.peers.set(id, p);
     return p;
   }

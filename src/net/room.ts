@@ -1,4 +1,5 @@
 /** Client side of a co-op room: one WebSocket to the game server (see `server/rooms.mjs` for the protocol). */
+import type { TeamSkill, ZombieDifficulty } from '../config';
 
 export interface RoomPerson {
   id: string;
@@ -22,6 +23,9 @@ export interface RoomView {
   kind: 'mission' | 'mazoku' | 'roam';
   /** The map; fixed when the session is created (players on another map reload onto it). */
   map: 'district' | 'forge';
+  /** Difficulty: the infected's and the AI squad's (the owner sets both in the lobby). */
+  zombies?: ZombieDifficulty;
+  team?: TeamSkill;
   visibility: 'public' | 'private';
   state: 'lobby' | 'playing';
   players: RoomPerson[];
@@ -157,8 +161,8 @@ export class RoomClient {
     }
   }
 
-  create(visibility: 'public' | 'private', hosting: Hosting = 'server', map: RoomView['map'] = 'district', kind: RoomView['kind'] = 'mission'): Promise<void> {
-    return this.command({ t: 'create', visibility, hosting, map, kind });
+  create(visibility: 'public' | 'private', hosting: Hosting = 'server', map: RoomView['map'] = 'district', kind: RoomView['kind'] = 'mission', difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' }): Promise<void> {
+    return this.command({ t: 'create', visibility, hosting, map, kind, zombies: difficulty.zombies, team: difficulty.team });
   }
 
   join(code: string, as: RoomRole, hidden = false): Promise<void> {
@@ -173,7 +177,7 @@ export class RoomClient {
     this.handlers.onRoom(null, null);
   }
 
-  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config', arg: { id?: string; value?: string } = {}): void {
+  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config', arg: { id?: string; value?: string; zombies?: ZombieDifficulty; team?: TeamSkill } = {}): void {
     void this.command({ t: 'manage', op, ...arg });
   }
 

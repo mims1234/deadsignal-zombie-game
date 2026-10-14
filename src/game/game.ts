@@ -10,7 +10,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI } from '../config';
+import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -28,13 +28,13 @@ import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { DetailCuller, halveTextures, isWeakDevice } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { hasStoredSettings, isBetterRun, loadBest, loadMap, loadMode, loadSettings, saveBest, saveMap, saveMode, saveSettings } from '../storage';
+import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveSettings } from '../storage';
 import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
 import { createTouchControls, type TouchControlsApi } from '../ui/touchControls';
-import type { MenusApi } from '../ui/hudTypes';
+import type { MenusApi, ModeInfo } from '../ui/hudTypes';
 import { GrenadeSystem } from '../weapons/grenades';
 import { createViewmodels } from '../weapons/viewmodels';
 import type { ViewmodelSet } from '../weapons/viewmodelTypes';
@@ -88,6 +88,8 @@ export class Game implements GameCtx {
   private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
+  /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
+  difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
   account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
   private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
   readonly worldRoot = new THREE.Group();
@@ -185,6 +187,7 @@ export class Game implements GameCtx {
     this.best = loadBest();
     this.mode = loadMode();
     this.mapId = loadMap();
+    this.difficulty = loadDifficulty();
     if (this.touchMode) document.documentElement.classList.add('ds-touch');
 
     this.menus = createMenus({
@@ -196,6 +199,7 @@ export class Game implements GameCtx {
       onModeChange: (m) => this.setMode(m),
       onLogout: () => void logout().then(() => window.location.reload()),
       onMapChange: (m) => this.setMap(m),
+      onDifficultyChange: (d) => this.setDifficulty(d),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -368,12 +372,19 @@ export class Game implements GameCtx {
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       mapId: () => this.mapId,
+      difficulty: () => ({ ...this.difficulty }),
       isAdmin: () => this.account.admin,
       canShow: () => this.mode === 'coop' && (this.state === 'title' || this.state === 'results'),
       deploy: () => this.requestStart(this.state === 'results'),
       playing: () => this.coop.live && (this.state === 'playing' || this.state === 'paused'),
       report: reportPlayer,
     });
+    // a session that goes live (or is already live when you join it) brings you in without hunting for a button
+    const lobbyChanged = this.coop.onChange;
+    this.coop.onChange = () => {
+      lobbyChanged();
+      this.coopAutoJoin();
+    };
 
     this.hud = createHud();
     this.hud.mount(uiRoot);
@@ -419,7 +430,7 @@ export class Game implements GameCtx {
     this.menus.hideLoading();
     this.state = 'title';
     this.hud.setVisible(false);
-    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
+    this.menus.setModeInfo(this.modeInfo());
     this.menus.showTitle(this.best);
     // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
     const invite = new URLSearchParams(window.location.search);
@@ -530,6 +541,24 @@ export class Game implements GameCtx {
     this.menus.setSettings(this.settings);
   }
 
+  /** What the title screen shows as picked. */
+  private modeInfo(): ModeInfo {
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty } };
+  }
+
+  /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */
+  setDifficulty(d: { zombies: ZombieDifficulty; team: TeamSkill }): void {
+    this.difficulty = { ...d };
+    saveDifficulty(this.difficulty);
+    this.menus.setModeInfo(this.modeInfo());
+  }
+
+  /** The difficulty this run plays at: the session's in co-op, the player's own otherwise. */
+  get runDifficulty(): { zombies: ZombieDifficulty; team: TeamSkill } {
+    const r = this.mode === 'coop' ? this.coop.room.room : null;
+    return r ? { zombies: r.zombies ?? 'normal', team: r.team ?? 'regular' } : this.difficulty;
+  }
+
   /** Title screen only: switch what DEPLOY starts. The backdrop is a pristine run, so only the carriers change. */
   setMode(mode: GameMode): void {
     if (this.state !== 'title') return;
@@ -542,7 +571,7 @@ export class Game implements GameCtx {
       this.coopUi.close();
     }
     this.cards.reset(mode === 'cards', false);
-    this.menus.setModeInfo({ mode, map: this.mapId, cards: this.cards.collection() });
+    this.menus.setModeInfo(this.modeInfo());
   }
 
   /** Title screen only: the other map is built on a fresh page load. */
@@ -767,7 +796,7 @@ export class Game implements GameCtx {
     this.audio.resume();
     this.ambience = null;
     this.heartbeat = null;
-    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
+    this.menus.setModeInfo(this.modeInfo());
     this.menus.showTitle(this.best);
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
@@ -816,13 +845,14 @@ export class Game implements GameCtx {
     this.player.stamina = PLAYER.maxStamina;
     this.player.staminaExhausted = false;
     this.weapons.reset();
+    this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
     // the squad: solo runs it here; a co-op story run shows the simulation's
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
-    this.squad.reset(this.mapId === 'forge' && (solo || coopStory), solo || coopStory, coopStory);
+    this.squad.reset(this.mapId === 'forge' && (solo || coopStory), solo || coopStory, coopStory, this.runDifficulty.team);
     this.weapons.hidden = this.flying;
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
@@ -918,8 +948,35 @@ export class Game implements GameCtx {
   /** Smoothed CPU milliseconds per frame spent simulating and submitting the render (dev / QA metric). */
   readonly perf = { sim: 0, render: 0 };
 
+  /**
+   * Co-op: the session is running and this player is still on the title screen (they joined late, or the owner just
+   * started): put them in it. A phone plays at once; a computer lands in the world paused, one click from mouse
+   * control (the browser only captures the mouse inside a click). The world runs for them meanwhile.
+   */
+  private coopAutoJoin(): void {
+    if (this.mode !== 'coop' || this.state !== 'title' || this.pendingLock !== 'none') return;
+    if (!this.coop.canDeploy || this.coop.role === 'none' || (this.account.online && !this.account.user)) return;
+    this.audio.init(); // stays quiet until the first click on some browsers
+    this.resetRun(false);
+    this.dirty = true;
+    if (this.touchMode) {
+      this.noLock = true;
+      this.beginPlaying(true);
+      return;
+    }
+    this.beginPlaying(true);
+    this.pause('lost');
+    const spectating = this.coop.role === 'spectator';
+    this.menus.showResumePrompt(spectating ? 'THE SESSION IS LIVE. CLICK TO START WATCHING.' : 'YOUR SQUAD HAS DEPLOYED. CLICK TO JOIN THE FIGHT.', true, {
+      title: 'SESSION LIVE',
+      note: 'You are already in the session: the operation runs while this is open.',
+    });
+  }
+
   private updateTitle(dt: number): void {
     this.time += dt;
+    // a late join that happened while the page was still loading
+    if (this.mode === 'coop' && Math.floor(this.time * 2) !== Math.floor((this.time - dt) * 2)) this.coopAutoJoin();
     this.zenv.time = this.time;
     this.zenv.player.alive = false;
     this.zombies.update(dt, this.zenv, false);
@@ -1510,7 +1567,7 @@ export class Game implements GameCtx {
     this.pendingResults = null;
     this.tracker.end(pr.outcome, pr.stats.reason, pr.stats);
     this.state = 'results';
-    this.menus.setModeInfo({ mode: this.mode, map: this.mapId, cards: this.cards.collection() });
+    this.menus.setModeInfo(this.modeInfo());
     this.hud.setVisible(false);
     this.hud.toggleTacticalMap(false);
     this.audio.stopAll();

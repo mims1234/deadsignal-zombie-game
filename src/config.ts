@@ -867,6 +867,55 @@ export const COOP = {
   reviveHealth: 50,
 } as const;
 
+/**
+ * Difficulty, picked on the title screen (or by a co-op session's owner), in two independent parts: how dangerous
+ * the infected are, and how capable your AI squad is (the Forge soldiers, freed survivors and any other helpers).
+ */
+export type ZombieDifficulty = 'easy' | 'normal' | 'hard' | 'nightmare';
+export type TeamSkill = 'rookie' | 'regular' | 'veteran' | 'elite';
+export const ZOMBIE_DIFFICULTIES: readonly ZombieDifficulty[] = ['easy', 'normal', 'hard', 'nightmare'];
+export const TEAM_SKILLS: readonly TeamSkill[] = ['rookie', 'regular', 'veteran', 'elite'];
+
+export interface ZombieTuning {
+  label: string;
+  note: string;
+  /** Health, damage dealt, movement speed and how far they see you. */
+  hp: number;
+  damage: number;
+  speed: number;
+  sight: number;
+  /** How many: active caps, how often new ones arrive, the size of hordes and bursts. */
+  count: number;
+}
+
+export const ZOMBIE_DIFFICULTY: Record<ZombieDifficulty, ZombieTuning> = {
+  easy: { label: 'EASY', note: 'Fewer, slower, weaker infected that hit softly.', hp: 0.7, damage: 0.55, speed: 0.9, sight: 0.8, count: 0.7 },
+  normal: { label: 'NORMAL', note: 'The exclusion zone as intended.', hp: 1, damage: 1, speed: 1, sight: 1, count: 1 },
+  hard: { label: 'HARD', note: 'Tougher, faster infected that hit harder, see farther and come in greater numbers.', hp: 1.35, damage: 1.35, speed: 1.07, sight: 1.2, count: 1.3 },
+  nightmare: { label: 'NIGHTMARE', note: 'Nearly twice as tough and deadly, quick, sharp-eyed, and everywhere.', hp: 1.8, damage: 1.8, speed: 1.14, sight: 1.4, count: 1.6 },
+};
+
+export interface TeamTuning {
+  label: string;
+  note: string;
+  /** Health, and the share of each hit they take. */
+  hp: number;
+  damageTaken: number;
+  /** Shots: hit chance, rate of fire, damage per hit, engagement range, and the share of hits that are headshots. */
+  accuracy: number;
+  fireRate: number;
+  damage: number;
+  range: number;
+  headshots: number;
+}
+
+export const TEAM_SKILL: Record<TeamSkill, TeamTuning> = {
+  rookie: { label: 'ROOKIE', note: 'Green helpers: fragile, slow on the trigger, often miss.', hp: 0.75, damageTaken: 1.2, accuracy: 0.7, fireRate: 0.8, damage: 0.8, range: 0.85, headshots: 0.6 },
+  regular: { label: 'REGULAR', note: 'Steady helpers who hold their own.', hp: 1, damageTaken: 1, accuracy: 1, fireRate: 1, damage: 1, range: 1, headshots: 1 },
+  veteran: { label: 'VETERAN', note: 'Hardened helpers: tougher, quicker and more accurate.', hp: 1.3, damageTaken: 0.85, accuracy: 1.12, fireRate: 1.2, damage: 1.2, range: 1.1, headshots: 1.5 },
+  elite: { label: 'ELITE', note: 'Special forces: hard to kill, rarely miss, often go for the head.', hp: 1.6, damageTaken: 0.7, accuracy: 1.22, fireRate: 1.4, damage: 1.4, range: 1.2, headshots: 2 },
+};
+
 /** The Forge map: the two soldiers who deploy with you, and the Trials of Ignis. */
 export const FORGE_SQUAD = {
   allies: ['Ash', 'Cinder'],

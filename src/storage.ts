@@ -1,5 +1,5 @@
 /** Local persistence for settings and the best successful run. Every access is guarded: storage failure never blocks play. */
-import { DEFAULT_SETTINGS } from './config';
+import { DEFAULT_SETTINGS, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, type TeamSkill, type ZombieDifficulty } from './config';
 import type { BestRun, GameMode, QualityLevel, Settings } from './types';
 
 const KEY_SETTINGS = 'deadsignal.settings.v1';
@@ -117,6 +117,29 @@ export function loadMap(): 'district' | 'forge' {
 export function saveMap(map: 'district' | 'forge'): void {
   try {
     window.localStorage.setItem(KEY_MAP, map);
+  } catch {
+    /* ignore */
+  }
+}
+
+const KEY_DIFFICULTY = 'deadsignal.difficulty.v1';
+
+/** The two difficulty choices (the infected, the AI squad). */
+export function loadDifficulty(): { zombies: ZombieDifficulty; team: TeamSkill } {
+  try {
+    const d = JSON.parse(window.localStorage.getItem(KEY_DIFFICULTY) || '{}') as { zombies?: string; team?: string };
+    return {
+      zombies: (ZOMBIE_DIFFICULTIES as readonly string[]).includes(d.zombies ?? '') ? (d.zombies as ZombieDifficulty) : 'normal',
+      team: (TEAM_SKILLS as readonly string[]).includes(d.team ?? '') ? (d.team as TeamSkill) : 'regular',
+    };
+  } catch {
+    return { zombies: 'normal', team: 'regular' };
+  }
+}
+
+export function saveDifficulty(d: { zombies: ZombieDifficulty; team: TeamSkill }): void {
+  try {
+    window.localStorage.setItem(KEY_DIFFICULTY, JSON.stringify(d));
   } catch {
     /* ignore */
   }

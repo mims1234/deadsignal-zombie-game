@@ -76,6 +76,13 @@ Pick the map on the title screen (the page reloads to build it).
 
 Pick one on the title screen before you deploy. The choice is remembered.
 
+**Difficulty** is two separate picks on the title screen, also remembered:
+- **Infected**: Easy, Normal, Hard or Nightmare. It sets their health, the damage they deal, their speed, how far
+  they see you, and how many there are (the active cap, how often new ones arrive, the size of the hordes).
+- **Squad AI**: Rookie, Regular, Veteran or Elite. It sets how capable your AI helpers are (the Forge soldiers and the
+  freed survivors): their health and armour, accuracy, rate of fire, damage, range and how often they go for the
+  head.
+
 - **Standard** — the operation above.
 - **Standard Mazoku** — the standard operation plus a side contract. Five card carriers walk the district, each with its
   card floating over its head. A carrier cannot be killed: empty its health and it drops, then get close and hold `E`
@@ -89,7 +96,10 @@ Pick one on the title screen before you deploy. The choice is remembered.
 - **Co-op** (needs the game server and a signed-in account) — up to three players run a map's operation together:
   Standard, Standard Mazoku or Free Roam, on the District or the Forge. Create a session in the lobby and share the
   invite link, or join with a code; a player following an invite to another map is moved onto it. The session's
-  owner picks the mode in the lobby before starting. The operation is the squad's: the relay, the Warden, the
+  owner picks the mode and both difficulties in the lobby before starting (a new session starts with the owner's
+  title-screen picks). You can join a session at any time: when its owner starts it, or when you join one that is
+  already running, you are brought straight into the world (on a computer, one click takes the mouse). The operation
+  is the squad's: the relay, the Warden, the
   extraction, the Forge's soldiers, cages and embers and the Mazoku carriers are shared, so anything one of you
   completes is done for everyone, and its reward is paid to every player once. The relay fills while at least one of
   you is in the zone. Anyone can call the helicopter from the radio, and each player boards on their own; the

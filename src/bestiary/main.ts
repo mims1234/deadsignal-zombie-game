@@ -9,7 +9,7 @@ import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
 import { RENDER, SURVIVORS, ZOMBIES } from '../config';
-import { Avatar } from '../coop/avatar';
+import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
 import { ZombieRigImpl } from '../enemies/zombie/rig';
 import { createZombieFactory } from '../enemies/zombieRig';
@@ -28,8 +28,9 @@ interface Entry {
   lore: string;
   where: string;
   stats: [string, string][];
-  /** Animations this entry can play (avatars only idle, walk and fall). */
+  /** Animations this entry can play (people: the poses in `avatarModes`). */
   modes: ZombieMode[] | 'avatar';
+  avatarModes?: string[];
   build(): THREE.Object3D;
   /** Zombie rig, when the entry is one. */
   rig?: ZombieRig;
@@ -175,10 +176,23 @@ const entries: Entry[] = [
     },
   })),
   {
+    id: 'operators', group: 'BESIDE YOU', name: 'Co-op operators', height: 1.85,
+    tagline: 'The other players in your session.',
+    lore: 'Up to two more players run the operation with you. You see them carry the weapon they have out, aim where they look and fire: the rifle and shotgun shouldered, the pistol held out in both hands, the HX-7 on the shoulder. When one goes down, get to them and hold E before they bleed out.',
+    where: 'Co-op, every map and mode', stats: [['Health', '100'], ['Bleed-out', '30 s'], ['Revive', 'hold E, 3 s']], modes: 'avatar',
+    avatarModes: ['RIFLE', 'SHOTGUN', 'PISTOL', 'HX-7', 'WALK', 'FALL'],
+    build: () => {
+      const a = new Avatar('Teammate', 2, { tag: 'OPERATOR', tagColor: '#9fd0ff' });
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
     id: 'squad', group: 'BESIDE YOU', name: 'Ash & Cinder', height: 1.85,
     tagline: 'Ember squad\'s soldiers.',
     lore: 'Two soldiers who deploy with you on the Forge. They follow you, pick targets with a clear line of sight and shoot, and the infected hunt them just like they hunt you. They can die for good: keep them alive to extraction for a bonus each.',
     where: 'The Forge', stats: [['Health', '160'], ['Weapon', 'rifle'], ['Damage taken', '75%']], modes: 'avatar',
+    avatarModes: ['IDLE', 'WALK', 'FIRE', 'FALL'],
     build: () => {
       const a = new Avatar('Ash', 0, { tag: 'SQUAD', tagColor: '#8fd18a' });
       current!.avatar = a;
@@ -190,6 +204,7 @@ const entries: Entry[] = [
     tagline: 'Caged in, waiting for anyone with bolt cutters.',
     lore: `People who held out in holding cages around the map. Hold E at a cage to break the lock: they pick up a gun, follow you and fight. ${SURVIVORS.district.map((s) => s.name).join(', ')} are somewhere in the District; on the Forge it is Vulcan's own leadership - ${SURVIVORS.forge.map((s) => s.name).join(', ')}.`,
     where: 'Standard and Standard Mazoku, both maps', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    avatarModes: ['TRAPPED', 'IDLE', 'WALK', 'FIRE', 'FALL'],
     build: () => {
       const who = SURVIVORS.forge[0]!;
       const a = new Avatar(who.name, 0, { color: who.color, helmet: false, tag: who.tag, tagColor: '#ff8a3a' });
@@ -213,6 +228,7 @@ const anim: ZombieAnimState = { mode: 'idle', speed: 0, time: 0, actionT: 0, sta
 
 const MODE_LABEL: Record<string, string> = { idle: 'IDLE', walk: 'WALK', run: 'RUN', attack: 'ATTACK', stagger: 'HIT', death: 'DEATH', roar: 'ROAR', slam: 'SLAM', charge: 'CHARGE' };
 const AVATAR_MODES = ['IDLE', 'WALK', 'FALL'];
+const WEAPON_MODE: Record<string, AvatarWeapon> = { RIFLE: 'rifle', SHOTGUN: 'shotgun', PISTOL: 'pistol', 'HX-7': 'rpg' };
 let avatarMode = 'IDLE';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: HTMLElement, text?: string): HTMLElementTagNameMap[K] {
@@ -243,7 +259,7 @@ function renderList(): void {
 function renderModes(): void {
   modesEl.replaceChildren();
   if (!current) return;
-  const labels = current.modes === 'avatar' ? AVATAR_MODES : current.modes.map((m) => MODE_LABEL[m]!);
+  const labels = current.modes === 'avatar' ? (current.avatarModes ?? AVATAR_MODES) : current.modes.map((m) => MODE_LABEL[m]!);
   labels.forEach((label, i) => {
     const on = current!.modes === 'avatar' ? avatarMode === label : mode === (current!.modes as ZombieMode[])[i];
     const b = el('button', on ? 'on' : '', modesEl, label);
@@ -295,6 +311,8 @@ function setAvatarMode(m: string): void {
   a.rise();
   a.root.position.set(0, 0, 0);
   a.set(0, 0, 0, Math.PI, true);
+  a.cowering = m === 'TRAPPED';
+  if (WEAPON_MODE[m]) a.setWeapon(WEAPON_MODE[m]);
   if (m === 'FALL') a.fall(0, -1, 1.5);
 }
 
@@ -320,7 +338,7 @@ function select(e: Entry): void {
   const built = e.avatar as Avatar | undefined; // set by build()
   if (built) {
     built.set(0, 0, 0, Math.PI, true);
-    avatarMode = 'IDLE';
+    setAvatarMode(e.avatarModes?.[0] ?? 'IDLE');
   }
   mode = 'idle';
   modeT = 0;
@@ -366,6 +384,12 @@ function step(dt: number): void {
       const ang = time * 0.6;
       a.set(Math.sin(ang) * 0.9, 0, Math.cos(ang) * 0.9, ang - Math.PI / 2, true);
     } else if (avatarMode === 'FALL' && modeT > 3) setAvatarMode('FALL');
+    else if (avatarMode === 'FIRE' || WEAPON_MODE[avatarMode]) {
+      // short bursts at a point in front of the figure (it faces the camera), a slow sweep up and down
+      const every = a.weapon === 'rpg' ? 2.4 : a.weapon === 'shotgun' ? 0.9 : a.weapon === 'pistol' ? 0.45 : 0.12;
+      const burst = a.weapon === 'rifle' ? modeT % 1.6 < 0.6 : true;
+      if (modeT > 0.4 && burst && Math.floor(modeT / every) !== Math.floor((modeT - dt) / every)) a.fire({ x: Math.sin(time * 0.7) * 2, y: 1.4 + Math.sin(time * 0.45) * 1.2, z: 8 });
+    }
     a.update(dt);
   }
 }
@@ -388,4 +412,11 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 // dev / QA hook
-(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), select: (id: string) => select(entries.find((e) => e.id === id)!), setMode };
+(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), select: (id: string) => select(entries.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
+  /** Look from `yaw` (0 = in front) at `dist` metres, the camera at `height`. */
+  view: (yaw: number, dist: number, height: number) => {
+    camera.position.set(Math.sin(yaw) * dist, height, Math.cos(yaw) * dist);
+    controls.target.set(0, height - 0.1, 0);
+    controls.update();
+  },
+};

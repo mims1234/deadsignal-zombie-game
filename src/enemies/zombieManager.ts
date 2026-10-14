@@ -3,7 +3,7 @@
  * separation, noise / alert propagation, hit detection (head sphere + body cylinder), explosions and corpse cleanup.
  */
 import * as THREE from 'three';
-import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
+import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type ZombieDef, type ZombieTuning } from '../config';
 import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
 import type { Rng } from '../logic/rng';
 import type { QualityLevel, Region, ZombieType } from '../types';
@@ -113,6 +113,11 @@ export class ZombieManager {
   sleepFar = false;
   /** Hands out the names some infected carry (null: this one has none). Bosses and carriers never get one. */
   namer: (() => string | null) | null = null;
+  /** Where the Warden lives (his hunt's lair); he is brought back here when he strays and nobody is near. */
+  private lair: { x: number; z: number; yaw: number } | null = null;
+  private strayT = 0;
+  /** The difficulty every new infected is made with, and how many the director sends. */
+  tuning: ZombieTuning = ZOMBIE_DIFFICULTY.normal;
   private readonly tagSprites = new Map<Zombie, THREE.Sprite>();
   private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
@@ -171,7 +176,11 @@ export class ZombieManager {
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
     const zz = new Zombie(this.nextId++, type, rig);
     zz.ownsRig = !opts.rig;
-    zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, opts);
+    const t = this.tuning;
+    zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, { ...opts, hpScale: (opts.hpScale ?? 1) * t.hp });
+    zz.speedScale *= t.speed;
+    zz.dmgScale = t.damage;
+    zz.sightScale = t.sight;
     if (this.namer && !opts.boss && !opts.rig && !opts.curable) {
       const name = this.namer();
       if (name) this.tagZombie(zz, name);
@@ -234,6 +243,7 @@ export class ZombieManager {
     for (const z of [...this.zombies]) this.releaseZombie(z);
     this.byNet.clear();
     this.boss = null;
+    this.lair = null;
     this.pending.length = 0;
     this.nextWave = 0;
     this.spawnTimer = 6;
@@ -243,10 +253,40 @@ export class ZombieManager {
   /** Seed the level with its ambient (idle) population and the Warden. */
   populate(rng: Rng): void {
     for (const a of this.level.data.ambient) {
+      if (this.tuning.count < 1 && rng.f() > this.tuning.count) continue; // a quieter zone on easy
       this.spawn(a.type, a.x, a.z, rng, { ambient: true });
     }
+    this.spawnWarden(rng);
+  }
+
+  /** The Warden at his lair. */
+  spawnWarden(rng: Rng): Zombie {
     const h = this.level.data.hunt;
+    this.lair = { x: h.wardenX, z: h.wardenZ, yaw: Math.PI };
+    this.strayT = 0;
     this.boss = this.spawn('warden', h.wardenX, h.wardenZ, rng, { boss: true, ambient: true, yaw: Math.PI });
+    return this.boss;
+  }
+
+  /**
+   * Keep the hunt winnable: a Warden drawn out of his lair by noise who gives up the chase would otherwise settle
+   * wherever he stopped, far from the search area. Once he has been calm, away from the lair and out of everyone's
+   * reach for a while, he is back home (nobody sees the move).
+   */
+  private guardLair(dt: number, players: readonly { x: number; z: number }[]): void {
+    const b = this.boss;
+    const l = this.lair;
+    if (!b || !l || !b.alive || b.puppet) return;
+    const away = Math.hypot(b.x - l.x, b.z - l.z) > 14;
+    const calm = b.state === 'idle'; // idle means he has not noticed anyone
+    // nobody may see either end of the move (a downed player still has eyes: everyone counts, up or not)
+    const world = this.level.world;
+    const far = players.every((q) => Math.hypot(q.x - b.x, q.z - b.z) > 40 && (Math.hypot(q.x - l.x, q.z - l.z) > 60 || world.segmentBlocked(q.x, 1.6, q.z, l.x, 1.5, l.z, 'shots')));
+    this.strayT = away && calm && far ? this.strayT + dt : 0;
+    if (this.strayT > 6) {
+      b.returnHome(l.x, l.z, l.yaw);
+      this.strayT = 0;
+    }
   }
 
   get aliveCount(): number {
@@ -306,6 +346,8 @@ export class ZombieManager {
         }
       }
     }
+
+    if (aiEnabled) this.guardLair(dt, envs ? envs.map((e) => e.player) : [p]);
 
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const z = this.zombies[i]!;
@@ -582,8 +624,10 @@ export class ZombieManager {
       const waves = MISSION.extraction.waves;
       while (this.nextWave < waves.length && ctx.extractionElapsed >= waves[this.nextWave]!.at) {
         const w = waves[this.nextWave]!;
-        for (let i = 0; i < w.count; i++) {
-          const type: SpawnType = i < w.armored ? 'armored' : rng.chance(MISSION.extraction.runnerFraction) ? 'runner' : 'shambler';
+        const n = Math.round(w.count * this.tuning.count);
+        const armored = Math.round(w.armored * this.tuning.count);
+        for (let i = 0; i < n; i++) {
+          const type: SpawnType = i < armored ? 'armored' : rng.chance(MISSION.extraction.runnerFraction) ? 'runner' : 'shambler';
           this.pending.push({ type, at: this.simTime + i * 0.45 + rng.f() * 0.3, group: 'lz' });
         }
         this.nextWave++;
@@ -613,7 +657,7 @@ export class ZombieManager {
       this.burstTimer -= dt;
       if (this.burstTimer <= 0 && active < MISSION.defense.activeCap) {
         this.burstTimer = MISSION.defense.burstEvery * (0.85 + rng.f() * 0.3);
-        for (let i = 0; i < MISSION.defense.burstSize; i++) {
+        for (let i = 0, n = Math.round(MISSION.defense.burstSize * this.tuning.count); i < n; i++) {
           const type = pickSpawnType('medium', ctx.phase, rng);
           this.pending.push({ type, at: this.simTime + i * 0.6, group: 'defense' });
         }
@@ -623,13 +667,13 @@ export class ZombieManager {
     // ---- continuous ambient pressure by region ----
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      let interval = spawnInterval(ctx.region, ctx.phase);
+      let interval = spawnInterval(ctx.region, ctx.phase) / this.tuning.count;
       if (ctx.defenseActive) interval = Math.min(interval, MISSION.defense.spawnInterval);
       this.spawnTimer = interval * (0.8 + rng.f() * 0.4);
-      let cap = activeCap(ctx.region, ctx.phase, ctx.quality);
+      let cap = Math.min(SPAWN.hardCap, Math.max(3, Math.round(activeCap(ctx.region, ctx.phase, ctx.quality) * this.tuning.count)));
       if (ctx.defenseActive) cap = Math.max(cap, MISSION.defense.activeCap);
       if (ctx.extractionElapsed !== null) cap = Math.min(cap, MISSION.extraction.activeCap);
-      if (active < cap && nearAlerted < SPAWN.nearbyLimit) {
+      if (active < cap && nearAlerted < SPAWN.nearbyLimit * this.tuning.count) {
         const type = pickSpawnType(ctx.region, ctx.phase, rng);
         this.spawnFrom(type, ctx.defenseActive ? 'defense' : 'general', ctx, env, rng, ctx.phase);
       }

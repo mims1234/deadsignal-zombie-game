@@ -1,7 +1,7 @@
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
-import { FORGE_SQUAD, MISSION, SURVIVORS } from '../src/config';
-import { LIFE, SessionSim, type SessionKind } from '../src/sim/serverHost';
+import { FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILL, ZOMBIE_DIFFICULTY, ZOMBIES } from '../src/config';
+import { LIFE, SessionSim, type SessionKind, sessionDifficulty } from '../src/sim/serverHost';
 import type { MapId } from '../src/world/layout/data';
 
 type Msg = { to: string; d: Record<string, unknown> };
@@ -186,5 +186,65 @@ describe('co-op session simulation: the story operation', () => {
     sim.message('p1', { k: 'restart' }, true);
     expect(sim.finished).toBe(false);
     expect(sim.stats().elapsed).toBe(0);
+  });
+});
+
+describe('co-op session simulation: difficulty', () => {
+  it('makes the infected and the squad from the picks of the session', () => {
+    const sim = new SessionSim({ seed: 7, kind: 'mission', map: 'forge', difficulty: { zombies: 'nightmare', team: 'elite' }, send: () => {} });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const shambler = sim.zombies.zombies.find((z) => z.type === 'shambler')!;
+    expect(shambler.maxHp).toBeCloseTo(ZOMBIES.shambler.hp * ZOMBIE_DIFFICULTY.nightmare.hp, 5);
+    expect(shambler.dmgScale).toBe(ZOMBIE_DIFFICULTY.nightmare.damage);
+    const ash = sim.debug.allies.find((a) => a.name === 'Ash')!;
+    expect(ash.hp).toBe(Math.round(FORGE_SQUAD.allyHp * TEAM_SKILL.elite.hp));
+    expect(ash.stats.fireInterval).toBeCloseTo(FORGE_SQUAD.fireInterval / TEAM_SKILL.elite.fireRate, 5);
+  });
+
+  it('applies a change from the lobby on the next run, and ignores nonsense', () => {
+    const sim = new SessionSim({ seed: 7, kind: 'mission', map: 'district', send: () => {} });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const before = sim.zombies.zombies.filter((z) => z.alive && !z.isBoss).length;
+    sim.difficulty = sessionDifficulty({ zombies: 'easy', team: 'rookie' });
+    sim.begin();
+    expect(sim.zombies.zombies.find((z) => z.type === 'shambler')!.maxHp).toBeCloseTo(ZOMBIES.shambler.hp * ZOMBIE_DIFFICULTY.easy.hp, 5);
+    expect(sim.zombies.zombies.filter((z) => z.alive && !z.isBoss).length).toBeLessThan(before); // a quieter zone
+    expect(sessionDifficulty({ zombies: 'impossible', team: 42 })).toEqual({ zombies: 'normal', team: 'regular' });
+  });
+});
+
+describe('co-op session simulation: the Warden stays findable', () => {
+  it('is revealed when drawn out of the compound, and walks back to his lair once the squad is gone', () => {
+    const { sim, where, run } = setup();
+    run(1);
+    const h = sim.level.data.hunt;
+    const boss = sim.zombies.boss!;
+    const st = sim.level.data.playerStart;
+    // he chased the squad most of the way to the insertion point and gave up there
+    const out = sim.level.nav.randomFreeNear(st.x + (h.wardenX - st.x) * 0.25, st.z + (h.wardenZ - st.z) * 0.25, 6, () => 0.5)!;
+    boss.returnHome(out.x, out.z, 0);
+    run(1);
+    expect(boss.state).toBe('idle');
+    // drawn out of the search area: the hunt reveals him, so the marker leads to him, not to an empty compound
+    expect(sim.debug.hunt.identified).toBe(true);
+    // the squad is elsewhere: he walks back to his lair (nobody sees the move)
+    const far = sim.level.nav.randomFreeNear(st.x - 60, st.z, 20, () => 0.5) ?? { x: st.x - 60, z: st.z };
+    where.p1 = { x: far.x, z: far.z, st: LIFE.up };
+    where.p2 = { x: far.x + 1, z: far.z, st: LIFE.up };
+    run(10);
+    expect(sim.zombies.boss).toBe(boss);
+    expect(Math.hypot(boss.x - h.wardenX, boss.z - h.wardenZ)).toBeLessThan(15);
+  });
+
+  it('puts a missing Warden back while the hunt is open', () => {
+    const { sim, run } = setup();
+    run(1);
+    sim.zombies.remove(sim.zombies.boss!);
+    expect(sim.zombies.boss).toBeNull();
+    run(1);
+    expect(sim.zombies.boss?.alive).toBe(true);
+    expect(sim.debug.hunt.status).toBe('active');
   });
 });

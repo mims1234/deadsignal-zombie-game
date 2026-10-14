@@ -12,7 +12,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FORGE_SQUAD, PLAYER, QUALITY, SURVIVORS } from '../config';
+import { FORGE_SQUAD, PLAYER, QUALITY, SURVIVORS, type TeamSkill } from '../config';
 import { Avatar } from '../coop/avatar';
 import type { ZombieEnv } from '../enemies/zombie';
 import { addCash } from '../logic/economy';
@@ -154,7 +154,7 @@ export class SquadRuntime {
    * Start of a run. `forge`: the soldiers and the Trials. `survivors`: cages around the map. `follow` (co-op): the
    * squad is listed in the simulation's order and placed by its reports; nothing here decides anything.
    */
-  reset(forge: boolean, survivors: boolean, follow = false): void {
+  reset(forge: boolean, survivors: boolean, follow = false, skill: TeamSkill = 'regular'): void {
     this.soldiers = forge;
     this.survivors = survivors;
     this.follow = follow;
@@ -176,7 +176,7 @@ export class SquadRuntime {
     const st = g.level.data.playerStart;
     if (forge) {
       const at = soldierSpots(g.level, g.rng);
-      FORGE_SQUAD.allies.forEach((name, i) => this.addAlly(makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length), new Avatar(name, i, { tag: 'SQUAD', tagColor: '#8fd18a' })));
+      FORGE_SQUAD.allies.forEach((name, i) => this.addAlly(makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill), new Avatar(name, i, { tag: 'SQUAD', tagColor: '#8fd18a' })));
     }
     if (!survivors) return;
     const roster = survivorRoster(g.mapId);
@@ -186,7 +186,7 @@ export class SquadRuntime {
       const c = cages[i];
       if (!follow && !c) return;
       const a = this.addAlly(
-        makeAllyBody(g.level, who.name, 'survivor', c?.x ?? 0, c?.z ?? 0, 0, c?.slot ?? { x: 0, z: 3 }, true, this.allies.length),
+        makeAllyBody(g.level, who.name, 'survivor', c?.x ?? 0, c?.z ?? 0, 0, c?.slot ?? { x: 0, z: 3 }, true, this.allies.length, skill),
         new Avatar(who.name, i, { color: who.color, helmet: false, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : '#9fd0ff' }),
       );
       a.avatar.cowering = true;
@@ -335,9 +335,11 @@ export class SquadRuntime {
     for (const [i, tx, ty, tz, hit] of shots) {
       const a = this.allies[i!];
       if (!a || !a.ref.alive) continue;
-      const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
-      g.fx.tracer(from, { x: tx!, y: ty!, z: tz! }, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
-      g.audio.play(a.kind === 'soldier' ? 'rifle_shot' : 'pistol_shot', { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
+      const to = { x: tx!, y: ty!, z: tz! };
+      a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+      const from = a.avatar.fire(to);
+      g.fx.tracer(from, to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+      g.audio.play(a.avatar.shotSound, { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
       void hit;
     }
     this.embers.forEach((e, i) => {
@@ -391,8 +393,10 @@ export class SquadRuntime {
       if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw);
       const shot = allyFight(a, this.world, dt);
       if (shot) {
-        g.fx.tracer(shot.from, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
-        g.audio.play(a.kind === 'soldier' ? 'rifle_shot' : 'pistol_shot', { pos: shot.from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
+        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        const muzzle = a.avatar.fire(shot.to);
+        g.fx.tracer(muzzle, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+        g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
         if (shot.hit) {
           this.allyShooting = true;
           allyHit(a, shot, g.zombies, g.zenv);

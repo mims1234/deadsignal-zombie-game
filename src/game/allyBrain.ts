@@ -5,7 +5,7 @@
  * each shot and decides what to show.
  */
 import * as THREE from 'three';
-import { FORGE_SQUAD, RAGDOLL, SURVIVORS } from '../config';
+import { FORGE_SQUAD, RAGDOLL, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
@@ -21,6 +21,10 @@ export interface AllyStats {
   fireInterval: number;
   bodyDamage: number;
   headDamage: number;
+  /** Chance a shot lands, within 10 m and beyond, and the share of hits that go to the head. */
+  hitNear: number;
+  hitFar: number;
+  headChance: number;
 }
 
 export interface AllyBody {
@@ -36,6 +40,8 @@ export interface AllyBody {
   env: ZombieEnv | null;
   sinceHurt: number;
   shootT: number;
+  /** Seconds spent making no headway toward a far leader (caught on geometry). */
+  stuckT: number;
   pickT: number;
   target: Zombie | null;
   /** Follow slot behind the leader: x to the right, z behind. */
@@ -72,13 +78,14 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const tx = px + a.slot.x * c + a.slot.z * s;
   const tz = pz - a.slot.x * s + a.slot.z * c;
   const toLeader = Math.hypot(px - a.ref.x, pz - a.ref.z);
-  // lost (left far behind or stuck): regroup next to the leader, out of sight
-  if (toLeader > FORGE_SQUAD.regroupDistance) {
+  // lost (left far behind, or stuck on something for a few seconds): regroup next to the leader
+  if (toLeader > FORGE_SQUAD.regroupDistance || a.stuckT > 2.5) {
     const at = w.level.nav.randomFreeNear(tx, tz, 3, () => w.rng.f());
     if (at) {
       a.ref.x = at.x;
       a.ref.z = at.z;
     }
+    a.stuckT = 0;
     return;
   }
   const dx = tx - a.ref.x;
@@ -100,6 +107,9 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const speed = (d > 10 ? 6.2 : 4.4) * dt;
   const step = { x: a.ref.x + (sx / sd) * Math.min(speed, sd), z: a.ref.z + (sz / sd) * Math.min(speed, sd) };
   w.level.world.resolveCircle(step, 0.32, 0.5, 1.7, 3);
+  // making no headway toward a far leader means caught on geometry
+  const progress = Math.hypot(step.x - a.ref.x, step.z - a.ref.z);
+  a.stuckT = d > 6 && progress < speed * 0.25 ? a.stuckT + dt : Math.max(0, a.stuckT - dt * 2);
   a.ref.x = step.x;
   a.ref.z = step.z;
   a.ref.eyeY = 1.6;
@@ -133,8 +143,8 @@ export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | nul
   if (a.shootT > 0) return null;
   a.shootT = a.stats.fireInterval * (0.8 + w.rng.f() * 0.5);
   const dist = Math.hypot(t.x - a.ref.x, t.z - a.ref.z);
-  const hit = w.rng.f() < (dist < 10 ? 0.8 : 0.6);
-  const head = hit && w.rng.f() < 0.18;
+  const hit = w.rng.f() < (dist < 10 ? a.stats.hitNear : a.stats.hitFar);
+  const head = hit && w.rng.f() < a.stats.headChance;
   if (head) t.rig.getHeadWorld(tmpB);
   else t.rig.getChestWorld(tmpB);
   const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
@@ -160,8 +170,25 @@ export function allyRecover(a: AllyBody, dt: number): void {
 // setup shared by the solo game and the co-op simulation
 // ---------------------------------------------------------------------------------------------
 
-export const SOLDIER_STATS: AllyStats = { ...FORGE_SQUAD, hp: FORGE_SQUAD.allyHp, damageTaken: FORGE_SQUAD.allyDamageTaken };
-export const SURVIVOR_STATS: AllyStats = SURVIVORS;
+const pickStats = (s: Omit<AllyStats, 'hitNear' | 'hitFar' | 'headChance'>): AllyStats => ({ hp: s.hp, damageTaken: s.damageTaken, range: s.range, fireInterval: s.fireInterval, bodyDamage: s.bodyDamage, headDamage: s.headDamage, hitNear: 0.8, hitFar: 0.6, headChance: 0.18 });
+export const SOLDIER_STATS: AllyStats = pickStats({ ...FORGE_SQUAD, hp: FORGE_SQUAD.allyHp, damageTaken: FORGE_SQUAD.allyDamageTaken });
+export const SURVIVOR_STATS: AllyStats = pickStats(SURVIVORS);
+
+/** An ally's numbers at a squad skill level. */
+export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
+  const t = TEAM_SKILL[skill];
+  return {
+    hp: Math.round(base.hp * t.hp),
+    damageTaken: base.damageTaken * t.damageTaken,
+    range: base.range * t.range,
+    fireInterval: base.fireInterval / t.fireRate,
+    bodyDamage: base.bodyDamage * t.damage,
+    headDamage: base.headDamage * t.damage,
+    hitNear: Math.min(0.97, base.hitNear * t.accuracy),
+    hitFar: Math.min(0.92, base.hitFar * t.accuracy),
+    headChance: Math.min(0.6, base.headChance * t.headshots),
+  };
+}
 
 /** Who waits in the cages on a map. */
 export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number }[] {
@@ -204,8 +231,8 @@ export function emberSpots(level: Level): { x: number; z: number }[] {
 }
 
 /** A fresh ally (positions and stats only; no model). */
-export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number): AllyBody {
-  const stats = kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS;
+export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number, skill: TeamSkill = 'regular'): AllyBody {
+  const stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
   return {
     name,
     kind,
@@ -218,6 +245,7 @@ export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'],
     env: null,
     sinceHurt: 99,
     shootT: 0.5,
+    stuckT: 0,
     pickT: 0,
     target: null,
     slot,

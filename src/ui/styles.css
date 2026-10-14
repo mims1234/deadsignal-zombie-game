@@ -2467,6 +2467,14 @@ html.ds-rm .ds-menus {
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
+.ds-title-main .modes.diff {
+  margin-bottom: 0.35em;
+}
+.ds-title-main .modes.diff .ds-btn {
+  padding: 0.38em 0.7em;
+  font-size: max(9px, 0.7em);
+}
+
 /* ---- card collection (title brief) ---- */
 .ds-brief .cards {
   padding: 0.7em 0.9em 0.9em;

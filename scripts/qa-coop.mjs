@@ -32,7 +32,8 @@ async function client(id, name, { query = '', map = 'district' } = {}) {
   }, map);
   await page.goto(`${URL}/auth/dev?id=${id}&name=${name}`);
   await page.goto(`${URL}/${query}`);
-  await page.waitForFunction(() => window.__dead && window.__dead.game.state === 'title', null, { timeout: 150000 });
+  // on the title screen, or already brought into a live session it was invited to
+  await page.waitForFunction(() => window.__dead && (window.__dead.game.state === 'title' || window.__dead.game.coop.live), null, { timeout: 150000 });
   return page;
 }
 const until = (page, fn, arg, timeout = 30000) => page.waitForFunction(fn, arg, { timeout, polling: 250 }).then(() => true, () => false);
@@ -61,12 +62,15 @@ async function session(ownerId, guestId, map, kind) {
   return { owner, guest, code };
 }
 
+const autoJoined = [];
 async function deployBoth(owner, guest) {
   await owner.evaluate(() => {
     window.__dead.game.coop.start();
     window.__dead.start();
   });
   await until(guest, () => window.__dead.game.coop.canDeploy);
+  // the guest is brought in when the owner starts (paused, one click from the mouse) - no button to find
+  autoJoined.push(await until(guest, () => window.__dead.game.state === 'paused' && window.__dead.game.coop.live, null, 15000));
   await guest.evaluate(() => window.__dead.start());
   for (const p of [owner, guest]) await keepAlive(p);
 }
@@ -81,6 +85,12 @@ try {
   check('the owner switches the mode and the guest sees it', await until(guest, () => window.__dead.game.coop.room.room.kind === 'mazoku'));
   await click(owner, 'STANDARD');
   await until(guest, () => window.__dead.game.coop.room.room.kind === 'mission');
+  await click(owner, 'HARD');
+  await click(owner, 'VETERAN');
+  check('the owner sets the difficulty and the guest sees it', (await until(guest, () => { const r = window.__dead.game.coop.room.room; return r.zombies === 'hard' && r.team === 'veteran'; })) && /INFECTED\s*HARD/i.test((await lobby(guest)).replace(/\|/g, ' ')), await lobby(guest));
+  await click(owner, 'NORMAL');
+  await click(owner, 'REGULAR');
+  await until(guest, () => window.__dead.game.coop.room.room.zombies === 'normal' && window.__dead.game.coop.room.room.team === 'regular');
   await deployBoth(owner, guest);
   const roles = [await owner.evaluate(() => window.__dead.game.coop.role), await guest.evaluate(() => window.__dead.game.coop.role)];
   check('roles', roles[1] === 'guest' && roles[0] === (HOSTING === 'self' ? 'host' : 'guest'), roles.join(' / '));
@@ -91,12 +101,25 @@ try {
 
   check('both see the district\'s infected as puppets', (await until(owner, () => { const z = window.__dead.game.zombies.zombies; return z.length >= 3 && z.every((q) => q.puppet); }, null, 40000)) && (await until(guest, () => window.__dead.game.zombies.zombies.length >= 3, null, 40000)));
   check('the hidden admin watches it', await until(admin, () => window.__dead.game.zombies.zombies.length >= 3 && window.__dead.game.coop.scoreboard().rows.length === 2));
+  check('a guest is brought into the session when the owner starts it', autoJoined[0] === true);
+  // a third player joins the running session by its code: they land in it straight away
+  const late = await client('6100000003', 'Late', { query: `?room=${code}` });
+  await click(late, 'JOIN');
+  check('a player who joins a running session is brought into it', await until(late, () => { const g = window.__dead.game; return g.coop.role === 'guest' && g.coop.live && (g.state === 'paused' || g.state === 'playing'); }, null, 40000), await late.evaluate(() => `${window.__dead.game.state} ${window.__dead.game.coop.role}`));
+  check('and the squad sees them', await until(owner, () => window.__dead.game.coop.scoreboard().rows.length === 3, null, 20000));
+  await late.context().close();
+  await until(owner, () => window.__dead.game.coop.scoreboard().rows.length === 2, null, 20000);
   await guest.evaluate(() => {
     const a = window.__dead.game.audio;
     const play = a.play.bind(a);
     window.__heard = [];
     a.play = (id, o) => (/^(zombie|warden)_/.test(id) && window.__heard.push(id), play(id, o));
   });
+  // the owner switches to the pistol and fires: the guest sees the pistol in both hands, and the shot
+  await until(guest, () => window.__dead.game.coop.avatars.size > 0);
+  await guest.evaluate(() => { const a = [...window.__dead.game.coop.avatars.values()][0]; const f = a.fire.bind(a); window.__fired = 0; a.fire = (t) => (window.__fired++, f(t)); });
+  await owner.evaluate(() => { const g = window.__dead.game; g.session.inv.activeSlot = g.session.inv.slots.findIndex((c) => c && c.id === 'pistol'); g.session.stats.shotsFired += 1; });
+  check('a teammate is drawn with the weapon they hold, and fires', await until(guest, () => { const a = [...window.__dead.game.coop.avatars.values()][0]; return !!a && a.weapon === 'pistol' && window.__fired > 0; }, null, 8000), JSON.stringify(await guest.evaluate(() => { const a = [...window.__dead.game.coop.avatars.values()][0]; return a && { w: a.weapon, aimT: a.aimT }; })));
   check('the guest hears the infected (groans, snarls)', await until(guest, () => window.__heard.length > 0, null, 20000), JSON.stringify(await guest.evaluate(() => window.__heard.slice(0, 6))));
   const hud = await guest.evaluate(() => document.querySelector('.ds-obj')?.innerText.replace(/\n/g, ' | ') ?? '');
   check('the guest HUD shows the operation and the squad', /RESTORE THE RELAY/i.test(hud) && /ELIMINATE THE WARDEN/i.test(hud) && /SQUAD/i.test(hud) && /Owner/i.test(hud), hud);

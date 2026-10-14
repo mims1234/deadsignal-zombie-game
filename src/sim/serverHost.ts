@@ -13,7 +13,7 @@
  * Out: `send(to, d)` - to 'all' or one player id.
  */
 import * as THREE from 'three';
-import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, SURVIVORS, VULCAN, ZOMBIES, type ZombieDef } from '../config';
+import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
@@ -60,6 +60,8 @@ interface Peer {
   downs: number;
   seen: number;
   life: Life;
+  /** What the player shows the others: weapon (index into AVATAR_WEAPONS), view pitch, shots fired (a counter). */
+  gear: [number, number, number];
   env: ZombieEnv;
   field: FlowField;
   fieldT: number;
@@ -92,9 +94,25 @@ const noop = (): void => {};
 /** Sounds and effects go nowhere in the simulation. */
 const silent: unknown = new Proxy({}, { get: () => () => ({ stop: noop, setPosition: noop, intensity: () => 0, setVolume: noop, active: false }) });
 
+export interface SessionDifficulty {
+  zombies: ZombieDifficulty;
+  team: TeamSkill;
+}
+
+/** A valid difficulty from anything (a message, worker data); unknown parts fall back to normal / regular. */
+export function sessionDifficulty(d: unknown): SessionDifficulty {
+  const o = (d && typeof d === 'object' ? d : {}) as { zombies?: unknown; team?: unknown };
+  return {
+    zombies: (ZOMBIE_DIFFICULTIES as readonly unknown[]).includes(o.zombies) ? (o.zombies as ZombieDifficulty) : 'normal',
+    team: (TEAM_SKILLS as readonly unknown[]).includes(o.team) ? (o.team as TeamSkill) : 'regular',
+  };
+}
+
 export interface SessionOptions {
   map?: MapId;
   kind?: SessionKind;
+  /** The infected's difficulty and the AI squad's skill (the session owner's picks). */
+  difficulty?: SessionDifficulty;
   seed?: number;
   /** A level the caller already built (a self-hosting browser passes its own); otherwise one is built here. */
   level?: Level;
@@ -106,6 +124,8 @@ export class SessionSim {
   readonly map: MapId;
   readonly zombies: ZombieManager;
   kind: SessionKind;
+  /** Applies from the next run (the lobby sets it before the owner starts). */
+  difficulty: SessionDifficulty;
   private readonly rng: Rng;
   private readonly peers = new Map<string, Peer>();
   private seated = new Map<string, string>();
@@ -134,6 +154,7 @@ export class SessionSim {
     this.send = opts.send;
     this.map = opts.map ?? 'district';
     this.kind = opts.kind ?? 'mission';
+    this.difficulty = sessionDifficulty(opts.difficulty);
     this.rng = new Rng(opts.seed ?? (Date.now() & 0x7fffffff));
     if (opts.level) {
       this.level = opts.level;
@@ -180,6 +201,7 @@ export class SessionSim {
     this.sendT = 0;
     this.defense = createDefense();
     this.zombies.clearAll();
+    this.zombies.tuning = ZOMBIE_DIFFICULTY[this.difficulty.zombies];
     this.zombies.namer = null;
     this.zombies.sleepFar = this.story;
     for (const u of this.carriers) {
@@ -221,11 +243,11 @@ export class SessionSim {
     const st = level.data.playerStart;
     if (this.map === 'forge') {
       const at = soldierSpots(level, rng);
-      FORGE_SQUAD.allies.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length), leader: null }));
+      FORGE_SQUAD.allies.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
       this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
     }
     const roster = survivorRoster(this.map);
-    cageSpots(level, rng, roster.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, roster[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length), leader: null }));
+    cageSpots(level, rng, roster.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, roster[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
     if (this.kind === 'mazoku') this.placeCarriers();
   }
 
@@ -281,6 +303,7 @@ export class SessionSim {
         p.ref.eyeY = p.ref.y + 1.6;
         p.yaw = Number(d.yaw) || 0;
         p.hp = Number(d.hp) || 0;
+        p.gear = [Math.max(0, Math.min(4, Math.floor(Number(d.w) || 0))), Math.max(-1.6, Math.min(1.6, Number(d.pi) || 0)), Math.floor(Number(d.f) || 0) % 4096];
         p.seen = this.time;
         if (p.life === LIFE.aboard) return; // aboard for good
         const st = Number(d.st);
@@ -381,7 +404,7 @@ export class SessionSim {
     if (p) return p;
     const ref: PlayerRef = { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false };
     const field = new FlowField(this.level.nav);
-    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, env: null as never, field, fieldT: 0 };
+    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, gear: [0, 0, 0], env: null as never, field, fieldT: 0 };
     p.env = this.makeEnv(ref, field, (amount, sx, sz, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }));
     this.peers.set(id, p);
     return p;
@@ -508,11 +531,19 @@ export class SessionSim {
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
 
-    // contracts
+    // contracts (never unwinnable: an uncredited Warden death completes the hunt; a missing Warden is back home)
+    if (this.hunt.status === 'active') {
+      const b = this.zombies.boss;
+      if (b && !b.alive) completeHunt(this.hunt);
+      else if (!b) this.zombies.spawnWarden(this.rng);
+    }
     const boss = this.zombies.boss;
     if (boss && boss.alive && this.hunt.status === 'active') {
       let near = Infinity;
       for (const p of peers) near = Math.min(near, Math.hypot(boss.x - p.ref.x, boss.z - p.ref.z));
+      // out of the search area: revealed, so everyone's marker follows him
+      const h = this.level.data.hunt;
+      if (Math.hypot(boss.x - h.searchX, boss.z - h.searchZ) > h.searchRadius + 10) near = 0;
       updateHunt(this.hunt, near, true);
     }
     this.stepRelay(dt);
@@ -665,7 +696,7 @@ export class SessionSim {
       z.push(row);
     }
     const p: unknown[][] = [];
-    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs, q.life]);
+    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs, q.life, q.gear[0], r2(q.gear[1]), q.gear[2]]);
     const c: number[][] = [];
     for (const u of this.carriers) {
       if (u.state) c.push([u.index, CARRIER_PHASES.indexOf(u.state.phase), Math.round(u.state.downLeft), r1(u.lootX), r1(u.lootZ)]);

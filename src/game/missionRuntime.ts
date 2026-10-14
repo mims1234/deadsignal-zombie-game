@@ -345,10 +345,18 @@ export class MissionRuntime implements MissionApi {
     this.areaMarker.update(dt, time);
 
     // ---- hunt contract ----
+    if (!this.follow && dt > 0 && s.hunt.status === 'active') {
+      // never unwinnable: a Warden who died uncredited completes it; one who is gone is back at his lair
+      const b = ctx.zombies.boss;
+      if (b && !b.alive) this.onWardenKilled();
+      else if (!b) ctx.zombies.spawnWarden(ctx.rng);
+    }
     const boss = ctx.zombies.boss;
     if (!this.follow && s.hunt.status === 'active' && boss && boss.alive) {
       const dist = Math.hypot(boss.x - p.x, boss.z - p.z);
-      if (updateHunt(s.hunt, dist, true)) {
+      // out of the search area (drawn out by the fighting): reveal him so the marker follows him, not an empty compound
+      const strayed = Math.hypot(boss.x - data.hunt.searchX, boss.z - data.hunt.searchZ) > data.hunt.searchRadius + 10;
+      if (updateHunt(s.hunt, strayed ? 0 : dist, true)) {
         ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
         ctx.radio('COMMAND', "That's him. Heavy plating - go for the head and watch for the slam.");
         ctx.audio.play('objective_ping', { priority: 2 });

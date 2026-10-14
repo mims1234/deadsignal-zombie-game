@@ -113,6 +113,9 @@ export class Zombie {
   homeX = 0;
   homeZ = 0;
   speedScale = 1;
+  /** Difficulty: damage dealt and how far it sees (set by the manager at spawn). */
+  dmgScale = 1;
+  sightScale = 1;
   enraged = false;
 
   // ---- awareness ----
@@ -484,6 +487,21 @@ export class Zombie {
     if (this.alertDelay < 0) this.alertDelay = delay;
   }
 
+  /** Back at (x, z), calm, with it as home (the Warden returning to his lair while nobody watches). */
+  returnHome(x: number, z: number, yaw: number): void {
+    this.x = this.homeX = this.wanderX = x;
+    this.z = this.homeZ = this.wanderZ = z;
+    this.yaw = yaw;
+    this.vx = this.vz = 0;
+    this.enterState('idle');
+    this.seesPlayer = false;
+    this.memory = 99;
+    this.alertDelay = -1;
+    this.alertNoticed = false;
+    this.hasSteer = false;
+    this.stuckTimer = 0;
+  }
+
   /** Force this zombie to hunt the player (director spawns). */
   aggro(px: number, pz: number): void {
     if (!this.active) return;
@@ -736,7 +754,7 @@ export class Zombie {
     this.senseTimer = 0.18 + env.rng.f() * 0.08;
     let sees = false;
     if (p.alive) {
-      let range = this.def.sightRange;
+      let range = this.def.sightRange * this.sightScale;
       if (this.state !== 'idle') range *= 1.8;
       if (p.sprinting) range = Math.max(range, ZOMBIE_AI.sprintHearing);
       if (dist < range) {
@@ -853,8 +871,11 @@ export class Zombie {
     const p = env.player;
     // lose interest
     if (!p.alive || (this.memory > ZOMBIE_AI.loseInterest && dist > 45)) {
-      this.homeX = this.x;
-      this.homeZ = this.z;
+      // the Warden keeps his lair as home (the manager walks him back there); the rest settle where they are
+      if (!this.isBoss) {
+        this.homeX = this.x;
+        this.homeZ = this.z;
+      }
       this.enterState('idle');
       this.alertNoticed = false;
       return 0;
@@ -980,7 +1001,7 @@ export class Zombie {
         this.yaw = this.attackDir;
         if (!this.attackDidHit && p.alive && dist < this.def.radius + 0.34 + 0.9) {
           this.attackDidHit = true;
-          env.hurtPlayer(WARDEN.chargeDamage, this.x, this.z, 'charge', 9);
+          env.hurtPlayer(WARDEN.chargeDamage * this.dmgScale, this.x, this.z, 'charge', 9);
           this.chargeLock = false;
         }
         return WARDEN.chargeSpeed;
@@ -1039,7 +1060,7 @@ export class Zombie {
       const d = Math.hypot(p.x - pos.x, p.z - pos.z);
       if (d < WARDEN.slamRadius && p.y < 1.4) {
         const fall = 1 - 0.6 * (d / WARDEN.slamRadius);
-        env.hurtPlayer(WARDEN.slamDamage * fall, pos.x, pos.z, 'slam', 10);
+        env.hurtPlayer(WARDEN.slamDamage * fall * this.dmgScale, pos.x, pos.z, 'slam', 10);
       }
       return;
     }
@@ -1050,7 +1071,7 @@ export class Zombie {
     const facing = Math.atan2(-(p.x - this.x), -(p.z - this.z));
     if (Math.abs(wrap(facing - this.yaw)) > (ZOMBIE_AI.attackCone * Math.PI) / 180) return;
     if (env.world.segmentBlocked(this.x, 1.1, this.z, p.x, Math.max(0.6, p.eyeY - 0.5), p.z, 'move')) return;
-    env.hurtPlayer(this.def.damage, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
+    env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
   }
 
   private turnToward(target: number, rate: number, dt: number): void {

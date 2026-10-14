@@ -2,6 +2,7 @@
  * HUD / menu contract. The game builds a plain `HudState` + `MapDynamic` every frame (cheap object reuse is fine) and
  * pushes discrete `HudEvent`s; the UI layer (HTML/CSS + canvas maps) renders them. The UI never reads game internals.
  */
+import type { TeamSkill, ZombieDifficulty } from '../config';
 import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
 
 export interface HudWeaponInfo {
@@ -186,6 +187,8 @@ export interface ModeInfo {
   /** Which map the next deploy uses. */
   map: 'district' | 'forge';
   cards: CardCollectionEntry[];
+  /** The infected's difficulty and the AI squad's skill. */
+  difficulty: { zombies: ZombieDifficulty; team: TeamSkill };
 }
 
 export type MapMarkerKind =
@@ -283,6 +286,8 @@ export interface MenuCallbacks {
   onLogout(): void;
   /** Title screen only: switch maps (the page reloads to build the other one). */
   onMapChange(map: 'district' | 'forge'): void;
+  /** Title screen: the difficulty picks changed. */
+  onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }
 
 export interface MenusApi {
@@ -292,7 +297,8 @@ export interface MenusApi {
   /** Pause menu: resume, settings, restart, quit to title, controls list. */
   showPause(): void;
   /** Small "click to resume" overlay after pointer lock was lost without an explicit pause. */
-  showResumePrompt(reason: string, withMenu?: boolean): void;
+  /** `title` / `note` replace the default heading and the frozen-simulation note. */
+  showResumePrompt(reason: string, withMenu?: boolean, text?: { title?: string; note?: string }): void;
   /** Victory / defeat results with real mission data. */
   showResults(stats: MissionStats, best: BestRun | null, isNewBest: boolean): void;
   showLoading(fraction: number, text: string): void;
