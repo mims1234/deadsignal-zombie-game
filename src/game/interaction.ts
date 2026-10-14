@@ -44,8 +44,13 @@ interface Target {
   tone: HudPrompt['tone'];
   hold: number;
   enabled: boolean;
+  /** Hold interactions: keep completing while E stays held (repairing a barricade board after board). */
+  repeat?: boolean;
   onUse(): void;
 }
+
+/** Something another module offers to interact with (see `Interaction.providers`). */
+export type InteractTarget = Target;
 
 export interface InteractionOutput {
   prompt: HudPrompt | null;
@@ -60,6 +65,8 @@ export class Interaction {
   private holdLocked = false;
   private panelStation: StationRuntime | null = null;
   private readonly out: InteractionOutput = { prompt: null, panel: null, panelOpen: false };
+  /** Extra interaction targets from other modules (the Asylum's barricades), asked every frame. */
+  readonly providers: (() => InteractTarget | null)[] = [];
 
   constructor(
     private readonly ctx: GameCtx,
@@ -144,7 +151,7 @@ export class Interaction {
       this.holdT += dt;
       if (this.holdT >= target.hold) {
         this.holdT = 0;
-        this.holdLocked = true; // must release E before another hold can complete
+        this.holdLocked = !target.repeat; // must release E before another hold can complete (unless it repeats)
         target.onUse();
       }
     } else {
@@ -294,6 +301,10 @@ export class Interaction {
     if (door && this.mission.canBoard()) {
       const d = Math.hypot(door.x - px, door.z - pz);
       targets.push({ id: 'board', dist: d, text: 'BOARD HELICOPTER', sub: 'Extract now', tone: 'good', hold: 0, enabled: true, onUse: () => this.mission.board() });
+    }
+    for (const provide of this.providers) {
+      const t = provide();
+      if (t) targets.push(t);
     }
     if (targets.length === 0) return null;
     // prefer actionable targets, then nearest

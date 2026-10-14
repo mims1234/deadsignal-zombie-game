@@ -155,6 +155,13 @@ export class ZombieManager {
   private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
   carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
+  /**
+   * Map scripts may place a director spawn themselves (the Asylum: in through a boarded window). Return the infected
+   * it spawned, or null to let the director use its spawn points as usual. `phase` is the escalation phase.
+   */
+  spawnOverride: ((type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number) => Zombie | null) | null = null;
+  /** Rewrites the damage of every hit and blast before it lands (power-ups: insta-kill). Runs where damage is applied. */
+  damageFilter: ((z: Zombie, amount: number) => number) | null = null;
 
   constructor(
     private readonly factory: ZombieFactory,
@@ -592,6 +599,7 @@ export class ZombieManager {
       if (covered && coverMul <= 0) continue;
       let dmg = centerDamage + (edgeDamage - centerDamage) * Math.min(1, d / radius);
       if (covered) dmg *= coverMul;
+      if (this.damageFilter && !this.netDamage) dmg = this.damageFilter(z, dmg);
       // `ang`: the direction away from the blast (a body is thrown along it)
       const ang = Math.atan2(-dx, -dz);
       const near = 1 - Math.min(1, d / radius);
@@ -626,6 +634,7 @@ export class ZombieManager {
       this.netDamage(z, amount, head, shotYaw, push, lift);
       return false;
     }
+    if (this.damageFilter) amount = this.damageFilter(z, amount);
     const killed = z.takeDamage(amount, head, env, shotYaw, 1);
     if (!z.active) z.fling(shotYaw, push, lift);
     if (killed) {
@@ -715,6 +724,7 @@ export class ZombieManager {
 
   /** Try to place a zombie at a valid, reachable, concealed spawn point. */
   private spawnFrom(type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number): boolean {
+    if (this.spawnOverride && this.spawnOverride(type, group, ctx, env, rng, phase)) return true;
     const pts = this.level.data.spawnPoints;
     const fx = -Math.sin(ctx.playerYaw);
     const fz = -Math.cos(ctx.playerYaw);

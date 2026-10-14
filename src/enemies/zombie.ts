@@ -66,6 +66,15 @@ export interface ZombieEnv {
   shake(strength: number): void;
 }
 
+/**
+ * A scripted behaviour that takes over from the AI while it is set on an infected (the Asylum's barricades: walk to a
+ * window, tear the boards off, climb in). `step` moves the infected itself and fills `scriptPose`; returning false
+ * hands it back to the normal AI. Killed while scripted, the script is simply dropped.
+ */
+export interface ZombieScript {
+  step(z: Zombie, dt: number, env: ZombieEnv): boolean;
+}
+
 const wrap = (a: number): number => {
   while (a > Math.PI) a -= Math.PI * 2;
   while (a < -Math.PI) a += Math.PI * 2;
@@ -189,6 +198,10 @@ export class Zombie {
   diedAt = 0;
   /** Nav field distance to the player (metres); refreshed periodically. */
   pathDist = Infinity;
+  // ---- scripted behaviour (see ZombieScript) ----
+  script: ZombieScript | null = null;
+  /** The pose a script asks for: animation mode / progress, ground speed, and lift off the floor (climbing a sill). */
+  readonly scriptPose: { mode: ZombieMode; actionT: number; speed: number; lift: number } = { mode: 'walk', actionT: 0, speed: 0, lift: 0 };
 
   constructor(id: number, type: ZombieType, rig: ZombieRig) {
     this.id = id;
@@ -243,6 +256,8 @@ export class Zombie {
     this.tumbleP = this.tumbleR = this.tumblePV = this.tumbleRV = 0;
     this.voiceTimer = 1 + rng.f() * 6;
     this.pathDist = Infinity;
+    this.script = null;
+    this.scriptPose.lift = 0;
     this.rig.reset(this.id * 7919 + Math.floor(x * 31 + z * 17));
     this.rig.setVisible(true);
     this.syncRoot();
@@ -277,7 +292,7 @@ export class Zombie {
       hp: Math.max(0, this.hp / this.maxHp),
       flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0),
       carrier: this.carrierIdx,
-      fy: this.flingY,
+      fy: this.flingY + this.scriptPose.lift,
       fp: this.tumbleP,
       fr: this.tumbleR,
     };
@@ -388,7 +403,7 @@ export class Zombie {
   private syncRoot(): void {
     const r = this.rig.root;
     if (this.flingY === 0 && this.tumbleP === 0 && this.tumbleR === 0) {
-      r.position.set(this.x, 0, this.z);
+      r.position.set(this.x, this.scriptPose.lift, this.z);
       r.rotation.set(0, this.yaw, 0, 'YXZ');
       return;
     }
@@ -621,6 +636,7 @@ export class Zombie {
     if (this.chargeCd > 0) this.chargeCd -= dt;
 
     if (this.state === 'dead' || this.state === 'downed') {
+      if (this.script) this.dropScript();
       this.deathT += dt;
       this.stepFling(dt, env);
       this.pose(env, 0);
@@ -630,6 +646,16 @@ export class Zombie {
     const dx = p.x - this.x;
     const dz = p.z - this.z;
     const dist = Math.hypot(dx, dz);
+
+    // a script (the Asylum's barricades) drives this infected instead of the AI until it lets go
+    if (this.script) {
+      if (this.script.step(this, dt, env)) {
+        this.voice(dt, env, dist);
+        this.pose(env, this.scriptPose.speed);
+        return;
+      }
+      this.dropScript();
+    }
 
     this.sense(dt, env, dist);
     this.voice(dt, env, dist);
@@ -738,6 +764,17 @@ export class Zombie {
     }
 
     this.pose(env, actual);
+  }
+
+  /** End a script: a body held up by one (on a window sill) falls from there. */
+  private dropScript(): void {
+    this.script = null;
+    if (this.scriptPose.lift > 0.02) {
+      this.flingY = Math.max(this.flingY, this.scriptPose.lift);
+      this.flying = true;
+    }
+    this.scriptPose.lift = 0;
+    this.vx = this.vz = 0;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1131,6 +1168,10 @@ export class Zombie {
       default:
         a.mode = speed > 0.3 ? 'walk' : 'idle';
         break;
+    }
+    if (this.script) {
+      a.mode = this.scriptPose.mode;
+      a.actionT = this.scriptPose.actionT;
     }
     if (this.puppet) {
       a.mode = this.netMode;
