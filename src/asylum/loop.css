@@ -1,0 +1,33 @@
+/* The Asylum's perks on the HUD: a row of small chips above the funds (see loopRuntime.ts). */
+.asy-perks {
+  display: flex;
+  gap: 0.35em;
+  padding: 0 0.2em;
+}
+.asy-perks[hidden] {
+  display: none;
+}
+.asy-perk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35em;
+  padding: 0.18em 0.45em 0.18em 0.2em;
+  border: 1px solid var(--c);
+  background: linear-gradient(180deg, rgba(10, 13, 11, 0.78), rgba(6, 8, 7, 0.78));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--c) 35%, transparent);
+  font-size: max(9px, 0.62em);
+  letter-spacing: 0.14em;
+  color: var(--ds-ink-dim, #a2ad9a);
+  white-space: nowrap;
+}
+.asy-perk b {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 50%;
+  background: var(--c);
+  color: #0b0d0c;
+  font: 800 0.95em/1 var(--ds-font-num, monospace);
+  letter-spacing: 0;
+}

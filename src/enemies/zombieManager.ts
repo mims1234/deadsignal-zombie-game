@@ -114,6 +114,8 @@ export class ZombieManager {
   sleepFar = false;
   /** Hands out the names some infected carry (null: this one has none). Bosses and carriers never get one. */
   namer: (() => string | null) | null = null;
+  /** May the director spawn at this point? (The Asylum: only in zones whose doors are open.) null: anywhere. */
+  spawnAllowed: ((x: number, z: number) => boolean) | null = null;
   /** Where the Warden lives (his hunt's lair); he is brought back here when he strays and nobody is near. */
   private lair: { x: number; z: number; yaw: number } | null = null;
   private strayT = 0;
@@ -726,6 +728,7 @@ export class ZombieManager {
   private spawnFrom(type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number): boolean {
     if (this.spawnOverride && this.spawnOverride(type, group, ctx, env, rng, phase)) return true;
     const pts = this.level.data.spawnPoints;
+    const allowed = this.spawnAllowed;
     const fx = -Math.sin(ctx.playerYaw);
     const fz = -Math.cos(ctx.playerYaw);
     const relaxed = group !== 'general';
@@ -735,6 +738,7 @@ export class ZombieManager {
       const i = Math.floor(rng.f() * pts.length);
       const sp = pts[i]!;
       if (sp.group !== group && !(group === 'defense' && sp.group === 'general')) continue;
+      if (allowed && !allowed(sp.x, sp.z)) continue;
       const dx = sp.x - ctx.playerX;
       const dz = sp.z - ctx.playerZ;
       const dist = Math.hypot(dx, dz);

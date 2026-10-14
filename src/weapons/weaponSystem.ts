@@ -125,8 +125,25 @@ export class WeaponSystem {
 
   get stats(): WeaponStats | null {
     const c = this.carried;
-    return c ? getWeaponStats(WEAPONS[c.id], c.tier) : null;
+    if (!c) return null;
+    const s = getWeaponStats(WEAPONS[c.id], c.tier);
+    // perks (the Asylum's QUICKHAND and RAPID FIRE)
+    if (this.perkReloadMul !== 1) {
+      const k = this.perkReloadMul;
+      s.reloadTactical *= k;
+      s.reloadEmpty *= k;
+      s.shellStart *= k;
+      s.shellEach *= k;
+      s.shellEnd *= k;
+      s.shellPump *= k;
+    }
+    s.fireInterval *= this.perkFireIntervalMul;
+    return s;
   }
+
+  /** Perk multipliers on reload durations and on the time between shots (1 = none). */
+  perkReloadMul = 1;
+  perkFireIntervalMul = 1;
 
   private rigFor(id: WeaponId): ViewmodelRig {
     return this.rigs[id];

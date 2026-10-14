@@ -3,6 +3,7 @@
  * gameplay data (stations, crates, spawn points, contract sites, extraction geometry, map data).
  */
 import * as THREE from 'three';
+import { DoorWorld } from '../asylum/doorWorld';
 import { Rng } from '../logic/rng';
 import type { Region, SurfaceKind } from '../types';
 import type { MapData, MapFootprint } from '../ui/hudTypes';
@@ -41,6 +42,8 @@ export interface Level {
   glowField: GlowField | null;
   transmitter: TransmitterHandle;
   spire: SpireHandle;
+  /** The Asylum's buyable doors (built open; the purchasable loop shuts them for a run). null on other maps. */
+  doors: DoorWorld | null;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -253,6 +256,8 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   d.ambient = snapList(d.ambient, 'ambient');
 
   const nav = new NavGrid(WORLD, world);
+  // the Asylum's buyable doors: colliders that start switched off (open), see src/asylum/doorWorld.ts
+  const doors = asylum ? new DoorWorld(world, nav) : null;
 
   // ---- minimap / tactical map data straight from the real colliders ----
   const footprints: MapFootprint[] = [];
@@ -317,6 +322,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     glowField: b.glowField,
     transmitter,
     spire: spireHandle,
+    doors,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

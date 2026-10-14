@@ -7,10 +7,17 @@ import { describe, expect, it } from 'vitest';
 import { SessionSim } from '../src/sim/serverHost';
 import { MAP_IDS, type MapId } from '../src/world/layout/data';
 import { FlowField, UNREACHABLE } from '../src/world/nav';
+import type { Level } from '../src/world/level';
+
+/** These checks are about the map itself: every buyable door (the Asylum's) open. The doors' own tests are in asylumLoop. */
+function openAllDoors(level: Level): Level {
+  level.doors?.setAll(true);
+  return level;
+}
 
 /** Free (walkable) cells that cannot be reached from the insertion point, grouped into connected pockets. */
 function pockets(map: MapId): { sizes: number[]; at: { x: number; z: number; cells: number }[] } {
-  const level = new SessionSim({ map, send: () => {} }).level;
+  const level = openAllDoors(new SessionSim({ map, send: () => {} }).level);
   const nav = level.nav;
   const st = level.data.playerStart;
   const field = new FlowField(nav);
@@ -50,7 +57,7 @@ function pockets(map: MapId): { sizes: number[]; at: { x: number; z: number; cel
 }
 
 describe('the Asylum is built clean', () => {
-  const level = new SessionSim({ map: 'asylum', send: () => {} }).level;
+  const level = openAllDoors(new SessionSim({ map: 'asylum', send: () => {} }).level);
   const nav = level.nav;
   const data = level.data;
   const field = new FlowField(nav);
