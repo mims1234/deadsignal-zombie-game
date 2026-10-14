@@ -3,7 +3,7 @@
  * flow field, telegraphed melee attacks with wall-checked hit tests, Warden specials (slam, charge) and animation state.
  */
 import { RAGDOLL, WARDEN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
-import type { AudioEngineApi } from '../audio/ids';
+import type { AudioEngineApi, SoundId } from '../audio/ids';
 import type { FxApi } from '../fx/fxTypes';
 import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
@@ -28,7 +28,7 @@ export interface NetZombie {
   speed: number;
   /** 0..1 health. */
   hp: number;
-  /** bits 0-1 death style, 4 headshot death, 8 enraged, 16 knocked down (carriers). */
+  /** bits 0-1 death style, 4 headshot death, 8 enraged, 16 knocked down (carriers), 32 shrieking (the Matron). */
   flags: number;
   /** Card carrier number (1-based), or 0 for an ordinary infected. */
   carrier: number;
@@ -117,6 +117,10 @@ export class Zombie {
   dmgScale = 1;
   sightScale = 1;
   enraged = false;
+  /** The Matron (`matron.ts`): crying out right now (The Shriek). Co-op guests get it as flag 32. */
+  shrieking = false;
+  /** Idle walk override (the Matron's rounds, `matron.ts`): where to walk next (her own spot: stand) and the seconds before it asks again, or null to wander as usual. */
+  idleRoute: ((z: Zombie) => { x: number; z: number; wait: number } | null) | null = null;
 
   // ---- awareness ----
   private seesPlayer = false;
@@ -275,7 +279,7 @@ export class Zombie {
       staggerT: a.staggerT,
       speed: a.speed,
       hp: Math.max(0, this.hp / this.maxHp),
-      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0),
+      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0),
       carrier: this.carrierIdx,
       fy: this.flingY,
       fp: this.tumbleP,
@@ -308,6 +312,7 @@ export class Zombie {
     this.tumbleR = n.fr;
     this.hp = n.hp * this.maxHp;
     this.enraged = (n.flags & 8) !== 0;
+    this.shrieking = (n.flags & 32) !== 0;
     if (n.flags & 16) {
       if (this.state !== 'downed') {
         this.state = 'downed';
@@ -335,7 +340,7 @@ export class Zombie {
     this.netSounds = 0;
     const boss = this.type === 'warden';
     if (s & 1) env.audio.play('zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
-    if (s & 2) env.audio.play(boss ? 'warden_roar' : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
+    if (s & 2) env.audio.play(boss ? this.roarId : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
     if (s & 4) env.audio.play('warden_slam', { pos, volume: 1.2, priority: 3 });
     if (s & 8) env.audio.play('zombie_hurt', { pos, volume: 0.8, priority: 1 });
     if (s & 16) env.audio.play('zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
@@ -347,7 +352,7 @@ export class Zombie {
       env.audio.play('zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
       this.voiceTimer = 6 + env.rng.f() * 8;
     } else {
-      const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : boss ? 'warden_roar' : 'zombie_groan';
+      const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : boss ? this.roarId : 'zombie_groan';
       env.audio.play(id, { pos, volume: boss ? 0.9 : 0.8, priority: boss ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
       this.voiceTimer = boss ? 8 + env.rng.f() * 4 : 3.5 + env.rng.f() * 5;
     }
@@ -511,6 +516,20 @@ export class Zombie {
     this.enterState('chase');
   }
 
+  /** Stop mid-hunt and cry out for `seconds` (the Matron's shriek, `matron.ts`), then hunt on. */
+  shriek(seconds: number, env: ZombieEnv): void {
+    if (this.state !== 'chase') return;
+    this.enterState('alert');
+    this.alertTimer = seconds;
+    this.vx = this.vz = 0;
+    env.audio.play(this.roarId, { pos: { x: this.x, y: 2, z: this.z }, volume: 1.3, priority: 3 });
+  }
+
+  /** A boss's roar (the Warden's, unless its stats bring another voice). */
+  private get roarId(): SoundId {
+    return this.def.roar ?? 'warden_roar';
+  }
+
   private enterState(s: ZombieState): void {
     this.state = s;
     this.stateTime = 0;
@@ -541,7 +560,7 @@ export class Zombie {
     }
     if (this.isBoss && !this.enraged && this.hp / this.maxHp < WARDEN.rageAt) {
       this.enraged = true;
-      env.audio.play('warden_roar', { pos: { x: this.x, y: 1.5, z: this.z }, volume: 1.2, priority: 3 });
+      env.audio.play(this.roarId, { pos: { x: this.x, y: 1.5, z: this.z }, volume: 1.2, priority: 3 });
     }
     // poise: enough damage in a short window staggers (the Warden is poise-immune except when charging into a wall)
     this.poise += amount * impulse;
@@ -784,7 +803,7 @@ export class Zombie {
     if (this.voiceTimer > 0 || dist > 38) return;
     const pos = { x: this.x, y: 1.5, z: this.z };
     if (this.state === 'chase' || this.state === 'attack') {
-      const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : this.type === 'warden' ? 'warden_roar' : 'zombie_groan';
+      const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : this.type === 'warden' ? this.roarId : 'zombie_groan';
       env.audio.play(id, { pos, volume: this.type === 'warden' ? 0.9 : 0.8, priority: this.type === 'warden' ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
       this.voiceTimer = this.type === 'warden' ? 8 + env.rng.f() * 4 : 3.5 + env.rng.f() * 5;
     } else if (this.state === 'idle') {
@@ -814,7 +833,13 @@ export class Zombie {
     const dzw = this.wanderZ - this.z;
     const dw = Math.hypot(dxw, dzw);
     if (dw < 0.5 || this.wanderWait <= -8) {
-      if (this.wanderWait <= 0) {
+      // the Matron walks her rounds instead (`idleRoute`)
+      const stop = this.wanderWait <= 0 ? this.idleRoute?.(this) : null;
+      if (stop) {
+        this.wanderX = stop.x;
+        this.wanderZ = stop.z;
+        this.wanderWait = stop.wait;
+      } else if (this.wanderWait <= 0) {
         const pt = env.nav.randomFreeNear(this.homeX, this.homeZ, ZOMBIE_AI.wanderRadius, () => env.rng.f());
         if (pt && env.world.segmentBlocked(this.x, 0.9, this.z, pt.x, 0.9, pt.z, 'move') === false) {
           this.wanderX = pt.x;
@@ -838,7 +863,7 @@ export class Zombie {
     this.alertTimer = (this.type === 'runner' ? 0.45 : this.type === 'warden' ? 1.5 : 0.8) + env.rng.f() * 0.4;
     this.vx = this.vz = 0;
     const pos = { x: this.x, y: 1.5, z: this.z };
-    env.audio.play(this.type === 'runner' ? 'zombie_screech' : this.type === 'warden' ? 'warden_roar' : 'zombie_alert', {
+    env.audio.play(this.type === 'runner' ? 'zombie_screech' : this.type === 'warden' ? this.roarId : 'zombie_alert', {
       pos,
       volume: this.type === 'warden' ? 1.2 : 0.9,
       priority: this.type === 'warden' ? 3 : 2,
@@ -962,7 +987,7 @@ export class Zombie {
     if (kind === 'melee') {
       env.audio.play('zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
     } else {
-      env.audio.play('warden_roar', { pos, volume: 1.2, priority: 3 });
+      env.audio.play(this.roarId, { pos, volume: 1.2, priority: 3 });
     }
   }
 

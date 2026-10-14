@@ -10,6 +10,7 @@ import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
 import { RENDER, SURVIVORS, ZOMBIES } from '../config';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
+import { MATRON, MATRON_DEF } from '../enemies/matron';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
 import { ZombieRigImpl } from '../enemies/zombie/rig';
 import { createZombieFactory } from '../enemies/zombieRig';
@@ -43,6 +44,7 @@ interface Entry {
 
 const ZOMBIE_MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death'];
 const BOSS_MODES: ZombieMode[] = ['idle', 'walk', 'roar', 'slam', 'charge', 'attack', 'death'];
+const MATRON_MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'roar', 'slam', 'charge', 'stagger', 'death'];
 
 const pct = (mul: number): string => (mul >= 1 ? 'none' : `${Math.round((1 - mul) * 100)}% off body hits`);
 const zombieStats = (t: ZombieType, hpNote = ''): [string, string][] => {
@@ -161,6 +163,27 @@ const entries: Entry[] = [
     tagline: 'What the furnace made of the forge-master.',
     lore: 'The Forge\'s own Warden, burning from the inside since the night Vulcan HQ fell. It walks the molten floor of the Crucible already enraged. Same slam, same charge, no warning.',
     where: 'The Forge (the Crucible)', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 9),
+  },
+  // the Asylum's boss (src/enemies/matron.ts, matronRig.ts)
+  {
+    id: 'matron', group: 'ELITES', name: 'The Matron', height: MATRON_DEF.height,
+    tagline: "Blackwood Hill's head nurse. She has never missed a round.",
+    lore: 'When the power failed forty days ago, the head nurse kept her keys and kept her schedule. She still walks the isolation block and the yard by lantern light, stopping at every cell door, and the lamps gutter as she passes. When she finds you she screams, and everything on the hill that can still walk comes to answer. Her face is porcelain now; it cracks a little more each time she smiles.',
+    where: 'The Asylum (the isolation block)',
+    stats: [
+      ['Health', `${MATRON_DEF.hp}`],
+      ['Chase speed', `${MATRON_DEF.speedChase.toFixed(1)} m/s`],
+      ['Hits for', `${MATRON_DEF.damage}, reach ${MATRON_DEF.attackRange} m`],
+      ['Body armour', pct(MATRON_DEF.bodyMul)],
+      ['The Shriek', `rouses every infected within ${MATRON.shriekRadius} m`],
+      ['Bounty', `$${MATRON_DEF.reward}`],
+    ],
+    modes: MATRON_MODES,
+    build: () => {
+      const r = factory.createMatron(3);
+      current!.rig = r;
+      return r.root;
+    },
   },
   ...CARRIERS.map((def, i): Entry => ({
     id: `card-${def.id}`, group: 'MAZOKU CARRIERS', name: def.name, height: def.height, accent: def.accent, card: kits.get(def.id)?.url,

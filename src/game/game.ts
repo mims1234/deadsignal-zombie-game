@@ -49,6 +49,7 @@ import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { Interaction, type InteractionOutput } from './interaction';
+import { wireMatronFx } from './matronFx';
 import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
 
@@ -295,6 +296,8 @@ export class Game implements GameCtx {
     this.zombies = new ZombieManager(this.zombieFactory, this.level);
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
+    // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
+    wireMatronFx(this.zombies.matron, this.renderer.lightPool, { listener: () => this.player, shake: (s) => this.shake(s), hud: (e) => this.hud.event(e), audio: () => this.audio });
     if (this.mapId === 'forge') {
       // Vulcan HQ fell: some of the Forge's infected are the clan's own Infernus, each name used once at a time
       let bag: string[] = [];

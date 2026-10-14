@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three';
 import { ZOMBIES } from '../config';
+import { MATRON_DEF } from '../enemies/matron';
 import type { ZombieType } from '../types';
 import type { ZombieAnimState, ZombieFactory, ZombieRig } from '../enemies/zombieRigTypes';
 
@@ -14,8 +15,7 @@ class NullRig implements ZombieRig {
   readonly height: number;
   readonly headRadius: number;
 
-  constructor(readonly type: ZombieType) {
-    const d = ZOMBIES[type];
+  constructor(readonly type: ZombieType, d: { radius: number; height: number; headRadius: number } = ZOMBIES[type]) {
     this.radius = d.radius;
     this.height = d.height;
     this.headRadius = d.headRadius;
@@ -42,6 +42,7 @@ class NullRig implements ZombieRig {
 export function createNullRigFactory(): ZombieFactory {
   return {
     create: (type) => new NullRig(type),
+    createMatron: () => new NullRig('warden', MATRON_DEF),
     dispose() {},
   };
 }

@@ -5,6 +5,7 @@
  */
 import type { QualityLevel, Region, Settings, WeaponId, ZombieType } from './types';
 import type { MapId } from './world/layout/data';
+import type { SoundId } from './audio/ids';
 
 // ---------------------------------------------------------------------------------------------
 // Weapons
@@ -550,6 +551,8 @@ export interface ZombieDef {
   turnRate: number;
   /** Chance a kill drops a supply pickup (scaled by region). */
   dropChance: number;
+  /** Bosses: the voice of their roars and alert cry (default the Warden's roar; the Matron shrieks). */
+  roar?: SoundId;
 }
 
 export const ZOMBIES: Record<ZombieType, ZombieDef> = {

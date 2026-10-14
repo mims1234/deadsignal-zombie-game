@@ -51,6 +51,8 @@ export class LightPool {
   private active: number;
   private timer = 0;
   private readonly scores: { i: number; s: number }[] = [];
+  /** Extra per-lamp dimming 0..1 on top of its mode (the Asylum: lamps fail near the Matron, `matron.ts`). */
+  dim: ((lamp: LampSpec) => number) | null = null;
 
   constructor(parent: THREE.Object3D, maxCount: number, active = maxCount) {
     this.active = Math.min(active, maxCount);
@@ -98,7 +100,7 @@ export class LightPool {
         light.position.set(lamp.x, lamp.y, lamp.z);
         light.color.set(lamp.color);
         light.distance = lamp.distance;
-        light.intensity = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]!;
+        light.intensity = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]! * (this.dim ? this.dim(lamp) : 1);
       } else {
         light.intensity = 0;
         if (!enabled && this.fade[k]! <= 0.003) this.assigned[k] = -1;
