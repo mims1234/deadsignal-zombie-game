@@ -34,15 +34,15 @@ const BRIEF: { tag: string; title: string; text: string }[] = [
 
 const CARD_BRIEF = {
   tag: 'SIDE CONTRACT',
-  title: 'RECOVER THE CARDS',
-  text: 'Five carriers walk the district. They cannot be killed: put one down, purge the signal, take the card.',
+  title: 'MAZOKU CARRIERS',
+  text: 'Five card carriers walk the district. They cannot be killed: put one down, purge the signal, take the card.',
 };
 
 const MODES: { id: GameMode; label: string; note: string }[] = [
   { id: 'standard', label: 'STANDARD', note: 'The operation as briefed.' },
-  { id: 'cards', label: 'CARD RECOVERY', note: 'The same operation, with five card carriers to put down, purge and collect.' },
+  { id: 'cards', label: 'STANDARD MAZOKU', note: 'The standard operation, plus five Mazoku card carriers to put down, purge and collect.' },
   { id: 'roam', label: 'FREE ROAM', note: 'No mission and no damage. Fly anywhere and look around.' },
-  { id: 'coop', label: 'CO-OP', note: 'Up to three players survive ten waves together. Downed players return when a wave is cleared.' },
+  { id: 'coop', label: 'CO-OP', note: 'Up to three players survive ten waves together. Downed players return when a wave is cleared. The host can add the Mazoku carriers.' },
 ];
 
 const DISCORD_MARK =
@@ -349,25 +349,7 @@ class Menus implements MenusApi {
       el('span', 'title', tt, item.title);
       el('div', 'text', body, item.text);
     }
-    if (mode === 'cards' && this.info.cards.length > 0) {
-      // the collection: recovered cards in full, the rest as dark blanks
-      const owned = this.info.cards.filter((c) => c.owned).length;
-      const coll = el('div', 'cards', brief);
-      el('div', 'lbl', coll, `ARCHIVE  ${owned} / ${this.info.cards.length} RECOVERED`);
-      const strip = el('div', 'strip', coll);
-      for (const c of this.info.cards) {
-        const slot = el('div', c.owned ? 'card owned' : 'card', strip);
-        slot.style.setProperty('--cc', c.accent);
-        slot.title = c.owned ? `${c.name} - ${c.series} (recovered ${c.count} ${c.count === 1 ? 'time' : 'times'})` : 'Not recovered yet';
-        const img = el('img', '', slot);
-        img.src = c.image;
-        img.alt = c.owned ? c.name : 'Unrecovered card';
-        img.draggable = false;
-        if (c.count > 1) el('span', 'n', slot, `x${c.count}`);
-      }
-    } else {
-      el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
-    }
+    el('div', 'foot', brief, 'Loot caches, buy gear and upgrade weapons along the way. A contamination surge closes in late in the mission.');
 
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
     showTab = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');

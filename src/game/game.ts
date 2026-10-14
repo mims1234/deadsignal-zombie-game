@@ -443,7 +443,7 @@ export class Game implements GameCtx {
       this.coop.leave();
       this.coopUi.close();
     }
-    this.cards.reset(mode === 'cards' || mode === 'roam', mode === 'roam');
+    this.cards.reset(mode === 'cards', false);
     this.menus.setModeInfo({ mode, cards: this.cards.collection() });
   }
 
@@ -697,7 +697,7 @@ export class Game implements GameCtx {
     this.player.staminaExhausted = false;
     this.weapons.reset();
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
-    this.cards.reset(this.mode === 'cards' || this.mode === 'roam', this.mode === 'roam');
+    this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
     this.weapons.hidden = this.mode === 'roam' || this.coop.role === 'spectator';
     this.flowGoalX = this.flowGoalZ = 1e9;

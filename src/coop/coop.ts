@@ -134,6 +134,8 @@ export class CoopSession {
   /** Carrier (0-based) waiting for a spawn spot, or -1. */
   private carrierPending = -1;
   private carrierOrder: number[] = [];
+  /** Mazoku co-op: the card carriers join on their waves. Chosen by the host in the lobby; the others are told. */
+  mazoku = false;
 
   constructor(private readonly g: Game) {
     this.room = new RoomClient({
@@ -173,9 +175,19 @@ export class CoopSession {
       this.lastError = '';
       this.closedReason = '';
       this.role = you.role === 'spectator' ? 'spectator' : room.hostId === you.id ? 'host' : 'guest';
+      // whoever just joined learns which variant this is
+      if (this.role === 'host') this.room.send('all', { k: 'cfg', mz: this.mazoku });
       // drop anyone who is no longer a player
       for (const id of [...this.peers.keys()]) if (!room.players.some((p) => p.id === id)) this.dropPeer(id);
     }
+    this.onChange();
+  }
+
+  /** Host: switch the Mazoku carriers on or off (takes effect from the next carrier wave). */
+  setMazoku(on: boolean): void {
+    if (this.role !== 'host') return;
+    this.mazoku = on;
+    this.room.send('all', { k: 'cfg', mz: on });
     this.onChange();
   }
 
@@ -193,6 +205,7 @@ export class CoopSession {
 
   private cleanup(): void {
     this.role = 'none';
+    this.mazoku = false;
     this.started = false;
     this.mission = null;
     this.g.zombies.netDamage = null;
@@ -335,7 +348,7 @@ export class CoopSession {
     this.mission = kind ? createMission(kind, n, this.sites(COOP.mission.cores)) : null;
     this.elitePending = kind === 'elite';
     const slot = (COOP.carrierWaves as readonly number[]).indexOf(n);
-    if (slot >= 0) this.carrierPending = this.carrierOrder[slot] ?? -1;
+    if (slot >= 0 && this.mazoku) this.carrierPending = this.carrierOrder[slot] ?? -1;
   }
 
   private stepMission(dt: number): void {
@@ -498,6 +511,11 @@ export class CoopSession {
   private onRelay(from: string, d: Record<string, unknown>): void {
     const g = this.g;
     const room = this.room.room;
+    if (room && from === room.hostId && d.k === 'cfg') {
+      this.mazoku = d.mz === true;
+      this.onChange();
+      return;
+    }
     if (!room || !this.live) return;
     if (this.role === 'host') {
       if (from === 'server') {

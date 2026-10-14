@@ -161,6 +161,17 @@ export class CoopUi {
     list('PLAYERS', room.players, room.maxPlayers);
     list('SPECTATORS', room.spectators, room.maxSpectators);
 
+    el('div', 'lbl', body, 'MODE');
+    const variant = el('div', 'row', body);
+    if (isHost) {
+      for (const [on, label] of [[false, 'STANDARD'], [true, 'STANDARD MAZOKU']] as const) {
+        this.button(variant, label, this.coop.mazoku === on ? 'on' : '', () => this.coop.setMazoku(on));
+      }
+    } else {
+      el('span', 'name', variant, this.coop.mazoku ? 'STANDARD MAZOKU' : 'STANDARD');
+    }
+    el('div', 'tag', body, this.coop.mazoku ? 'Mazoku card carriers join on waves 2, 4, 6, 8 and 9.' : 'Waves and squad objectives only.');
+
     if (isHost) {
       el('div', 'lbl', body, 'MANAGE SESSION');
       const manage = el('div', 'row', body);

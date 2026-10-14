@@ -45,6 +45,9 @@ await guest.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].fi
 await until(host, () => window.__dead.game.coop.room.room.players.length === 2);
 check('the guest joins and both lobbies list two players', await until(guest, () => window.__dead.game.coop.room.room?.players.length === 2));
 check('the guest waits for the host', await guest.evaluate(() => document.querySelector('.ds-lobby .wait') !== null));
+check('sessions start as plain Standard (no carriers)', await host.evaluate(() => window.__dead.game.coop.mazoku === false));
+await host.evaluate(() => [...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === 'STANDARD MAZOKU').click());
+check('the host switches to Standard Mazoku and the guest is told', await until(guest, () => window.__dead.game.coop.mazoku === true && /STANDARD MAZOKU/.test(document.querySelector('.ds-lobby').innerText)));
 if (shotDir) await host.screenshot({ path: `${shotDir}/coop-1-lobby.png` });
 
 // start: host first, then the guest deploys into the started session

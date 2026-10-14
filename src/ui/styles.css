@@ -2872,3 +2872,9 @@ html.ds-rm .ds-menus {
   letter-spacing: 0.14em;
   color: var(--ds-ink-dim);
 }
+.ds-lobby .ds-btn.on {
+  color: #17130a;
+  background: var(--ds-amber);
+  border-color: var(--ds-amber);
+  text-shadow: none;
+}

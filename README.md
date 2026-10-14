@@ -39,11 +39,11 @@ You lose if you die, if the district seals before you call extraction, or if the
 Pick one on the title screen before you deploy. The choice is remembered.
 
 - **Standard** — the operation above.
-- **Card recovery** — the same operation with a side contract. Five card carriers walk the district, each with its
+- **Standard Mazoku** — the standard operation plus a side contract. Five card carriers walk the district, each with its
   card floating over its head. A carrier cannot be killed: empty its health and it drops, then get close and hold `E`
   to purge the signal before it gets back up (24 seconds). The card is left on the ground; walk into it to take it.
-  Each card pays $350, the full set pays a $1,500 bonus, and recovered cards stay in the archive on the title screen
-  across runs. The side contract is optional: you can extract without it.
+  Each card pays $350 and the full set pays a $1,500 bonus. The carriers appear only in this mode (and in Mazoku
+  co-op). The side contract is optional: you can extract without it.
 - **Free roam** — no mission, no clock and no damage. Fly anywhere, through anything, and look around.
   `W A S D` moves along the view, `Space` climbs, `C` descends, `Shift` goes fast. On touch, look where you want to
   go and push the stick.
@@ -55,7 +55,8 @@ Pick one on the title screen before you deploy. The choice is remembered.
   kills, downs, who is up, and who is watching. Up to three more people can watch as spectators.
   From wave 2, most waves carry a squad objective that pays every player when it is done: hold a marked point,
   recover three data cores, kill a marked elite (the Hunter), or clear the wave with nobody going down. Hold and
-  recover keep the wave going until they are finished. On waves 2, 4, 6, 8 and 9 a card carrier joins the fight:
+  recover keep the wave going until they are finished. The host can switch the session to Standard Mazoku, and
+  then on waves 2, 4, 6, 8 and 9 a card carrier joins the fight:
   anyone can knock her down and purge her, and whoever takes the card earns it for the whole squad.
   The session's creator can kick players, end the session, and switch it between "anyone with the link" and
   invite-only (a list of Discord ids). Any player can report another from the lobby.
