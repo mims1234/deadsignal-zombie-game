@@ -99,6 +99,8 @@ export class CoopUi {
 
     if (!room) {
       el('p', 'msg', body, 'Survive ten waves together. Anyone who goes down returns when the wave is cleared. Start a session and share the link, or join one with its code.');
+      // the session runs on its creator's device: a phone host carries everyone
+      if (document.documentElement.classList.contains('ds-touch')) el('p', 'msg', body, 'Tip: the session runs on the device of whoever creates it. On a phone, joining works best - let someone on a computer host, and keep the game on screen while you play.');
       const make = el('div', 'row', body);
       this.button(make, 'CREATE SESSION', 'primary', () => {
         this.notice = '';

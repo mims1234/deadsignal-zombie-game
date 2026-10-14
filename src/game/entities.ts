@@ -91,6 +91,7 @@ export class CrateRuntime {
   update(dt: number, time: number): 'tick' | 'land' | 'expire' | null {
     const reel = this.reel;
     if (this.phase === 'closed') {
+      if (!this.mark.visible) return null;
       this.mark.position.y = 1.55 + Math.sin(time * 2.2 + this.def.x) * 0.08;
       return null;
     }
@@ -205,6 +206,8 @@ export class Entities {
     for (const c of this.crates) {
       const d2 = (c.def.x - px) ** 2 + (c.def.z - pz) ** 2;
       if (d2 < 30 * 30) c.discovered = true;
+      // the "?" only shows within reading distance (it is a draw call per box)
+      c.mark.visible = c.phase === 'closed' && d2 < 60 * 60;
       if (d2 > 90 * 90 && c.phase !== 'spin' && c.phase !== 'offer') continue;
       if (c.opened && c.openT < 1) {
         c.openT = Math.min(1, c.openT + dt / 0.45);

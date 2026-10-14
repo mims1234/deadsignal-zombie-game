@@ -25,6 +25,7 @@ import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, repo
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
+import { DetailCuller, halveTextures, isWeakDevice } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
 import { hasStoredSettings, isBetterRun, loadBest, loadMap, loadMode, loadSettings, saveBest, saveMap, saveMode, saveSettings } from '../storage';
@@ -174,8 +175,8 @@ export class Game implements GameCtx {
   async init(): Promise<boolean> {
     const { canvas, uiRoot } = this.deps;
     this.settings = loadSettings();
-    // Phones start on the lightest preset; once the player has saved settings their choice is respected.
-    if (this.touchMode && !hasStoredSettings()) this.settings.quality = 'low';
+    // Phones and weak computers start on the lightest preset; once the player has saved settings their choice is respected.
+    if (!hasStoredSettings() && isWeakDevice(this.touchMode)) this.settings.quality = 'low';
     this.best = loadBest();
     this.mode = loadMode();
     this.mapId = loadMap();
@@ -392,10 +393,19 @@ export class Game implements GameCtx {
     this.applySettings(this.settings, false);
     this.installListeners();
 
-    this.menus.showLoading(0.95, 'FINALISING');
+    this.menus.showLoading(0.92, 'FINALISING');
     await nextFrame();
     this.resetRun(true);
     this.renderer.resize();
+    // Low: every texture at half size, before anything is uploaded; small props stop being drawn at a distance
+    this.texturesHalved = QUALITY[this.settings.quality].halfTextures;
+    if (this.texturesHalved) halveTextures([this.renderer.scene, this.renderer.viewScene]);
+    this.culler = new DetailCuller(this.level.root);
+    this.culler.distance = QUALITY[this.settings.quality].detailDistance;
+    if (this.touchMode) this.renderer.setRenderScale(0.85);
+    // compile the shaders in the background (in parallel where the browser can) instead of freezing on the first frame
+    this.menus.showLoading(0.96, 'COMPILING SHADERS');
+    await this.compileShaders();
     // warm shaders / pipelines before the title appears
     this.frameOnce(1 / 60);
     this.menus.hideLoading();
@@ -449,6 +459,27 @@ export class Game implements GameCtx {
   }
 
   private resizeObserver: ResizeObserver | null = null;
+  private culler: DetailCuller | null = null;
+  private texturesHalved = false;
+
+  /** Compile the world's and the weapons' shaders without blocking (all weapons shown for the moment it takes). */
+  private async compileShaders(): Promise<void> {
+    const r = this.renderer;
+    try {
+      // a failed shader still reports through three's own checks the first time it is drawn
+      if (import.meta.env.PROD) r.renderer.debug.checkShaderErrors = false;
+      await r.renderer.compileAsync(r.scene, r.camera);
+      const hidden = r.viewScene.children.filter((c) => !c.visible);
+      for (const c of hidden) c.visible = true;
+      try {
+        await r.renderer.compileAsync(r.viewScene, r.viewCamera);
+      } finally {
+        for (const c of hidden) c.visible = false;
+      }
+    } catch {
+      // older browsers: the first frame compiles them instead
+    }
+  }
 
   dispose(): void {
     cancelAnimationFrame(this.raf);
@@ -479,6 +510,13 @@ export class Game implements GameCtx {
       this.renderer.setQuality(s.quality);
       const q = QUALITY[s.quality];
       this.fx.setQuality(q.particleScale, q.decalScale);
+      if (this.culler) this.culler.distance = q.detailDistance;
+      if (persist && q.halfTextures && !this.texturesHalved) {
+        this.texturesHalved = true;
+        halveTextures([this.renderer.scene, this.renderer.viewScene]);
+      } else if (persist && !q.halfTextures && this.texturesHalved) {
+        this.menus.flash('Full texture detail comes back after a page reload.');
+      }
     }
     this.menus.setSettings(this.settings);
   }
@@ -1527,6 +1565,7 @@ export class Game implements GameCtx {
     }
     cam.position.set(ex, ey, ez);
     cam.rotation.set(pitch, yaw, roll, 'YXZ');
+    this.culler?.update(dt, cam.position);
     this.renderer.updateFov();
     cam.getWorldDirection(this.camDir);
     this.listenerFwd.x = this.camDir.x;

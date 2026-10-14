@@ -8,7 +8,8 @@
  * is left alone until freed.
  */
 import * as THREE from 'three';
-import { FORGE_SQUAD, PLAYER, RAGDOLL, SURVIVORS } from '../config';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { FORGE_SQUAD, PLAYER, QUALITY, RAGDOLL, SURVIVORS } from '../config';
 import { Avatar } from '../coop/avatar';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { spreadPick } from '../logic/carriers';
@@ -78,76 +79,56 @@ const THANKS = [
   "Thought I was done for. Let's move.",
 ];
 
-let cageMats: { bar: THREE.Material; lock: THREE.Material; floor: THREE.Material } | null = null;
-let cageGeo: { post: THREE.BufferGeometry; bar: THREE.BufferGeometry; rail: THREE.BufferGeometry; lock: THREE.BufferGeometry; roof: THREE.BufferGeometry } | null = null;
+let cageMats: { bar: THREE.Material; lock: THREE.Material } | null = null;
+let cageGeo: { body: THREE.BufferGeometry; door: THREE.BufferGeometry; lock: THREE.BufferGeometry } | null = null;
 
-/** A chain-link holding cage with a padlocked door on its -Z side (2.2 m square). */
+const CAGE_S = 1.1;
+const CAGE_H = 2.3;
+
+/** The cage as three shared meshes (frame and roof, door, padlock): a handful of draw calls however many bars. */
+function cageGeometry(): NonNullable<typeof cageGeo> {
+  if (cageGeo) return cageGeo;
+  const S = CAGE_S;
+  const H = CAGE_H;
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, rotY = 0): THREE.BufferGeometry => {
+    const g = new THREE.BoxGeometry(w, h, d);
+    g.translate(x, y, z);
+    if (rotY) g.rotateY(rotY);
+    return g;
+  };
+  const body: THREE.BufferGeometry[] = [];
+  for (const [x, z] of [[-S, -S], [S, -S], [-S, S], [S, S]] as const) body.push(box(0.08, H, 0.08, x, H / 2, z));
+  // three closed sides: vertical bars and two rails each
+  for (const rot of [0, Math.PI / 2, -Math.PI / 2]) {
+    for (let i = -4; i <= 4; i++) body.push(box(0.03, H - 0.1, 0.03, i * 0.24, H / 2, S, rot));
+    for (const y of [0.1, H - 0.05]) body.push(box(2 * S, 0.05, 0.05, 0, y, S, rot));
+  }
+  body.push(box(2 * S, 0.04, 2 * S, 0, H, 0));
+  // the door, in its own frame: hinged at x = 0
+  const door: THREE.BufferGeometry[] = [];
+  for (let i = 1; i <= 8; i++) door.push(box(0.03, H - 0.1, 0.03, i * 0.24, H / 2, 0));
+  for (const y of [0.1, 1.15, H - 0.05]) door.push(box(2 * S, 0.05, 0.05, S, y, 0));
+  cageGeo = { body: mergeGeometries(body, false)!, door: mergeGeometries(door, false)!, lock: box(0.12, 0.16, 0.06, 2 * S - 0.12, 1.15, -0.06) };
+  for (const g of [...body, ...door]) g.dispose();
+  return cageGeo;
+}
+
+/** A holding cage of steel bars with a padlocked door on its -Z side (2.2 m square). */
 function makeCage(): Cage {
   cageMats ??= {
     bar: new THREE.MeshStandardMaterial({ color: 0x3a3d40, roughness: 0.6, metalness: 0.7 }),
     lock: new THREE.MeshStandardMaterial({ color: 0xb08a3a, roughness: 0.4, metalness: 0.8, emissive: 0x402a08 }),
-    floor: new THREE.MeshStandardMaterial({ color: 0x2a2c2e, roughness: 0.9 }),
   };
-  const m = cageMats;
+  const geo = cageGeometry();
   const root = new THREE.Group();
-  const S = 1.1;
-  const H = 2.3;
-  // shared by every cage, every run
-  cageGeo ??= {
-    post: new THREE.BoxGeometry(0.08, H, 0.08),
-    bar: new THREE.BoxGeometry(0.03, H - 0.1, 0.03),
-    rail: new THREE.BoxGeometry(2 * S, 0.05, 0.05),
-    lock: new THREE.BoxGeometry(0.12, 0.16, 0.06),
-    roof: new THREE.BoxGeometry(2 * S, 0.04, 2 * S),
-  };
-  const { post, bar, rail } = cageGeo;
-  for (const [x, z] of [[-S, -S], [S, -S], [-S, S], [S, S]] as const) {
-    const p = new THREE.Mesh(post, m.bar);
-    p.position.set(x, H / 2, z);
-    root.add(p);
-  }
-  // three closed sides: vertical bars and two rails
-  const side = (rot: number): void => {
-    const g = new THREE.Group();
-    for (let i = -4; i <= 4; i++) {
-      const b = new THREE.Mesh(bar, m.bar);
-      b.position.set(i * 0.24, H / 2, S);
-      g.add(b);
-    }
-    for (const y of [0.1, H - 0.05]) {
-      const r = new THREE.Mesh(rail, m.bar);
-      r.position.set(0, y, S);
-      g.add(r);
-    }
-    g.rotation.y = rot;
-    root.add(g);
-  };
-  side(0);
-  side(Math.PI / 2);
-  side(-Math.PI / 2);
-  // the door, hinged at its left edge
+  root.add(new THREE.Mesh(geo.body, cageMats.bar));
   const door = new THREE.Group();
-  door.position.set(-S, 0, -S);
-  for (let i = 1; i <= 8; i++) {
-    const b = new THREE.Mesh(bar, m.bar);
-    b.position.set(i * 0.24, H / 2, 0);
-    door.add(b);
-  }
-  for (const y of [0.1, 1.15, H - 0.05]) {
-    const r = new THREE.Mesh(rail, m.bar);
-    r.position.set(S, y, 0);
-    door.add(r);
-  }
-  const lock = new THREE.Mesh(cageGeo.lock, m.lock);
-  lock.position.set(2 * S - 0.12, 1.15, -0.06);
-  door.add(lock);
+  door.position.set(-CAGE_S, 0, -CAGE_S);
+  door.add(new THREE.Mesh(geo.door, cageMats.bar), new THREE.Mesh(geo.lock, cageMats.lock));
   root.add(door);
-  const roof = new THREE.Mesh(cageGeo.roof, m.floor);
-  roof.position.y = H;
-  root.add(roof);
   // the guide light rises from the roof, so it never hides the person inside
   const beam = createObjectiveBeam(0x8fd18a);
-  beam.position.y = H;
+  beam.position.y = CAGE_H;
   root.add(beam);
   return { root, door, beam, openT: 0 };
 }
@@ -380,7 +361,7 @@ export class SquadRuntime {
       a.fieldT -= dt;
       if (a.fieldT <= 0) {
         a.field.compute(a.ref.x, a.ref.z);
-        a.fieldT = 0.6;
+        a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
       if (alive) this.move(a, dt, p.x, p.z, p.yaw);
       this.fight(a, dt);

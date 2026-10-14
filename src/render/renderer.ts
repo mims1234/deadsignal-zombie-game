@@ -143,6 +143,10 @@ export class GameRenderer {
   setQuality(level: QualityLevel): void {
     this.quality = level;
     const q = QUALITY[level];
+    // the view ends where the fog has already hidden everything; the sky dome shrinks to stay inside it
+    this.camera.far = q.viewDistance;
+    this.camera.updateProjectionMatrix();
+    this.sky.scale.setScalar(Math.min(1, (q.viewDistance * 0.9) / 300));
     this.shadowPass = !q.shadows;
     this.setShadowPass(q.shadows);
     this.lightPool.setActiveCount(q.lightPool);

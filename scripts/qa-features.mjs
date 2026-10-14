@@ -72,7 +72,7 @@ async function session(map) {
       const b = after.find((z) => z.id === id);
       return a && b ? Math.hypot(b.x - a.x, b.z - a.z) : 0;
     });
-    check('blast throws bodies several metres', Math.min(...moved) > 2, moved.map((m) => m.toFixed(1)).join(' '));
+    check('blast throws bodies several metres (one may hit a car)', moved.filter((m) => m > 2).length >= 2, moved.map((m) => m.toFixed(1)).join(' '));
     check('bodies come to rest on the ground', after.filter((z) => ids.includes(z.id)).every((z) => Math.abs(z.y) < 0.05), after.map((z) => z.y).join(' '));
     await shot('04-rpg-bodies');
     snap = await call('snapshot');
@@ -162,8 +162,19 @@ async function session(map) {
     sq = await call('squad');
     const near = sq.find((s) => s.name === cage.name);
     check('the freed survivor follows the player', near && Math.hypot(near.x + 20, near.z - 22.5) < 12, JSON.stringify(near));
-    const zid = await call('spawnZombie', 'shambler', -6, 22.5, false);
-    await call('advance', 5);
+    // in the open, 10 m down the road from wherever the survivor regrouped (a parked car can block one side); nothing
+    // else around, or the survivor rightly shoots whatever is nearer
+    await call('clearZombies');
+    const zid = await page.evaluate(([nx, nz]) => {
+      const g = window.__dead.game;
+      for (const dx of [10, -10, 0]) {
+        const x = nx + dx;
+        const z = nz + (dx === 0 ? 10 : 0);
+        if (!g.level.world.segmentBlocked(nx, 1.45, nz, x, 1.2, z, 'shots')) return window.__dead.spawnZombie('shambler', x, z, false);
+      }
+      return window.__dead.spawnZombie('shambler', nx + 10, nz, false);
+    }, [near.x, near.z]);
+    await call('advance', 6);
     const target = (await call('zombieInfo')).find((z) => z.id === zid);
     check('the freed survivor shoots the infected', !target || target.state === 'dead' || target.hp < target.maxHp, target ? `${target.state} ${target.hp}/${target.maxHp}` : 'gone');
     await shot('08-survivor');

@@ -1052,6 +1052,14 @@ export interface QualityPreset {
   maxEnemies: number;
   /** Maximum decals of each family (bullet holes, blood, scorches). */
   decalScale: number;
+  /** Nothing is drawn beyond this (the fog has hidden it by ~190 m anyway). */
+  viewDistance: number;
+  /** Small props (under ~4 m) are not drawn beyond this. */
+  detailDistance: number;
+  /** Paint every texture at half size: a quarter of the texture memory (phones, weak laptops). */
+  halfTextures: boolean;
+  /** Seconds between an ally's path-field refreshes. */
+  allyPathEvery: number;
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
@@ -1065,6 +1073,10 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     particleScale: 0.5,
     maxEnemies: 24,
     decalScale: 0.5,
+    viewDistance: 190,
+    detailDistance: 55,
+    halfTextures: true,
+    allyPathEvery: 1.2,
   },
   // Default. The shadow pass was redrawing the whole district and was the frame-time cost,
   // so medium keeps the enemy cap and skips shadows, bloom and MSAA.
@@ -1078,6 +1090,10 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     particleScale: 0.8,
     maxEnemies: 34,
     decalScale: 0.8,
+    viewDistance: 420,
+    detailDistance: 90,
+    halfTextures: false,
+    allyPathEvery: 0.6,
   },
   high: {
     pixelRatioCap: 1.25,
@@ -1089,6 +1105,10 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     particleScale: 1,
     maxEnemies: 40,
     decalScale: 1,
+    viewDistance: 420,
+    detailDistance: Infinity,
+    halfTextures: false,
+    allyPathEvery: 0.6,
   },
 };
 
