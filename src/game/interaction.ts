@@ -72,6 +72,8 @@ export class Interaction {
   private readonly out: InteractionOutput = { prompt: null, panel: null, panelOpen: false };
   /** Extra interaction targets from other modules (the Asylum's barricades), asked every frame. */
   readonly providers: (() => InteractTarget | null)[] = [];
+  /** Co-op revive holds are multiplied by this (the Asylum's SECOND WIND perk picks teammates up faster). */
+  reviveMul: () => number = () => 1;
 
   constructor(
     private readonly ctx: GameCtx,
@@ -280,9 +282,9 @@ export class Interaction {
         id: `revive:${mate.id}`,
         dist: mate.dist - 1, // before anything else in reach
         text: `REVIVE ${mate.name.toUpperCase()}`,
-        sub: 'Hold to pick them up',
+        sub: this.reviveMul() < 1 ? 'Hold to pick them up - SECOND WIND: faster' : 'Hold to pick them up',
         tone: 'good',
-        hold: COOP.reviveHold,
+        hold: COOP.reviveHold * this.reviveMul(),
         enabled: true,
         onUse: () => this.squad.revive(mate.id),
       });

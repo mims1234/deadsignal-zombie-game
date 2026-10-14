@@ -6,10 +6,15 @@
  * Game hooks (see game.ts, all marked "Asylum loop"): construct on the Asylum, `reset()` at the start of a run,
  * `update(dt)` each frame, `maxHealth` for regeneration, `secondWind()` when the player would die, `onPlayerDown()`,
  * `decorateHud()`. The mission code can turn the power on with `setPower(true)` and hear about it through `onPower`.
+ *
+ * Co-op (`remote` set by the co-op session): the doors and the power are the simulation's. Buying a door and throwing
+ * the switch are requests; the simulation's state arrives through `applyRemote` and a bought door is paid for on its
+ * confirmation (`confirmDoor`). Perks, wall-buys and the Pack-a-Punch stay here: they only change this player.
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { PLAYER, WEAPONS } from '../config';
+import { spendCash } from '../logic/economy';
 import type { GameCtx } from '../game/ctx';
 import type { Interaction, InteractionTarget } from '../game/interaction';
 import type { WeaponId } from '../types';
@@ -64,6 +69,8 @@ export class AsylumLoopRuntime {
   playerId = SOLO_ID;
   /** The power came on (or went off): mission code can listen here. */
   onPower: ((on: boolean) => void) | null = null;
+  /** Co-op: ask the simulation to open door `i` / throw the power switch (null: solo, decided here). */
+  remote: { door(i: number): void; lever(): void } | null = null;
 
   private coop = false;
   private readonly root = new THREE.Group();
@@ -122,6 +129,11 @@ export class AsylumLoopRuntime {
     this.onPower?.(on);
   }
 
+  /** Co-op: revive holds are multiplied by this (SECOND WIND picks teammates up faster). */
+  get reviveMul(): number {
+    return this.mods.reviveMul;
+  }
+
   /** Max health with the player's perks (health regenerates to this). */
   get maxHealth(): number {
     return this.mods.maxHealth;
@@ -132,16 +144,31 @@ export class AsylumLoopRuntime {
     return perksOf(this.state, this.playerId);
   }
 
-  /** Start of a run: every door shut, the power off, no perks. Co-op (until it syncs the loop): all open, power on. */
+  /** Start of a run: every door shut, the power off, no perks (co-op: the simulation's state follows in its reports). */
   reset(coop: boolean): void {
     this.coop = coop;
     resetLoopState(this.state);
-    if (coop) {
-      this.state.doors.fill(1);
-      this.state.power = 1;
-    }
     this.papBusy = 0;
     this.sync(true);
+  }
+
+  /** Co-op: the simulation's doors (bit i: door i open) and power. Changes animate and announce as in solo. */
+  applyRemote(doors: number, power: boolean): void {
+    const was = this.powerOn;
+    for (let i = 0; i < ASYLUM_DOORS.length; i++) this.state.doors[i] = doors & (1 << i) ? 1 : 0;
+    this.state.power = power ? 1 : 0;
+    this.sync();
+    if (was !== this.powerOn) this.onPower?.(this.powerOn);
+  }
+
+  /** Co-op: the simulation opened door `i` for this player - pay for it now. */
+  confirmDoor(i: number, cost: number): void {
+    const d = ASYLUM_DOORS[i];
+    if (!d) return;
+    const inv = this.g.session.inv;
+    // checked before asking; if it was spent in the meantime, what is left goes
+    if (!spendCash(inv, cost)) spendCash(inv, inv.cash);
+    this.after({ ok: true, reason: 'ok', cost, message: d.kind === 'debris' ? 'Debris cleared' : d.kind === 'gate' ? 'Gate open' : 'Door open' }, d, () => {});
   }
 
   /**
@@ -285,7 +312,16 @@ export class AsylumLoopRuntime {
         tone: st === 'unaffordable' ? 'warn' : 'normal',
         hold: LOOP.doorHold,
         enabled: true,
-        onUse: () => this.after(buyDoor(this.state, i, g.session.inv), { x: d.x, z: d.z }, () => this.sync()),
+        onUse: () => {
+          const remote = this.remote;
+          if (!remote) {
+            this.after(buyDoor(this.state, i, g.session.inv), { x: d.x, z: d.z }, () => this.sync());
+            return;
+          }
+          // co-op: ask; the simulation opens it for everyone and this player pays on its confirmation
+          if (doorState(this.state, i, g.session.inv.cash) === 'ok') remote.door(i);
+          else this.after({ ok: false, reason: 'unaffordable', cost: d.cost, message: 'NOT ENOUGH $' }, d, () => {});
+        },
       });
     }
 
@@ -408,7 +444,8 @@ export class AsylumLoopRuntime {
   private throwLever(): void {
     const g = this.g;
     g.audio.play('amb_clang', { pos: { x: POWER_LEVER.x, y: 1.4, z: POWER_LEVER.z }, priority: 3 });
-    this.setPower(true);
+    if (this.remote) this.remote.lever(); // co-op: the power comes on for everyone with the simulation's next report
+    else this.setPower(true);
   }
 
   private drankPerk(perk: PerkId): void {

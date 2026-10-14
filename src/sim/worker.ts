@@ -20,9 +20,9 @@ const TICK_HZ = 30;
 
 async function main(): Promise<void> {
   // typed loosely on purpose: the browser build's type settings know nothing about Node
-  const wt = (await import('node:worker_threads' as string)) as { parentPort: Port; workerData: { map?: MapId; kind?: SessionKind; zombies?: string; team?: string } };
+  const wt = (await import('node:worker_threads' as string)) as { parentPort: Port; workerData: { map?: MapId; kind?: SessionKind; zombies?: string; team?: string; dev?: boolean } };
   const port = wt.parentPort;
-  const host = new SessionSim({ map: wt.workerData?.map ?? 'district', kind: wt.workerData?.kind ?? 'mission', difficulty: sessionDifficulty(wt.workerData), send: (to, d) => port.postMessage({ type: 'relay', to, d }) });
+  const host = new SessionSim({ map: wt.workerData?.map ?? 'district', kind: wt.workerData?.kind ?? 'mission', difficulty: sessionDifficulty(wt.workerData), dev: wt.workerData?.dev === true, send: (to, d) => port.postMessage({ type: 'relay', to, d }) });
   port.on('message', (m) => {
     try {
       if (m.type === 'players') host.players(m.list as { id: string; name: string }[]);

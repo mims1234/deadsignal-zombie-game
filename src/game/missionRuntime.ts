@@ -486,6 +486,11 @@ export class MissionRuntime implements MissionApi {
     const s = ctx.session;
     const data = ctx.level.data;
     s.elapsed = m.elapsed;
+    // the Asylum's hunt is closed by day and opens at nightfall: follow the simulation (a finished hunt stays finished)
+    if (m.huntStatus !== 'complete' && s.hunt.status !== 'complete') {
+      s.hunt.status = m.huntStatus;
+      if (m.huntStatus === 'available') s.hunt.identified = false;
+    }
     if (m.huntIdentified && !s.hunt.identified && s.hunt.status === 'active') {
       s.hunt.identified = true;
       ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - ${data.text.bossSighted}`, 'danger', 4.5);

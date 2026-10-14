@@ -1,7 +1,8 @@
 /**
  * The barricades in the browser: the boards on every window (one instanced mesh), boards flying off when the
  * infected rip them away, the hold-E repair prompt and its pay, and the director that brings infected in through the
- * windows (solo; in co-op the host runs the director and this only draws what it reports - see `applyBoards`).
+ * windows (solo; in co-op the host runs the director and this only draws what it reports - see `applyBoards`, and a
+ * repair is a request, `requestRepair`, nailed and paid here on the simulation's confirmation, `repaired`).
  */
 import * as THREE from 'three';
 import { addCash } from '../logic/economy';
@@ -45,6 +46,8 @@ export class BarricadeRuntime {
   private purse: RepairPurse;
   private toldTear = false;
   private readonly tilt: number[] = [];
+  /** Co-op: ask the simulation to nail a board back on window `i` (it checks the reach and pays). */
+  requestRepair: ((i: number) => void) | null = null;
 
   constructor(
     private readonly ctx: GameCtx,
@@ -92,7 +95,12 @@ export class BarricadeRuntime {
     const st = this.director.state.boards;
     for (let i = 0; i < st.length && i < boards.length; i++) {
       const b = Math.max(0, Math.min(BARRICADE.boards, Math.round(boards[i]!)));
-      if (b < st[i]!) for (let k = st[i]! - 1; k >= b; k--) this.fling(i, k, this.defs[i]!.outX, this.defs[i]!.outZ);
+      if (b < st[i]!) {
+        const d = this.defs[i]!;
+        for (let k = st[i]! - 1; k >= b; k--) this.fling(i, ORDER[k]!, d.outX, d.outZ);
+        this.ctx.audio.play('board_rip', { pos: { x: d.x, y: 1.8, z: d.z }, volume: 1, priority: 2, rate: 0.9 + this.ctx.rng.f() * 0.2 });
+        this.tellTear();
+      }
       st[i] = b;
     }
   }
@@ -150,7 +158,8 @@ export class BarricadeRuntime {
 
   /** The repair prompt for the window the player is at (inside, close, facing it), if it is missing boards. */
   target(): InteractTarget | null {
-    if (this.opts.remote()) return null; // co-op repairs go through the host (wired with the co-op sync)
+    const remote = this.opts.remote();
+    if (remote && !this.requestRepair) return null;
     const p = this.ctx.player;
     let best: BarricadeDef | null = null;
     let bestD = Infinity;
@@ -166,7 +175,8 @@ export class BarricadeRuntime {
     if (!best) return null;
     const d = best;
     const left = this.director.state.boards[d.id]!;
-    const broke = this.purse.credit + (this.ctx.time - this.purse.at) * (BARRICADE.payCap / BARRICADE.payWindow) < 1;
+    // co-op: the simulation keeps the purse
+    const broke = !remote && this.purse.credit + (this.ctx.time - this.purse.at) * (BARRICADE.payCap / BARRICADE.payWindow) < 1;
     return {
       id: `barricade:${d.id}`,
       dist: bestD - 0.5, // ahead of a crate or station in the same reach: you are at a window
@@ -176,16 +186,29 @@ export class BarricadeRuntime {
       hold: BARRICADE.repairTime,
       repeat: true,
       enabled: true,
-      onUse: () => this.repair(d.id),
+      onUse: () => (this.requestRepair && remote ? this.requestRepair(d.id) : this.repair(d.id)),
     };
+  }
+
+  /** Co-op: the simulation nailed a board back on window `i` for this player and pays `cash` for it. */
+  repaired(i: number, cash: number): void {
+    if (!this.defs[i]) return;
+    repairBoard(this.director.state, i); // at once here (its next report agrees)
+    this.nailed(i, cash);
   }
 
   /** Nail one board back on window `i` and pay for it. */
   repair(i: number): boolean {
     const ctx = this.ctx;
     if (!repairBoard(this.director.state, i)) return false;
+    this.nailed(i, payRepair(this.purse, ctx.time, this.opts.cashMul()));
+    return true;
+  }
+
+  /** A board went back up on window `i`: the pay, the hammer and the dust. */
+  private nailed(i: number, cash: number): void {
+    const ctx = this.ctx;
     const d = this.defs[i]!;
-    const cash = payRepair(this.purse, ctx.time, this.opts.cashMul());
     if (cash > 0) {
       addCash(ctx.session.inv, cash);
       ctx.hudEvent({ type: 'cash', amount: cash });
@@ -194,7 +217,6 @@ export class BarricadeRuntime {
     const y = d.sill + 0.16 + k * ((d.top - d.sill - 0.3) / (BARRICADE.boards - 1));
     ctx.audio.play('board_hammer', { pos: { x: d.x, y, z: d.z }, priority: 2, rate: 0.95 + ctx.rng.f() * 0.1 });
     ctx.fx.dust({ x: d.x + d.nx * 0.3, y, z: d.z + d.nz * 0.3 }, 0.25);
-    return true;
   }
 
   dispose(): void {
@@ -208,10 +230,14 @@ export class BarricadeRuntime {
   private onEvent(e: BarricadeEvent): void {
     if (e.kind !== 'tear') return;
     this.fling(e.window, ORDER[e.boards]!, e.x, e.z);
-    if (!this.toldTear && !this.opts.remote()) {
-      this.toldTear = true;
-      this.ctx.radio('OKAFOR', 'They are pulling the boards off the windows - that is how they got into the wards the first time. Hold E at a window to nail them back.', 6);
-    }
+    if (!this.opts.remote()) this.tellTear();
+  }
+
+  /** The first board torn off in a run: Okafor explains (once). */
+  private tellTear(): void {
+    if (this.toldTear) return;
+    this.toldTear = true;
+    this.ctx.radio('OKAFOR', 'They are pulling the boards off the windows - that is how they got into the wards the first time. Hold E at a window to nail them back.', 6);
   }
 
   /** Board `k` of window `w` comes off, thrown out past the infected at (fromX, fromZ). */

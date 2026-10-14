@@ -3,8 +3,9 @@
  * player walk through one to take it, carries out what it does (the rules are in `logic/powerups`) and shows the
  * banner, the announcer call and the HUD row of running timers.
  *
- * Solo only for now: in co-op the host owns drops and timers (`state` is plain data, ready for the snapshot) and the
- * later wiring calls `showDrop` / `take` from the host's reports.
+ * Co-op: the simulation owns the drops and the timers. Its reports arrive through `applyRemote` (drops appear and go,
+ * timers follow it) and a pickup by anyone through `takeRemote`: the nuke and the carpenter already happened there,
+ * so this only shows it, refills this player's own ammo on MAX AMMO and takes the cash the simulation sent.
  */
 import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
@@ -15,6 +16,8 @@ import {
   type PowerupDrop,
   type PowerupKind,
   type PowerupState,
+  type TimedPowerup,
+  POWERUP_KINDS,
   applyPowerup,
   cashMultiplier,
   createPowerups,
@@ -144,10 +147,7 @@ export class PowerupRuntime {
     const s = this.state;
     const { expired, ended } = tickPowerups(s, dt);
     for (const d of expired) this.removeView(d.id);
-    for (const k of ended) {
-      this.ctx.audio.play('powerup_end', { priority: 2 });
-      this.ctx.feed(`${POWERUP_STYLE[k].name} WORE OFF`, 'warn');
-    }
+    for (const k of ended) this.woreOff(k);
     // take one by walking through it
     if (this.ctx.playerAlive() && !this.opts.remote()) {
       const got = takeDropAt(s, this.ctx.player.x, this.ctx.player.z);
@@ -184,27 +184,82 @@ export class PowerupRuntime {
 
   /** The player took a power-up of `kind` at (x, z): do what it does. */
   take(kind: PowerupKind, x: number, z: number): void {
+    this.carryOut(kind, x, z, null);
+  }
+
+  /**
+   * Co-op: `by` took drop `id` (a `kind` at x, z) on the simulation, which already ran the nuke / the carpenter and
+   * worked out the `cash` everyone gets.
+   */
+  takeRemote(id: number, kind: PowerupKind, x: number, z: number, cash: number, by: string): void {
+    const i = this.state.drops.findIndex((d) => d.id === id);
+    if (i >= 0) this.state.drops.splice(i, 1);
+    this.removeView(id);
+    this.carryOut(kind, x, z, { cash, by });
+  }
+
+  /** Co-op: the simulation's timers (seconds left) and drops ([id, kind index, x, z, age] each). */
+  applyRemote(instaKill: number, doublePoints: number, rows: readonly number[][]): void {
+    const s = this.state;
+    const left: Record<TimedPowerup, number> = { instaKill, doublePoints };
+    for (const k of ['instaKill', 'doublePoints'] as const) {
+      let v = Math.max(0, left[k]);
+      if (s.timers[k] === 0 && v < 0.5) v = 0; // already ran out here: no second "wore off"
+      if (s.timers[k] > 0 && v === 0) this.woreOff(k);
+      s.timers[k] = v;
+    }
+    const ids = new Set(rows.map((r) => r[0]));
+    for (let i = s.drops.length - 1; i >= 0; i--) {
+      const d = s.drops[i]!;
+      if (ids.has(d.id)) continue;
+      this.removeView(d.id);
+      s.drops.splice(i, 1);
+    }
+    for (const r of rows) {
+      const kind = POWERUP_KINDS[r[1]!];
+      if (!kind) continue;
+      const have = s.drops.find((d) => d.id === r[0]);
+      if (have) {
+        have.age = r[4]!;
+        continue;
+      }
+      const drop: PowerupDrop = { id: r[0]!, kind, x: r[2]!, z: r[3]!, age: r[4]! };
+      s.drops.push(drop);
+      this.showDrop(drop);
+    }
+    this.hud.update(s.timers);
+  }
+
+  private carryOut(kind: PowerupKind, x: number, z: number, remote: { cash: number; by: string } | null): void {
     const ctx = this.ctx;
     const e = applyPowerup(this.state, kind);
     const st = POWERUP_STYLE[kind];
     ctx.audio.play(CALL[kind], { priority: 3 });
     ctx.fx.sparkle({ x, y: 1, z }, st.hex, 24);
     ctx.banner(st.name, st.line, kind === 'instaKill' || kind === 'nuke' ? 'danger' : kind === 'doublePoints' ? 'warn' : 'good', 2.6);
+    if (remote?.by) ctx.feed(`${remote.by.toUpperCase()}: ${st.name}`, 'good');
     const inv = ctx.session.inv;
-    if (e.refillAmmo) refillAll(inv);
+    if (e.refillAmmo) refillAll(inv); // co-op: every player refills their own
     if (e.repairAll) this.opts.barricades()?.repairEverything();
     if (e.killAll) {
       ctx.hudEvent({ type: 'flash', color: '#fff2d0', strength: 0.75 });
       ctx.shake(0.6);
-      const list = ctx.zombies.zombies;
-      this.nukeQueue = nukeTargets(list).map((i) => list[i]!);
-      this.nukeT = 0;
+      if (!remote) {
+        const list = ctx.zombies.zombies;
+        this.nukeQueue = nukeTargets(list).map((i) => list[i]!);
+        this.nukeT = 0;
+      }
     }
-    if (e.cash > 0) {
-      const cash = Math.round(e.cash * this.cashMul);
+    const cash = remote ? remote.cash : Math.round(e.cash * this.cashMul);
+    if (cash > 0) {
       addCash(inv, cash);
       ctx.hudEvent({ type: 'cash', amount: cash });
     }
+  }
+
+  private woreOff(k: TimedPowerup): void {
+    this.ctx.audio.play('powerup_end', { priority: 2 });
+    this.ctx.feed(`${POWERUP_STYLE[k].name} WORE OFF`, 'warn');
   }
 
   dispose(): void {

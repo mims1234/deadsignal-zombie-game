@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
  * Co-op end to end in real headless Chrome: an owner, a guest and a hidden admin run the story operation together,
- * then a Forge session and a free-roam session. HOSTING=server (default) or self picks who runs the simulation.
+ * then a Forge session, an Asylum session (the day, a file, doors and the power, the boarded windows, a power-up) and
+ * a free-roam session. HOSTING=server (default) or self picks who runs the simulation. With DEV_LOGIN the server's
+ * sessions (and a dev build's self-hosted ones) take the owner's QA set-ups ('dev': a power-up drop, torn boards).
  * Needs the sim built (`pnpm build:sim`) and both servers running:
  *   DEV_LOGIN=1 ADMIN_IDS=9000000009 DB_FILE=/tmp/coop.db pnpm server      (port 3061)
  *   pnpm dev                                                               (QA_URL, default http://127.0.0.1:5173/)
@@ -201,7 +203,7 @@ try {
   const f = await session('6100000003', '6100000004', 'forge', 'mission');
   check('a District player following a Forge invite lands on the Forge', (await f.guest.evaluate(() => window.__dead.game.mapId)) === 'forge');
   await deployBoth(f.owner, f.guest);
-  check('the Forge squad and cages appear for the guest', await until(f.guest, () => { const s = window.__dead.squad(); return s.filter((a) => a.kind === 'soldier').length === 2 && s.filter((a) => a.kind === 'survivor' && a.trapped).length === 4; }, null, 30000));
+  check('the Forge squad and cages appear for the guest', await until(f.guest, () => { const s = window.__dead.squad(); return s.filter((a) => a.kind === 'soldier').length === 2 && s.filter((a) => a.kind === 'survivor' && a.trapped).length === 4 && s.some((a) => a.trapped && a.x !== 0); }, null, 30000));
   const cage = await f.guest.evaluate(() => window.__dead.squad().find((a) => a.trapped && a.x !== 0));
   await f.guest.evaluate((c) => { window.__dead.game.player.teleport(c.x, c.z - 2.2); window.__dead.setHealth(1e6, 100); }, cage);
   await sleep(500);
@@ -210,6 +212,70 @@ try {
   const tagged = await until(f.guest, () => window.__dead.game.zombies.zombies.some((z) => z.tag), null, 30000);
   check('Vulcan\'s named infected carry their names to the guest', tagged);
   for (const p of [f.owner, f.guest]) await p.context().close();
+
+  // ---------------------------------------------------------------------------------------------
+  // the Asylum: the day, a file, doors and the power, the boarded windows, a power-up
+  // ---------------------------------------------------------------------------------------------
+  const a = await session('6100000007', '6100000008', 'asylum', 'mission');
+  check('a District player following an Asylum invite lands on the Asylum', (await a.guest.evaluate(() => window.__dead.game.mapId)) === 'asylum');
+  await deployBoth(a.owner, a.guest);
+  const keep = () => window.__dead.setHealth(1e6, 100);
+  const day = () => { const g = window.__dead.game; return g.session.elapsed > 1 && g.mission.night.tod.phase === 'day' && g.session.hunt.status === 'available' && !g.zombies.zombies.some((z) => z.type === 'warden'); };
+  check('Asylum: it is day for both, and the Matron is nowhere', (await until(a.guest, day, null, 30000)) && (await until(a.owner, day, null, 5000)));
+  const shut = () => { const g = window.__dead.game; return g.asylum.state.doors.every((d) => d === 0) && !g.level.doors.isOpen(0) && !g.asylum.powerOn; };
+  check('Asylum: every door is shut and the power off, for both', (await a.owner.evaluate(shut)) && (await a.guest.evaluate(shut)));
+  // the guest buys the west ward's front door (index 0)
+  const use = (id) => { const g = window.__dead.game; const t = []; g.interaction.sources.forEach((f) => f(t)); const q = t.find((x) => x.id === id); q?.onUse(); return !!q; };
+  const cashA = await a.guest.evaluate(() => { window.__dead.give({ cash: 20000 }); window.__dead.teleport(-22, 11.2); window.__dead.lookAt(-22, 9.8); return window.__dead.game.session.inv.cash; });
+  await sleep(500);
+  await a.guest.evaluate(use, 'asy-door:westWardFront');
+  check('Asylum: a door one player buys opens for the other', await until(a.owner, () => window.__dead.game.asylum.state.doors[0] === 1 && window.__dead.game.level.doors.isOpen(0), null, 10000));
+  check('Asylum: and the buyer pays for it, once', await until(a.guest, (c) => window.__dead.game.session.inv.cash === c - 750 && window.__dead.game.level.doors.isOpen(0), cashA, 10000), String(await a.guest.evaluate(() => window.__dead.game.session.inv.cash)));
+  // the owner throws the power in the boiler house
+  await a.owner.evaluate(() => { window.__dead.teleport(40.5, -17.2); window.__dead.lookAt(40.5, -18.35); });
+  await sleep(500);
+  await a.owner.evaluate(use, 'asy-lever');
+  check('Asylum: the power switch turns the power on for both', (await until(a.guest, () => window.__dead.game.asylum.powerOn, null, 10000)) && (await until(a.owner, () => window.__dead.game.asylum.powerOn, null, 5000)));
+  // a patient file: the guest walks into it, both have it, and each is paid once
+  const cashO = await a.owner.evaluate(() => window.__dead.game.session.inv.cash);
+  await a.guest.evaluate(() => window.__dead.teleport(-7.8, 6.05));
+  check('Asylum: a patient file one player takes is in for both, and pays each', (await until(a.owner, (c) => window.__dead.game.mission.night.records.found[0] && window.__dead.game.session.inv.cash >= c + 300, cashO, 10000)) && (await a.guest.evaluate(() => window.__dead.game.mission.night.records.found[0])));
+  // the boarded windows: the guest waits in the west ward for the infected to tear at a window; if none has after
+  // 30 s, the owner's development set-up tears boards off the window nearest the guest
+  await a.guest.evaluate(() => window.__dead.teleport(-22, 0));
+  let torn = await until(a.guest, () => { window.__dead.setHealth(1e6, 100); return window.__dead.game.barricades.state.some((b) => b < 6); }, null, 30000);
+  const how = torn ? 'by the infected' : 'by the QA set-up';
+  if (!torn) {
+    const i = await a.guest.evaluate(() => { const g = window.__dead.game; const ds = g.barricades.defs; const d2 = (d) => Math.hypot(d.x - g.player.x, d.z - g.player.z); return ds.reduce((b, d, i) => (d2(d) < d2(ds[b]) ? i : b), 0); });
+    await a.owner.evaluate((i) => window.__dead.game.coop.toHost({ k: 'dev', tear: i }), i);
+    torn = await until(a.guest, () => window.__dead.game.barricades.state.some((b) => b < 6), null, 5000);
+  }
+  await a.owner.evaluate(keep);
+  check('Asylum: boards come off a window, and both see it', torn && (await until(a.owner, () => window.__dead.game.barricades.state.some((b) => b < 6), null, 5000)), `${how} ${JSON.stringify(await a.guest.evaluate(() => window.__dead.game.barricades.state))}`);
+  if (torn) {
+    const w = await a.guest.evaluate(() => { const g = window.__dead.game; const b = g.barricades; const i = b.state.findIndex((n) => n < 6); const d = b.defs[i]; g.player.teleport(d.inX, d.inZ); window.__dead.lookAt(d.x, d.z); return { i, cash: g.session.inv.cash }; });
+    await sleep(500);
+    await a.guest.evaluate(() => window.__dead.game.barricades.target()?.onUse());
+    check('Asylum: a repair from inside nails a board back and pays the repairer', await until(a.guest, (w) => window.__dead.game.session.inv.cash >= w.cash + 10, w, 10000));
+    const same = async () => { const s = await a.guest.evaluate(() => JSON.stringify(window.__dead.game.barricades.state)); return until(a.owner, (s) => JSON.stringify(window.__dead.game.barricades.state) === s, s, 3000); };
+    check('Asylum: both see the same boards', (await same()) || (await same()) || (await same()));
+  }
+  // a power-up (drops are rare: the owner's development set-up drops DOUBLE POINTS 3 m in front of them)
+  for (const p of [a.owner, a.guest]) await p.evaluate(() => { window.__taken = []; const pu = window.__dead.game.powerups; const f = pu.takeRemote.bind(pu); pu.takeRemote = (...x) => (window.__taken.push(x[0]), f(...x)); });
+  // at the insertion point, facing open ground (the drop lands 3 m ahead)
+  await a.owner.evaluate(() => { const g = window.__dead.game; const st = g.level.data.playerStart; const yaw = [0, Math.PI / 2, Math.PI, -Math.PI / 2].find((y) => { const x = st.x - Math.sin(y) * 3; const z = st.z - Math.cos(y) * 3; return !g.level.nav.isBlockedAt(x, z) && !g.level.world.circleBlocked(x, z, 0.6, 0.05, 1.7); }) ?? 0; window.__dead.teleport(st.x, st.z, yaw); window.__dead.setHealth(1e6, 100); });
+  await sleep(500);
+  await a.owner.evaluate(() => window.__dead.game.coop.toHost({ k: 'dev', drop: 2 }));
+  const dropped = (await until(a.guest, () => window.__dead.game.powerups.state.drops.length > 0, null, 5000)) && (await until(a.owner, () => window.__dead.game.powerups.state.drops.length > 0, null, 5000));
+  const drop = dropped ? await a.guest.evaluate(() => { const d = window.__dead.game.powerups.state.drops[0]; return { id: d.id, kind: d.kind, x: d.x, z: d.z }; }) : null;
+  check('Asylum: a power-up drops, and both see it', !!drop && drop.kind === 'doublePoints', JSON.stringify(drop));
+  if (drop) {
+    await a.guest.evaluate((d) => { window.__dead.game.player.teleport(d.x, d.z); window.__dead.setHealth(1e6, 100); }, drop);
+    const gone = (id) => window.__taken.includes(id) && !window.__dead.game.powerups.state.drops.some((d) => d.id === id);
+    check('Asylum: the player who walks into it takes it, and both see it taken', (await until(a.guest, gone, drop.id, 10000)) && (await until(a.owner, gone, drop.id, 5000)));
+    check('Asylum: double points runs for both', (await a.owner.evaluate(() => window.__dead.game.powerups.state.timers.doublePoints > 20)) && (await a.guest.evaluate(() => window.__dead.game.powerups.state.timers.doublePoints > 20)));
+  }
+  for (const p of [a.owner, a.guest]) await p.context().close();
 
   // ---------------------------------------------------------------------------------------------
   // free roam
