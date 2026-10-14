@@ -39,7 +39,9 @@ jobs:
         if: env.HOST != '' && env.KEY != ''
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          # a key pasted from a Windows terminal carries carriage returns, which OpenSSH rejects
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/deploy
+          head -n 1 ~/.ssh/deploy | grep -q 'PRIVATE KEY' || { echo "DEPLOY_SSH_KEY is not a private key - it must start with -----BEGIN OPENSSH PRIVATE KEY-----"; exit 1; }
           chmod 600 ~/.ssh/deploy
           ssh -i ~/.ssh/deploy -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
             "bash -lc 'cd \"$APP_DIR\" && git fetch --quiet origin main && git checkout --quiet -B main origin/main && bash scripts/deploy.sh'"
