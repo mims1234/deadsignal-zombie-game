@@ -9,6 +9,18 @@
  * A player who goes down can be revived by a teammate (they bleed out on their own client); the run is lost when
  * nobody is left standing, won when the helicopter leaves with someone aboard.
  *
+ * Every map: power-up drops (rolled on the players' kills, taken by walking through them, insta-kill / double points
+ * timers, the nuke and the carpenter carried out here). The Asylum also runs here: the time of day (the Matron only
+ * walks at night), the patient files, the buyable doors and the power (`asylum/loop.ts`), and the boarded windows
+ * (`asylum/barricadeDirector.ts`).
+ *
+ * Cash: every player keeps their own wallet on their own client. What the squad earns arrives as 'cash' / 'kill' /
+ * 'fixed' / 'pw' messages; what a player buys from the shared world (a door) is a request: the simulation checks the
+ * shared state (still shut, reachable, the buyer next to it), opens it for everyone and confirms to the buyer
+ * ('bought'), who pays on that confirmation (the client checks it can afford it before asking). Perks, wall-buys and
+ * the Pack-a-Punch only change the buyer's own stats and inventory, so they stay on the client; the power they need
+ * is the simulation's.
+ *
  * In:  `message(from, d, owner)` - reports and requests (see each case); `players(list)`; `tick(dt)`.
  * Out: `send(to, d)` - to 'all' or one player id.
  */
@@ -22,8 +34,20 @@ import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCa
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
 import { type ExtractionPhase, callExtraction, createExtraction, extractionInProgress, unlockExtraction, updateExtraction } from '../logic/extraction';
-import { escalationPhase } from '../logic/mission';
+import { escalationPhase, missionClock, type MissionClock } from '../logic/mission';
+import { POWERUPS } from '../logic/powerupConfig';
+import { type PowerupDrop, POWERUP_KINDS, applyPowerup, cashMultiplier, createPowerups, filterDamage, nukeTargets, resetPowerups, rollDrop, tickPowerups } from '../logic/powerups';
+import { createRecords, pickUpRecord } from '../logic/records';
 import { Rng } from '../logic/rng';
+import { gateHunt, phaseTuning, timeOfDay } from '../logic/timeOfDay';
+import { BARRICADE } from '../asylum/barricadeConfig';
+import { BarricadeDirector } from '../asylum/barricadeDirector';
+import { findBarricades, sideOf } from '../asylum/barricadeLayout';
+import { anyDamaged, createPurse, payRepair, repairAll, repairBoard, type RepairPurse } from '../asylum/barricades';
+import { createLoopState, doorState, isPowerOn, resetLoopState, setPower, spawnAllowed } from '../asylum/loop';
+import { LOOP } from '../asylum/loopConfig';
+import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
+import { RECORDS } from '../asylum/nightConfig';
 import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { buildLevel, type Level } from '../world/level';
@@ -42,6 +66,8 @@ export const EXTRACTION_PHASES: readonly ExtractionPhase[] = ['locked', 'availab
 const CARRIER_PHASES: readonly CarrierState['phase'][] = ['roaming', 'identified', 'downed', 'purged', 'recovered'];
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 const r2 = (v: number): number => Math.round(v * 100) / 100;
+/** Flags as one number (bit i set: flag i), e.g. the files taken or the doors open. */
+export const bits = (flags: readonly (number | boolean)[]): number => flags.reduce<number>((m, f, i) => (f ? m | (1 << i) : m), 0);
 
 /** A player sends a report this often; one silent this long is treated as away (not a target, not "up"). */
 const AWAY_AFTER = 4;
@@ -114,6 +140,11 @@ export interface SessionOptions {
   /** The infected's difficulty and the AI squad's skill (the session owner's picks). */
   difficulty?: SessionDifficulty;
   seed?: number;
+  /**
+   * Local development only (the game server with DEV_LOGIN, or a Vite dev build): the session owner may send the
+   * co-op QA script's set-ups ('dev': drop a power-up next to them, tear boards off a window). Never on a live server.
+   */
+  dev?: boolean;
   /** A level the caller already built (a self-hosting browser passes its own); otherwise one is built here. */
   level?: Level;
   send(to: string, d: Record<string, unknown>): void;
@@ -130,6 +161,7 @@ export class SessionSim {
   private readonly peers = new Map<string, Peer>();
   private seated = new Map<string, string>();
   private readonly send: SessionOptions['send'];
+  private readonly dev: boolean;
   private time = 0;
   private gen = 0;
   private running = false;
@@ -149,9 +181,23 @@ export class SessionSim {
   private directorTurn = 0;
   private readonly allyWorld: AllyWorld;
   private allyLeader: Peer | null = null;
+  /** This map's deadline and escalation (the Asylum's night runs longer). */
+  private readonly clock: MissionClock;
+  /** The Asylum: day and night, the files, the doors and the power, the boarded windows. */
+  private readonly asylum: boolean;
+  /** The Asylum's doors and power (perks stay on each player's client: they only change that player). */
+  readonly loop = createLoopState();
+  private records = createRecords();
+  private readonly barricades: BarricadeDirector | null = null;
+  /** What each player can still earn from nailing boards back (a token bucket each, see `asylum/barricades.ts`). */
+  private readonly purses = new Map<string, RepairPurse>();
+  private readonly powerups = createPowerups();
+  /** True while a nuke is killing: those kills pay nothing and drop nothing. */
+  private nuking = false;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
+    this.dev = opts.dev === true;
     this.map = opts.map ?? 'district';
     this.kind = opts.kind ?? 'mission';
     this.difficulty = sessionDifficulty(opts.difficulty);
@@ -165,6 +211,16 @@ export class SessionSim {
     }
     this.zombies = new ZombieManager(createNullRigFactory(), this.level);
     this.zombies.onKill = (z, head) => this.onKill(z, head);
+    // insta-kill: any hit kills (not bosses, not carriers)
+    this.zombies.damageFilter = (z, amount) => filterDamage(this.powerups, amount, z);
+    this.clock = missionClock(this.map);
+    this.asylum = this.map === 'asylum';
+    if (this.asylum) {
+      // the director only spawns in zones whose doors are open; a share of its spawns come in through the windows
+      this.zombies.spawnAllowed = (x, z) => spawnAllowed(this.loop, x, z);
+      this.barricades = new BarricadeDirector(findBarricades(this.level.world, this.level.nav), this.zombies);
+      this.barricades.install();
+    }
     this.carriers = CARRIERS.map((def, index) => {
       const base = ZOMBIES[def.base];
       const stats: ZombieDef = { ...base, name: def.name, hp: def.hp, speedChase: def.speedChase, damage: def.damage, bodyMul: def.bodyMul, poise: def.poise, radius: 0.3, height: def.height, headRadius: 0.18, sightRange: 30, reward: 0, headshotBonus: 0, dropChance: 0 };
@@ -202,6 +258,8 @@ export class SessionSim {
     this.defense = createDefense();
     this.zombies.clearAll();
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.difficulty.zombies];
+    // the Asylum's run starts in the afternoon: the population is made sleepy and few
+    if (this.asylum) this.zombies.setPhaseTuning(phaseTuning(timeOfDay(0)));
     this.zombies.namer = null;
     this.zombies.sleepFar = this.story;
     for (const u of this.carriers) {
@@ -222,7 +280,32 @@ export class SessionSim {
     this.allies = [];
     this.embers = [];
     this.shots = [];
+    this.records = createRecords();
+    this.barricades?.reset();
+    this.purses.clear();
+    resetPowerups(this.powerups);
+    this.nuking = false;
+    // the Asylum's doors: open while the squad's cages are placed (as in solo), then shut for the run; free roam
+    // tours the whole hill with every door open and the lights on
+    resetLoopState(this.loop);
+    if (this.kind === 'roam') {
+      this.loop.doors.fill(1);
+      this.loop.power = 1;
+    }
+    this.level.doors?.setAll(true);
     if (this.story) this.setUpStory();
+    this.level.doors?.sync(this.loop.doors);
+    if (this.asylum && this.story) {
+      // by day there is nobody to hunt: the Matron wakes at nightfall
+      gateHunt(this.hunt, 0);
+      this.keepBossAway();
+    }
+  }
+
+  /** The Asylum by day: the Matron is not on the hill while her hunt is closed. */
+  private keepBossAway(): void {
+    const b = this.zombies.boss;
+    if (this.hunt.status === 'available' && b && b.alive) this.zombies.remove(b);
   }
 
   /** The story operation's world: residents and the boss, the Vulcan names, the squad, the cages, embers, carriers. */
@@ -393,6 +476,57 @@ export class SessionSim {
         if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'TRIALS OF IGNIS COMPLETE', pl: 2 });
         return;
       }
+      case 'rec': {
+        // the Asylum: a patient file, taken by whoever stands at it (every client pays itself once for each file)
+        const i = Number(d.i);
+        const spot = RECORDS.spots[i];
+        if (!this.asylum || !this.story || !up || !spot || Math.hypot(spot.x - p.ref.x, spot.z - p.ref.z) > RECORDS.pickupRadius + 2.5) return;
+        pickUpRecord(this.records, i);
+        return;
+      }
+      case 'door': {
+        // the Asylum: buy a door for the squad (the buyer's client checked its cash, and pays on the confirmation)
+        const i = Number(d.i);
+        const door = ASYLUM_DOORS[i];
+        if (!this.asylum || this.kind === 'roam' || !up || !door || doorState(this.loop, i, Infinity) !== 'ok') return;
+        if (Math.hypot(door.x - p.ref.x, door.z - p.ref.z) > LOOP.reach + door.width / 2 + 2.5) return;
+        this.loop.doors[i] = 1;
+        this.level.doors?.sync(this.loop.doors);
+        this.send(from, { k: 'bought', i, c: door.cost });
+        const beyond = door.zones.find((z) => z !== 'front') ?? door.zones[1];
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} OPENED ${ZONE_NAMES[beyond]}` });
+        return;
+      }
+      case 'lever': {
+        // the Asylum: the power switch in the boiler house (free; wakes the perk machines and the press for everyone)
+        const L = POWER_LEVER;
+        if (!this.asylum || !up || isPowerOn(this.loop) || Math.hypot(L.x - p.ref.x, L.z - p.ref.z) > LOOP.reach + 2.5) return;
+        setPower(this.loop, true);
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} THREW THE POWER` });
+        return;
+      }
+      case 'dev': {
+        // the QA script's set-ups (development only, the owner only): a power-up 3 m in front of them, boards torn off
+        if (!this.dev || !owner || !this.story) return;
+        const kind = POWERUP_KINDS[Number(d.drop)];
+        if (kind) this.powerups.drops.push({ id: this.powerups.nextId++, kind, x: p.ref.x - Math.sin(p.yaw) * 3, z: p.ref.z - Math.cos(p.yaw) * 3, age: 0 });
+        const w = this.barricades?.state;
+        const i = Number(d.tear);
+        if (w && i >= 0 && i < w.boards.length) w.boards[i] = Math.max(0, w.boards[i]! - 3);
+        return;
+      }
+      case 'fix': {
+        // nail one board back on window i: from the inside, within reach; pays out of that player's own purse
+        const b = this.barricades;
+        const w = b?.defs[Number(d.i)];
+        if (!b || !w || !this.story || !up) return;
+        if (Math.hypot(w.x - p.ref.x, w.z - p.ref.z) > BARRICADE.repairReach + 2 || sideOf(w, p.ref.x, p.ref.z) > 0.5) return;
+        if (!repairBoard(b.state, w.id)) return;
+        let purse = this.purses.get(from);
+        if (!purse) this.purses.set(from, (purse = createPurse(this.time)));
+        this.send(from, { k: 'fixed', i: w.id, c: payRepair(purse, this.time, cashMultiplier(this.powerups)) });
+        return;
+      }
       default:
         return;
     }
@@ -521,7 +655,7 @@ export class SessionSim {
         playerYaw: p.yaw,
         playerEyeY: p.ref.eyeY,
         region: this.level.regionAt(p.ref.x, p.ref.z),
-        phase: escalationPhase(this.elapsed),
+        phase: escalationPhase(this.elapsed, this.clock),
         quality: 'medium',
         defenseActive: this.defense.status === 'active',
         extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? this.elapsed - ex.calledAt : null,
@@ -530,6 +664,12 @@ export class SessionSim {
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
 
+    // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
+    if (this.asylum) {
+      this.zombies.setPhaseTuning(phaseTuning(timeOfDay(this.elapsed, this.extraction.calledAt)));
+      gateHunt(this.hunt, this.elapsed);
+      this.keepBossAway();
+    }
     // contracts (never unwinnable: an uncredited Warden death completes the hunt; a missing Warden is back home)
     if (this.hunt.status === 'active') {
       const b = this.zombies.boss;
@@ -546,6 +686,10 @@ export class SessionSim {
       updateHunt(this.hunt, near, true);
     }
     this.stepRelay(dt);
+    // the Asylum: the generators running (RESTORE THE POWER) throw the power on, as the lever does
+    if (this.asylum && this.defense.status === 'complete') setPower(this.loop, true);
+    this.barricades?.update();
+    this.stepPowerups(dt, peers);
     unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt));
     this.stepExtraction(dt, up);
     this.stepAllies(dt, peers);
@@ -559,7 +703,7 @@ export class SessionSim {
     }
 
     // the end: the district sealed, or nobody left standing
-    if (!this.outcome && !extractionInProgress(this.extraction) && this.elapsed > MISSION.deadline) this.finish(false, 'The district was sealed before extraction was called');
+    if (!this.outcome && !extractionInProgress(this.extraction) && this.elapsed > this.clock.deadline) this.finish(false, 'The district was sealed before extraction was called');
     if (!this.outcome && up === 0 && reported > 0 && this.aboard.size === 0 && [...this.peers.values()].every((p) => p.life !== LIFE.up)) {
       this.finish(false, 'The whole squad went down');
     }
@@ -670,12 +814,52 @@ export class SessionSim {
     return best ? best.env : null;
   }
 
+  /** Power-ups: drops float and time out, timers run down, and a drop goes to the nearest player who walks into it. */
+  private stepPowerups(dt: number, peers: Peer[]): void {
+    const s = this.powerups;
+    tickPowerups(s, dt);
+    for (let i = s.drops.length - 1; i >= 0; i--) {
+      const d = s.drops[i]!;
+      let best: Peer | null = null;
+      // reports come a dozen times a second: a little slack so a player running through is not missed
+      let bd = POWERUPS.pickupRadius + 0.6;
+      for (const p of peers) {
+        const dist = Math.hypot(p.ref.x - d.x, p.ref.z - d.z);
+        if (dist <= bd) {
+          bd = dist;
+          best = p;
+        }
+      }
+      if (!best) continue;
+      s.drops.splice(i, 1);
+      this.takePowerup(d, best);
+    }
+  }
+
+  /** `p` took drop `d`: the nuke and the carpenter happen here; every client hears it, shows it and is paid its cash. */
+  private takePowerup(d: PowerupDrop, p: Peer): void {
+    const e = applyPowerup(this.powerups, d.kind);
+    if (e.killAll) {
+      const list = this.zombies.zombies;
+      const victims = nukeTargets(list).map((i) => list[i]!);
+      this.nuking = true;
+      for (const z of victims) this.zombies.damage(z, z.hp + 1e6, false, p.env, Math.atan2(-(z.x - p.ref.x), -(z.z - p.ref.z)), 2.5, 2);
+      this.nuking = false;
+    }
+    if (e.repairAll && this.barricades) repairAll(this.barricades.state);
+    // MAX AMMO: each client refills its own player's ammo when it hears this
+    this.send('all', { k: 'pw', id: d.id, w: POWERUP_KINDS.indexOf(d.kind), x: r1(d.x), z: r1(d.z), n: p.name, c: Math.round(e.cash * cashMultiplier(this.powerups)) });
+  }
+
   private onKill(z: Zombie, head: boolean): void {
     if (z.isBoss && this.story) completeHunt(this.hunt);
     const p = this.killer ? this.peers.get(this.killer) : null;
-    if (!p) return;
+    // a nuke's kills pay nothing and drop nothing (the nuke pays)
+    if (!p || this.nuking) return;
     p.kills++;
-    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low'), x: r1(z.x), zz: r1(z.z), dc: z.def.dropChance });
+    const cash = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)); // double points
+    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: cash, x: r1(z.x), zz: r1(z.z), dc: z.def.dropChance });
+    if (this.story) rollDrop(this.powerups, this.rng, z.x, z.z, { eligible: !z.isBoss && !z.curable, carpenter: !!this.barricades && anyDamaged(this.barricades.state) });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -710,7 +894,17 @@ export class SessionSim {
       out.em = this.embers.reduce((m, e, i) => (e.taken ? m | (1 << i) : m), 0);
       out.sh = this.shots;
       this.shots = [];
+      // power-ups: the timers (insta-kill, double points) and the drops [id, kind, x, z, age]
+      const pw = this.powerups;
+      out.pu = [r1(pw.timers.instaKill), r1(pw.timers.doublePoints)];
+      out.pd = pw.drops.map((q) => [q.id, POWERUP_KINDS.indexOf(q.kind), r1(q.x), r1(q.z), r1(q.age)]);
+      if (this.asylum) {
+        out.rc = bits(this.records.found); // the patient files taken
+        if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
+      }
     }
+    // the Asylum's doors (bit i: door i open) and the power
+    if (this.asylum) out.lp = [bits(this.loop.doors), this.loop.power];
     this.send('all', out);
   }
 
@@ -728,8 +922,20 @@ export class SessionSim {
   }
 
   /** Tests: the story's internals. */
-  get debug(): { defense: ReturnType<typeof createDefense>; hunt: ReturnType<typeof createHunt>; extraction: ReturnType<typeof createExtraction>; allies: SimAlly[]; embers: { x: number; z: number; taken: boolean }[]; aboard: Set<string> } {
-    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, embers: this.embers, aboard: this.aboard };
+  get debug(): {
+    defense: ReturnType<typeof createDefense>;
+    hunt: ReturnType<typeof createHunt>;
+    extraction: ReturnType<typeof createExtraction>;
+    allies: SimAlly[];
+    embers: { x: number; z: number; taken: boolean }[];
+    aboard: Set<string>;
+    records: ReturnType<typeof createRecords>;
+    barricades: BarricadeDirector | null;
+    powerups: ReturnType<typeof createPowerups>;
+    /** Move the mission clock (nightfall on the Asylum without waiting for it). */
+    setElapsed(t: number): void;
+  } {
+    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, embers: this.embers, aboard: this.aboard, records: this.records, barricades: this.barricades, powerups: this.powerups, setElapsed: (t) => void (this.elapsed = t) };
   }
 }
 

@@ -5,6 +5,7 @@ import { MATRON, MATRON_DEF, shriekAlert } from '../src/enemies/matron';
 import type { NetZombie, Zombie } from '../src/enemies/zombie';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { Rng } from '../src/logic/rng';
+import { NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
 import { createNullRigFactory } from '../src/sim/nullRig';
 import { LIFE, SessionSim, type SessionDifficulty } from '../src/sim/serverHost';
 import type { MapId } from '../src/world/layout/data';
@@ -21,6 +22,11 @@ function setup(map: MapId = 'asylum', difficulty?: SessionDifficulty) {
       sim.tick(1 / 30);
     }
   };
+  // she only walks at night: start the Asylum's run at nightfall (one tick wakes her at her post)
+  if (map === 'asylum') {
+    sim.debug.setElapsed(NIGHTFALL);
+    run(1 / 30);
+  }
   return { sim, where, run };
 }
 
@@ -48,13 +54,15 @@ describe('the Matron', () => {
     // effective health against body shots and against headshots
     expect(MATRON_DEF.hp / MATRON_DEF.bodyMul).toBeGreaterThan(ZOMBIES.warden.hp / ZOMBIES.warden.bodyMul);
     expect(MATRON_DEF.hp / MATRON_DEF.headMul).toBeGreaterThan(ZOMBIES.warden.hp / ZOMBIES.warden.headMul);
+    // (and, like every infected on the hill, with the night on top)
+    const n = PHASE_TUNING.night;
     for (const d of ['easy', 'normal', 'hard', 'nightmare'] as const) {
       const boss = setup('asylum', { zombies: d, team: 'regular' }).sim.zombies.boss!;
       const t = ZOMBIE_DIFFICULTY[d];
-      expect(boss.maxHp).toBeCloseTo(MATRON_DEF.hp * t.hp);
-      expect(boss.dmgScale).toBe(t.damage);
-      expect(boss.speedScale).toBeCloseTo(t.speed);
-      expect(boss.sightScale).toBe(t.sight);
+      expect(boss.maxHp).toBeCloseTo(MATRON_DEF.hp * t.hp * n.hp);
+      expect(boss.dmgScale).toBeCloseTo(t.damage * n.damage);
+      expect(boss.speedScale).toBeCloseTo(t.speed * n.speed);
+      expect(boss.sightScale).toBeCloseTo(t.sight * n.sight);
     }
   });
 

@@ -7,6 +7,13 @@
  *   spectator  flies freely and watches (a hidden admin is a spectator nobody is told about)
  * Kinds (the owner picks in the lobby): the map's story operation (Standard), the same with the Mazoku carriers, or
  * free roam. A downed player bleeds out unless a teammate revives them; the run is lost when nobody is standing.
+ *
+ * What the simulation shares besides the infected, the squad and the operation (see `sim/serverHost.ts`):
+ *   pu / pd   power-up timers and drops (every map); 'pw' when someone takes one (each client plays it, refills its
+ *             own ammo on MAX AMMO and takes the cash it carries)
+ *   rc        the Asylum's patient files taken (each client plays and pays itself once per file)
+ *   lp        the Asylum's doors and power; a door is bought with a request and paid on the confirmation ('bought')
+ *   bd        boards up on each of the Asylum's windows; a repair is a request, paid on the confirmation ('fixed')
  */
 import { COOP, type TeamSkill, VULCAN, type ZombieDifficulty } from '../config';
 import type { NetZombie, PlayerRef } from '../enemies/zombie';
@@ -14,6 +21,7 @@ import type { ZombieMode } from '../enemies/zombieRigTypes';
 import type { Game } from '../game/game';
 import type { AllyRow } from '../game/squad';
 import type { ContractStatus } from '../logic/contracts';
+import { POWERUP_KINDS } from '../logic/powerups';
 import { RoomClient, type RoomRole, type RoomView } from '../net/room';
 import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind, sessionDifficulty } from '../sim/serverHost';
 import type { ZombieType } from '../types';
@@ -58,6 +66,9 @@ export interface ScoreRow {
 
 const STATUS: Record<number, ScoreRow['status']> = { 1: 'up', 2: 'down', 3: 'out', 4: 'aboard' };
 
+/** A bit mask from the simulation as `n` flags (bit i: flag i). */
+const flags = (mask: number, n: number): boolean[] => Array.from({ length: n }, (_, i) => (mask & (1 << i)) !== 0);
+
 export class CoopSession {
   readonly room: RoomClient;
   role: CoopRole = 'none';
@@ -80,6 +91,8 @@ export class CoopSession {
   private sendT = 0;
   /** A self-hosted session's simulation (owner's browser only). */
   private sim: SessionSim | null = null;
+  /** When each patient file was last asked for (the pickup asks every frame while you stand on it). */
+  private readonly recordAsked: number[] = [];
 
   constructor(private readonly g: Game) {
     this.room = new RoomClient({
@@ -147,7 +160,7 @@ export class CoopSession {
       this.role = you.role === 'spectator' ? 'spectator' : room.hostId === you.id ? 'host' : 'guest';
       // a self-hosted session's owner runs the simulation, on the map they are on
       if (this.role === 'host') {
-        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, difficulty: sessionDifficulty(room), send: (to, d) => this.fromSim(to, d) });
+        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, difficulty: sessionDifficulty(room), dev: import.meta.env.DEV, send: (to, d) => this.fromSim(to, d) });
         if (!this.sim.finished && this.sim.stats().elapsed === 0) {
           this.sim.kind = room.kind;
           this.sim.difficulty = sessionDifficulty(room);
@@ -192,6 +205,8 @@ export class CoopSession {
     this.g.mission.follow = false;
     this.g.zombies.netDamage = null;
     this.g.cards.coopMode = 'off';
+    if (this.g.asylum) this.g.asylum.remote = null;
+    if (this.g.barricades) this.g.barricades.requestRepair = null;
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
   }
 
@@ -235,6 +250,18 @@ export class CoopSession {
     g.mission.requestBoard = () => this.toHost({ k: 'board' });
     g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
     g.squad.requestEmber = (i) => this.toHost({ k: 'ember', i });
+    // the Asylum: files, doors, the power switch and window repairs are the simulation's to decide
+    this.recordAsked.length = 0;
+    if (g.mission.night) {
+      g.mission.night.requestRecord = (i) => {
+        const now = performance.now();
+        if (now - (this.recordAsked[i] ?? -1e9) < 600) return;
+        this.recordAsked[i] = now;
+        this.toHost({ k: 'rec', i });
+      };
+    }
+    if (g.asylum) g.asylum.remote = this.started ? { door: (i) => this.toHost({ k: 'door', i }), lever: () => this.toHost({ k: 'lever' }) } : null;
+    if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
     this.life = LIFE.up;
     this.bleed = 0;
@@ -355,6 +382,18 @@ export class CoopSession {
       case 'note':
         g.feed(String(d.t || ''), 'good');
         return;
+      case 'pw': {
+        // someone took a power-up (the simulation already did the nuke and the carpenter)
+        const kind = POWERUP_KINDS[Number(d.w)];
+        if (kind) g.powerups.takeRemote(Number(d.id) || 0, kind, Number(d.x) || 0, Number(d.z) || 0, Math.max(0, Number(d.c) || 0), String(d.n || ''));
+        return;
+      }
+      case 'bought':
+        g.asylum?.confirmDoor(Number(d.i), Math.max(0, Number(d.c) || 0));
+        return;
+      case 'fixed':
+        g.barricades?.repaired(Number(d.i), Math.max(0, Number(d.c) || 0));
+        return;
       default:
         return;
     }
@@ -383,6 +422,14 @@ export class CoopSession {
       });
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], Number(d.em) || 0, (d.sh as number[][] | undefined) ?? []);
     }
+    // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
+    const pu = d.pu as number[] | undefined;
+    if (pu) g.powerups.applyRemote(Number(pu[0]) || 0, Number(pu[1]) || 0, (d.pd as number[][] | undefined) ?? []);
+    if (typeof d.rc === 'number' && g.mission.night) g.mission.night.applyRecords(flags(d.rc, g.mission.night.records.found.length));
+    const lp = d.lp as number[] | undefined;
+    if (lp && g.asylum) g.asylum.applyRemote(Number(lp[0]) || 0, lp[1] === 1);
+    const bd = d.bd as number[] | undefined;
+    if (bd && g.barricades) g.barricades.applyBoards(bd);
 
     const myId = this.room.you?.id;
     const seen = new Set<string>();

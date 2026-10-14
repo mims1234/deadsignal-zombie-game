@@ -49,6 +49,8 @@ const rooms = createRooms({
     return m ? db.sessionUser(decodeURIComponent(m[1])) : null;
   },
   isAdmin: (u) => isAdmin(u),
+  // local development only: the sessions accept the co-op QA script's set-ups (scripts/qa-coop.mjs)
+  dev: DEV_LOGIN,
   onEvent(kind, { room, reason, message }) {
     if (kind === 'room-start') room.dbId = db.roomStart(room.code, room.ownerId, room.visibility);
     else if (kind === 'room-end' && room.dbId) db.roomEnd(room.dbId, { ...room, reason });

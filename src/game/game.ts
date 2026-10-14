@@ -420,6 +420,8 @@ export class Game implements GameCtx {
     if (this.barricades) this.interaction.providers.push(() => this.barricades?.target() ?? null);
     // Asylum loop: built after the HUD (it adds its perk row there)
     if (this.mapId === 'asylum') this.asylum = new AsylumLoopRuntime(this, uiRoot);
+    // co-op: SECOND WIND picks a downed teammate up faster (solo: it gets you back up once)
+    this.interaction.reviveMul = () => this.asylum?.reviveMul ?? 1;
     // the generators running (RESTORE THE POWER) throws the power on; the lever in the boiler house does it too
     this.mission.onPowerRestored = () => this.asylum?.setPower(true);
     this.hud.setMapData(this.level.data.map);

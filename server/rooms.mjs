@@ -38,7 +38,7 @@ const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
 
-export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
+export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }) {
   /** @type {Map<string, any>} */
   const rooms = new Map();
   /** user id -> member (a user is in at most one room, on one connection) */
@@ -90,7 +90,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {} }) {
 
   /** Server hosting: a worker thread that runs this room's session. */
   function startSim(room) {
-    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind, zombies: room.zombies, team: room.team }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind, zombies: room.zombies, team: room.team, dev }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
     room.sim = w;
     w.on('message', (msg) => {
       if (!msg || room.sim !== w) return;
