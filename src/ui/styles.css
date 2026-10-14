@@ -2727,17 +2727,60 @@ html.ds-rm .ds-menus {
   top: 50%;
   transform: translateY(-50%);
   z-index: 6;
-  width: min(34em, 92vw);
+  /* the room right of the title column (5.2vw + its width), never narrower than the side column it stands in for */
+  width: clamp(min(26em, 36vw), calc(100vw - 3.6vw - 5.2vw - min(48em, 54vw) - 1.5em), 34em);
   max-height: 88vh;
-  overflow: auto;
+  max-height: 88dvh;
+  /* the head stays put and only the body scrolls, so the corner brackets are never clipped or scrolled away */
+  display: flex;
+  flex-direction: column;
   pointer-events: auto;
   background: linear-gradient(180deg, rgba(20, 26, 20, 0.96), rgba(9, 12, 10, 0.97));
+}
+html.ds-lobby-open .ds-title-side {
+  display: none;
+}
+.ds-lobby .ds-panel-head {
+  flex: none;
 }
 .ds-lobby .body {
   display: flex;
   flex-direction: column;
   gap: 0.7em;
+  min-height: 0;
   padding: 0.9em 1em 1.1em;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-amber-dim) rgba(0, 0, 0, 0.35);
+}
+.ds-lobby .body > * {
+  flex: none;
+}
+/* engines without scrollbar-color (Safari): the same thin amber rail */
+.ds-lobby .body::-webkit-scrollbar {
+  width: 6px;
+}
+.ds-lobby .body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+  border-left: 1px solid var(--ds-line);
+}
+.ds-lobby .body::-webkit-scrollbar-thumb {
+  background: var(--ds-amber-dim);
+}
+.ds-lobby .body::-webkit-scrollbar-thumb:hover {
+  background: var(--ds-amber);
+}
+.ds-lobby .row > .ds-btn {
+  max-width: 100%;
+  white-space: normal;
+}
+.ds-lobby .row > input {
+  min-width: 0;
+  max-width: 100%;
 }
 .ds-lobby .msg {
   margin: 0;

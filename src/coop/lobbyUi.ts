@@ -100,6 +100,8 @@ export class CoopUi {
   private render(): void {
     const show = this.wanted && this.host.canShow();
     this.panel.hidden = !show;
+    // the lobby takes the title screen's side column: the brief and controls step aside while it is open
+    document.documentElement.classList.toggle('ds-lobby-open', show);
     if (!show) return;
     const p = this.panel;
     p.replaceChildren();
