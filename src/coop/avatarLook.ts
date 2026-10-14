@@ -17,6 +17,56 @@ function place(parent: THREE.Object3D, geo: THREE.BufferGeometry, m: THREE.Mater
   return mesh;
 }
 
+/**
+ * A woman's limbs, shared by every such figure: rounded and tapered (thigh to knee to ankle, shoulder to wrist), with
+ * smaller hands and low shoes. Same pivots and lengths as the stock limbs, so the walk and the arm solver are unchanged.
+ */
+export interface FemaleParts {
+  upper: THREE.BufferGeometry;
+  fore: THREE.BufferGeometry;
+  hand: THREE.BufferGeometry;
+  thigh: THREE.BufferGeometry;
+  shin: THREE.BufferGeometry;
+  shoe: THREE.BufferGeometry;
+}
+let femaleParts: FemaleParts | null = null;
+/** Shared limb geometry is kept when a figure is disposed. */
+export function isFemalePart(g: THREE.BufferGeometry | undefined): boolean {
+  return !!femaleParts && !!g && Object.values(femaleParts).includes(g);
+}
+export function getFemaleParts(upper: number, fore: number, thigh: number, shin: number): FemaleParts {
+  if (femaleParts) return femaleParts;
+  const limb = (r0: number, r1: number, len: number, extra = 0): THREE.BufferGeometry => new THREE.CylinderGeometry(r0, r1, len + extra, 12).translate(0, -(len + extra) / 2 + extra / 2, 0);
+  femaleParts = {
+    upper: limb(0.048, 0.04, upper, 0.04),
+    fore: limb(0.04, 0.03, fore),
+    hand: new THREE.BoxGeometry(0.055, 0.085, 0.04).translate(0, -0.045, 0),
+    thigh: limb(0.078, 0.056, thigh, 0.04),
+    shin: limb(0.054, 0.036, shin),
+    shoe: new THREE.BoxGeometry(0.085, 0.07, 0.22).translate(0, -0.035, -0.035),
+  };
+  return femaleParts;
+}
+
+/**
+ * The figure's torso on the chest group (the waist is its origin; the shoulders sit at 0.47): ribs narrowing to the
+ * waist, the chest and a modest bust line, rounded shoulders. And the hips on the body group, flaring out from the
+ * waist. Everything in the outfit's colour; dresses and coats hang over the hips.
+ */
+export function addFigure(body: THREE.Object3D, chest: THREE.Object3D, cloth: THREE.Material, hips: THREE.Material): void {
+  const waist = place(chest, new THREE.CylinderGeometry(0.128, 0.104, 0.24, 18), cloth, 0, 0.12, 0);
+  waist.scale.z = 0.78;
+  const upper = place(chest, new THREE.CylinderGeometry(0.158, 0.128, 0.28, 18), cloth, 0, 0.38, 0);
+  upper.scale.z = 0.72;
+  for (const s of [-1, 1]) {
+    const b = place(chest, new THREE.SphereGeometry(0.056, 14, 10), cloth, s * 0.054, 0.32, -0.072);
+    b.scale.set(1, 0.88, 0.72);
+    place(chest, new THREE.SphereGeometry(0.058, 12, 10), cloth, s * 0.168, 0.47, 0);
+  }
+  const hip = place(body, new THREE.CylinderGeometry(0.108, 0.168, 0.22, 18), hips, 0, 0.94, 0);
+  hip.scale.z = 0.8;
+}
+
 /** Large, dark, glossy eyes with a highlight, lashes, a touch of blush and a small mouth (the head faces -Z, r 0.12). */
 export function addFace(head: THREE.Object3D, look: AvatarLook): void {
   const eye = mat(look.eyes ?? 0x241a2c, 0.25);
@@ -121,14 +171,14 @@ export function addOutfit(body: THREE.Object3D, chest: THREE.Object3D, head: THR
   const skirt = (len: number, rBottom: number, m: THREE.Material): void => {
     const sm = (m as THREE.MeshStandardMaterial).clone();
     sm.side = THREE.DoubleSide;
-    place(body, new THREE.CylinderGeometry(0.2, rBottom, len, 18, 1, true), sm, 0, 1.06 - len / 2, 0);
+    place(body, new THREE.CylinderGeometry(0.128, rBottom, len, 18, 1, true), sm, 0, 1.06 - len / 2, 0);
   };
   switch (outfit) {
     case 'nurse':
       skirt(0.5, 0.29, cloth);
       // the apron, its bib, and the cap with its cross
       place(body, new THREE.BoxGeometry(0.2, 0.28, 0.02), white, 0, 0.88, -0.235).rotation.x = -0.14;
-      place(chest, new THREE.BoxGeometry(0.22, 0.2, 0.02), white, 0, 0.22, -0.118);
+      place(chest, new THREE.BoxGeometry(0.2, 0.17, 0.02), white, 0, 0.24, -0.126);
       place(chest, new THREE.BoxGeometry(0.3, 0.05, 0.25), accent, 0, 0.5, 0); // collar trim
       place(head, new THREE.BoxGeometry(0.17, 0.055, 0.11), white, 0, 0.122, -0.02);
       place(head, new THREE.BoxGeometry(0.04, 0.012, 0.004), accent, 0, 0.128, -0.077);
@@ -144,16 +194,16 @@ export function addOutfit(body: THREE.Object3D, chest: THREE.Object3D, head: THR
       {
         const coat = (cloth as THREE.MeshStandardMaterial).clone();
         coat.side = THREE.DoubleSide;
-        const g = new THREE.CylinderGeometry(0.21, 0.29, 0.56, 18, 1, true, Math.PI * 0.62, Math.PI * 1.76);
+        const g = new THREE.CylinderGeometry(0.14, 0.29, 0.56, 18, 1, true, Math.PI * 0.62, Math.PI * 1.76);
         place(body, g, coat, 0, 1.06 - 0.28, 0);
-        place(chest, new THREE.BoxGeometry(0.1, 0.42, 0.02), accent, 0, 0.28, -0.118); // the scrubs under the open coat
-        place(chest, new THREE.BoxGeometry(0.05, 0.12, 0.01), mat(0x3a7fc0, 0.5), 0.1, 0.33, -0.12); // a badge
+        place(chest, new THREE.BoxGeometry(0.08, 0.4, 0.02), accent, 0, 0.27, -0.124); // the scrubs under the open coat
+        place(chest, new THREE.BoxGeometry(0.04, 0.08, 0.01), mat(0x3a7fc0, 0.5), 0.085, 0.4, -0.115); // a badge
       }
       break;
     case 'habit':
       skirt(0.98, 0.34, cloth);
       place(chest, new THREE.BoxGeometry(0.3, 0.06, 0.26), white, 0, 0.5, 0); // the collar
-      place(chest, new THREE.BoxGeometry(0.035, 0.1, 0.01), mat(0xd8b04a, 0.4, { metalness: 0.6 }), 0, 0.33, -0.12); // a small cross
+      place(chest, new THREE.BoxGeometry(0.03, 0.08, 0.01), mat(0xd8b04a, 0.4, { metalness: 0.6 }), 0, 0.22, -0.11); // a small cross
       break;
     case 'tactical':
       // a radio headset

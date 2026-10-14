@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
 import type { AvatarLook } from '../config';
-import { addFace, addHair, addOutfit } from './avatarLook';
+import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
 
 const UNIFORM = [0x4f6b8a, 0x8a6b4f, 0x5f8a5a];
 
@@ -248,17 +248,19 @@ export class Avatar {
       return m;
     };
     // ---- hips and legs ----
-    add(new THREE.BoxGeometry(female ? 0.37 : 0.36, 0.2, female ? 0.22 : 0.23), legMat ?? trim, 0, 0.97, 0, this.body); // pelvis
+    // a woman's figure has shaped limbs and a torso with a waist and hips (`avatarLook.ts`); the rest are boxes
+    const F = female ? getFemaleParts(UPPER, FORE, THIGH, SHIN) : null;
+    const shortSleeves = outfit === 'nurse' || outfit === 'gown';
+    if (!female) add(new THREE.BoxGeometry(0.36, 0.2, 0.23), trim, 0, 0.97, 0, this.body); // pelvis
     if (!female || geared || outfit === 'coat') add(new THREE.BoxGeometry(female ? 0.34 : 0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
     for (const s of [-1, 1]) {
       const root = new THREE.Group();
-      root.position.set(s * (female ? 0.1 : 0.11), 0.93, 0);
-      if (female) root.scale.set(0.84, 1, 0.84);
-      add(P.thigh, legMat ?? cloth, 0, 0, 0, root);
+      root.position.set(s * (female ? 0.095 : 0.11), 0.93, 0);
+      add(F?.thigh ?? P.thigh, legMat ?? cloth, 0, 0, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -THIGH;
-      add(P.shin, legMat ?? trim, 0, 0, 0, joint);
-      add(P.boot, shoeMat, 0, -SHIN, 0, joint);
+      add(F?.shin ?? P.shin, legMat ?? trim, 0, 0, 0, joint);
+      add(F?.shoe ?? P.boot, shoeMat, 0, -SHIN, 0, joint);
       root.add(joint);
       this.body.add(root);
       this.legs.push({ root, joint });
@@ -266,7 +268,8 @@ export class Avatar {
     // ---- chest, head, arms ----
     this.chest.position.y = 1.02;
     this.body.add(this.chest);
-    add(new THREE.BoxGeometry(female ? 0.35 : 0.42, female ? 0.48 : 0.5, female ? 0.22 : 0.24), cloth, 0, 0.28, 0, this.chest); // torso
+    if (female) addFigure(this.body, this.chest, cloth, legMat ?? cloth);
+    else add(new THREE.BoxGeometry(0.42, 0.5, 0.24), cloth, 0, 0.28, 0, this.chest); // torso
     if (!female) add(new THREE.BoxGeometry(0.46, 0.34, 0.3), soldier ? dark : trim, 0, 0.3, 0, this.chest); // vest / jacket
     else if (geared) add(new THREE.BoxGeometry(0.39, 0.3, 0.27), dark, 0, 0.3, 0, this.chest); // a fitted plate carrier
     if (geared) {
@@ -290,13 +293,12 @@ export class Avatar {
     for (const s of [1, -1]) {
       // right arm first: arms[0] holds the grip, arms[1] the handguard
       const root = new THREE.Group();
-      root.position.set(s * (female ? 0.21 : 0.24), SHOULDER_Y, s < 0 ? -0.04 : 0);
-      if (female) root.scale.set(0.84, 1, 0.84);
-      add(P.upper, cloth, 0, 0.02, 0, root);
+      root.position.set(s * (female ? 0.2 : 0.24), SHOULDER_Y, s < 0 ? -0.04 : 0);
+      add(F?.upper ?? P.upper, cloth, 0, 0.02, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -UPPER;
-      add(P.fore, cloth, 0, 0, 0, joint);
-      add(P.hand, geared ? glove : skin, 0, -FORE, 0, joint);
+      add(F?.fore ?? P.fore, shortSleeves ? skin : cloth, 0, 0, 0, joint);
+      add(F?.hand ?? P.hand, geared ? glove : skin, 0, -FORE, 0, joint);
       root.add(joint);
       this.chest.add(root);
       this.arms.push({ root, joint });
@@ -520,6 +522,7 @@ export class Avatar {
       const m = o as THREE.Mesh;
       // shared parts stay for the next figure
       if (parts && (m.geometry === parts.upper || m.geometry === parts.fore || m.geometry === parts.hand || m.geometry === parts.thigh || m.geometry === parts.shin || m.geometry === parts.boot || m.geometry === parts.flashGeo)) return;
+      if (isFemalePart(m.geometry)) return;
       m.geometry?.dispose();
     });
   }
