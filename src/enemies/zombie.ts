@@ -9,11 +9,28 @@ import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { CollisionWorld } from '../world/collision';
 import type { FlowField, NavGrid } from '../world/nav';
-import type { ZombieAnimState, ZombieRig } from './zombieRigTypes';
+import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
 
 /** `downed`: a curable carrier at zero health, lying helpless until it is purged or gets back up. */
 export type ZombieState = 'idle' | 'alert' | 'chase' | 'attack' | 'stagger' | 'downed' | 'dead';
 export type AttackKind = 'melee' | 'slam' | 'charge';
+
+/** One infected as the co-op host reports it to the other clients. */
+export interface NetZombie {
+  id: number;
+  type: ZombieType;
+  x: number;
+  z: number;
+  yaw: number;
+  mode: ZombieMode;
+  actionT: number;
+  staggerT: number;
+  speed: number;
+  /** 0..1 health. */
+  hp: number;
+  /** bits 0-1 death style, 4 headshot death, 8 enraged. */
+  flags: number;
+}
 
 export interface PlayerRef {
   x: number;
@@ -68,6 +85,19 @@ export class Zombie {
   curable = false;
   /** False when the rig belongs to someone else and must not be returned to the shared pools. */
   ownsRig = true;
+  /** Co-op guest: this infected is simulated on the host and only follows its reports here. */
+  puppet = false;
+  /** The host's id for this infected (puppets only). */
+  netId = 0;
+  /** Co-op host: index of the player this infected is hunting. */
+  targetIdx = 0;
+  private netX = 0;
+  private netZ = 0;
+  private netYaw = 0;
+  private netMode: ZombieMode = 'idle';
+  private netActionT = 0;
+  private netStaggerT = 0;
+  private netSpeed = 0;
   homeX = 0;
   homeZ = 0;
   speedScale = 1;
@@ -199,6 +229,61 @@ export class Zombie {
 
   get chasing(): boolean {
     return this.state === 'chase' || this.state === 'attack' || this.state === 'alert';
+  }
+
+  /** Co-op host: this infected as a report for the other clients. */
+  toNet(): NetZombie {
+    const a = this.anim;
+    return {
+      id: this.id,
+      type: this.type,
+      x: this.x,
+      z: this.z,
+      yaw: this.yaw,
+      mode: a.mode,
+      actionT: a.actionT,
+      staggerT: a.staggerT,
+      speed: a.speed,
+      hp: Math.max(0, this.hp / this.maxHp),
+      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0),
+    };
+  }
+
+  /** Co-op guest: take the host's latest report. */
+  applyNet(n: NetZombie): void {
+    this.netX = n.x;
+    this.netZ = n.z;
+    this.netYaw = n.yaw;
+    this.netMode = n.mode;
+    this.netActionT = n.actionT;
+    this.netStaggerT = n.staggerT;
+    this.netSpeed = n.speed;
+    this.hp = n.hp * this.maxHp;
+    this.enraged = (n.flags & 8) !== 0;
+    if (n.mode === 'death' && this.state !== 'dead') {
+      this.state = 'dead';
+      this.deathT = 0;
+      this.deathStyle = (n.flags & 3) as 0 | 1 | 2;
+      this.headshotDeath = (n.flags & 4) !== 0;
+    } else if (n.mode !== 'death' && this.state !== 'chase') {
+      this.state = 'chase';
+    }
+  }
+
+  /** Co-op guest: glide toward the last report and pose. */
+  puppetStep(dt: number, env: ZombieEnv): void {
+    const k = Math.min(1, dt * 12);
+    this.x += (this.netX - this.x) * k;
+    this.z += (this.netZ - this.z) * k;
+    this.yaw = wrap(this.yaw + wrap(this.netYaw - this.yaw) * k);
+    this.hitKick = Math.max(0, this.hitKick - dt * 5);
+    if (this.state === 'dead') this.deathT += dt;
+    this.pose(env, this.netSpeed);
+  }
+
+  /** Flinch as if hit (a guest's own shots, before the host confirms the damage). */
+  flinch(): void {
+    this.hitKick = 1;
   }
 
   /** Only zombies near the player cast shadows (the shadow pass is the most expensive part of a horde). */
@@ -852,6 +937,12 @@ export class Zombie {
       default:
         a.mode = speed > 0.3 ? 'walk' : 'idle';
         break;
+    }
+    if (this.puppet) {
+      a.mode = this.netMode;
+      a.actionT = this.netActionT;
+      a.staggerT = this.netStaggerT;
+      a.aggro = 1;
     }
     this.syncRoot();
     this.rig.update(a, 1 / 60);

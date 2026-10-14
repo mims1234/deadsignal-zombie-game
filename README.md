@@ -44,6 +44,17 @@ Pick one on the title screen before you deploy. The choice is remembered.
   `W A S D` moves along the view, `Space` climbs, `C` descends, `Shift` goes fast. On touch, look where you want to
   go and push the stick.
 
+- **Co-op** (needs the game server and a signed-in account) — up to three players survive ten waves together on the
+  same map. Create a session in the lobby and share the invite link, or join with a code. Each wave is larger and
+  tougher than the last and scales with the squad; the Warden joins on waves 5 and 10. A player who goes down returns
+  when the wave is cleared, and the run is lost only if everyone is down at once. Hold `Tab` for the scoreboard:
+  kills, downs, who is up, and who is watching. Up to three more people can watch as spectators.
+  The session's creator can kick players, end the session, and switch it between "anyone with the link" and
+  invite-only (a list of Discord ids). Any player can report another from the lobby.
+
+  The creator's browser runs the simulation and the server relays it, so the session ends if the creator leaves, and
+  it stalls while the creator's tab is in the background.
+
 ## Controls
 
 | Key | Action | Key | Action |

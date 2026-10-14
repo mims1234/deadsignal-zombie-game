@@ -55,6 +55,10 @@ export function ping(): void {
   void post('/api/ping', {});
 }
 
+export async function reportPlayer(target: string, reason: string, context: string): Promise<boolean> {
+  return (await post<{ ok: boolean }>('/api/reports', { target, reason, context }))?.ok === true;
+}
+
 export async function logout(): Promise<void> {
   await post('/auth/logout', {});
 }

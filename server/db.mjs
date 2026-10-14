@@ -7,7 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const now = () => Math.floor(Date.now() / 1000);
-export const MODES = ['standard', 'cards', 'roam'];
+export const MODES = ['standard', 'cards', 'roam', 'coop'];
 export const OUTCOMES = ['victory', 'defeat', 'abandoned'];
 
 export function openDb(file) {

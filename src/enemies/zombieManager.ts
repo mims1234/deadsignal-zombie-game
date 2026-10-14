@@ -9,7 +9,7 @@ import type { Rng } from '../logic/rng';
 import type { QualityLevel, Region, ZombieType } from '../types';
 import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
-import { Zombie, type ZombieEnv, type ZombieState } from './zombie';
+import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
 import type { ZombieFactory, ZombieRig } from './zombieRigTypes';
 
 export interface ZombieHit {
@@ -106,6 +106,9 @@ export class ZombieManager {
   private readonly tmpHead = new THREE.Vector3();
 
   onKill: (z: Zombie, head: boolean) => void = () => {};
+  /** Co-op guest: damage is not applied here but reported to the host through this. */
+  netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number) => void) | null = null;
+  private readonly byNet = new Map<number, Zombie>();
 
   constructor(
     private readonly factory: ZombieFactory,
@@ -173,6 +176,7 @@ export class ZombieManager {
   /** Remove everything (restart). Rigs go back to the pools. */
   clearAll(): void {
     for (const z of [...this.zombies]) this.releaseZombie(z);
+    this.byNet.clear();
     this.boss = null;
     this.pending.length = 0;
     this.nextWave = 0;
@@ -206,7 +210,11 @@ export class ZombieManager {
   // per-frame update
   // ---------------------------------------------------------------------------------------------
 
-  update(dt: number, env: ZombieEnv, aiEnabled: boolean): void {
+  /**
+   * `envs` (co-op host): one environment per player. Each infected hunts the nearest player who is up, with that
+   * player's flow field and damage routing, and nothing goes dormant.
+   */
+  update(dt: number, env: ZombieEnv, aiEnabled: boolean, envs?: readonly ZombieEnv[]): void {
     this.simTime += dt;
     const p = env.player;
     // spatial hash of living zombies
@@ -222,7 +230,7 @@ export class ZombieManager {
         if (z.dormant && d2 < 78 * 78) {
           z.dormant = false;
           z.rig.setVisible(true);
-        } else if (!z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss && !z.curable) {
+        } else if (!envs && !z.dormant && d2 > 88 * 88 && !z.chasing && !z.isBoss && !z.curable) {
           z.dormant = true;
           z.rig.setVisible(false);
         }
@@ -243,7 +251,7 @@ export class ZombieManager {
       }
       if (z.active) this.grid.query(z.x, z.z, this.nearby);
       else this.nearby.length = 0;
-      z.update(dt, env, this.nearby);
+      z.update(dt, envs ? this.envFor(z, envs) : env, this.nearby);
     }
 
     // corpse cleanup
@@ -261,6 +269,64 @@ export class ZombieManager {
       const dead = this.zombies.filter((z) => !z.alive).sort((a, b) => a.diedAt - b.diedAt);
       for (let i = 0; i < corpses - ZOMBIE_AI.maxCorpses; i++) this.releaseZombie(dead[i]!);
     }
+  }
+
+  /** The environment of the player this infected should hunt: the nearest one who is up, with some stickiness. */
+  private envFor(z: Zombie, envs: readonly ZombieEnv[]): ZombieEnv {
+    let best = -1;
+    let bestD = Infinity;
+    for (let i = 0; i < envs.length; i++) {
+      const p = envs[i]!.player;
+      if (!p.alive) continue;
+      let d = Math.hypot(p.x - z.x, p.z - z.z);
+      if (i === z.targetIdx) d *= 0.75; // do not flip between two players at similar range
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    if (best >= 0) z.targetIdx = best;
+    return envs[Math.min(z.targetIdx, envs.length - 1)]!;
+  }
+
+  /** Co-op guest: make the local infected match the host's list (create, update, remove). */
+  syncPuppets(list: readonly NetZombie[], rng: Rng): void {
+    const seen = new Set<number>();
+    for (const n of list) {
+      seen.add(n.id);
+      let z = this.byNet.get(n.id);
+      if (!z) {
+        z = this.spawn(n.type, n.x, n.z, rng, { yaw: n.yaw, boss: n.type === 'warden' });
+        z.puppet = true;
+        z.netId = n.id;
+        this.byNet.set(n.id, z);
+        if (z.isBoss) this.boss = z;
+      }
+      z.applyNet(n);
+    }
+    for (const [id, z] of this.byNet) {
+      if (seen.has(id)) continue;
+      this.byNet.delete(id);
+      this.releaseZombie(z);
+    }
+  }
+
+  /** Co-op guest: animate the puppets (no AI runs here). */
+  updatePuppets(dt: number, env: ZombieEnv): void {
+    this.simTime += dt;
+    this.grid.clear();
+    const p = env.player;
+    for (const z of this.zombies) {
+      if (z.active) this.grid.insert(z);
+      const d2 = (z.x - p.x) * (z.x - p.x) + (z.z - p.z) * (z.z - p.z);
+      z.setShadowLod(z.shadowOn ? d2 < 18 * 18 : d2 < 14 * 14);
+      z.puppetStep(dt, env);
+    }
+  }
+
+  /** Co-op host: place one infected of a wave near the player described by `ctx`. False when no spot was free. */
+  spawnForWave(type: SpawnType, hpScale: number, ctx: DirectorContext, env: ZombieEnv, rng: Rng): boolean {
+    return this.spawnFrom(type, 'defense', ctx, env, rng, (hpScale - 1) / 0.08);
   }
 
   /** Mutual push between the player and nearby zombies (player yields less). Returns the displacement to apply to the player. */
@@ -368,6 +434,10 @@ export class ZombieManager {
       let dmg = centerDamage + (edgeDamage - centerDamage) * Math.min(1, d / radius);
       if (covered) dmg *= coverMul;
       const ang = Math.atan2(-dx, -dz);
+      if (this.netDamage) {
+        this.netDamage(z, dmg, false, ang + Math.PI);
+        continue;
+      }
       const killed = z.takeDamage(dmg, false, env, ang + Math.PI, 3);
       if (killed) {
         kills++;
@@ -384,6 +454,11 @@ export class ZombieManager {
 
   /** Apply damage from a bullet. Returns true when the zombie died. */
   damage(z: Zombie, amount: number, head: boolean, env: ZombieEnv, shotYaw: number): boolean {
+    if (this.netDamage) {
+      z.flinch();
+      this.netDamage(z, amount, head, shotYaw);
+      return false;
+    }
     const killed = z.takeDamage(amount, head, env, shotYaw, 1);
     if (killed) {
       z.diedAt = this.simTime;

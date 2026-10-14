@@ -2719,3 +2719,156 @@ html.ds-rm .ds-menus {
   background: var(--ds-amber);
   text-shadow: none;
 }
+
+/* ---- co-op lobby ---- */
+.ds-lobby {
+  position: absolute;
+  right: 3.6vw;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 6;
+  width: min(34em, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+  pointer-events: auto;
+  background: linear-gradient(180deg, rgba(20, 26, 20, 0.96), rgba(9, 12, 10, 0.97));
+}
+.ds-lobby .body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+  padding: 0.9em 1em 1.1em;
+}
+.ds-lobby .msg {
+  margin: 0;
+  font-size: 0.9em;
+  line-height: 1.45;
+  color: var(--ds-ink-dim);
+}
+.ds-lobby .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+.ds-lobby .row.actions {
+  margin-top: 0.4em;
+  padding-top: 0.8em;
+  border-top: 1px solid var(--ds-line);
+}
+.ds-lobby input {
+  width: 12em;
+  padding: 0.6em 0.7em;
+  font: 700 1em var(--ds-font-num);
+  letter-spacing: 0.12em;
+  color: var(--ds-ink);
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--ds-line-strong);
+}
+.ds-lobby input.code {
+  width: 9em;
+  text-transform: uppercase;
+}
+.ds-lobby .codebig {
+  font: 700 1.7em var(--ds-font-num);
+  letter-spacing: 0.2em;
+  color: var(--ds-amber);
+}
+.ds-lobby .tag,
+.ds-lobby .lbl {
+  font-size: max(9px, 0.68em);
+  letter-spacing: 0.22em;
+  color: var(--ds-ink-faint);
+}
+.ds-lobby .lbl {
+  margin-top: 0.3em;
+  color: var(--ds-amber);
+}
+.ds-lobby .people {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+}
+.ds-lobby .person {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.35em 0.6em;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ds-lobby .person .name {
+  flex: 1;
+  letter-spacing: 0.04em;
+  color: #f4f7ea;
+}
+.ds-lobby .person.empty {
+  color: var(--ds-ink-faint);
+  font-size: 0.85em;
+}
+.ds-lobby .ds-btn.mini {
+  padding: 0.25em 0.6em;
+  font-size: max(9px, 0.66em);
+}
+.ds-lobby .problem {
+  padding: 0.5em 0.7em;
+  font-size: 0.85em;
+  color: #ffd9d2;
+  background: rgba(229, 82, 63, 0.18);
+  border-left: 3px solid var(--ds-red);
+}
+.ds-lobby .problem.ok {
+  color: #d9f5d6;
+  background: rgba(143, 209, 138, 0.14);
+  border-left-color: var(--ds-green);
+}
+.ds-lobby .wait {
+  font-size: 0.85em;
+  letter-spacing: 0.1em;
+  color: var(--ds-ink-dim);
+}
+
+/* ---- co-op scoreboard (held Tab) ---- */
+.ds-scoreboard {
+  position: absolute;
+  left: 50%;
+  top: 22%;
+  z-index: 6;
+  width: min(32em, 90vw);
+  transform: translateX(-50%);
+  padding: 0.9em 1.1em 1em;
+  background: rgba(9, 12, 10, 0.9);
+}
+.ds-scoreboard .ttl {
+  margin-bottom: 0.6em;
+  font-size: 0.8em;
+  letter-spacing: 0.3em;
+  color: var(--ds-amber);
+}
+.ds-scoreboard .grid {
+  display: grid;
+  grid-template-columns: 1fr 5em 5em 5em;
+  gap: 0.35em 0.8em;
+  font-variant-numeric: tabular-nums;
+}
+.ds-scoreboard .grid .h {
+  font-size: max(9px, 0.66em);
+  letter-spacing: 0.2em;
+  color: var(--ds-ink-faint);
+}
+.ds-scoreboard .grid .you {
+  color: var(--ds-amber);
+}
+.ds-scoreboard .grid .up {
+  color: var(--ds-green);
+}
+.ds-scoreboard .grid .down {
+  color: var(--ds-red);
+}
+.ds-scoreboard .spec {
+  margin-top: 0.8em;
+  padding-top: 0.6em;
+  border-top: 1px solid var(--ds-line);
+  font-size: max(9px, 0.7em);
+  letter-spacing: 0.14em;
+  color: var(--ds-ink-dim);
+}

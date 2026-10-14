@@ -716,6 +716,28 @@ export const CARD_MODE = {
   minStartDistance: 45,
 } as const;
 
+export const COOP = {
+  maxPlayers: 3,
+  /** Waves in a run; clearing the last one wins. */
+  waves: 10,
+  /** Seconds before the first wave, and between waves (downed players return at the start of a break). */
+  firstBreak: 12,
+  breakTime: 22,
+  /** Wave 1 size for one player, and how much each later wave adds (both scale with the player count). */
+  baseSize: 8,
+  sizePerWave: 4,
+  /** Extra infected health per wave (0.1 = +10%). */
+  hpPerWave: 0.1,
+  /** Every this many waves the Warden joins. */
+  bossEvery: 5,
+  /** Most infected alive at once, and seconds between spawns. */
+  activeCap: 26,
+  spawnEvery: 0.5,
+  /** World snapshots the host sends per second, and position reports each guest sends. */
+  snapshotHz: 10,
+  reportHz: 12,
+} as const;
+
 export const FREE_ROAM = {
   speed: 9,
   fastSpeed: 26,

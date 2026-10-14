@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
+import { CoopSession } from '../coop/coop';
+import { CoopUi } from '../coop/lobbyUi';
 import { DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, REGIONS, RENDER, ZOMBIE_AI } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
@@ -19,7 +21,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
-import { type Account, RunTracker, loadAccount, logout, ping, reportVisit } from '../net/account';
+import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -77,6 +79,8 @@ export class Game implements GameCtx {
   viewmodels!: ViewmodelSet;
   zombieFactory!: ZombieFactoryExt;
   cards!: CardRuntime;
+  coop!: CoopSession;
+  private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
   account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
@@ -93,13 +97,14 @@ export class Game implements GameCtx {
   private lastT = 0;
   private fps = 60;
   private frameMs = 16;
-  private readonly zenv: ZombieEnv;
+  readonly zenv: ZombieEnv;
   private readonly markers: MapMarker[] = [];
   private io: InteractionOutput = { prompt: null, panel: null, panelOpen: false };
   private pendingLock: 'none' | 'start' | 'resume' = 'none';
   private dirty = false;
   private fadeEl!: HTMLDivElement;
   private roamHint!: HTMLDivElement;
+  private roamKeys = '';
   private noLock = false;
   /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
   private readonly touchMode = isTouchDevice();
@@ -315,6 +320,15 @@ export class Game implements GameCtx {
     this.entities = new Entities(this);
     this.mission = new MissionRuntime(this, this.entities);
     this.interaction = new Interaction(this, this.entities, this.mission, this.cards);
+    this.coop = new CoopSession(this);
+    this.coopUi = new CoopUi(uiRoot, this.coop, {
+      userId: () => this.account.user?.id ?? null,
+      isAdmin: () => this.account.admin,
+      canShow: () => this.mode === 'coop' && (this.state === 'title' || this.state === 'results'),
+      deploy: () => this.requestStart(this.state === 'results'),
+      playing: () => this.coop.live && (this.state === 'playing' || this.state === 'paused'),
+      report: reportPlayer,
+    });
 
     this.hud = createHud();
     this.hud.mount(uiRoot);
@@ -331,9 +345,7 @@ export class Game implements GameCtx {
 
     this.roamHint = document.createElement('div');
     this.roamHint.className = 'ds-roam-hint';
-    this.roamHint.textContent = this.touchMode
-      ? 'FREE ROAM  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  II = MENU'
-      : 'FREE ROAM  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
+    this.roamKeys = this.touchMode ? '  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  II = MENU' : '  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
     this.roamHint.hidden = true;
     uiRoot.appendChild(this.roamHint);
 
@@ -355,6 +367,14 @@ export class Game implements GameCtx {
     this.hud.setVisible(false);
     this.menus.setModeInfo({ mode: this.mode, cards: this.cards.collection() });
     this.menus.showTitle(this.best);
+    // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
+    const invite = new URLSearchParams(window.location.search);
+    const code = invite.get('room');
+    if (code && this.account.user) {
+      this.setMode('coop');
+      this.coopUi.open(code);
+      if (invite.get('watch') === 'admin' && this.account.admin) void this.coop.room.join(code, 'spectator', true);
+    }
     this.lastT = 0;
     this.raf = requestAnimationFrame(this.frame);
     return true;
@@ -416,8 +436,14 @@ export class Game implements GameCtx {
   setMode(mode: GameMode): void {
     if (this.state !== 'title') return;
     this.mode = mode;
-    saveMode(mode);
-    this.cards.reset(mode !== 'standard', mode === 'roam');
+    if (mode === 'coop') {
+      this.coopUi.open();
+    } else {
+      saveMode(mode);
+      this.coop.leave();
+      this.coopUi.close();
+    }
+    this.cards.reset(mode === 'cards' || mode === 'roam', mode === 'roam');
     this.menus.setModeInfo({ mode, cards: this.cards.collection() });
   }
 
@@ -485,8 +511,12 @@ export class Game implements GameCtx {
   /** Deploy / restart button (inside a click). */
   requestStart(restart: boolean): void {
     if (this.account.online && !this.account.user) return; // the title screen offers sign-in instead
+    if (this.mode === 'coop' && !this.coop.canDeploy) {
+      this.coopUi.open(); // nothing to deploy into until the host starts the session
+      return;
+    }
     this.audio.init(); // needs the user gesture
-    if (restart || this.dirty) this.resetRun(false);
+    if (restart || this.dirty || this.mode === 'coop') this.resetRun(false);
     this.dirty = true;
     if (this.touchMode) {
       this.startWithoutLock(true);
@@ -558,7 +588,15 @@ export class Game implements GameCtx {
     const wasTitle = this.state === 'title';
     this.state = 'playing';
     this.playingSince = performance.now();
-    const roam = this.mode === 'roam';
+    const spectating = this.coop.role === 'spectator';
+    const roam = this.mode === 'roam' || spectating;
+    this.roamHint.textContent = (spectating ? 'SPECTATING' : 'FREE ROAM') + this.roamKeys;
+    if (spectating) {
+      const at = this.coop.focusPoint();
+      if (at) this.player.teleport(at.x, at.z + 8);
+      this.player.y = 9;
+    }
+    this.coopUi.refresh();
     this.menus.hide();
     this.hud.setVisible(!roam);
     this.roamHint.hidden = !roam;
@@ -575,7 +613,9 @@ export class Game implements GameCtx {
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
       if (!this.ambience || !this.ambience.active) this.ambience = this.audio.startLoop('ambience', { volume: 0.8, fadeIn: 2 });
-      if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Extract.', 'info', 4.5);
+      if (this.mode === 'coop') {
+        if (!spectating) this.banner('CO-OP  //  WAVE SURVIVAL', 'Hold out for ten waves. Anyone who goes down returns when the wave is cleared.', 'info', 5);
+      } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Extract.', 'info', 4.5);
       else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Contain the outbreak. Restore the relay. Kill the Warden. Extract.', 'info', 4.5);
     }
   }
@@ -595,6 +635,8 @@ export class Game implements GameCtx {
   }
 
   quitToTitle(): void {
+    // leaving mid-run leaves the session (for the host that ends it); from the results screen the squad stays together
+    if (this.mode === 'coop' && this.state !== 'results') this.coop.leave();
     this.resetRun(false);
     this.dirty = false;
     this.state = 'title';
@@ -654,9 +696,10 @@ export class Game implements GameCtx {
     this.player.stamina = PLAYER.maxStamina;
     this.player.staminaExhausted = false;
     this.weapons.reset();
-    this.zombies.populate(this.rng);
-    this.cards.reset(this.mode !== 'standard', this.mode === 'roam');
-    this.weapons.hidden = this.mode === 'roam';
+    if (this.mode !== 'coop') this.zombies.populate(this.rng);
+    this.cards.reset(this.mode === 'cards' || this.mode === 'roam', this.mode === 'roam');
+    if (this.mode === 'coop') this.coop.begin();
+    this.weapons.hidden = this.mode === 'roam' || this.coop.role === 'spectator';
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
     this.hud.reset();
@@ -733,7 +776,10 @@ export class Game implements GameCtx {
         this.updateTitle(Math.min(dt, 0.05));
         break;
       default:
-        break; // paused / results: the world is frozen, only rendering continues
+        // paused / results: the world is frozen, only rendering continues. A co-op session cannot freeze, though:
+        // a paused host would stop the game for everyone, and a paused guest would be untouchable.
+        if (this.state === 'paused' && this.coop.live && !this.devFrozen) this.simulate(Math.min(dt, 0.05));
+        break;
     }
     this.touch?.setActive(this.state === 'playing' && this.playerAlive());
     const t1 = performance.now();
@@ -777,7 +823,7 @@ export class Game implements GameCtx {
     const s = this.session;
     const alive = this.playerAlive();
     const edges = edgesOverride ?? this.input.consume(dt);
-    if (this.mode === 'roam') {
+    if (this.mode === 'roam' || this.coop.role === 'spectator') {
       this.simulateRoam(dt, edges);
       return;
     }
@@ -846,11 +892,12 @@ export class Game implements GameCtx {
     if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt);
 
     // ---- mission ----
-    this.mission.update(dt, this.renderer.camera, this.time);
+    this.mission.update(this.coop.live ? 0 : dt, this.renderer.camera, this.time); // co-op runs on waves, not the mission clock
 
     // ---- enemies ----
     this.updateEnemies(dt, alive);
     this.cards.update(dt);
+    if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
     this.grenades.update(dt);
@@ -892,7 +939,12 @@ export class Game implements GameCtx {
     z.player.z = p.z;
     z.player.eyeY = p.eyeY();
     z.player.alive = false;
-    this.zombies.update(dt, z, false);
+    if (this.coop.live) {
+      this.coop.updateEnemies(dt, false);
+      this.coop.update(dt);
+    } else {
+      this.zombies.update(dt, z, false);
+    }
     this.cards.update(dt);
     this.mission.update(0, this.renderer.camera, this.time); // dt = 0: the clock never starts
     this.entities.update(dt, this.time);
@@ -1015,6 +1067,10 @@ export class Game implements GameCtx {
         this.flowTimer = 0.1;
       }
     }
+    if (this.coop.live) {
+      this.coop.updateEnemies(dt, alive);
+      return;
+    }
     const boarding = this.endingKind === 'board';
     this.zombies.update(dt, z, alive && !boarding);
     if (alive && !boarding) {
@@ -1062,7 +1118,7 @@ export class Game implements GameCtx {
   }
 
   hurtPlayer(amount: number, srcX: number | null, srcZ: number | null, opts: { ignoreArmor?: boolean; toxic?: boolean } = {}): void {
-    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam') return;
+    if (!this.playerAlive() || this.endingKind === 'board' || this.mode === 'roam' || this.coop.role === 'spectator') return;
     const s = this.session;
     const mul = opts.toxic ? 1 : REGIONS[this.playerRegion()].damageMul;
     const res = applyDamageToPlayer(s.vitals, amount * mul, { ignoreArmor: opts.ignoreArmor });
@@ -1096,10 +1152,15 @@ export class Game implements GameCtx {
     this.audio.play('player_death', { priority: 3 });
     this.weapons.cancelActions();
     this.interaction.closePanel(false);
+    if (this.coop.live) {
+      this.coop.onLocalDeath(); // not the end: the wave decides
+      return;
+    }
     this.endRun('defeat', this.session.extraction.phase === 'landed' ? 'Killed before boarding the helicopter' : 'Killed in action');
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {
+    if (this.coop.live && this.coop.onKill(z, head)) return; // another player's kill: they are paid, not the host
     const s = this.session;
     s.stats.kills++;
     if (head) s.stats.headshots++;
@@ -1115,7 +1176,7 @@ export class Game implements GameCtx {
       const kind = r < 0.65 ? 'ammo' : r < 0.78 ? 'plate' : 'grenade';
       this.entities.spawnPickup(kind, z.x, z.z);
     }
-    if (z.isBoss) this.mission.onWardenKilled();
+    if (z.isBoss && !this.coop.live) this.mission.onWardenKilled();
   }
 
   private onExplosion(x: number, y: number, z: number): void {
@@ -1200,6 +1261,57 @@ export class Game implements GameCtx {
     const total = this.endingKind === 'board' ? 3.4 : 2.6;
     this.fadeEl.style.opacity = String(Math.max(0, Math.min(1, (this.endingT - fadeStart) / (total - fadeStart))));
     if (this.endingT >= total && this.pendingResults) this.showResults();
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // co-op hooks (called by CoopSession)
+  // ---------------------------------------------------------------------------------------------
+
+  /** The session was won or lost: straight to the results, with no death or boarding cinematic. */
+  finishCoop(outcome: 'victory' | 'defeat', reason: string): void {
+    const s = this.session;
+    if (s.ended || this.state === 'results' || this.state === 'title') return;
+    s.ended = { outcome, reason, at: s.elapsed };
+    this.pendingResults = { stats: buildStats(s, outcome, reason, 0), outcome };
+    this.input.setEnabled(false);
+    this.weapons.cancelActions();
+    this.interaction.closePanel(false);
+    this.audio.play(outcome === 'victory' ? 'victory_sting' : 'defeat_sting', { priority: 3 });
+    this.showResults();
+    this.coopUi.refresh();
+  }
+
+  /** Back on your feet at the insertion point (between waves, or when the host starts a new run). */
+  revivePlayer(): void {
+    const st = this.level.data.playerStart;
+    this.session.vitals.health = PLAYER.maxHealth;
+    this.session.vitals.armor = Math.max(this.session.vitals.armor, PLAYER.plateArmor);
+    this.player.teleport(st.x, st.z, st.yaw);
+    this.feed('BACK IN THE FIGHT', 'good');
+  }
+
+  /** The host confirmed one of this player's kills. */
+  creditKill(cash: number, name: string, head: boolean): void {
+    const s = this.session;
+    s.stats.kills++;
+    if (head) s.stats.headshots++;
+    addCash(s.inv, cash);
+    this.hud.event({ type: 'cash', amount: cash });
+    this.hud.event({ type: 'hit', head, kill: true });
+    this.feed(`+$${cash}  ${name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
+  }
+
+  /** An infected on the host struck this player. */
+  takeRemoteHit(amount: number, sx: number, sz: number, knock: number): void {
+    this.zombieHurt(amount, sx, sz, 'melee', knock);
+  }
+
+  /** Kicked, the host left, or the connection dropped. */
+  coopClosed(reason: string): void {
+    if (this.mode !== 'coop') return;
+    if (this.state === 'playing' || this.state === 'paused' || this.state === 'ending') this.quitToTitle();
+    this.coopUi.open();
+    void reason; // shown by the lobby
   }
 
   private showResults(): void {
@@ -1320,6 +1432,7 @@ export class Game implements GameCtx {
     const show = this.settings.showFps ? this.fps : null;
     const st = buildHudState(this, this.mission, this.cards, this.io, show);
     const md = buildMapDynamic(this, this.mission, this.cards, this.markers);
+    if (this.coop.live) this.coop.decorateHud(st, md);
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }
@@ -1331,7 +1444,7 @@ export class Game implements GameCtx {
   /** Start playing without pointer lock (automation). */
   devStartWithoutLock(fresh = true): void {
     this.audio.init();
-    if (fresh && this.dirty) this.resetRun(false);
+    if (fresh && (this.dirty || this.mode === 'coop')) this.resetRun(false);
     this.dirty = true;
     this.noLock = true;
     this.beginPlaying(fresh);

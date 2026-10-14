@@ -42,6 +42,7 @@ const MODES: { id: GameMode; label: string; note: string }[] = [
   { id: 'standard', label: 'STANDARD', note: 'The operation as briefed.' },
   { id: 'cards', label: 'CARD RECOVERY', note: 'The same operation, with five card carriers to put down, purge and collect.' },
   { id: 'roam', label: 'FREE ROAM', note: 'No mission and no damage. Fly anywhere and look around.' },
+  { id: 'coop', label: 'CO-OP', note: 'Up to three players survive ten waves together. Downed players return when a wave is cleared.' },
 ];
 
 const DISCORD_MARK =
@@ -303,7 +304,7 @@ class Menus implements MenusApi {
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
     const actions = el('div', 'actions', main);
-    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
+    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : mode === 'coop' ? 'LOBBY' : 'DEPLOY', 'primary big', () => this.deploy());
     deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
     deployBtn.disabled = this.locked;
     let showTab: (w: 'controls' | 'settings') => void = () => {};

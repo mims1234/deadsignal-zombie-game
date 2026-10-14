@@ -110,7 +110,7 @@
       const clock = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '--');
       const hours = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round((s || 0) / 60)} min`);
       const when = (t) => (t ? new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--');
-      const MODE = { standard: 'Standard', cards: 'Card recovery', roam: 'Free roam' };
+      const MODE = { standard: 'Standard', cards: 'Card recovery', roam: 'Free roam', coop: 'Co-op waves' };
 
       async function api(path, body) {
         const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body) } : undefined);
