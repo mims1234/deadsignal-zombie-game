@@ -736,6 +736,11 @@ export const COOP = {
   /** World snapshots the host sends per second, and position reports each guest sends. */
   snapshotHz: 10,
   reportHz: 12,
+  /** Wave objectives. While a hold / collect objective is open the wave keeps trickling infected in. */
+  mission: { holdSeconds: 28, holdRadius: 7, cores: 3, coreRadius: 1.7, rewardBase: 200, rewardPerWave: 50, trickleEvery: 2.2, eliteHp: 3.2 },
+  /** Waves on which a card carrier joins (one each), and the cash every player gets when her card is recovered. */
+  carrierWaves: [2, 4, 6, 8, 9],
+  carrierReward: 350,
 } as const;
 
 export const FREE_ROAM = {

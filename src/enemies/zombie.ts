@@ -28,8 +28,10 @@ export interface NetZombie {
   speed: number;
   /** 0..1 health. */
   hp: number;
-  /** bits 0-1 death style, 4 headshot death, 8 enraged. */
+  /** bits 0-1 death style, 4 headshot death, 8 enraged, 16 knocked down (carriers). */
   flags: number;
+  /** Card carrier number (1-based), or 0 for an ordinary infected. */
+  carrier: number;
 }
 
 export interface PlayerRef {
@@ -89,6 +91,8 @@ export class Zombie {
   puppet = false;
   /** The host's id for this infected (puppets only). */
   netId = 0;
+  /** Card carrier number (1-based), or 0. */
+  carrierIdx = 0;
   /** Co-op host: index of the player this infected is hunting. */
   targetIdx = 0;
   private netX = 0;
@@ -245,7 +249,8 @@ export class Zombie {
       staggerT: a.staggerT,
       speed: a.speed,
       hp: Math.max(0, this.hp / this.maxHp),
-      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0),
+      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0),
+      carrier: this.carrierIdx,
     };
   }
 
@@ -260,7 +265,17 @@ export class Zombie {
     this.netSpeed = n.speed;
     this.hp = n.hp * this.maxHp;
     this.enraged = (n.flags & 8) !== 0;
-    if (n.mode === 'death' && this.state !== 'dead') {
+    if (n.flags & 16) {
+      if (this.state !== 'downed') {
+        this.state = 'downed';
+        this.deathT = 0;
+        this.deathStyle = (n.flags & 3) as 0 | 1 | 2;
+      }
+    } else if (this.state === 'downed') {
+      // back on her feet
+      this.rig.reset(this.id * 7919);
+      this.state = 'chase';
+    } else if (n.mode === 'death' && this.state !== 'dead') {
       this.state = 'dead';
       this.deathT = 0;
       this.deathStyle = (n.flags & 3) as 0 | 1 | 2;
@@ -277,7 +292,7 @@ export class Zombie {
     this.z += (this.netZ - this.z) * k;
     this.yaw = wrap(this.yaw + wrap(this.netYaw - this.yaw) * k);
     this.hitKick = Math.max(0, this.hitKick - dt * 5);
-    if (this.state === 'dead') this.deathT += dt;
+    if (this.state === 'dead' || this.state === 'downed') this.deathT += dt;
     this.pose(env, this.netSpeed);
   }
 

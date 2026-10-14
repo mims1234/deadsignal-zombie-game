@@ -109,6 +109,8 @@ export class ZombieManager {
   /** Co-op guest: damage is not applied here but reported to the host through this. */
   netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
+  /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
+  carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
 
   constructor(
     private readonly factory: ZombieFactory,
@@ -196,6 +198,13 @@ export class ZombieManager {
   get aliveCount(): number {
     let n = 0;
     for (const z of this.zombies) if (z.alive) n++;
+    return n;
+  }
+
+  /** Alive infected that have to be killed (a card carrier is purged, not killed, so she does not count). */
+  get hostileCount(): number {
+    let n = 0;
+    for (const z of this.zombies) if (z.alive && !z.curable) n++;
     return n;
   }
 
@@ -296,7 +305,9 @@ export class ZombieManager {
       seen.add(n.id);
       let z = this.byNet.get(n.id);
       if (!z) {
-        z = this.spawn(n.type, n.x, n.z, rng, { yaw: n.yaw, boss: n.type === 'warden' });
+        const carrier = n.carrier > 0 ? (this.carrierRig?.(n.carrier - 1) ?? null) : null;
+        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : { yaw: n.yaw, boss: n.type === 'warden' });
+        z.carrierIdx = n.carrier;
         z.puppet = true;
         z.netId = n.id;
         this.byNet.set(n.id, z);

@@ -22,6 +22,10 @@ It also runs on phones and tablets held sideways, with on-screen controls (see b
 
 ## The mission
 
+The district now runs east through the old Route 9 collapse into the **rail yard**, a walled freight yard of
+container lanes (high threat) with its own caches and infected.
+
+
 1. **Restore the relay** — activate the transmitter, then stay inside the marked circle for 55 seconds while the infected converge on it.
 2. **Eliminate the Warden** — find the armored elite in the research compound. Shoot the helmet off, then go for the head.
 3. **Extract** — call the helicopter from the LZ radio, survive the final horde, and board it alive.
@@ -49,6 +53,10 @@ Pick one on the title screen before you deploy. The choice is remembered.
   tougher than the last and scales with the squad; the Warden joins on waves 5 and 10. A player who goes down returns
   when the wave is cleared, and the run is lost only if everyone is down at once. Hold `Tab` for the scoreboard:
   kills, downs, who is up, and who is watching. Up to three more people can watch as spectators.
+  From wave 2, most waves carry a squad objective that pays every player when it is done: hold a marked point,
+  recover three data cores, kill a marked elite (the Hunter), or clear the wave with nobody going down. Hold and
+  recover keep the wave going until they are finished. On waves 2, 4, 6, 8 and 9 a card carrier joins the fight:
+  anyone can knock her down and purge her, and whoever takes the card earns it for the whole squad.
   The session's creator can kick players, end the session, and switch it between "anyone with the link" and
   invite-only (a list of Discord ids). Any player can report another from the lobby.
 

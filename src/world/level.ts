@@ -12,6 +12,7 @@ import type { GlowField } from './glow';
 import type { SpireHandle, TransmitterHandle } from './landmarks';
 import { LevelDataBuilder, regionAtRects, yawFacing, type LevelData } from './layout/data';
 import { buildCompound, COMPOUND } from './layout/compound';
+import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
 import { buildLandingZone, buildNorthStrip, LZ } from './layout/northwest';
 import { buildRoads } from './layout/roads';
@@ -20,7 +21,7 @@ import type { Ctx } from './layout/util';
 import type { MaterialLib } from './materials';
 import { FlowField, NavGrid, UNREACHABLE } from './nav';
 
-export const WORLD_BOUNDS = { minX: -66, maxX: 66, minZ: -52, maxZ: 52 };
+export const WORLD_BOUNDS = { minX: -66, maxX: 110, minZ: -52, maxZ: 52 };
 
 export interface PlacementReport {
   moved: string[];
@@ -60,6 +61,7 @@ export function buildLevel(mats: MaterialLib): Level {
   buildNorthStrip(c);
   const depot = buildDepot(c);
   const compound = buildCompound(c);
+  buildRailYard(c);
   b.finalize();
 
   // ---- gameplay placement validation ----

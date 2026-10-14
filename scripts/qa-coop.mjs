@@ -92,8 +92,30 @@ await host.evaluate(() => { const g = window.__dead.game; window.__dead.setHealt
 check('clearing the wave starts a break', await until(host, () => window.__dead.game.coop.waves.phase === 'break' && window.__dead.game.coop.waves.n === 1));
 check('the downed guest is back on their feet', await until(guest, () => window.__dead.game.playerAlive() && window.__dead.game.session.vitals.health === 100));
 
-// everyone down in a wave: lost, for everyone
 check('wave 2 starts', await until(host, () => window.__dead.game.coop.waves.n === 2 && window.__dead.game.coop.waves.phase === 'active', null, 40000));
+
+// a wave objective: the host is given a one-core collect objective at the guest's feet
+const cashBefore = await guest.evaluate(() => window.__dead.game.session.inv.cash);
+const at = await guest.evaluate(() => ({ x: window.__dead.game.player.x, z: window.__dead.game.player.z }));
+await host.evaluate((p) => { const c = window.__dead.game.coop; c.elitePending = false; c.mission = { kind: 'collect', status: 'active', progress: 0, x: p.x, z: p.z, radius: 7, items: [{ x: p.x, z: p.z, taken: false }], eliteId: 0, reward: 300 }; }, at);
+check('a guest completing the objective pays the whole squad', (await until(guest, (c) => window.__dead.game.session.inv.cash >= c + 300, cashBefore)) && (await until(host, () => window.__dead.game.coop.mission.status === 'done')));
+check('the guest HUD shows the objective as complete', await until(guest, () => /RECOVER THE DATA CORES[\s\S]*Complete/.test(document.querySelector('.ds-obj').innerText)));
+
+// a card carrier: spawned by the host, downed and purged by the guest, the card goes to both
+await host.evaluate(() => { window.__dead.game.coop.carrierPending = 1; });
+check('the carrier appears for the guest as a carrier puppet', await until(guest, () => window.__dead.game.zombies.zombies.some((z) => z.carrierIdx === 2 && z.curable && z.puppet), null, 30000));
+await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.carrierIdx === 2); for (let i = 0; i < 4; i++) g.zombies.damage(z, 590, true, g.zenv, 0); });
+check('the guest knocks her down (she is not killed)', await until(guest, () => window.__dead.game.zombies.zombies.find((q) => q.carrierIdx === 2)?.state === 'downed'));
+await guest.evaluate(() => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.carrierIdx === 2); g.player.teleport(z.x + 1, z.z); });
+check('the guest gets the purge prompt', await until(guest, () => window.__dead.game.cards.cureTarget() !== null));
+await sleep(400); // let the host hear where the guest now stands
+await guest.evaluate(() => { const g = window.__dead.game; g.cards.cure(g.cards.cureTarget().id); });
+check('the purge happens on the host and the card drops', await until(host, () => window.__dead.game.session.carriers.some((c) => c.phase === 'purged')));
+const lootAt = await host.evaluate(() => { const g = window.__dead.game; const u = g.cards.units.find((q) => q.state && q.state.phase === 'purged'); return { x: u.loot.position.x, z: u.loot.position.z, id: u.def.id }; });
+await guest.evaluate((p) => window.__dead.game.player.teleport(p.x + 0.3, p.z), lootAt);
+check('when the guest takes the card, both players get it', (await until(guest, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)) && (await until(host, (id) => window.__dead.game.cards.collection().find((c) => c.id === id).count >= 1, lootAt.id)));
+
+// everyone down in a wave: lost, for everyone
 await guest.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });
 await until(host, () => window.__dead.game.coop.scoreboard().rows.some((r) => !r.you && !r.alive));
 await host.evaluate(() => { const g = window.__dead.game; g.session.vitals.armor = 0; g.hurtPlayer(9999, null, null, {}); });

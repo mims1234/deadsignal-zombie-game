@@ -1301,6 +1301,15 @@ export class Game implements GameCtx {
     this.feed(`+$${cash}  ${name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
   }
 
+  /** A wave objective was completed: the squad bonus. */
+  grantBonus(cash: number, title: string): void {
+    addCash(this.session.inv, cash);
+    this.hud.event({ type: 'cash', amount: cash });
+    this.banner('OBJECTIVE COMPLETE', `${title}  +$${cash}`, 'good', 4);
+    this.feed(`OBJECTIVE COMPLETE  +$${cash}`, 'good');
+    this.audio.play('contract_complete', { priority: 3 });
+  }
+
   /** An infected on the host struck this player. */
   takeRemoteHit(amount: number, sx: number, sz: number, knock: number): void {
     this.zombieHurt(amount, sx, sz, 'melee', knock);

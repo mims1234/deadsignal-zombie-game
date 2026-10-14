@@ -47,6 +47,7 @@ interface Unit {
 }
 
 const PORTRAIT_H = 0.72;
+const PHASES: readonly CarrierState['phase'][] = ['roaming', 'identified', 'downed', 'purged', 'recovered'];
 
 export class CardRuntime {
   readonly root = new THREE.Group();
@@ -55,6 +56,16 @@ export class CardRuntime {
   private counts: Record<string, number> = {};
   /** Called with the card id whenever one is picked up. */
   onRecovered: (id: string) => void = () => {};
+  /**
+   * Co-op. `host`: this client decides what happens to the carriers and tells the others. `remote`: carriers
+   * mirror the host, and purging or taking a card is a request to it.
+   */
+  coopMode: 'off' | 'host' | 'remote' = 'off';
+  onCoopCure: (id: string) => void = () => {};
+  onCoopTake: (id: string) => void = () => {};
+  /** Host: a card was picked up; everyone (the host included) is to be awarded it. */
+  onCoopRecovered: (id: string) => void = () => {};
+  private askedAt = 0;
   private passive = false;
   private time = 0;
   private readonly head = new THREE.Vector3();
@@ -167,7 +178,7 @@ export class CardRuntime {
     const s = ctx.session;
     this.time += dt;
     const live = !this.passive && ctx.playerAlive() && !s.ended;
-    if (live && s.carriers.length > 0 && s.elapsed > 12 && !s.flags.has('cardBrief')) {
+    if (live && this.coopMode === 'off' && s.carriers.length > 0 && s.elapsed > 12 && !s.flags.has('cardBrief')) {
       s.flags.add('cardBrief');
       ctx.radio('COMMAND', 'One more thing. Five archive cards went missing in the sector, and the signal has grown a body around each of them. Put a carrier down, purge it, and bring the card home.', 8);
     }
@@ -178,7 +189,7 @@ export class CardRuntime {
         z.rig.getHeadWorld(this.head);
         u.portrait.visible = !z.dormant;
         u.portrait.position.set(this.head.x, this.head.y + (z.state === 'downed' ? 0.55 : 0.34) + Math.sin(this.time * 2 + u.hintX) * 0.02, this.head.z);
-        if (st && live) {
+        if (st && live && this.coopMode !== 'remote') {
           const dist = Math.hypot(z.x - p.x, z.z - p.z);
           if (identifyCarrier(st, dist)) this.onIdentified(u);
           if (z.state === 'downed' && downCarrier(st)) this.onDowned(u);
@@ -224,8 +235,20 @@ export class CardRuntime {
   private pickUp(u: Unit, st: CarrierState): void {
     const ctx = this.ctx;
     const s = ctx.session;
+    if (this.coopMode === 'remote') {
+      // ask the host; it answers everyone with the award
+      if (this.time - this.askedAt > 0.5) {
+        this.askedAt = this.time;
+        this.onCoopTake(u.def.id);
+      }
+      return;
+    }
     if (!recoverCarrier(st)) return;
     u.loot.visible = false;
+    if (this.coopMode === 'host') {
+      this.onCoopRecovered(u.def.id);
+      return;
+    }
     this.counts[u.def.id] = (this.counts[u.def.id] ?? 0) + 1;
     saveCards(Object.keys(this.counts));
     this.onRecovered(u.def.id);
@@ -265,6 +288,10 @@ export class CardRuntime {
     const ctx = this.ctx;
     const u = this.units.find((q) => q.def.id === id);
     const z = u?.zombie;
+    if (this.coopMode === 'remote') {
+      if (u?.state?.phase === 'downed') this.onCoopCure(id);
+      return;
+    }
     if (!u || !z || !u.state || !purgeCarrier(u.state)) return;
     for (const y of [0.3, 0.8, 1.3]) ctx.fx.sparkle({ x: z.x, y, z: z.z }, y > 1 ? 0xffffff : u.def.accent, 18);
     ctx.audio.play('upgrade_ok', { priority: 3 });
@@ -276,6 +303,99 @@ export class CardRuntime {
     u.ring.visible = false;
     ctx.zombies.remove(z);
     u.zombie = null;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // co-op
+  // ---------------------------------------------------------------------------------------------
+
+  /** The model and stats of carrier `i`, for a guest's puppet. */
+  rigFor(i: number): { rig: ZombieRigImpl; def: ZombieDef } | null {
+    const u = this.units[i];
+    return u ? { rig: u.rig, def: u.stats } : null;
+  }
+
+  /** Host: put carrier `i` into the fight at (x, z). Null when she is already in play. */
+  coopSpawn(i: number, x: number, z: number, hpScale: number): Zombie | null {
+    const u = this.units[i];
+    if (!u || u.zombie || u.state) return null;
+    u.zombie = this.ctx.zombies.spawn(u.def.base, x, z, this.ctx.rng, { rig: u.rig, def: u.stats, curable: true, hpScale });
+    u.zombie.carrierIdx = i + 1;
+    u.state = createCarrier(u.def.id);
+    u.state.phase = 'identified';
+    this.ctx.session.carriers.push(u.state);
+    return u.zombie;
+  }
+
+  /** Host: a player asked to take the card on the ground. `x, z` is where that player is. */
+  coopTake(id: string, x: number, z: number): void {
+    const u = this.units.find((q) => q.def.id === id);
+    if (!u?.state || u.state.phase !== 'purged') return;
+    if (Math.hypot(u.loot.position.x - x, u.loot.position.z - z) > CARD_MODE.pickupRadius + 2.5) return;
+    if (!recoverCarrier(u.state)) return;
+    u.loot.visible = false;
+    this.onCoopRecovered(id);
+  }
+
+  /** Where carrier `id` lies, for checking that a purge request comes from someone next to her. */
+  downedAt(id: string): { x: number; z: number } | null {
+    const u = this.units.find((q) => q.def.id === id);
+    return u?.state?.phase === 'downed' && u.zombie ? { x: u.zombie.x, z: u.zombie.z } : null;
+  }
+
+  /** Give this player the card: collection, account, cash and the reveal. */
+  award(id: string, cash: number): void {
+    const ctx = this.ctx;
+    const u = this.units.find((q) => q.def.id === id);
+    if (!u) return;
+    this.counts[id] = (this.counts[id] ?? 0) + 1;
+    saveCards(Object.keys(this.counts));
+    this.onRecovered(id);
+    addCash(ctx.session.inv, cash);
+    ctx.hudEvent({ type: 'cash', amount: cash });
+    ctx.hudEvent({ type: 'card', name: u.def.name, series: u.def.series, image: u.kit.url, accent: cssColor(u.def.accent), count: this.counts[id]!, total: this.units.length });
+    ctx.feed(`CARD RECOVERED  +$${cash}`, 'good');
+    ctx.audio.play('contract_complete', { priority: 3 });
+  }
+
+  /** Host: each carrier in play as [index, phase, seconds left on the ground, card x, card z]. */
+  coopState(): number[][] {
+    const out: number[][] = [];
+    this.units.forEach((u, i) => {
+      if (u.state) out.push([i, PHASES.indexOf(u.state.phase), Math.round(u.state.downLeft), Math.round(u.loot.position.x * 10) / 10, Math.round(u.loot.position.z * 10) / 10]);
+    });
+    return out;
+  }
+
+  /** Guest / spectator: mirror the host's carriers. `puppet` finds the local infected for a carrier number. */
+  coopApply(list: readonly number[][], puppet: (carrier: number) => Zombie | null): void {
+    const seen = new Set<number>();
+    for (const q of list) {
+      const i = q[0]!;
+      const u = this.units[i];
+      if (!u) continue;
+      seen.add(i);
+      const phase = PHASES[q[1]!] ?? 'identified';
+      if (!u.state) u.state = createCarrier(u.def.id);
+      if (phase === 'downed' && u.state.phase !== 'downed') this.onDowned(u);
+      u.state.phase = phase;
+      u.state.downLeft = q[2]!;
+      u.zombie = phase === 'purged' || phase === 'recovered' ? null : puppet(i + 1);
+      u.loot.visible = phase === 'purged';
+      if (phase === 'purged') u.loot.position.set(q[3]!, 0, q[4]!);
+      if (!u.zombie) {
+        u.portrait.visible = false;
+        u.ring.visible = false;
+      }
+    }
+    this.units.forEach((u, i) => {
+      if (seen.has(i) || !u.state) return;
+      u.state = null;
+      u.zombie = null;
+      u.portrait.visible = false;
+      u.ring.visible = false;
+      u.loot.visible = false;
+    });
   }
 
   // ---------------------------------------------------------------------------------------------

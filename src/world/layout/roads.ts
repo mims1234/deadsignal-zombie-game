@@ -243,7 +243,7 @@ export function buildBoundary(c: Ctx): void {
   // west wall with the Route 9 collapse gap z in [-7, 7]
   perimeterWall(b, -X, -Z, -X, -7.2);
   perimeterWall(b, -X, 7.2, -X, Z);
-  // east wall with the Route 9 collapse gap
+  // east wall: the gap is the way through to the rail yard
   perimeterWall(b, X, -Z, X, -7.2);
   perimeterWall(b, X, 7.2, X, Z);
 
@@ -256,9 +256,7 @@ export function buildBoundary(c: Ctx): void {
 
   // collapsed roads at both ends of Route 9
   collapsedRoad(b, { x: -60.5, z: 0, rot: 0, w: 9, d: 16, seed: 3 });
-  collapsedRoad(b, { x: 60.5, z: 0, rot: Math.PI, w: 9, d: 16, seed: 5 });
   b.collideBox(-64.6, 0, 1.8, 16, 6, { mapKind: 'wall', tag: 'collapse-backstop' });
-  b.collideBox(64.6, 0, 1.8, 16, 6, { mapKind: 'wall', tag: 'collapse-backstop' });
   overpassRuin(b, { x: -62, z: -36, rot: HALF_PI, length: 28, width: 9 });
   wallDecal(b, 'stencilQuarantine', -X + 0.62, 2.6, -30, 8, 2.2, HALF_PI);
   wallDecal(b, 'stencilDanger', X - 0.62, 2.6, 30, 8, 2.2, -HALF_PI);
@@ -268,12 +266,12 @@ export function buildBoundary(c: Ctx): void {
 
   // extra invisible backstops beyond the walls so nothing can ever leave the map
   const B = 70;
-  b.collide({ x: 0, z: -B, hx: 80, hz: 2, y1: 30, mapKind: 'none' });
-  b.collide({ x: 0, z: B - 12, hx: 80, hz: 2, y1: 30, mapKind: 'none' });
+  b.collide({ x: 20, z: -B, hx: 100, hz: 2, y1: 30, mapKind: 'none' });
+  b.collide({ x: 20, z: B - 12, hx: 100, hz: 2, y1: 30, mapKind: 'none' });
   b.collide({ x: -B, z: 0, hx: 2, hz: 60, y1: 30, mapKind: 'none' });
-  b.collide({ x: B, z: 0, hx: 2, hz: 60, y1: 30, mapKind: 'none' });
+  b.collide({ x: 114, z: 0, hx: 2, hz: 60, y1: 30, mapKind: 'none' }); // beyond the rail yard's east wall
 
-  skylineBackdrop(b, { bounds: { minX: -66, maxX: 66, minZ: -52, maxZ: 52 }, seed: 17 });
+  skylineBackdrop(b, { bounds: { minX: -66, maxX: 110, minZ: -52, maxZ: 52 }, seed: 17 });
 }
 
 export function buildRoads(c: Ctx): void {
