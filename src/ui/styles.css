@@ -2608,27 +2608,103 @@ html.ds-rm .ds-menus {
   }
 }
 
-/* ---- account line (title) ---- */
+/* ---- account row (title) ---- */
 .ds-title-main .acct {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5em 0.9em;
-  margin-top: 1em;
-  font-size: max(10px, 0.78em);
-  letter-spacing: 0.16em;
+  gap: 0.7em 1.1em;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0.2em 0 1.4em;
+  padding: 0.7em 0.9em;
+  background: rgba(9, 12, 10, 0.72);
+  border: 1px solid var(--ds-line);
+  border-left: 3px solid var(--ds-green);
 }
-.ds-title-main .acct .lbl {
-  color: var(--ds-ink-faint);
+.ds-title-main .acct.out {
+  border-left-color: #5865f2;
+}
+.ds-title-main .acct .discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.7em 1.3em;
+  font-size: 1em;
+  letter-spacing: 0.16em;
+  color: #fff;
+  background: #5865f2;
+  border-color: #5865f2;
+  text-shadow: none;
+}
+.ds-title-main .acct .discord:hover,
+.ds-title-main .acct .discord:focus-visible {
+  background: #6d78f5;
+  border-color: #fff;
+}
+.ds-title-main .acct .discord svg {
+  width: 1.5em;
+  height: 1.5em;
+}
+.ds-title-main .acct .why {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  font-size: max(10px, 0.78em);
+  letter-spacing: 0.06em;
+  color: var(--ds-ink-dim);
+}
+.ds-title-main .acct .why b {
+  letter-spacing: 0.2em;
+  color: #f4f7ea;
+}
+.ds-title-main .acct .avatar {
+  display: grid;
+  place-items: center;
+  width: 2.6em;
+  height: 2.6em;
+  border-radius: 50%;
+  border: 1px solid var(--ds-line-strong);
+  background: #1c241d;
+  font-weight: 700;
+  color: var(--ds-green);
 }
 .ds-title-main .acct .who {
-  color: #f4f7ea;
-  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  min-width: 8em;
 }
-.ds-title-main .acct .ds-btn {
-  padding: 0.35em 0.8em;
-  font-size: 0.9em;
+.ds-title-main .acct .who .lbl {
+  font-size: max(9px, 0.66em);
+  letter-spacing: 0.24em;
+  color: var(--ds-green);
+}
+.ds-title-main .acct .who b {
+  font-size: 1.1em;
+  letter-spacing: 0.06em;
+  color: #f4f7ea;
+}
+.ds-title-main .acct .tools {
+  display: flex;
+  gap: 0.5em;
+}
+.ds-title-main .acct .tools .ds-btn {
+  padding: 0.5em 0.9em;
+  font-size: max(10px, 0.74em);
   text-decoration: none;
+}
+.ds-title-main .actions {
+  flex-wrap: nowrap;
+}
+.ds-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.7);
+}
+@media (max-width: 700px) {
+  .ds-title-main .actions {
+    flex-wrap: wrap;
+  }
 }
 .ds-brief .cards .card {
   position: relative;

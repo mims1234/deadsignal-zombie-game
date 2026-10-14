@@ -185,6 +185,7 @@ export class Game implements GameCtx {
     this.menus.setAccount({
       online: this.account.online,
       name: this.account.user?.name ?? null,
+      avatar: this.account.user?.avatar ?? null,
       admin: this.account.admin,
       loginUrl: this.account.loginUrl,
       loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',

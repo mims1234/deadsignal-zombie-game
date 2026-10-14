@@ -6,7 +6,7 @@
 import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS } from '../config';
 import type { BestRun, GameMode, MissionStats, Settings } from '../types';
-import { el, fmtClock, fmtInt, fmtMoney } from './dom';
+import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
@@ -44,6 +44,9 @@ const MODES: { id: GameMode; label: string; note: string }[] = [
   { id: 'roam', label: 'FREE ROAM', note: 'No mission and no damage. Fly anywhere and look around.' },
 ];
 
+const DISCORD_MARK =
+  'M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z';
+
 class Menus implements MenusApi {
   private root: HTMLElement | null = null;
   private layer!: HTMLElement;
@@ -58,7 +61,7 @@ class Menus implements MenusApi {
   private touch = false;
   private info: ModeInfo = { mode: 'standard', cards: [] };
   private lastBest: BestRun | null = null;
-  private account: AccountInfo = { online: false, name: null, admin: false, loginUrl: '', loginFailed: false };
+  private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -253,6 +256,38 @@ class Menus implements MenusApi {
       'The district has been sealed for nine days. Insert at the checkpoint, clear two contracts, call the bird, and get out before the surge takes the landing zone.',
     );
 
+    // ---- account: its own row, first, because nothing else works without it ----
+    let signInBtn: HTMLButtonElement | null = null;
+    if (this.account.online) {
+      const acct = el('div', this.locked ? 'acct out' : 'acct', main);
+      if (this.locked) {
+        signInBtn = this.button(acct, '', 'discord', () => window.location.assign(this.account.loginUrl));
+        const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, signInBtn);
+        svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
+        el('span', '', signInBtn, 'SIGN IN WITH DISCORD');
+        const why = el('div', 'why', acct);
+        el('b', '', why, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE - TRY AGAIN' : 'STEP 1  -  SIGN IN TO PLAY');
+        el('span', '', why, 'Only your Discord name and avatar are read.');
+      } else {
+        if (this.account.avatar) {
+          const img = el('img', 'avatar', acct);
+          img.src = this.account.avatar;
+          img.alt = '';
+        } else {
+          el('span', 'avatar', acct, (this.account.name ?? '?').slice(0, 1).toUpperCase());
+        }
+        const who = el('div', 'who', acct);
+        el('span', 'lbl', who, 'SIGNED IN');
+        el('b', '', who, this.account.name ?? '');
+        const tools = el('div', 'tools', acct);
+        if (this.account.admin) {
+          const link = el('a', 'ds-btn', tools, 'ADMIN DASHBOARD');
+          link.href = '/admin';
+        }
+        this.button(tools, 'SIGN OUT', '', () => this.cb.onLogout());
+      }
+    }
+
     // ---- what DEPLOY starts ----
     const modes = el('div', 'modes', main);
     el('span', 'lbl', modes, 'MODE');
@@ -268,28 +303,18 @@ class Menus implements MenusApi {
     el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
     const actions = el('div', 'actions', main);
-    const deployBtn = this.locked
-      ? this.button(actions, 'SIGN IN WITH DISCORD', 'primary big', () => window.location.assign(this.account.loginUrl))
-      : this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
-    if (!this.locked) deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
+    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : 'DEPLOY', 'primary big', () => this.deploy());
+    deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
+    deployBtn.disabled = this.locked;
     let showTab: (w: 'controls' | 'settings') => void = () => {};
     this.button(actions, 'SETTINGS', '', () => showTab('settings'));
     this.button(actions, 'CONTROLS', '', () => showTab('controls'));
-    if (this.locked) {
-      el('div', 'note', main, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE. TRY AGAIN.' : 'A Discord account is needed to play. Only your name and avatar are read.');
-    } else {
-      el('div', 'note', main, this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.');
-    }
-    if (this.account.name !== null) {
-      const acct = el('div', 'acct', main);
-      el('span', 'lbl', acct, 'SIGNED IN AS');
-      el('span', 'who', acct, this.account.name);
-      if (this.account.admin) {
-        const a = el('a', 'ds-btn', acct, 'ADMIN');
-        a.href = '/admin';
-      }
-      this.button(acct, 'SIGN OUT', '', () => this.cb.onLogout());
-    }
+    el(
+      'div',
+      'note',
+      main,
+      this.locked ? 'Sign in above to unlock deployment.' : this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.',
+    );
 
     const bestEl = el('div', 'best', main);
     if (best) {
@@ -349,7 +374,7 @@ class Menus implements MenusApi {
     el('div', 'ds-title-foot', root, `DEAD SIGNAL: EXCLUSION ZONE  //  SINGLE-PLAYER  //  ${this.touch ? 'TOUCH CONTROLS' : 'KEYBOARD AND MOUSE'}`);
 
     this.setScreen('title', root);
-    deployBtn.focus({ preventScroll: true });
+    (signInBtn ?? deployBtn).focus({ preventScroll: true });
   }
 
   // -------------------------------------------------------------------------------------------

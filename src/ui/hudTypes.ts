@@ -173,6 +173,8 @@ export interface AccountInfo {
   online: boolean;
   /** Display name, or null when signed out. */
   name: string | null;
+  /** Avatar image address, when the account has one. */
+  avatar: string | null;
   admin: boolean;
   loginUrl: string;
   /** The last sign-in attempt did not complete. */

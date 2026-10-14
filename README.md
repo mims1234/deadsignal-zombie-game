@@ -110,6 +110,14 @@ Run statistics come from the player's browser, so treat them as analytics, not a
 For local work, `DEV_LOGIN=1 pnpm server` adds `/auth/dev?id=<discord id>&name=<name>`, a sign-in that skips Discord,
 and `pnpm dev` proxies `/api`, `/auth` and `/admin` to it. `scripts/qa-server.mjs` checks the API end to end.
 
+### Deploying
+
+`bash scripts/deploy.sh` on the server updates the checkout to `origin/main`, installs, builds, restarts the pm2
+process and checks that the server answers. `.github/workflows/ci.yml` runs typecheck, tests and the build on every
+push, and after a passing push to `main` runs that script over SSH when these repository secrets are set:
+`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (a private key whose public half is in the server's
+`authorized_keys`), `DEPLOY_PATH` (the checkout folder) and optionally `DEPLOY_PORT`.
+
 ## Development
 
 ```bash

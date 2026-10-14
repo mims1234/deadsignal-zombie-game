@@ -1,0 +1,48 @@
+# Checks every push and pull request. A push to main that passes is then deployed to the server over SSH,
+# provided the DEPLOY_* secrets are set (without them the deploy step is skipped).
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency: deploy
+    env:
+      HOST: ${{ secrets.DEPLOY_HOST }}
+      USER: ${{ secrets.DEPLOY_USER }}
+      KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      APP_DIR: ${{ secrets.DEPLOY_PATH }}
+      SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+    steps:
+      - name: Deploy over SSH
+        if: env.HOST != '' && env.KEY != ''
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh -i ~/.ssh/deploy -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=accept-new "$USER@$HOST" \
+            "bash -lc 'cd \"$APP_DIR\" && git fetch --quiet origin main && git checkout --quiet -B main origin/main && bash scripts/deploy.sh'"
+      - name: Deploy skipped
+        if: env.HOST == '' || env.KEY == ''
+        run: echo "DEPLOY_HOST / DEPLOY_SSH_KEY are not set, so nothing was deployed."
