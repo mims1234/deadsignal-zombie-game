@@ -39,6 +39,7 @@ import {
   zombieScreech,
   zombieSnarl,
 } from './creatures';
+import { keysJingle, matronShriek } from './matron';
 import {
   boarding,
   contractComplete,
@@ -219,6 +220,8 @@ export const SOUND_SPECS: Record<SoundId, SoundSpec> = {
   zombie_bellow: S(3, 'lo', 2, 'sfx', 0.05, 0.08, 0.32, false, zombieBellow),
   warden_roar: S(2, 'lo', 3, 'sfx', 0.03, 0.04, 0.4, false, wardenRoar),
   warden_slam: S(1, 'lo', 3, 'sfx', 0.03, 0.04, 0.4, false, wardenSlam),
+  matron_shriek: S(2, 'mid', 3, 'sfx', 0.03, 0.04, 0.42, false, matronShriek),
+  keys_jingle: S(3, 'mid', 1, 'sfx', 0.06, 0.12, 0.2, false, keysJingle),
   zombie_attack: S(3, 'lo', 2, 'sfx', 0.06, 0.1, 0.2, true, zombieAttack),
   zombie_claw_hit: S(3, 'lo', 3, 'sfx', 0.05, 0.08, 0.1, true, zombieClawHit),
   zombie_hurt: S(4, 'lo', 1, 'sfx', 0.07, 0.1, 0.2, true, zombieHurt),
@@ -283,6 +286,8 @@ const ROLLOFF: Partial<Record<SoundId, number>> = {
   zombie_attack: 0.8,
   warden_roar: 0.35,
   warden_slam: 0.4,
+  matron_shriek: 0.35,
+  keys_jingle: 0.9,
   grenade_explosion: 0.5,
   rpg_shot: 0.5,
   rpg_shot_up: 0.5,

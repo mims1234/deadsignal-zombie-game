@@ -373,8 +373,8 @@ export class MissionRuntime implements MissionApi {
       // out of the search area (drawn out by the fighting): reveal him so the marker follows him, not an empty compound
       const strayed = Math.hypot(boss.x - data.hunt.searchX, boss.z - data.hunt.searchZ) > data.hunt.searchRadius + 10;
       if (updateHunt(s.hunt, strayed ? 0 : dist, true)) {
-        ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
-        ctx.radio('COMMAND', "That's him. Heavy plating - go for the head and watch for the slam.");
+        ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - ${data.text.bossSighted}`, 'danger', 4.5);
+        ctx.radio(data.text.bossRadio.from, data.text.bossRadio.text);
         ctx.audio.play('objective_ping', { priority: 2 });
       }
     }
@@ -488,7 +488,7 @@ export class MissionRuntime implements MissionApi {
     s.elapsed = m.elapsed;
     if (m.huntIdentified && !s.hunt.identified && s.hunt.status === 'active') {
       s.hunt.identified = true;
-      ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - heavily armored. Aim for the head.`, 'danger', 4.5);
+      ctx.banner('TARGET IDENTIFIED', `${data.text.boss} - ${data.text.bossSighted}`, 'danger', 4.5);
       ctx.audio.play('objective_ping', { priority: 2 });
     }
     if (m.huntStatus === 'complete' && s.hunt.status !== 'complete') this.onWardenKilled();

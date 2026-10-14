@@ -65,6 +65,9 @@ export interface MapText {
   hazardSite: string;
   /** The mission clock's label. */
   sealed: string;
+  /** When the boss is identified: the banner line and the radio call. */
+  bossSighted: string;
+  bossRadio: { from: string; text: string };
   regions: Record<Region, string>;
   /** Opening radio line. */
   brief: string;
@@ -93,6 +96,8 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     surge: 'CONTAMINATION SURGE',
     hazardSite: 'SPIRE',
     sealed: 'DISTRICT SEALED IN',
+    bossSighted: 'heavily armored. Aim for the head.',
+    bossRadio: { from: 'COMMAND', text: "That's him. Heavy plating - go for the head and watch for the slam." },
     regions: { low: 'Outer streets', medium: 'Industrial depot - armored infected sighted', high: 'Contaminated research compound' },
     brief: 'Insertion confirmed. Two contracts: restore the depot relay and eliminate the Warden. Three civilians are caged in out there - free them and they will fight. Then radio for extraction at LZ Echo.',
     kicker: 'SECTOR 7  //  QUARANTINE PERIMETER  //  BLUE HOUR',
@@ -120,6 +125,8 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     surge: 'FIRESTORM',
     hazardSite: 'FLUE',
     sealed: 'THE FORGE SEALS IN',
+    bossSighted: 'burning plate over burning flesh. Aim for the head.',
+    bossRadio: { from: 'COMMAND', text: "That's the Infernus. Plating like a furnace door - head shots, and stay clear of the slam." },
     regions: { low: 'Ember Market', medium: 'Phoenix Plaza - the forge hall', high: 'The Crucible - molten floor' },
     kicker: 'VULCAN HQ  //  EMBER NIGHT  //  RISE FROM THE FORGE',
     signal: 'VULCAN HQ DARK  -  LAST KNOWN POSITION: THE CRUCIBLE',
@@ -148,6 +155,8 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     surge: 'THE BLACK FOG',
     hazardSite: 'CREMATORIUM',
     sealed: 'THE GATES CLOSE IN',
+    bossSighted: 'she will not stop for body shots. Aim for the face.',
+    bossRadio: { from: 'OKAFOR', text: "That's her. That's Mourne. Don't let her scream - the whole ward comes when she does. Go for the face." },
     regions: { low: 'The front grounds', medium: 'The wards and the yard', high: 'Isolation, chapel and morgue - her rounds' },
     kicker: 'BLACKWOOD HILL  //  ASYLUM GROUNDS  //  DUSK TILL DAWN',
     signal: 'POWER OUT  -  LAST KNOWN POSITION: ISOLATION BLOCK',

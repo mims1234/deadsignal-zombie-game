@@ -10,6 +10,7 @@ import { combineTuning, IDENTITY_TUNING, type PhaseTuning } from '../logic/timeO
 import type { QualityLevel, Region, ZombieType } from '../types';
 import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
+import { MATRON_DEF, MatronBrain, createMatronRig, isMatronMap } from './matron';
 import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
 import type { ZombieFactory, ZombieRig } from './zombieRigTypes';
 
@@ -164,12 +165,15 @@ export class ZombieManager {
   spawnOverride: ((type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number) => Zombie | null) | null = null;
   /** Rewrites the damage of every hit and blast before it lands (power-ups: insta-kill). Runs where damage is applied. */
   damageFilter: ((z: Zombie, amount: number) => number) | null = null;
+  /** The Asylum: its boss is the Matron (`matron.ts`) - every 'warden' here gets her model and stats - and these are her abilities. Null elsewhere. */
+  readonly matron: MatronBrain | null;
 
   constructor(
     private readonly factory: ZombieFactory,
     private readonly level: Level,
   ) {
     this.root.name = 'Zombies';
+    this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
     const b = level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -182,7 +186,7 @@ export class ZombieManager {
     const pool = this.pools.get(type);
     const rig = pool?.pop();
     if (rig) return rig;
-    const created = this.factory.create(type, this.nextId * 131);
+    const created = type === 'warden' && this.matron ? createMatronRig(this.factory, this.nextId * 131) : this.factory.create(type, this.nextId * 131);
     this.root.add(created.root);
     return created;
   }
@@ -214,6 +218,7 @@ export class ZombieManager {
     rng: Rng,
     opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean } = {},
   ): Zombie {
+    if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron
     const rig = opts.rig ?? this.acquireRig(type);
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
     const zz = new Zombie(this.nextId++, type, rig);
@@ -319,7 +324,7 @@ export class ZombieManager {
     const b = this.boss;
     const l = this.lair;
     if (!b || !l || !b.alive || b.puppet) return;
-    const away = Math.hypot(b.x - l.x, b.z - l.z) > 14;
+    const away = this.matron ? this.matron.offRoute(b) : Math.hypot(b.x - l.x, b.z - l.z) > 14; // the Matron: off her rounds
     const calm = b.state === 'idle'; // idle means he has not noticed anyone
     // nobody may see either end of the move (a downed player still has eyes: everyone counts, up or not)
     const world = this.level.world;
@@ -389,7 +394,10 @@ export class ZombieManager {
       }
     }
 
-    if (aiEnabled) this.guardLair(dt, envs ? envs.map((e) => e.player) : [p]);
+    const players = envs ? envs.map((e) => e.player) : [p];
+    if (aiEnabled) this.guardLair(dt, players);
+    if (aiEnabled) this.matron?.update(dt, this.boss, this.zombies, players, env);
+    else this.matron?.watch(dt, this.boss);
 
     for (let i = this.zombies.length - 1; i >= 0; i--) {
       const z = this.zombies[i]!;
@@ -490,6 +498,7 @@ export class ZombieManager {
       z.setShadowLod(z.shadowOn ? d2 < 18 * 18 : d2 < 14 * 14);
       z.puppetStep(dt, env);
     }
+    this.matron?.watch(dt, this.boss); // her shriek and keys, from the host's reports
   }
 
   /** Co-op host: place one infected of a wave near the player described by `ctx`. False when no spot was free. */

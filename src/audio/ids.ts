@@ -62,6 +62,8 @@ export const SOUND_IDS = [
   'zombie_bellow', // armoured infected
   'warden_roar', // huge; also used for slam / charge windups
   'warden_slam', // heavy ground impact
+  'matron_shriek', // the Asylum's Matron: a thin, high, wavering scream (her alert cry and The Shriek)
+  'keys_jingle', // the ring of keys at the Matron's belt while she walks
   'zombie_attack', // whoosh + grunt on attack windup
   'zombie_claw_hit', // hit landing on the player
   'zombie_hurt',
