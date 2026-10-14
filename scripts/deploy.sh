@@ -4,6 +4,24 @@
 # Local edits to tracked files on the server are discarded; .env and data/ are untracked and are never touched.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# An SSH command does not load the interactive shell setup, so node / pnpm / pm2 installed through nvm or pnpm's own
+# installer are not on PATH yet. Bring in the usual locations.
+export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
+export PATH="$PNPM_HOME:$HOME/.local/bin:/usr/local/bin:$PATH"
+if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
+  set +u
+  . "${NVM_DIR:-$HOME/.nvm}/nvm.sh" > /dev/null
+  set -u
+fi
+for tool in node pnpm pm2; do
+  if ! command -v "$tool" > /dev/null 2>&1; then
+    echo "$tool was not found on PATH for this non-interactive shell." >&2
+    echo "Find it on the server with:  which $tool   and add that folder to PATH near the top of scripts/deploy.sh" >&2
+    exit 127
+  fi
+done
+
 APP="${PM2_APP:-zombies}"
 PORT="${PORT:-3061}"
 
