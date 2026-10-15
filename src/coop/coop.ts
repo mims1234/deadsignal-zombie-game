@@ -14,6 +14,8 @@
  *   rc        the Asylum's patient files taken (each client plays and pays itself once per file)
  *   lp        the Asylum's doors and power; a door is bought with a request and paid on the confirmation ('bought')
  *   bd        boards up on each of the Asylum's windows; a repair is a request, paid on the confirmation ('fixed')
+ *   fr / fg   the Forge's roster (now and then) and its story's state (`forge/net.ts`): who is holed up where and who
+ *             made it to the Hearth, the ledger, the Pit, the finale (each client plays and pays itself once per change)
  */
 import { COOP, type TeamSkill, VULCAN, type ZombieDifficulty } from '../config';
 import type { NetZombie, PlayerRef } from '../enemies/zombie';
@@ -296,6 +298,12 @@ export class CoopSession {
       };
     }
     if (g.asylum) g.asylum.remote = this.started ? { door: (i) => this.toHost({ k: 'door', i }), lever: () => this.toHost({ k: 'lever' }) } : null;
+    // the Forge: talking someone out, a ledger page and riry's bell are the simulation's to decide
+    if (g.forge) {
+      g.forge.requestHold = (i) => this.toHost({ k: 'hold', i });
+      g.forge.requestLedger = (i) => this.toHost({ k: 'ledger', i });
+      g.forge.requestBell = () => this.toHost({ k: 'bell' });
+    }
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
     this.life = LIFE.up;
@@ -463,6 +471,8 @@ export class CoopSession {
         windowLeft: ms[5]!,
         calledAt: ms[6]! < 0 ? null : ms[6]!,
       });
+      // the Forge's story first: its roster deploys the co-leaders the squad rows below are about
+      if (g.forge && d.fg !== undefined) g.forge.applyWire(d.fr, d.fg);
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], Number(d.em) || 0, (d.sh as number[][] | undefined) ?? []);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows

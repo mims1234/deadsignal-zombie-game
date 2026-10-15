@@ -227,7 +227,7 @@ export function cageSpots(level: Level, rng: Rng, count: number): { x: number; z
 }
 
 /**
- * The Trials of Ignis embers, each snapped onto open ground. Always the same spots (a fixed seed), so the co-op
+ * The Seven Flames (the Forge), each snapped onto open ground. Always the same spots (a fixed seed), so the co-op
  * simulation and every player's screen agree without sending them.
  */
 export function emberSpots(level: Level): { x: number; z: number }[] {

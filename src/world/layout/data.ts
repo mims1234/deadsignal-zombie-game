@@ -1,4 +1,5 @@
 /** Gameplay-facing description of the level (positions of stations, crates, spawn points, contract sites...). */
+import type { ForgeSites } from '../../forge/sites';
 import type { Region, ZombieType } from '../../types';
 import type { MapData } from '../../ui/hudTypes';
 
@@ -115,7 +116,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
   },
   forge: {
     name: 'THE FORGE',
-    tagline: 'Vulcan HQ, a foundry at ember night',
+    tagline: 'Vulcan HQ, a foundry district at ember night',
     defenseTitle: 'REKINDLE THE BEACON',
     defenseSite: 'BEACON',
     defensePrompt: 'IGNITE THE PHOENIX BEACON',
@@ -130,17 +131,17 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     hazardSite: 'FLUE',
     sealed: 'THE FORGE SEALS IN',
     bossSighted: 'burning plate over burning flesh. Aim for the head.',
-    bossRadio: { from: 'COMMAND', text: "That's the Infernus. Plating like a furnace door - head shots, and stay clear of the slam." },
-    regions: { low: 'Ember Market', medium: 'Phoenix Plaza - the forge hall', high: 'The Crucible - molten floor' },
+    bossRadio: { from: 'COMMAND', text: "That's... that was one of them. The first one. Plating like a furnace door - go for the head, and stay clear of the slam." },
+    regions: { low: 'The outer Forge', medium: 'The foundry quarter', high: 'The Crucible and the Spawn Hall' },
     kicker: 'VULCAN HQ  //  EMBER NIGHT  //  RISE FROM THE FORGE',
-    signal: 'VULCAN HQ DARK  -  LAST KNOWN POSITION: THE CRUCIBLE',
-    premise: 'The infection reached Vulcan HQ. Members of the clan walk the foundry with their names still on them, and its leaders are caged in somewhere in the Forge. Deploy with Ash and Cinder, free the leadership, rekindle the beacon, slay the Infernus and rise before the firestorm.',
-    foot: 'Two soldiers deploy with you and can die. tomoe, Anya, Marv03K, piryriry and Athy wait to be freed. Six Ignis embers burn somewhere in the Forge. A firestorm rises from the flue late in the mission.',
-    brief: 'Ember squad, Vulcan HQ has fallen. Its leaders are caged in around the Forge - break them out and they will fight. Rekindle the phoenix beacon, slay the Infernus in the Crucible, keep Ash and Cinder breathing, then rise from the forge at the Pad.',
+    signal: 'VULCAN HQ DARK  -  IGNIS EARNING: OFF',
+    premise: "The furnace under Vulcan HQ starved, and on the seventh day the phoenix rose wrong. Members of the clan walk the foundry with their names still on them; the rest barred themselves into rooms and are listening to the infected pound on the doors. Deploy with two of Vulcan's co-leaders, bring the holdouts to the Hearth, rekindle the beacon, slay the Infernus and rise before the firestorm.",
+    foot: "Two co-leaders deploy with you and can die. Clear the infected off a holdout's door and they slip out the back to the Hearth. Seven flames, four ledger pages and riry's Rumble Pit wait around the Forge. A firestorm rises from the flue late in the mission.",
+    brief: "Ember, Vulcan HQ went dark seven nights ago. People are barricaded in all over the Forge - clear their doors and they'll make for the Hearth by the Pad. Rekindle the phoenix beacon, slay the Infernus in the Crucible, keep the co-leaders breathing, then rise from the forge at the Pad.",
     rows: [
-      { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold the circle while it catches.' },
-      { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The burning elite walks the molten floor of the Crucible.' },
-      { tag: 'EXTRACT', title: 'RISE FROM THE FORGE', text: 'Signal the bird at the Pad, hold out, and board before the firestorm takes the district.' },
+      { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold the circle while it catches. It opens the HQ vault.' },
+      { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The first of them walks the molten floor of the Crucible.' },
+      { tag: 'EXTRACT', title: 'RISE FROM THE FORGE', text: 'Signal the bird at the Pad, hold out, and board with everyone at the Hearth before the firestorm takes the Forge.' },
     ],
   },
   asylum: {
@@ -210,6 +211,8 @@ export interface LevelData {
   hazardCenter: { x: number; z: number };
   regionRects: { region: Region; x0: number; z0: number; x1: number; z1: number }[];
   map: MapData;
+  /** The Forge's story sites: the safe rooms, the Hearth, the ledger pages, the Rumble Pit (`forge/sites.ts`). */
+  forge?: ForgeSites;
 }
 
 export function regionAtRects(rects: LevelData['regionRects'], x: number, z: number): Region {

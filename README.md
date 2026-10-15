@@ -57,18 +57,27 @@ You lose if you die, if the district seals before you call extraction, or if the
 Pick the map on the title screen (the page reloads to build it).
 
 - **The District** — the original exclusion zone, now with the rail yard to the east. Every mode runs here.
-- **The Forge** — a foundry district at ember night, after the Vulcan community (vulcan.genxmims.org): molten runoff in
-  open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. The infection has reached **Vulcan
-  HQ** on the plaza (its phoenix billboard and the clan's banners hang over a quarantined forge), and about a third of
-  the Forge's infected carry the names of Vulcan's members. Ember Market (insertion), the Pad
-  (extraction), Phoenix Plaza and the Crucible. The same structure as the District with its own contracts:
-  **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then **Rise from the Forge** at the Pad before the
-  firestorm. On top of that:
-  - **Ash and Cinder**, two soldiers who deploy with you, follow you, and shoot. The infected hunt them like they hunt
-    you, and they can die for good. **Keep the squad alive**: each soldier still alive at extraction pays $500.
-  - **Trials of Ignis**: six burning embers hidden around the map, $150 each and $600 plus two armor plates for all six.
-  - **Vulcan's leadership** — tomoe, Anya, Marv03K, piryriry and Athy — are the Forge's trapped survivors: free them
-    and they fight beside you.
+- **The Forge** — a 190 x 150 m foundry district at ember night, after the Vulcan community (vulcan.genxmims.org):
+  molten runoff in open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. The furnace under
+  **Vulcan HQ** starved when Ignis earning was switched off, and on the seventh day the phoenix rose wrong: about a
+  third of the Forge's infected still carry the names of Vulcan's members, and they look like the people they were.
+  Ember Market (insertion), the Pad (extraction), Phoenix Plaza and the Crucible, ringed by the Hearth, riry's Rumble
+  Pit, the Slag Yard, Seven Flames Row, the Spawn Hall and the Ledger House. The same structure as the District with
+  its own contracts: **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then **Rise from the Forge** at
+  the Pad before the firestorm. On top of that:
+  - **Two of Vulcan's co-leaders** (drawn each run from Athy, Marv03K and piryriry) deploy with you, follow you and
+    shoot. The infected hunt them like they hunt you, and they can die for good: each still alive at extraction pays
+    $500.
+  - **The holdouts**: the third co-leader, Anya and four members of the clan barricaded themselves into rooms around
+    the Forge, and the infected pound on their doors (they never get in). Clear a door and hold E: they slip out the
+    back to **the Hearth** by the Pad, and board with you at the end. tomoe is in the HQ vault, which opens when the
+    beacon burns.
+  - **The Seven Flames**: one from each of Vulcan's allied foundries, hidden around the map, $150 each and $700 plus
+    two armor plates for all seven (Seven Flames Row lights up).
+  - **tomoe's ledger**: four pages to find, each with a piece of what happened at HQ.
+  - **riry's Rumble Pit**: ring the bell for three waves (optional).
+  - Every member has their own look (built in code from their name), and the leadership have their own.
+  - Something happens after the extraction is called. Finish a run to find out.
 
   Every mode runs on both maps, co-op included.
 

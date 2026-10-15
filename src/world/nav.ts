@@ -11,6 +11,11 @@ const COST_ORTH = 10;
 const COST_DIAG = 14;
 const BUCKETS = COST_DIAG + 1;
 export const UNREACHABLE = 0x7fffffff;
+/**
+ * How far (path metres) the fields the infected chase along are spread: past the range at which they doze off (78-88 m,
+ * `ZombieManager`) with room to spare. Placement and reachability checks spread over the whole map.
+ */
+export const GAMEPLAY_FIELD_RANGE = 110;
 
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
 const DZ = [0, 0, 1, -1, 1, -1, 1, -1];
@@ -208,45 +213,83 @@ export class FlowField {
   goalIndex = -1;
   version = 0;
   private readonly buckets: number[][] = Array.from({ length: BUCKETS }, () => []);
+  /** A spread in progress (`begin` / `advance`): into `target` (the back buffer, or `dist` itself for `compute`). */
+  private job: { start: number; d: number; bi: number; pending: number; maxCost: number; target: Int32Array } | null = null;
+  private back: Int32Array | null = null;
 
   constructor(private readonly grid: NavGrid) {
     this.dist = new Int32Array(grid.count).fill(UNREACHABLE);
   }
 
-  /** Recompute distances from the cell nearest to (goalX, goalZ). Returns false if the goal has no free cell. */
-  compute(goalX: number, goalZ: number): boolean {
-    const g = this.grid;
-    const start = g.nearestFree(goalX, goalZ, 20);
+  /**
+   * Recompute distances from the cell nearest to (goalX, goalZ), all at once. Returns false if the goal has no free
+   * cell. `maxMeters`: stop spreading beyond this path distance (cells further away stay UNREACHABLE). Gameplay
+   * fields use a cap (`GAMEPLAY_FIELD_RANGE`): nothing awake is further away, and a big map costs a fraction as much.
+   */
+  compute(goalX: number, goalZ: number, maxMeters = Infinity): boolean {
+    if (!this.begin(goalX, goalZ, maxMeters, true)) return false;
+    this.advance(Infinity);
+    return true;
+  }
+
+  /**
+   * Start a recompute that is spread over several frames (`advance`): it fills a back buffer, and the field everyone
+   * reads stays the previous one until the new one is complete. `direct` fills the field itself (used by `compute`).
+   */
+  begin(goalX: number, goalZ: number, maxMeters = Infinity, direct = false): boolean {
+    const start = this.grid.nearestFree(goalX, goalZ, 20);
     if (start < 0) return false;
-    const dist = this.dist;
-    dist.fill(UNREACHABLE);
-    const buckets = this.buckets;
-    for (const b of buckets) b.length = 0;
-    dist[start] = 0;
-    buckets[0]!.push(start);
-    let pending = 1;
+    const target = direct ? this.dist : (this.back ??= new Int32Array(this.grid.count));
+    target.fill(UNREACHABLE);
+    for (const b of this.buckets) b.length = 0;
+    target[start] = 0;
+    this.buckets[0]!.push(start);
+    const maxCost = Number.isFinite(maxMeters) ? Math.ceil((maxMeters / NAV_CELL) * COST_ORTH) : UNREACHABLE - COST_DIAG;
+    this.job = { start, d: 0, bi: 0, pending: 1, maxCost, target };
+    return true;
+  }
+
+  /** A recompute is in progress. */
+  get busy(): boolean {
+    return this.job !== null;
+  }
+
+  /** Drop the recompute in progress (the grid changed under it): the current field stays. */
+  cancel(): void {
+    this.job = null;
+  }
+
+  /** Spread the recompute in progress for up to `budgetMs`; true once it is done (the new field is in place). */
+  advance(budgetMs: number): boolean {
+    const job = this.job;
+    if (!job) return true;
+    const g = this.grid;
     const cols = g.cols;
     const rows = g.rows;
     const blocked = g.blocked;
-    let d = 0;
-    while (pending > 0) {
-      const bucket = buckets[d % BUCKETS]!;
+    const dist = job.target;
+    const buckets = this.buckets;
+    const timed = Number.isFinite(budgetMs);
+    const until = timed ? performance.now() + budgetMs : 0;
+    let { d, bi, pending } = job;
+    let n0 = 0;
+    while (pending > 0 && d <= job.maxCost) {
+      const bucket = buckets[bi]!;
       while (bucket.length > 0) {
         const idx = bucket.pop()!;
         pending--;
         if (dist[idx] !== d) continue; // stale entry
         const ix = idx % cols;
         const iz = (idx - ix) / cols;
+        const edge = ix === 0 || iz === 0 || ix === cols - 1 || iz === rows - 1;
         for (let k = 0; k < 8; k++) {
           const nx = ix + DX[k]!;
           const nz = iz + DZ[k]!;
-          if (nx < 0 || nz < 0 || nx >= cols || nz >= rows) continue;
+          if (edge && (nx < 0 || nz < 0 || nx >= cols || nz >= rows)) continue;
           const n = nz * cols + nx;
           if (blocked[n] === 1) continue;
-          if (k >= 4) {
-            // no corner cutting
-            if (blocked[iz * cols + nx] === 1 || blocked[nz * cols + ix] === 1) continue;
-          }
+          // no corner cutting
+          if (k >= 4 && (blocked[iz * cols + nx] === 1 || blocked[nz * cols + ix] === 1)) continue;
           const nd = d + DW[k]!;
           if (nd < dist[n]!) {
             dist[n] = nd;
@@ -254,11 +297,21 @@ export class FlowField {
             pending++;
           }
         }
+        // out of time: carry on from here next frame (a bucket is only ever finished, never skipped)
+        if (timed && (++n0 & 511) === 0 && performance.now() > until) {
+          job.d = d;
+          job.bi = bi;
+          job.pending = pending;
+          return false;
+        }
       }
       d++;
+      bi = bi + 1 === BUCKETS ? 0 : bi + 1;
     }
-    this.goalIndex = start;
+    if (dist !== this.dist) this.dist.set(dist);
+    this.goalIndex = job.start;
     this.version++;
+    this.job = null;
     return true;
   }
 

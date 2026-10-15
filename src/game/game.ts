@@ -44,11 +44,13 @@ import { WeaponSystem, type WeaponInput } from '../weapons/weaponSystem';
 import { buildLevel, type Level } from '../world/level';
 import { createMaterialLib, type MaterialLib } from '../world/materials';
 import { createGrenadeModel } from '../world/models';
-import { FlowField } from '../world/nav';
+import { FlowField, GAMEPLAY_FIELD_RANGE } from '../world/nav';
 import type { GameCtx } from './ctx';
 import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
+import { ForgeRuntime } from '../forge/runtime';
+import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput } from './interaction';
 import { wireMatronFx } from './matronFx';
 import { MissionRuntime } from './missionRuntime';
@@ -57,6 +59,9 @@ import { BarricadeRuntime } from '../asylum/barricadeRuntime';
 import { PowerupRuntime } from './powerupRuntime';
 
 export type GameState = 'boot' | 'title' | 'playing' | 'paused' | 'ending' | 'results';
+
+/** Milliseconds a frame may spend spreading a flow field (the player's, the squad's): no frame stalls on a big map. */
+const FLOW_SLICE_MS = 1.2;
 
 export interface GameDeps {
   canvas: HTMLCanvasElement;
@@ -122,6 +127,8 @@ export class Game implements GameCtx {
   barricades: BarricadeRuntime | null = null;
   /** Asylum loop: the purchasable doors, power, perks, wall-buys and Pack-a-Punch (null on other maps). */
   asylum: AsylumLoopRuntime | null = null;
+  /** The Forge's story: the holdouts, the Hearth, the ledger, the Pit, the last carrier (null on other maps). */
+  forge: ForgeRuntime | null = null;
   /** Which map was built this page load. */
   mapId: MapId = 'district';
   private coopUi!: CoopUi;
@@ -177,11 +184,17 @@ export class Game implements GameCtx {
   private shakeAmt = 0;
   private roll = 0;
   private endingT = 0;
-  private endingKind: 'death' | 'board' | 'none' = 'none';
+  private endingKind: 'death' | 'board' | 'reveal' | 'none' = 'none';
+  /** The Forge: after a won run's boarding cinematic, the ending card and the reveal (`forge/reveal.ts`). */
+  private reveal: RevealCinematic | null = null;
+  private revealPending = false;
   private pendingResults: { stats: MissionStats; outcome: 'victory' | 'defeat' } | null = null;
   private flowTimer = 0;
   private flowGoalX = 1e9;
   private flowGoalZ = 1e9;
+  /** Where the flow field being spread (over several frames) is headed. */
+  private flowNextX = 0;
+  private flowNextZ = 0;
   private envTimer = 0;
   private lastHurtSound = -1;
   private lastToxicEvent = -1;
@@ -314,7 +327,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : undefined); // the Asylum's infected have their own looks
+    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : undefined); // the Asylum's and the Forge's infected have their own looks
     this.viewmodels = createViewmodels();
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
@@ -348,8 +361,10 @@ export class Game implements GameCtx {
         if (this.rng.f() >= VULCAN.namedShare) return null;
         const inUse = new Set(this.zombies.zombies.map((q) => q.tag));
         if (bag.length === 0) bag = [...VULCAN.infected].sort(() => this.rng.f() - 0.5);
+        // the people holed up this run are alive: nobody infected carries their names
+        const alive = this.forge?.reserved;
         for (let i = 0; i < bag.length; i++) {
-          if (!inUse.has(bag[i]!)) return bag.splice(i, 1)[0]!;
+          if (!inUse.has(bag[i]!) && !alive?.has(bag[i]!)) return bag.splice(i, 1)[0]!;
         }
         return null;
       };
@@ -424,6 +439,12 @@ export class Game implements GameCtx {
     this.coop = new CoopSession(this);
     this.coop.room.device = this.touchMode ? 'phone' : 'pc'; // shown beside our name in the lobby
     this.squad = new SquadRuntime(this);
+    if (this.mapId === 'forge' && this.level.data.forge) {
+      this.forge = new ForgeRuntime(this);
+      // the helicopter holds off while the reborn is loose; after the burnout the firestorm dies down
+      this.mission.holdExtraction = () => this.forge?.holdExtraction ?? false;
+      this.mission.calm = () => this.forge?.burnedOut ?? false;
+    }
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       mapId: () => this.mapId,
@@ -824,6 +845,7 @@ export class Game implements GameCtx {
 
   private readonly onKeyDownGlobal = (e: KeyboardEvent): void => {
     if (e.code === 'Escape') this.escAt = performance.now();
+    this.reveal?.key(e.code); // the Forge's reveal: skippable after the first viewing
   };
 
   private readonly onBlur = (): void => {
@@ -879,7 +901,7 @@ export class Game implements GameCtx {
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
-        this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
+        this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, bring the clan home. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
       else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
       // the first deploy on a browser that never opened Settings: where to raise the graphics
@@ -944,6 +966,9 @@ export class Game implements GameCtx {
     this.endingKind = 'none';
     this.endingT = 0;
     this.pendingResults = null;
+    this.revealPending = false;
+    if (this.reveal && !this.reveal.finished) this.reveal.finish();
+    this.reveal = null;
     this.shakeAmt = 0;
     this.roll = 0;
     this.time = initial ? 0 : this.time;
@@ -970,6 +995,8 @@ export class Game implements GameCtx {
     this.player.staminaExhausted = false;
     this.weapons.reset();
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
+    // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
+    const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
@@ -977,9 +1004,11 @@ export class Game implements GameCtx {
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
     this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team);
+    if (forgeSquad && solo) this.squad.deployForge(forgeSquad);
     // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
     this.asylum?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
+    this.flow.cancel();
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
     this.hud.reset();
@@ -1206,6 +1235,7 @@ export class Game implements GameCtx {
     this.updateEnemies(dt, alive);
     this.cards.update(dt);
     this.squad.update(dt);
+    this.forge?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -1365,14 +1395,29 @@ export class Game implements GameCtx {
     z.player.alive = alive;
     z.player.sprinting = p.sprinting;
 
-    // flow field toward the player: refreshed when the player has moved or periodically
+    // flow field toward the player: refreshed when the player has moved or periodically, spread over a few frames so a
+    // big map never stalls one (the infected follow the previous field until the new one is in). Co-op: the
+    // simulation's infected chase the players, so this client needs none.
     this.flowTimer -= dt;
-    if (this.flowTimer <= 0) {
+    if (this.coop.live) {
+      // nothing
+    } else if (this.flow.busy) {
+      if (this.flow.advance(FLOW_SLICE_MS)) {
+        this.flowGoalX = this.flowNextX;
+        this.flowGoalZ = this.flowNextZ;
+      }
+    } else if (this.flowTimer <= 0) {
       const moved = Math.hypot(p.x - this.flowGoalX, p.z - this.flowGoalZ);
       if (moved > ZOMBIE_AI.flowMoveThreshold || this.flowTimer < -1.5) {
-        if (this.flow.compute(p.x, p.z)) {
-          this.flowGoalX = p.x;
-          this.flowGoalZ = p.z;
+        // the first field of a run is wanted at once; after that, a slice a frame
+        const first = this.flowGoalX > 1e8;
+        if (this.flow.begin(p.x, p.z, GAMEPLAY_FIELD_RANGE)) {
+          this.flowNextX = p.x;
+          this.flowNextZ = p.z;
+          if (this.flow.advance(first ? Infinity : FLOW_SLICE_MS)) {
+            this.flowGoalX = p.x;
+            this.flowGoalZ = p.z;
+          }
         }
         this.flowTimer = ZOMBIE_AI.flowInterval;
       } else {
@@ -1401,7 +1446,8 @@ export class Game implements GameCtx {
           quality: this.settings.quality,
           defenseActive: s.defense.status === 'active',
           extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? s.elapsed - ex.calledAt : null,
-          paused: false,
+          // the Forge after the burnout: the virus is over, nothing more comes
+          paused: this.forge?.burnedOut ?? false,
         },
         z,
         this.rng,
@@ -1413,6 +1459,7 @@ export class Game implements GameCtx {
 
   /** The infected's flow field is recomputed on the next frame (a door opened or shut: Asylum loop). */
   invalidateFlow(): void {
+    this.flow.cancel();
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
   }
@@ -1515,6 +1562,7 @@ export class Game implements GameCtx {
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {
+    if (this.forge?.burning) return; // the Forge's burnout: the virus ending pays nobody
     if (this.squad.allyShooting) {
       // an ally's kill: it still counts for the contract, but it is not the player's
       if (z.isBoss) this.mission.onWardenKilled();
@@ -1592,6 +1640,8 @@ export class Game implements GameCtx {
       this.hud.toggleTacticalMap(false);
       this.audio.play('defeat_sting', { priority: 3 });
     } else {
+      // the Forge: a won run ends on the ending card and the reveal (after the boarding cinematic)
+      this.revealPending = this.mapId === 'forge' && !!this.forge && !this.flying;
       // victory: the boarding cinematic is already running
       if (this.endingKind !== 'board') {
         this.endingKind = 'board';
@@ -1606,6 +1656,16 @@ export class Game implements GameCtx {
   private simulateEnding(dt: number): void {
     this.endingT += dt;
     this.time += dt;
+    if (this.endingKind === 'reveal') {
+      // the Forge's ending card and reveal: the world holds still around it (fx, level animations), then the results
+      this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
+      this.fx.update(dt, this.renderer.camera);
+      this.entities.update(dt, this.time);
+      this.updateCamera(dt);
+      this.updateAudio(dt, false);
+      if (this.reveal && !this.reveal.update(dt) && this.pendingResults) this.showResults();
+      return;
+    }
     const boarding = this.endingKind === 'board';
     // the world keeps moving: enemies, fx, helicopter
     this.updateEnemies(dt, this.playerAlive() && !boarding);
@@ -1622,6 +1682,17 @@ export class Game implements GameCtx {
     const fadeStart = this.endingKind === 'board' ? 2.4 : 1.3;
     const total = this.endingKind === 'board' ? 3.4 : 2.6;
     this.fadeEl.style.opacity = String(Math.max(0, Math.min(1, (this.endingT - fadeStart) / (total - fadeStart))));
+    // the Forge: a won run goes on to the ending card and the reveal before the results
+    if (boarding && this.revealPending && this.pendingResults && this.endingT >= total && this.forge) {
+      this.revealPending = false;
+      this.endingKind = 'reveal';
+      this.endingT = 0;
+      this.fadeEl.style.opacity = '0';
+      const voice = this.squad.aliveNames()[0]?.toUpperCase() ?? 'ANYA';
+      this.reveal = new RevealCinematic(this, this.forge.ending(), voice);
+      this.reveal.start(this.deps.uiRoot);
+      return;
+    }
     if (this.endingT >= total && this.pendingResults) this.showResults();
   }
 
@@ -1731,6 +1802,17 @@ export class Game implements GameCtx {
 
   private updateCamera(dt: number): void {
     const cam = this.renderer.camera;
+    if (this.state === 'ending' && this.endingKind === 'reveal' && this.reveal) {
+      // the Forge's reveal directs the camera itself
+      this.reveal.camera(cam);
+      this.culler?.update(dt, cam.position);
+      this.renderer.updateFov();
+      cam.getWorldDirection(this.camDir);
+      this.listenerFwd.x = this.camDir.x;
+      this.listenerFwd.y = this.camDir.y;
+      this.listenerFwd.z = this.camDir.z;
+      return;
+    }
     const p = this.player;
     let ex = p.x;
     let ey = p.eyeY();
@@ -1855,6 +1937,7 @@ export class Game implements GameCtx {
       this.squad.objectives(st.objectives);
       this.squad.markers(md.markers);
     }
+    this.forge?.decorateHud(st, md);
     this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });

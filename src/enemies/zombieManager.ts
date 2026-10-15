@@ -10,6 +10,7 @@ import { combineTuning, IDENTITY_TUNING, type PhaseTuning } from '../logic/timeO
 import type { QualityLevel, Region, ZombieType } from '../types';
 import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
+import { headAccessory } from '../forge/looks';
 import { MATRON_DEF, MatronBrain, createMatronRig, isMatronMap } from './matron';
 import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
@@ -176,7 +177,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : undefined;
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : undefined;
     const b = level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -240,9 +241,13 @@ export class ZombieManager {
     return zz;
   }
 
-  /** A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. */
-  tagZombie(z: Zombie, name: string): void {
-    let mat = this.tagMats.get(name);
+  /**
+   * A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. `reborn` (the Forge's last
+   * carrier, `forge/story.ts`): the name in red, REBORN beneath, a bigger plate.
+   */
+  tagZombie(z: Zombie, name: string, reborn = false): void {
+    const key = reborn ? `${name}|reborn` : name;
+    let mat = this.tagMats.get(key);
     if (!mat) {
       const c = document.createElement('canvas');
       c.width = 256;
@@ -254,27 +259,34 @@ export class ZombieManager {
       g.strokeStyle = 'rgba(0,0,0,0.9)';
       g.font = '700 26px system-ui, sans-serif';
       g.strokeText(name, 128, 24, 248);
-      g.fillStyle = '#ffd9c0';
+      g.fillStyle = reborn ? '#ff5a3a' : '#ffd9c0';
       g.fillText(name, 128, 24, 248);
       g.font = '800 15px system-ui, sans-serif';
       g.lineWidth = 4;
-      g.strokeText('VULCAN  //  INFECTED', 128, 54, 248);
-      g.fillStyle = '#ff6a3a';
-      g.fillText('VULCAN  //  INFECTED', 128, 54, 248);
+      const sub = reborn ? 'REBORN' : 'VULCAN  //  INFECTED';
+      g.strokeText(sub, 128, 54, 248);
+      g.fillStyle = reborn ? '#ffd27a' : '#ff6a3a';
+      g.fillText(sub, 128, 54, 248);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
-      this.tagMats.set(name, mat);
+      this.tagMats.set(key, mat);
     }
     const s = new THREE.Sprite(mat);
-    s.scale.set(1.4, 0.39, 1);
-    s.position.y = z.def.height + 0.45;
+    s.scale.set(reborn ? 2.1 : 1.4, reborn ? 0.585 : 0.39, 1);
+    s.position.y = z.def.height + (reborn ? 0.75 : 0.45);
     z.rig.root.add(s);
     z.tag = name;
     this.tagSprites.set(z, s);
+    // the Forge: a member's signature item, still on them
+    if (this.theme === 'forge' && z.rig.headAttach) {
+      const worn = headAccessory(name);
+      if (worn) z.rig.headAttach(worn);
+    }
   }
 
   private untag(z: Zombie): void {
+    z.rig.clearAttach?.();
     const s = this.tagSprites.get(z);
     if (s) {
       s.removeFromParent();
@@ -477,9 +489,10 @@ export class ZombieManager {
         z.puppet = true;
         z.netId = n.id;
         const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
-        if (tag) this.tagZombie(z, tag);
+        // a named Warden is the Forge's reborn (`forge/story.ts`), never the hunt's boss
+        if (tag) this.tagZombie(z, tag, n.type === 'warden');
         this.byNet.set(n.id, z);
-        if (z.isBoss) this.boss = z;
+        if (z.isBoss && !tag) this.boss = z;
       }
       z.applyNet(n);
     }

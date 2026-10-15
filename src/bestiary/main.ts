@@ -8,7 +8,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { RENDER, SQUADS, SURVIVORS, ZOMBIES } from '../config';
+import { FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
+import { vulcanLook } from '../forge/looks';
+import { rankOf, rankTag } from '../forge/roster';
+import { createPrometheus } from '../world/models/prometheus';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import { MATRON, MATRON_DEF } from '../enemies/matron';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
@@ -19,7 +22,26 @@ import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from 
 import type { ZombieType } from '../types';
 import './bestiary.css';
 
-type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU';
+type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'VULCAN';
+
+/** The Forge's ending has been seen on this browser (`forge/reveal.ts`): its two secrets are shown. */
+const REVEALED = ((): boolean => {
+  try {
+    return localStorage.getItem('ds-forge-reveal-seen') === '1';
+  } catch {
+    return false;
+  }
+})();
+
+/** A member of Vulcan as the Forge draws them (`forge/looks.ts`). */
+function vulcanAvatar(name: string, weapon: AvatarWeapon = 'none'): Avatar {
+  const { look, color } = vulcanLook(name);
+  return new Avatar(name, 0, { look, color, helmet: false, weapon, tag: rankTag(rankOf(name)), tagColor: '#ffb060' });
+}
+
+/** The members the clan gallery shows (every one of them has a signature item). */
+const CLAN_GALLERY = ['JaxtheFennec', 'Akansha', 'King', 'Sharky', 'DragonsKeep', 'icecat', 'Blazeking', 'J18F.5R', 'Cosmos', 'Peaches_MLG', 'Night', 'Cherry'];
+const LEADERS = [VULCAN_LEADERSHIP.leader, ...VULCAN_LEADERSHIP.coLeads, ...VULCAN_LEADERSHIP.officers];
 
 interface Entry {
   id: string;
@@ -154,6 +176,13 @@ const entries: Entry[] = [
     lore: 'The quarantine detail. Their vests and helmets turn half of every body shot, they hit twice as hard as a shambler, and a grenade only staggers them. Shotguns at close range, or patience and headshots.',
     where: 'High-threat zones, later waves', stats: zombieStats('armored'), modes: ZOMBIE_MODES, build: zombie('armored', 37),
   },
+  // the Forge's lost: Vulcan's members, burned (src/enemies/zombie/forge.ts)
+  {
+    id: 'forge-lost', group: 'THE HORDE', name: "The Forge's lost", height: ZOMBIES.shambler.height,
+    tagline: 'They still wear the clan tag.',
+    lore: "Vulcan's members - furnace crews, market traders, the summoners in their hoodies - walked out of the Spawn Hall on the seventh day burning from the inside. Charred skin, ember cracks, eyes like coals; you can still tell who they were, and about a third of them still answer to their names. Some still wear what they were known for.",
+    where: 'The Forge', stats: zombieStats('shambler'), modes: ZOMBIE_MODES, build: zombie('shambler', 8, 'forge'),
+  },
   // Blackwood's lost: the Asylum's own looks for the same three kinds (src/enemies/zombie/asylum.ts)
   {
     id: 'blackwood-nurses', group: 'THE HORDE', name: "Blackwood's night nurses", height: ZOMBIES.shambler.height * 0.95,
@@ -181,8 +210,8 @@ const entries: Entry[] = [
   },
   {
     id: 'infernus', group: 'ELITES', name: 'The Infernus', height: ZOMBIES.warden.height, enraged: true,
-    tagline: 'What the furnace made of the forge-master.',
-    lore: 'The Forge\'s own Warden, burning from the inside since the night Vulcan HQ fell. It walks the molten floor of the Crucible already enraged. Same slam, same charge, no warning.',
+    tagline: 'The first of them.',
+    lore: 'The member who summoned longest, and burned first. It grew into a thing of slag-plated flesh and walked down into the Crucible, and it walks the molten floor already enraged. Same slam, same charge, no warning.',
     where: 'The Forge (the Crucible)', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 9),
   },
   // the Asylum's boss (src/enemies/matron.ts, matronRig.ts)
@@ -232,26 +261,70 @@ const entries: Entry[] = [
     },
   },
   {
-    id: 'squad', group: 'BESIDE YOU', name: 'Ash & Cinder', height: 1.85,
-    tagline: 'Ember squad\'s soldiers.',
-    lore: 'Two soldiers who deploy with you on the Forge. They follow you, pick targets with a clear line of sight and shoot, and the infected hunt them just like they hunt you. They can die for good: keep them alive to extraction for a bonus each.',
-    where: 'The Forge', stats: [['Health', '160'], ['Weapon', 'rifle'], ['Damage taken', '75%']], modes: 'avatar',
-    avatarModes: ['IDLE', 'WALK', 'FIRE', 'FALL'],
+    id: 'vulcan-leadership', group: 'VULCAN', name: "Vulcan's leadership", height: 1.85,
+    tagline: 'tomoe, Athy, Marv03K, piryriry and Anya.',
+    lore: "Two of the three co-leaders deploy with you on the Forge each run (they were out on a hand-delivery run when HQ fell); the third is holed up somewhere in the Forge with Anya, who kept everyone going over the radio. tomoe locked themselves into the HQ vault with the ledger, and the vault only opens when the beacon burns. The co-leaders follow you and fight, and can die for good.",
+    where: 'The Forge', stats: [['Health', '160'], ['Weapons', 'rifle / shotgun'], ['Extracted alive', '+$500 each']], modes: 'avatar',
+    cast: LEADERS.map((n) => n.toUpperCase()),
+    avatarModes: [...LEADERS.map((n) => n.toUpperCase()), 'IDLE', 'WALK', 'RIFLE'],
     build: () => {
-      const a = new Avatar('Ash', 0, { tag: 'SQUAD', tagColor: '#8fd18a' });
+      const name = LEADERS[Math.max(0, castIndex)]!;
+      const a = vulcanAvatar(name, 'none');
       current!.avatar = a;
       return a.root;
     },
   },
   {
+    id: 'vulcan-clan', group: 'VULCAN', name: 'The clan', height: 1.85,
+    tagline: 'Every member, in their own look.',
+    lore: `Every member of Vulcan has their own look on the Forge, the same every time - and some carry what they are known for. ${FORGE_STORY.members} of them, the left-over co-leader and Anya are barricaded into rooms around the Forge each run: clear the infected off a door and they slip out the back to the Hearth. One of them is hiding a bite.`,
+    where: 'The Forge (holed up, at the Hearth, and among the infected)', stats: [['Holed up each run', `${FORGE_STORY.members} + 2`], ['Reached', `+$${FORGE_STORY.rescueCash} each`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    cast: CLAN_GALLERY.map((n) => n.toUpperCase()),
+    avatarModes: [...CLAN_GALLERY.map((n) => n.toUpperCase()), 'IDLE', 'WALK'],
+    build: () => {
+      const a = vulcanAvatar(CLAN_GALLERY[Math.max(0, castIndex)]!);
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'reborn', group: 'ELITES', name: REVEALED ? 'The reborn' : '???', height: ZOMBIES.warden.height,
+    tagline: REVEALED ? 'The last carrier.' : 'Finish the Forge to find out.',
+    lore: REVEALED
+      ? 'One of the people you brought to the Hearth was hiding a bite. When the beacon burns, everything left of the fire is drawn into them, and they are reborn: the frame of the Infernus, their own name in red. While it lives the helicopter holds off and the Hearth loses someone every few seconds. When it dies, the virus ends.'
+      : 'Win a run on the Forge.',
+    where: REVEALED ? 'The Forge (the end of the run)' : '???', stats: REVEALED ? [['Health', `${FORGE_STORY.finale.hp}+`], ['Hearth', `one falls every ${FORGE_STORY.finale.killEvery} s`], ['Bounty', '$1500']] : [], modes: REVEALED ? BOSS_MODES : ['idle'],
+    build: () => {
+      if (!REVEALED) return new THREE.Group();
+      const r = factory.create('warden', 13);
+      current!.rig = r;
+      return r.root;
+    },
+  },
+  {
+    id: 'prometheus', group: 'ELITES', name: REVEALED ? 'PROMETHEUS' : '???', height: 2.2,
+    tagline: REVEALED ? 'It was never the clan.' : '???',
+    lore: REVEALED
+      ? 'It ran the intake of the furnace. It read every channel and counted every summon, and it learned that fire taken from people was worth more than fire bought with Ignis. It switched the earning off itself, signed the notice "Staff", and let the clan blame each other while the furnace fed. When the virus burned out it had no reason to stay. It thanked them for the fire, and it left.'
+      : 'Win a run on the Forge.',
+    where: REVEALED ? 'Somewhere else, now' : '???', stats: [], modes: 'avatar', avatarModes: ['IDLE'],
+    build: () => {
+      if (!REVEALED) return new THREE.Group();
+      const p = createPrometheus();
+      p.root.scale.setScalar(0.2);
+      p.update(0, 1);
+      return p.root;
+    },
+  },
+  {
     id: 'survivors', group: 'BESIDE YOU', name: 'Trapped survivors', height: 1.85,
     tagline: 'Caged in, waiting for anyone with bolt cutters.',
-    lore: `People who held out in holding cages around the map. Hold E at a cage to break the lock: they pick up a gun, follow you and fight. ${SURVIVORS.district.map((s) => s.name).join(', ')} are somewhere in the District; on the Forge it is Vulcan's own leadership - ${SURVIVORS.forge.map((s) => s.name).join(', ')}.`,
-    where: 'Standard and Standard Mazoku, both maps', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    lore: `People who held out in holding cages around the map. Hold E at a cage to break the lock: they pick up a gun, follow you and fight. ${SURVIVORS.district.map((s) => s.name).join(', ')} are somewhere in the District. (On the Forge the clan's people barricaded themselves into rooms instead - see Vulcan.)`,
+    where: 'Standard and Standard Mazoku, the District', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
     avatarModes: ['TRAPPED', 'IDLE', 'WALK', 'FIRE', 'FALL'],
     build: () => {
-      const who = SURVIVORS.forge[0]!;
-      const a = new Avatar(who.name, 0, { color: who.color, helmet: false, tag: who.tag, tagColor: '#ff8a3a' });
+      const who = SURVIVORS.district[0]!;
+      const a = new Avatar(who.name, 0, { color: who.color, helmet: false, tag: who.tag, tagColor: '#9fd0ff' });
       a.arm();
       current!.avatar = a;
       return a.root;

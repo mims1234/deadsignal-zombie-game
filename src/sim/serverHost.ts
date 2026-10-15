@@ -3,7 +3,7 @@
  * `worker.ts`) or, for a self-hosted session, inside the owner's browser. Every player - the self-host included - is a
  * client of it: they report where they are and what they hit, and draw what it reports back. Kinds of session:
  *   mission  the map's story operation, as in Standard: two contracts, the extraction, the squad and survivors,
- *            the Trials of Ignis on the Forge
+ *            the Seven Flames and the story (`forge/story.ts`) on the Forge
  *   mazoku   the same operation with the five card carriers walking the map (Standard Mazoku)
  *   roam     no infected: fly around together
  * A player who goes down can be revived by a teammate (they bleed out on their own client); the run is lost when
@@ -51,10 +51,12 @@ import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
 import { RECORDS } from '../asylum/nightConfig';
 import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
+import { encodeRoster, encodeState } from '../forge/net';
+import { ForgeStory, type StoryTick } from '../forge/story';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
-import { FlowField } from '../world/nav';
+import { FlowField, GAMEPLAY_FIELD_RANGE } from '../world/nav';
 import { createNullRigFactory } from './nullRig';
 
 export type SessionKind = 'mission' | 'mazoku' | 'roam';
@@ -199,6 +201,11 @@ export class SessionSim {
   private readonly powerups = createPowerups();
   /** True while a nuke is killing: those kills pay nothing and drop nothing. */
   private nuking = false;
+  /** The Forge's story (`forge/story.ts`): the holdouts and their doors, the Hearth, the ledger, the Pit, the finale. */
+  readonly forge: ForgeStory | null = null;
+  private forgeTick: StoryTick | null = null;
+  /** When the Forge's roster last went out (it goes every couple of seconds, for anyone who joins late). */
+  private rosterSentAt = -99;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -237,6 +244,34 @@ export class SessionSim {
       rng: this.rng,
       followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
     };
+    const sites = this.level.data.forge;
+    if (this.map === 'forge' && sites) {
+      this.forge = new ForgeStory(sites, this.zombies, this.level.nav);
+      this.forgeTick = {
+        elapsed: 0,
+        defenseDone: false,
+        huntDone: false,
+        calledAt: null,
+        players: [],
+        playerCount: 0,
+        envNear: (x, z) => this.nearestUpEnv(x, z),
+        seen: (x, z) => this.upPeers().some((p) => Math.hypot(p.ref.x - x, p.ref.z - z) < 70 && !this.level.world.segmentBlocked(p.ref.x, p.ref.eyeY, p.ref.z, x, 1.5, z, 'shots')),
+      };
+    }
+  }
+
+  /** The environment of the nearest player who is up (else anyone at all): what the Forge's reborn hunts. */
+  private nearestUpEnv(x: number, z: number): ZombieEnv | null {
+    let best: Peer | null = null;
+    let bd = Infinity;
+    for (const p of this.peers.values()) {
+      const d = Math.hypot(p.ref.x - x, p.ref.z - z) + (p.ref.alive ? 0 : 1e4);
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+    return best ? best.env : null;
   }
 
   private get story(): boolean {
@@ -318,24 +353,30 @@ export class SessionSim {
   private setUpStory(): void {
     const level = this.level;
     const rng = this.rng;
+    // the Forge: who is holed up where this run (and the first infected at their doors), before the residents, so none
+    // of them carries a living person's name; the co-leaders who deploy come from the same roster
+    const roster = this.forge?.reset(rng) ?? null;
+    this.rosterSentAt = -99;
     if (this.map === 'forge') {
       let bag: string[] = [];
+      const alive = this.forge?.reserved;
       this.zombies.namer = () => {
         if (rng.f() >= VULCAN.namedShare) return null;
         const inUse = new Set(this.zombies.zombies.map((q) => q.tag));
         if (bag.length === 0) bag = [...VULCAN.infected].sort(() => rng.f() - 0.5);
-        for (let i = 0; i < bag.length; i++) if (!inUse.has(bag[i]!)) return bag.splice(i, 1)[0]!;
+        for (let i = 0; i < bag.length; i++) if (!inUse.has(bag[i]!) && !alive?.has(bag[i]!)) return bag.splice(i, 1)[0]!;
         return null;
       };
     }
     this.zombies.populate(rng);
     const st = level.data.playerStart;
-    const squad = squadRoster(this.map);
+    const squad = roster ? roster.squad : squadRoster(this.map);
     const at = soldierSpots(level, rng, squad.length);
     squad.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
     if (this.map === 'forge') this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
-    const roster = survivorRoster(this.map);
-    cageSpots(level, rng, roster.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, roster[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
+    // cages everywhere but the Forge (its people are holed up in rooms)
+    const caged = this.forge ? [] : survivorRoster(this.map);
+    cageSpots(level, rng, caged.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, caged[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
     if (this.kind === 'mazoku') this.placeCarriers();
   }
 
@@ -473,12 +514,30 @@ export class SessionSim {
         return;
       }
       case 'ember': {
-        const e = this.embers[Number(d.i)];
+        // one of the Seven Flames
+        const i = Number(d.i);
+        const e = this.embers[i];
         if (!this.story || !up || !e || e.taken || Math.hypot(e.x - p.ref.x, e.z - p.ref.z) > FORGE_SQUAD.emberRadius + 2.5) return;
         e.taken = true;
         const got = this.embers.filter((q) => q.taken).length;
-        this.send('all', { k: 'cash', c: FORGE_SQUAD.emberCash, t: `IGNIS EMBER ${got}/${this.embers.length}` });
-        if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'TRIALS OF IGNIS COMPLETE', pl: 2 });
+        this.send('all', { k: 'cash', c: FORGE_SQUAD.emberCash, t: `${FORGE_SQUAD.flames[i]?.name ?? 'IGNIS'} ${got}/${this.embers.length}` });
+        if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'THE SEVEN FLAMES BURN - COMPLETE', pl: 2 });
+        return;
+      }
+      case 'hold': {
+        // the Forge: talk holdout i out of their room (at their door, with nothing on its feet at it)
+        if (!this.forge || !this.story || !up) return;
+        this.forge.rescue(Number(d.i), p.ref.x, p.ref.z);
+        return;
+      }
+      case 'ledger': {
+        if (!this.forge || !this.story || !up) return;
+        this.forge.takeLedger(Number(d.i), p.ref.x, p.ref.z);
+        return;
+      }
+      case 'bell': {
+        if (!this.forge || !this.story || !up || !this.forgeTick) return;
+        this.forge.ringBell(p.ref.x, p.ref.z, this.fillForgeTick(), this.rng);
         return;
       }
       case 'box': {
@@ -614,7 +673,7 @@ export class SessionSim {
       p.env.time = this.time;
       p.fieldT -= dt;
       if (p.ref.alive && p.fieldT <= 0) {
-        p.field.compute(p.ref.x, p.ref.z);
+        p.field.compute(p.ref.x, p.ref.z, GAMEPLAY_FIELD_RANGE);
         p.fieldT = 0.4;
       }
       if (p.ref.alive) up++;
@@ -644,6 +703,18 @@ export class SessionSim {
 
   private upPeers(): Peer[] {
     return [...this.peers.values()].filter((p) => p.ref.alive);
+  }
+
+  /** What the Forge's story sees of the run this frame. */
+  private fillForgeTick(): StoryTick {
+    const t = this.forgeTick!;
+    t.elapsed = this.elapsed;
+    t.defenseDone = this.defense.status === 'complete';
+    t.huntDone = this.hunt.status === 'complete';
+    t.calledAt = this.extraction.calledAt;
+    t.players = [...this.peers.values()].map((p) => ({ x: p.ref.x, z: p.ref.z, alive: p.ref.alive, eyeY: p.ref.eyeY }));
+    t.playerCount = Math.max(1, this.peers.size);
+    return t;
   }
 
   private stepRelay(dt: number): void {
@@ -684,10 +755,12 @@ export class SessionSim {
         quality: 'medium',
         defenseActive: this.defense.status === 'active',
         extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? this.elapsed - ex.calledAt : null,
-        paused: false,
+        // the Forge after the burnout: the virus is over, nothing more comes
+        paused: this.forge?.burnedOut ?? false,
       };
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
+    if (this.forge) this.forge.tick(dt, this.fillForgeTick(), this.rng);
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
     if (this.asylum) {
@@ -737,7 +810,8 @@ export class SessionSim {
   private stepExtraction(dt: number, up: number): void {
     const ex = this.extraction;
     if (!extractionInProgress(ex)) return;
-    for (const ev of updateExtraction(ex, dt)) {
+    // the Forge: the bird holds off while the reborn is loose
+    for (const ev of updateExtraction(ex, this.forge?.holdExtraction ? 0 : dt)) {
       if (ev === 'departed') {
         // the boarding window ran out: whoever is aboard leaves with it
         if (this.aboard.size > 0) {
@@ -760,7 +834,8 @@ export class SessionSim {
     if (won) {
       // the squad's bonuses go to everyone who made it out
       const soldiers = this.allies.filter((a) => a.kind === 'soldier' && a.ref.alive).length;
-      const survivors = this.allies.filter((a) => a.kind === 'survivor' && a.ref.alive && !a.trapped).length;
+      // the freed (cages), or everyone waiting at the Forge's Hearth
+      const survivors = this.forge ? this.forge.view.holdouts.filter((h) => h.phase === 'hearth').length : this.allies.filter((a) => a.kind === 'survivor' && a.ref.alive && !a.trapped).length;
       for (const id of this.aboard) {
         if (soldiers > 0) this.send(id, { k: 'cash', c: soldiers * FORGE_SQUAD.saveBonus, t: `SQUAD EXTRACTED ${soldiers}` });
         if (survivors > 0) this.send(id, { k: 'cash', c: survivors * SURVIVORS.extractBonus, t: `SURVIVORS EXTRACTED ${survivors}` });
@@ -774,7 +849,7 @@ export class SessionSim {
       allyRecover(a, dt);
       a.fieldT -= dt;
       if (a.fieldT <= 0) {
-        a.field.compute(a.ref.x, a.ref.z);
+        a.field.compute(a.ref.x, a.ref.z, GAMEPLAY_FIELD_RANGE);
         a.fieldT = 1;
       }
       // follow whoever freed them while they are up, else the nearest player who is
@@ -877,7 +952,9 @@ export class SessionSim {
   }
 
   private onKill(z: Zombie, head: boolean): void {
-    if (z.isBoss && this.story) completeHunt(this.hunt);
+    // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
+    if (this.forge?.burning) return;
+    if (z.isBoss && this.story && z !== this.forge?.reborn) completeHunt(this.hunt);
     const p = this.killer ? this.peers.get(this.killer) : null;
     // a nuke's kills pay nothing and drop nothing (the nuke pays)
     if (!p || this.nuking) return;
@@ -931,6 +1008,14 @@ export class SessionSim {
       if (this.asylum) {
         out.rc = bits(this.records.found); // the patient files taken
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
+      }
+      if (this.forge) {
+        // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
+        out.fg = encodeState(this.forge.view);
+        if (this.time - this.rosterSentAt > 2) {
+          this.rosterSentAt = this.time;
+          out.fr = encodeRoster(this.forge.view);
+        }
       }
     }
     // the Asylum's doors (bit i: door i open) and the power

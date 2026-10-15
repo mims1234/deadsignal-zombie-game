@@ -920,9 +920,18 @@ export const TEAM_SKILL: Record<TeamSkill, TeamTuning> = {
   elite: { label: 'ELITE', note: 'Special forces: hard to kill, rarely miss, often go for the head.', hp: 1.6, damageTaken: 0.7, accuracy: 1.22, fireRate: 1.4, damage: 1.4, range: 1.2, headshots: 2 },
 };
 
-/** The Forge map: the two soldiers who deploy with you, and the Trials of Ignis. */
+/**
+ * Vulcan's leadership (vulcan.genxmims.org). On the Forge two of the three co-leaders deploy with you (picked each run),
+ * the third is holed up somewhere in the Forge with Anya and four of the clan's members, and tomoe is in the HQ vault.
+ */
+export const VULCAN_LEADERSHIP = {
+  leader: 'tomoe',
+  coLeads: ['Athy', 'Marv03K', 'piryriry'],
+  officers: ['Anya'],
+} as const;
+
+/** The Forge map: the co-leaders who deploy with you, and the Seven Flames. */
 export const FORGE_SQUAD = {
-  allies: ['Ash', 'Cinder'],
   allyHp: 160,
   /** Share of an infected's hit a soldier actually takes (body armour). */
   allyDamageTaken: 0.75,
@@ -933,12 +942,61 @@ export const FORGE_SQUAD = {
   headDamage: 44,
   /** A soldier farther than this from the player regroups next to them. */
   regroupDistance: 45,
-  /** Cash per soldier who is still alive at extraction. */
+  /** Cash per co-leader who is still alive at extraction. */
   saveBonus: 500,
-  embers: [[-20, 46], [-58, 10], [-36, -46], [58, 46], [59, -4], [30, -40]] as [number, number][],
+  /**
+   * The Seven Flames: one from each of Vulcan's allied foundries, spread across the Forge (the layout's own spots, in
+   * this order). All seven relight the forges on Seven Flames Row.
+   */
+  embers: [[-38, 48], [-76, 30], [-10, -64], [8, -42], [86, -40], [88, 46], [34, 70]] as [number, number][],
+  flames: [
+    { name: 'IGNIS', color: 0xff7a1a },
+    { name: 'AMETHYST FLAME', color: 0xb26bff },
+    { name: 'KIZUNA SPARK', color: 0xffc84a },
+    { name: 'SAKURA SPARK', color: 0xff8ac8 },
+    { name: 'MOSSFIRE', color: 0x7ee05a },
+    { name: 'VOID EMBER', color: 0x8a6bff },
+    { name: 'FROSTFIRE', color: 0x7fd8ff },
+  ],
   emberRadius: 1.6,
   emberCash: 150,
-  trialsBonus: 600,
+  trialsBonus: 700,
+} as const;
+
+/**
+ * The Forge's story operation (`src/forge/`): the holdouts barricaded into rooms, the infected at their doors, the
+ * Hearth, the ledger, the vault, the Rumble Pit, and the last carrier.
+ */
+export const FORGE_STORY = {
+  /** A bigger map, a longer night: the deadline, the firestorm and the escalation (see `logic/mission.ts`). */
+  clock: { deadline: 1080, surgeStart: 760, phases: [150, 420, 760] as readonly number[] },
+  /** Ordinary members holed up each run (besides the left-over co-leader and Anya; tomoe is in the vault). */
+  members: 4,
+  /** No infected on its feet within this of a door, and the people inside open up. */
+  doorClear: 6,
+  /** Reach of the hold at a door. */
+  doorReach: 2.4,
+  /** Hold time at a door, and cash for each person who makes it to the Hearth. */
+  rescueHold: 1.6,
+  rescueCash: 250,
+  /** The infected at the doors: how many each, how often one more comes, and when they let go. */
+  siege: { min: 3, max: 5, refillEvery: 24, releaseRange: 11, spawnAway: 26 },
+  ledger: { pickupRadius: 1.9, cashEach: 250, bonus: 900 },
+  rumble: { waves: [6, 9, 13] as readonly number[], gap: 7, cash: 1100, plates: 2, radius: 10 },
+  finale: {
+    /** Seconds after the extraction is called before the carrier turns (random between). */
+    delayMin: 12,
+    delayMax: 28,
+    /** The warning on the radio comes this long before the reborn appears. */
+    warnLead: 4,
+    /** One more person at the Hearth falls every this many seconds while the reborn lives. */
+    killEvery: 8,
+    /** At least this many are always left at the Hearth. */
+    keep: 1,
+    hp: 3000,
+    /** Extra health for each player after the first (co-op). */
+    hpPerPlayer: 0.55,
+  },
 } as const;
 
 /** How a teammate or survivor looks (read by `coop/avatarLook.ts`); without one they are the stock figure. */
@@ -952,11 +1010,25 @@ export interface AvatarLook {
   glasses?: boolean;
   /** Trim: a nurse's cross and collar, ribbons, scrubs under a coat. */
   accent?: number;
+  /**
+   * The Forge's people (`coop/heroLook.ts`, `forge/looks.ts`): the handsome hero figure instead of the stock one, its
+   * build (a man's, a woman's, or a lean in-between), hair, outfit, signature items and a shadow of stubble.
+   */
+  hero?: boolean;
+  build?: 'm' | 'f' | 'lean';
+  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls';
+  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat';
+  /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`). */
+  pants?: number;
+  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash')[];
+  stubble?: boolean;
 }
 
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */
 export interface SquadDef {
+  /** Who deploys; with `pick`, the pool `pick` of them are drawn from each run. */
   names: readonly string[];
+  pick?: number;
   tag: string;
   tagColor: string;
   weapons: readonly ('rifle' | 'shotgun' | 'pistol')[];
@@ -965,7 +1037,8 @@ export interface SquadDef {
   looks?: readonly AvatarLook[];
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
-  forge: { names: FORGE_SQUAD.allies, tag: 'SQUAD', tagColor: '#8fd18a', weapons: ['rifle', 'rifle'], helmets: [true, true] },
+  // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
+  forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN CO-LEADER', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
   // Lantern team: Rin Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
   asylum: {
     names: ['Vance', 'Okafor'],
@@ -982,11 +1055,12 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
 };
 
 /**
- * Trapped survivors (Standard, Standard Mazoku and the Forge): caged in around the map, freed with a hold of E, then
- * they fight alongside you. Side contract: get them out alive.
+ * Trapped survivors (Standard, Standard Mazoku and the Asylum): caged in around the map, freed with a hold of E, then
+ * they fight alongside you. Side contract: get them out alive. The Forge is different (`src/forge/`): its people
+ * barricaded themselves into rooms, and once their door is clear they slip away to the Hearth instead of fighting.
  */
 export const SURVIVORS = {
-  /** Who is waiting on each map. On the Forge they are the Vulcan clan's own leadership. */
+  /** Who is waiting on each map. The Forge's list is Vulcan's leadership (its holdouts are drawn each run). */
   district: [
     { name: 'Dr. Lena Ortiz', tag: 'FIELD MEDIC', color: 0xb8c4c8 },
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
@@ -1002,10 +1076,10 @@ export const SURVIVORS = {
   ],
   forge: [
     { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },
-    { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
+    { name: 'Athy', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
     { name: 'Marv03K', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
     { name: 'piryriry', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'Athy', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
+    { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
   ],
   hp: 110,
   damageTaken: 0.85,

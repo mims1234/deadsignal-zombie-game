@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
-import { MISSION, ZOMBIE_DIFFICULTY } from '../src/config';
+import { FORGE_STORY, MISSION, ZOMBIE_DIFFICULTY } from '../src/config';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { activateDefense, completeHunt, createDefense, createHunt, updateDefense } from '../src/logic/contracts';
 import { callExtraction, createExtraction, unlockExtraction, updateExtraction } from '../src/logic/extraction';
@@ -148,7 +148,7 @@ describe('the Asylum clock', () => {
   it('is the Asylum only; the other maps keep the standard clock', () => {
     expect(missionClock('asylum')).toBe(ASYLUM_CLOCK);
     expect(missionClock('district')).toBe(MISSION);
-    expect(missionClock('forge')).toBe(MISSION);
+    expect(missionClock('forge')).toBe(FORGE_STORY.clock); // the Forge's longer night
     expect(escalationPhase(NIGHTFALL, ASYLUM_CLOCK)).toBe(2);
     expect(escalationPhase(NIGHTFALL - 1, ASYLUM_CLOCK)).toBe(1);
   });

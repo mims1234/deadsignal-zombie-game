@@ -280,6 +280,16 @@ export class Zombie {
     return this.state === 'chase' || this.state === 'attack' || this.state === 'alert';
   }
 
+  /** The animation it is playing right now (a co-op puppet's comes from the host): the Forge's doors listen for 'attack'. */
+  get poseMode(): ZombieMode {
+    return this.anim.mode;
+  }
+
+  /** Progress through the current action (0..1). */
+  get poseT(): number {
+    return this.anim.actionT;
+  }
+
   /** Co-op host: this infected as a report for the other clients. */
   toNet(): NetZombie {
     const a = this.anim;

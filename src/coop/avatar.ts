@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
 import type { AvatarLook } from '../config';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
+import { addHeroFace, addHeroHair, addHeroOutfit, addHeroTorso, heroBuild, heroMat, heroParts, isHeroPart, mergeStatic } from './heroLook';
 
 const UNIFORM = [0x4f6b8a, 0x8a6b4f, 0x5f8a5a];
 
@@ -275,15 +276,18 @@ export class Avatar {
     const trim = new THREE.MeshStandardMaterial({ color: new THREE.Color(style.color ?? UNIFORM[index % UNIFORM.length]).multiplyScalar(0.62), roughness: 0.9 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x23282c, roughness: 0.7 });
     const look = style.look;
-    const female = look?.female === true;
+    // the Forge's people: the handsome hero figure (`heroLook.ts`) on the same skeleton
+    const hero = look?.hero === true;
+    const female = !hero && look?.female === true;
     const outfit = look?.outfit;
-    const skin = new THREE.MeshStandardMaterial({ color: look?.skin ?? 0xc9a183, roughness: 0.8 });
+    const skin = hero ? heroMat(look?.skin ?? 0xd8a888, 0.62) : new THREE.MeshStandardMaterial({ color: look?.skin ?? 0xc9a183, roughness: 0.8 });
+    const pants = hero ? heroMat(look?.pants ?? 0x2a2a30, 0.85) : null;
     const glove = new THREE.MeshStandardMaterial({ color: 0x2a2a26, roughness: 0.9 });
     const soldier = style.helmet !== false;
     const geared = soldier || outfit === 'tactical';
     // legs and shoes by outfit: white tights under a nurse's dress, bare under a gown, scrubs under a coat
-    const legMat = outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xf0ece8, roughness: 0.7 }) : outfit === 'gown' ? skin : outfit === 'coat' ? new THREE.MeshStandardMaterial({ color: look?.accent ?? 0x6c8fae, roughness: 0.85 }) : outfit === 'habit' ? dark : null;
-    const shoeMat = outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xe6e2da, roughness: 0.5 }) : outfit === 'gown' ? skin : dark;
+    const legMat = hero ? (look?.heroOutfit === 'workwear' ? cloth : pants) : outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xf0ece8, roughness: 0.7 }) : outfit === 'gown' ? skin : outfit === 'coat' ? new THREE.MeshStandardMaterial({ color: look?.accent ?? 0x6c8fae, roughness: 0.85 }) : outfit === 'habit' ? dark : null;
+    const shoeMat = hero ? heroMat(0x231a14, 0.6) : outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xe6e2da, roughness: 0.5 }) : outfit === 'gown' ? skin : dark;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D): THREE.Mesh => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
@@ -293,13 +297,14 @@ export class Avatar {
     };
     // ---- hips and legs ----
     // a woman's figure has shaped limbs and a torso with a waist and hips (`avatarLook.ts`); the rest are boxes
-    const F = female ? getFemaleParts(UPPER, FORE, THIGH, SHIN) : null;
-    const shortSleeves = outfit === 'nurse' || outfit === 'gown';
-    if (!female) add(new THREE.BoxGeometry(0.36, 0.2, 0.23), trim, 0, 0.97, 0, this.body); // pelvis
-    if (!female || geared || outfit === 'coat') add(new THREE.BoxGeometry(female ? 0.34 : 0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
+    const F = hero ? heroParts(heroBuild(look!), UPPER, FORE, THIGH, SHIN) : female ? getFemaleParts(UPPER, FORE, THIGH, SHIN) : null;
+    const slim = female || (hero && heroBuild(look!) === 'f');
+    const shortSleeves = outfit === 'nurse' || outfit === 'gown' || (hero && look?.heroOutfit === 'apron');
+    if (!female && !hero) add(new THREE.BoxGeometry(0.36, 0.2, 0.23), trim, 0, 0.97, 0, this.body); // pelvis
+    if (!hero && (!female || geared || outfit === 'coat')) add(new THREE.BoxGeometry(female ? 0.34 : 0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
     for (const s of [-1, 1]) {
       const root = new THREE.Group();
-      root.position.set(s * (female ? 0.095 : 0.11), 0.93, 0);
+      root.position.set(s * (slim ? 0.095 : 0.11), 0.93, 0);
       add(F?.thigh ?? P.thigh, legMat ?? cloth, 0, 0, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -THIGH;
@@ -312,19 +317,30 @@ export class Avatar {
     // ---- chest, head, arms ----
     this.chest.position.y = 1.02;
     this.body.add(this.chest);
-    if (female) addFigure(this.body, this.chest, cloth, legMat ?? cloth);
+    // the Forge's people: a linen shirt under a forge apron; every other outfit is its own colour
+    if (hero) addHeroTorso(this.body, this.chest, look!, look?.heroOutfit === 'apron' ? heroMat(0xd8d0c4, 0.85) : cloth, legMat ?? cloth);
+    else if (female) addFigure(this.body, this.chest, cloth, legMat ?? cloth);
     else add(new THREE.BoxGeometry(0.42, 0.5, 0.24), cloth, 0, 0.28, 0, this.chest); // torso
-    if (!female) add(new THREE.BoxGeometry(0.46, 0.34, 0.3), soldier ? dark : trim, 0, 0.3, 0, this.chest); // vest / jacket
+    if (hero) {
+      // the outfit is drawn over the figure below
+    } else if (!female) add(new THREE.BoxGeometry(0.46, 0.34, 0.3), soldier ? dark : trim, 0, 0.3, 0, this.chest); // vest / jacket
     else if (geared) add(new THREE.BoxGeometry(0.39, 0.3, 0.27), dark, 0, 0.3, 0, this.chest); // a fitted plate carrier
-    if (geared) {
+    if (geared && !hero) {
       for (const x of female ? [-0.09, 0.09] : [-0.12, 0, 0.12]) add(new THREE.BoxGeometry(0.1, 0.11, 0.06), trim, x, 0.2, female ? -0.155 : -0.17, this.chest); // pouches
       add(new THREE.BoxGeometry(female ? 0.28 : 0.34, female ? 0.32 : 0.38, female ? 0.12 : 0.14), trim, 0, 0.3, female ? 0.19 : 0.21, this.chest); // pack
     }
-    add(new THREE.CylinderGeometry(female ? 0.045 : 0.055, female ? 0.055 : 0.065, 0.1, 8), skin, 0, 0.56, 0, this.chest); // neck
+    add(new THREE.CylinderGeometry(slim ? 0.045 : 0.055, slim ? 0.055 : 0.068, 0.1, 10), skin, 0, 0.56, 0, this.chest); // neck
     this.head.position.set(0, 0.68, 0);
     this.chest.add(this.head);
-    add(new THREE.SphereGeometry(0.12, 16, 12), skin, 0, 0, 0, this.head);
-    if (female && look) {
+    if (!hero) add(new THREE.SphereGeometry(0.12, 16, 12), skin, 0, 0, 0, this.head);
+    if (hero && look) {
+      // a handsome face, hair with volume, the Forge outfit and its signature items; then the still parts merged
+      this.head.scale.setScalar(slim ? 1.06 : 1.02);
+      addHeroFace(this.head, look, skin);
+      addHeroHair(this.head, look);
+      addHeroOutfit(this.body, this.chest, this.head, look, cloth);
+      mergeStatic(this.head);
+    } else if (female && look) {
       // a slightly larger, softer head: big eyes, hair, and whatever the outfit puts on it
       this.head.scale.setScalar(1.1);
       addFace(this.head, look);
@@ -337,8 +353,8 @@ export class Avatar {
     for (const s of [1, -1]) {
       // right arm first: arms[0] holds the grip, arms[1] the handguard
       const root = new THREE.Group();
-      root.position.set(s * (female ? 0.2 : 0.24), SHOULDER_Y, s < 0 ? -0.04 : 0);
-      add(F?.upper ?? P.upper, cloth, 0, 0.02, 0, root);
+      root.position.set(s * (slim ? 0.2 : hero ? 0.25 : 0.24), SHOULDER_Y, s < 0 ? -0.04 : 0);
+      add(F?.upper ?? P.upper, hero && look?.heroOutfit === 'apron' ? heroMat(0xd8d0c4, 0.85) : cloth, 0, 0.02, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -UPPER;
       add(F?.fore ?? P.fore, shortSleeves ? skin : cloth, 0, 0, 0, joint);
@@ -353,6 +369,10 @@ export class Avatar {
     this.setWeapon(style.weapon ?? (geared ? 'rifle' : 'none'));
     this.tag = nameTag(name, style.tag, style.tagColor ?? '#ffb060');
     this.displayName = name;
+    if (hero) {
+      mergeStatic(this.chest);
+      mergeStatic(this.body);
+    }
     this.tilt.add(this.body);
     this.root.add(this.tilt, this.tag);
     this.root.visible = false;
@@ -626,7 +646,7 @@ export class Avatar {
       const m = o as THREE.Mesh;
       // shared parts stay for the next figure
       if (parts && (m.geometry === parts.upper || m.geometry === parts.fore || m.geometry === parts.hand || m.geometry === parts.thigh || m.geometry === parts.shin || m.geometry === parts.boot || m.geometry === parts.flashGeo)) return;
-      if (isFemalePart(m.geometry)) return;
+      if (isFemalePart(m.geometry) || isHeroPart(m.geometry)) return;
       m.geometry?.dispose();
     });
   }

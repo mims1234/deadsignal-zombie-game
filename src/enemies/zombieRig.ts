@@ -63,6 +63,8 @@ export function createZombieFactory(): ZombieFactoryExt {
         const a = get(type, theme);
         for (let i = 0; i < a.variants.length; i++) variantGeometry(a, i);
       }
+      // the Forge's Infernus (and its reborn) wear the standard Warden's frame
+      if (theme === 'forge') variantGeometry(get('warden'), 0);
     },
     dispose(): void {
       for (const r of rigs) r.dispose();
