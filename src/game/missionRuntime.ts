@@ -22,6 +22,7 @@ import type { ExtractionPhase } from '../logic/extraction';
 import {
   boardHelicopter,
   callExtraction,
+  atLzOrRadio,
   canBoard,
   extractionInProgress,
   failExtraction,
@@ -194,7 +195,8 @@ export class MissionRuntime implements MissionApi {
     const ctx = this.ctx;
     const s = ctx.session;
     const p = ctx.player;
-    const inLz = Math.hypot(p.x - this.lz.lzX, p.z - this.lz.lzZ) <= this.lz.lzRadius;
+    // at the radio counts: it can stand a little outside the zone's circle
+    const inLz = atLzOrRadio(p.x, p.z, this.lz);
     if (this.follow) {
       if (inLz && ctx.playerAlive()) this.requestCall?.();
       return false;

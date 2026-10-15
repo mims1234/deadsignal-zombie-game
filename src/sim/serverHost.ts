@@ -33,7 +33,7 @@ import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecove
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
-import { type ExtractionPhase, callExtraction, createExtraction, extractionInProgress, unlockExtraction, updateExtraction } from '../logic/extraction';
+import { type ExtractionPhase, atLzOrRadio, callExtraction, createExtraction, extractionInProgress, unlockExtraction, updateExtraction } from '../logic/extraction';
 import { escalationPhase, missionClock, type MissionClock } from '../logic/mission';
 import { POWERUPS } from '../logic/powerupConfig';
 import { type PowerupDrop, POWERUP_KINDS, applyPowerup, cashMultiplier, createPowerups, filterDamage, nukeTargets, resetPowerups, rollDrop, tickPowerups } from '../logic/powerups';
@@ -429,10 +429,8 @@ export class SessionSim {
         return;
       }
       case 'call': {
-        const e = this.level.data.extraction;
-        const inLz = Math.hypot(p.ref.x - e.lzX, p.ref.z - e.lzZ) <= e.lzRadius + 1;
-        const atRadio = Math.hypot(p.ref.x - e.terminalX, p.ref.z - e.terminalZ) < 6;
-        if (this.story && up && inLz && atRadio) callExtraction(this.extraction, this.elapsed, true, true);
+        // in the zone or at its radio (slack for the report lag); the radio may stand outside the zone's circle
+        if (this.story && up && atLzOrRadio(p.ref.x, p.ref.z, this.level.data.extraction, 1.5)) callExtraction(this.extraction, this.elapsed, true, true);
         return;
       }
       case 'board': {

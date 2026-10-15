@@ -53,6 +53,17 @@ export function extractionInProgress(s: ExtractionState): boolean {
   return s.phase === 'called' || s.phase === 'inbound' || s.phase === 'landing' || s.phase === 'landed' || s.phase === 'boarding';
 }
 
+/** How close to the radio its prompt appears (m). */
+export const RADIO_REACH = 3.6;
+
+/**
+ * Where a player may call the bird from: inside the landing zone, or at its radio. The radio need not stand inside
+ * the zone's circle (on the Forge and the Asylum it is a few metres outside), and a player using it is always allowed.
+ */
+export function atLzOrRadio(x: number, z: number, lz: { lzX: number; lzZ: number; lzRadius: number; terminalX: number; terminalZ: number }, slack = 0): boolean {
+  return Math.hypot(x - lz.lzX, z - lz.lzZ) <= lz.lzRadius + slack || Math.hypot(x - lz.terminalX, z - lz.terminalZ) <= RADIO_REACH + 0.4 + slack;
+}
+
 export function canCall(s: ExtractionState, playerInLz: boolean, playerAlive: boolean): boolean {
   return s.phase === 'available' && playerInLz && playerAlive;
 }

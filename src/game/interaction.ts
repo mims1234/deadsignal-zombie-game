@@ -2,6 +2,7 @@
  * Contextual interactions: crates, stations (number-key panels), the transmitter console, the extraction terminal and the
  * helicopter door. Produces the HUD prompt / station panel each frame and executes actions exactly once.
  */
+import { RADIO_REACH } from '../logic/extraction';
 import { CARD_MODE, COOP, ECONOMY, MISSION, PLAYER, SURVIVORS, WEAPONS } from '../config';
 import { buyMenu, purchaseBuy, purchaseUpgrade, upgradeMenu, type BuyItemId, type StationItem } from '../logic/economy';
 import type { Edges } from '../player/input';
@@ -244,7 +245,7 @@ export class Interaction {
       const t = this.mission.terminalPos();
       const d = Math.hypot(t.x - px, t.z - pz);
       const st = this.mission.terminalState();
-      if (d < 3.6 && st !== 'busy') {
+      if (d < RADIO_REACH && st !== 'busy') {
         if (st === 'locked') {
           targets.push({ id: 'terminal-locked', dist: d, text: 'RADIO BEACON LOCKED', sub: 'Complete both contracts to call extraction', tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
         } else {
