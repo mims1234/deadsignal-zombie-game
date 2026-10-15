@@ -67,8 +67,8 @@ Pick the map on the title screen (the page reloads to build it).
   - **Ash and Cinder**, two soldiers who deploy with you, follow you, and shoot. The infected hunt them like they hunt
     you, and they can die for good. **Keep the squad alive**: each soldier still alive at extraction pays $500.
   - **Trials of Ignis**: six burning embers hidden around the map, $150 each and $600 plus two armor plates for all six.
-  - **Vulcan's leadership** — tomoe, Anya, Marv03K and piryriry — are the Forge's trapped survivors: free them and
-    they fight beside you.
+  - **Vulcan's leadership** — tomoe, Anya, Marv03K, piryriry and Athy — are the Forge's trapped survivors: free them
+    and they fight beside you.
 
   Every mode runs on both maps, co-op included.
 

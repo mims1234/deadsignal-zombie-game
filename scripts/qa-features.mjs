@@ -221,7 +221,7 @@ async function session(map) {
     await call('freeze', true);
     const sq = await call('squad');
     const names = sq.filter((s) => s.kind === 'survivor').map((s) => s.name);
-    check('the Forge cages Vulcan leadership', ['tomoe', 'Anya', 'Marv03K', 'piryriry'].every((n) => names.includes(n)), names.join(', '));
+    check('the Forge cages Vulcan leadership', ['tomoe', 'Anya', 'Marv03K', 'piryriry', 'Athy'].every((n) => names.includes(n)), names.join(', '));
     check('Ash and Cinder still deploy', sq.filter((s) => s.kind === 'soldier').length === 2);
     const tags = (await call('zombieInfo')).filter((z) => z.tag).map((z) => z.tag);
     check('some infected carry Vulcan names', tags.length >= 3, `${tags.length}: ${tags.slice(0, 6).join(', ')}`);

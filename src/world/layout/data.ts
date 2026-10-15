@@ -135,7 +135,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     kicker: 'VULCAN HQ  //  EMBER NIGHT  //  RISE FROM THE FORGE',
     signal: 'VULCAN HQ DARK  -  LAST KNOWN POSITION: THE CRUCIBLE',
     premise: 'The infection reached Vulcan HQ. Members of the clan walk the foundry with their names still on them, and its leaders are caged in somewhere in the Forge. Deploy with Ash and Cinder, free the leadership, rekindle the beacon, slay the Infernus and rise before the firestorm.',
-    foot: 'Two soldiers deploy with you and can die. tomoe, Anya, Marv03K and piryriry wait to be freed. Six Ignis embers burn somewhere in the Forge. A firestorm rises from the flue late in the mission.',
+    foot: 'Two soldiers deploy with you and can die. tomoe, Anya, Marv03K, piryriry and Athy wait to be freed. Six Ignis embers burn somewhere in the Forge. A firestorm rises from the flue late in the mission.',
     brief: 'Ember squad, Vulcan HQ has fallen. Its leaders are caged in around the Forge - break them out and they will fight. Rekindle the phoenix beacon, slay the Infernus in the Crucible, keep Ash and Cinder breathing, then rise from the forge at the Pad.',
     rows: [
       { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold the circle while it catches.' },

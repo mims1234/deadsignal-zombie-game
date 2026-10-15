@@ -1005,6 +1005,7 @@ export const SURVIVORS = {
     { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
     { name: 'Marv03K', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
     { name: 'piryriry', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
+    { name: 'Athy', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
   ],
   hp: 110,
   damageTaken: 0.85,
@@ -1023,7 +1024,8 @@ export const SURVIVORS = {
 
 /**
  * Vulcan's members, on the Forge: the infection reached Vulcan HQ, and these are the clan's Infernus who did not make
- * it out. Some of the Forge's infected carry their names.
+ * it out. Some of the Forge's infected carry their names. Decorated names (script letters, emoji) are written plainly
+ * so the name plates can draw them. Co-op sends a name as its index here, so new members go on the end.
  */
 export const VULCAN = {
   /** Share of the Forge's ordinary infected that carry a name. */
@@ -1038,6 +1040,12 @@ export const VULCAN = {
     'Peaches_MLG', 'ReNoin', 'Saku', 'senchou', 'Shua', 'SniperKing12341', 'Spidey', 'Wind', 'Abhay', 'Aesc',
     'AnimeFreak', 'Arsam', 'Beru', 'dattoh', 'Downhill', 'Eeriie', 'Fallen', 'Gouda', 'H0LL0W', 'hiro', 'Kazu',
     'Lenkun', 'Nex Venrick', 'Quintino', 'Salagast', 'Serenity', 'SJ', 'ToastiestOrb', 'Xarosa', 'Yuichiro', 'Zaraki',
+    '_itz_diablo_', '!sikao', '.piesek.', 'Maidlover', 'jnkyu', 'Vorn', 'AndriD', 'hemantt', '$hivam', 'abi', 'Adisty',
+    'Akansha', 'Aoi', 'Bai Momints', 'BikRaM69', 'BROKE', 'bron', 'Claw', 'Danish.', 'DEMON', 'Dev', 'e1sh3ths',
+    'Ezer', 'Fear', 'FonduKing', 'hsyil', 'IDK', 'Jackette', 'Jum', 'J18F.5R', 'King', 'Kitsune', 'Lab',
+    'Lord Autismo', 'Lost', 'March', 'moon', 'Phlangor Mutupil', 'Qifrey', 'Regen', 'Rhea', 'Sen', 'Sloth broth',
+    'Snow Alberich', 'tafer____', 'The Voice of Desert Bluffs', 'Yandere Extraordinaire', 'yu', 'YACHIYO', 'ZF',
+    'さなえ', 'ソフィー', 'Tsu', '他は雅', '刘枭',
   ],
 } as const;
 
