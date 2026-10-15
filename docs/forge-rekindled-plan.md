@@ -93,7 +93,7 @@ Every phase quotes these facts so the signs, notes and radio all say the same th
   and Anya is in a safe room.
 - Tag `VULCAN CO-LEADER` in Vulcan orange. Radio lines name the co-leader, e.g. "We lost Athy. Keep piryriry
   breathing." `FORGE_SQUAD.allies` and every mention of "Ash and Cinder" go.
-- Looks: Athy and piryriry use the female build; the site's spotlights call them "she". Marv03K gets a neutral look
+- Looks: Athy and piryriry use the female build. Marv03K gets a neutral look
   until the leadership models in Phase 6. Phase 5 makes all three handsome.
 - **Co-op:** a guest can't work out the pick on their own, because the session has no shared seed. The simulation
   (`src/sim/serverHost.ts`) sends the run's roster once, as a new `rs` field (squad and safe-room names in ally order)
@@ -169,7 +169,6 @@ nobody is holed up and infected at once.
 |---|---|---|---|
 | **Spawn Hall** (ground zero) | East, behind Vulcan HQ (x 62..95, z 0..75) | high | Summoning circle, ruptured furnace with the Ignis icon on its door, `#infernus-spawn` signs, dense infected, one safe room |
 | **The Ledger House** | South edge, centre (z 50..75) | medium | The ledger room with the dimmed Ignis icon, the hand-delivery counter, a mystery box, the ledger office safe room |
-| **Spotlight Wall** | Inside Vulcan HQ | — | Honours Athy, riry and Anya, from the site's spotlights |
 | **Seven Flames Row** | West edge (x −95..−62) | low–medium | Seven small forges, each lit in its flame's colour |
 | **The Rumble Pit** | North edge, centre (z −75..−50) | high | riry's arena; an optional holdout (Phase 4) |
 | **The Hearth** | North-west corner, beside the Pad | none | Where the people you rescue wait (Phase 2) and where the finale breaks out (Phase 7) |

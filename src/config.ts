@@ -1061,7 +1061,7 @@ export interface SquadDef {
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
-  forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN CO-LEADER', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
+  forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
   // Lantern team: Rin Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
   asylum: {
     names: ['Vance', 'Okafor'],
@@ -1098,11 +1098,11 @@ export const SURVIVORS = {
     { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
   ],
   forge: [
-    { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },
-    { name: 'Athy', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'Marv03K', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'piryriry', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
+    { name: 'tomoe', tag: 'VULCAN', color: 0xb5501a },
+    { name: 'Athy', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: 'piryriry', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: 'Anya', tag: 'VULCAN', color: 0x9a3d1c },
   ],
   hp: 110,
   damageTaken: 0.85,

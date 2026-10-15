@@ -22,10 +22,10 @@ release. The mode still runs without the files: a carrier with no image gets a p
 
 `src/world/art/vulcan-logo.png` is the Vulcan community's phoenix logo, taken from vulcan.genxmims.org (the repository
 owner's site) with their go-ahead. The Forge tints it on canvases for the Vulcan HQ billboard, the crossroads sigil
-and the clan banners (`src/world/layout/vulcan.ts`). The names and ranks of Vulcan's members used on the Forge (the
-leadership, the holdouts and the named infected: `VULCAN_LEADERSHIP`, `SURVIVORS` and `VULCAN` in `src/config.ts`)
-come from the same site's member list, and the Forge's story borrows the site's Ignis currency, its seven partner
-foundries' currencies and its spotlights (never any amounts). Every member's look is built in code from their name
+and the clan banners (`src/world/layout/vulcan.ts`). The names of Vulcan's members used on the Forge (the squad, the
+holdouts and the named infected: `VULCAN_LEADERSHIP`, `SURVIVORS` and `VULCAN` in `src/config.ts`) come from the same
+site's member list (no rank or title is ever shown in the game), and the Forge's story borrows the site's Ignis
+currency and its seven partner foundries' currencies (never any amounts). Every member's look is built in code from their name
 (`src/forge/looks.ts`, `src/coop/heroLook.ts`); no avatar or picture of anyone is used.
 
 ## Ignis icon (the Forge)

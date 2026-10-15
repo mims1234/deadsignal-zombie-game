@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.105",
+      "date": "2026-10-16",
+      "title": "No rank titles",
+      "notes": [
+        "Nobody's rank is shown any more: the name tags over Vulcan's people (and the ending's lists) just say VULCAN, the squad objective is KEEP THE SQUAD ALIVE, and the menu, the bestiary and the ledger no longer name anyone's role.",
+        "The honours wall inside Vulcan HQ is gone."
+      ]
+    },
+    {
       "version": "0.1.104",
       "date": "2026-10-16",
       "title": "A more compact admin page",
@@ -69,7 +78,7 @@
     {
       "version": "0.1.98",
       "date": "2026-10-15",
-      "title": "Anime co-leaders",
+      "title": "Anime looks for riry and Athy",
       "notes": [
         "riry and Athy drawn anime-style; Anya's long braids so she reads as a woman at a distance."
       ]
@@ -79,7 +88,7 @@
       "date": "2026-10-15",
       "title": "The Forge, rekindled",
       "notes": [
-        "The Forge grew to 190 x 150 m with the Vulcan story: holdouts barricaded in safe rooms, co-leaders in the squad, tomoe in the vault.",
+        "The Forge grew to 190 x 150 m with the Vulcan story: holdouts barricaded in safe rooms, two of Vulcan in the squad, tomoe in the vault.",
         "Ledger pages, riry's Rumble Pit, a hidden-bite finale, the burnout at dawn and the closing cutscene.",
         "Flow fields spread over frames for the bigger map."
       ]

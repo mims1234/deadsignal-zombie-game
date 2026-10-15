@@ -6,7 +6,7 @@
  *   SW  Ember Market   insertion gate, market hall, workshops (low threat)
  *   NW  The Pad        helipad and radio for extraction, fuel farm; the Hearth beyond it (low)
  *   SE  Phoenix Plaza  the beacon to rekindle, and Vulcan HQ (the forge hall) under its phoenix billboard, with the
- *                      Great Furnace, the Spotlight Wall and tomoe's vault inside (medium)
+ *                      Great Furnace and tomoe's vault inside (medium)
  *   NE  The Crucible   open-roofed foundry with molten pools, the Infernus, the firestorm spire (high)
  */
 import * as THREE from 'three';
@@ -30,7 +30,6 @@ import {
   vehicle,
 } from '../props';
 import type { ForgeSites } from '../../forge/sites';
-import { neonLabelMaterial } from '../landmarks/tex';
 import { addBox, building, groundRect, perimeterWall, wallDecal } from '../structures';
 import { type DoorHandle, hqVault } from './forgeRooms';
 import { buildForgeOuter } from './forgeOuter';
@@ -139,24 +138,6 @@ function greatFurnace(c: Ctx, x: number, z: number): ForgeHandles['furnaceDoor']
   addBox(b, b.mats.get('emAmber'), x, 0.12, fz - 0.02, 2.3, 0.08, 0.04, 0, { cast: false });
   b.light({ x, y: 1.2, z: fz - 1.2, color: 0xff5a1a, intensity: 30, distance: 7 });
   return { left, right, mark };
-}
-
-/** The Spotlight Wall inside HQ: three plaques for the people who held Vulcan together. */
-function spotlightWall(c: Ctx, x0: number, z: number): void {
-  const { b } = c;
-  const people = [
-    { name: 'ATHY', line: 'Helped build Vulcan into what it is.' },
-    { name: 'RIRY', line: 'Ran the rumbles. Made every week louder.' },
-    { name: 'ANYA', line: 'Took the weight off everyone else.' },
-  ];
-  people.forEach((p, i) => {
-    const x = x0 + i * 2.2;
-    addBox(b, 'steelDark', x, 2.0, z, 2.0, 1.4, 0.08, 0, { cast: false });
-    addBox(b, neonLabelMaterial(p.name, '#ffb060'), x, 2.4, z + 0.06, 1.4, 0.34, 0.02, 0, { cast: false });
-    addBox(b, neonLabelMaterial(p.line, '#d8c8a8'), x, 1.85, z + 0.06, 1.8, 0.17, 0.02, 0, { cast: false });
-  });
-  addBox(b, neonLabelMaterial('SPOTLIGHT', '#ff7a1a'), x0 + 2.2, 3.05, z + 0.06, 2.2, 0.3, 0.02, 0, { cast: false });
-  b.light({ x: x0 + 2.2, y: 3, z: z + 1.4, color: 0xffb060, intensity: 22, distance: 6, weight: 0.5 });
 }
 
 export function buildForge(c: Ctx): ForgeResult {
@@ -279,7 +260,7 @@ export function buildForge(c: Ctx): ForgeResult {
 
   // ---- SE: Phoenix Plaza ----
   const beacon = transmitterSite(b, { x: FORGE.beacon.x, z: FORGE.beacon.z, rot: 0, radius: FORGE.beacon.radius });
-  // Vulcan HQ: tomoe's vault in its south-east corner, the Great Furnace against its back wall, the Spotlight Wall
+  // Vulcan HQ: tomoe's vault in its south-east corner, the Great Furnace against its back wall
   const vaultDoors: DoorHandle[] = [];
   const vault = hqVault(c, { x0: 39.4, z0: 7.4, x1: 56.6, z1: 18.6 }, vaultDoors);
   building(b, {
@@ -293,7 +274,6 @@ export function buildForge(c: Ctx): ForgeResult {
     tag: 'forge-hall',
   });
   const furnaceDoor = greatFurnace(c, 44.5, 16.2);
-  spotlightWall(c, 40.4, 7.5);
   // the hall is Vulcan HQ: the phoenix billboard on its roof, its name in neon, the quarantine it fell under;
   // the clan's banners hang around the perimeter. Then the phoenix pillar at the plaza corner.
   const billboard = vulcanForge(c, { x: 48, z: 13, frontZ: 7, height: 6 }, B);

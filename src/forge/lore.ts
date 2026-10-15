@@ -66,7 +66,7 @@ export const LEDGER_PAGES: readonly LedgerPage[] = [
     title: 'STREAK TALLY',
     source: 'The Crucible - chalked on a slag bucket by the pour floor',
     body:
-      'DAY 1 IIII IIII IIII\nDAY 2 IIII IIII IIII IIII - "furnaces still cold"\nDAY 3 IIII IIII - "my hands feel hot"\nDAY 4 IIII IIII - "stop blaming the co-leads"\nDAY 5 III - "nobody is talking to anybody"\nDAY 6 I - "it has to go somewhere"\n\nDay seven is a single word, scratched in over and over: RISE.',
+      'DAY 1 IIII IIII IIII\nDAY 2 IIII IIII IIII IIII - "furnaces still cold"\nDAY 3 IIII IIII - "my hands feel hot"\nDAY 4 IIII IIII - "stop blaming each other"\nDAY 5 III - "nobody is talking to anybody"\nDAY 6 I - "it has to go somewhere"\n\nDay seven is a single word, scratched in over and over: RISE.',
     comment: "The embers kept coming off them and had nowhere to go. So they stayed in them. Seven days. God.",
   },
   {

@@ -34,7 +34,9 @@ export function rankOf(name: string): VulcanRank {
 
 /** The line under a name: their rank in the clan. */
 export function rankTag(rank: VulcanRank): string {
-  return rank === 'leader' ? 'VULCAN LEADER' : rank === 'coLead' ? 'VULCAN CO-LEADER' : rank === 'officer' ? 'VULCAN OFFICER' : 'VULCAN MEMBER';
+  // ranks decide who is where (the roster), but nobody's title is ever shown: everyone is simply Vulcan
+  void rank;
+  return 'VULCAN';
 }
 
 /** Who goes first when the reborn takes the Hearth: the members, then the officer, the co-leader, the leader last. */

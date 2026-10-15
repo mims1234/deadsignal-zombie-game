@@ -136,7 +136,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     kicker: 'VULCAN HQ  //  EMBER NIGHT  //  RISE FROM THE FORGE',
     signal: 'VULCAN HQ DARK  -  COLLECTION PAUSED AT ALL SEVEN FURNACES',
     premise: "Every currency in the Forge ran on embers - and seven days ago the collection stopped. The furnaces went cold, the clan blamed each other, and the fire with nowhere to go burned up the people who made it. Start in the Hearth, bring the holdouts home, relight the seven furnaces, rekindle the beacon, slay the Infernus - then hold the Hearth until the bird can land.",
-    foot: "Two co-leaders deploy with you and can die. Clear the infected off a holdout's door and they make for the Hearth. Four ledger pages and riry's Rumble Pit wait around the Forge. When you call the bird, the whole Forge comes for the Hearth.",
+    foot: "Two of Vulcan's own deploy with you and can die. Clear the infected off a holdout's door and they make for the Hearth. Four ledger pages and riry's Rumble Pit wait around the Forge. When you call the bird, the whole Forge comes for the Hearth.",
     brief: "Ember, Vulcan HQ went dark seven nights ago when the furnaces stopped collecting. You're in the Hearth - its sentry covers you there. People are barricaded in all over the Forge: clear their doors and they'll come to you. Relight the seven furnaces, rekindle the phoenix beacon, slay the Infernus, then call the bird and hold the Hearth.",
     rows: [
       { tag: 'SAFE ZONE', title: 'THE HEARTH', text: 'You start here. Its sentry gun cuts down anything that comes through the gate - come back whenever you need to breathe.' },

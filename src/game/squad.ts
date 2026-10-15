@@ -474,7 +474,7 @@ export class SquadRuntime {
       const up = soldiers.filter((a) => a.ref.alive);
       out.push({
         id: 'squad',
-        title: `${this.g.mapId === 'forge' ? 'KEEP THE CO-LEADERS ALIVE' : 'KEEP THE SQUAD ALIVE'}  ${up.length}/${soldiers.length}`,
+        title: `KEEP THE SQUAD ALIVE  ${up.length}/${soldiers.length}`,
         detail: soldiers.map((a) => (a.ref.alive ? `${a.name} ${Math.ceil(a.hp)}` : `${a.name} KIA`)).join('   '),
         state: up.length === 0 ? 'failed' : 'active',
         progress: -1,

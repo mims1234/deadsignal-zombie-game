@@ -67,10 +67,10 @@ Pick the map on the title screen (the page reloads to build it).
   **hold the Hearth**. On top of that:
   - **The Hearth** is your safe zone: walk in and out through its open gate, and its sentry gun cuts down any infected
     that come through it (it never fires on a boss).
-  - **Two of Vulcan's co-leaders** (drawn each run from Athy, Marv03K and piryriry) deploy with you, follow you and
+  - **Two of Vulcan's own** (drawn each run from Athy, Marv03K and piryriry) deploy with you, follow you and
     shoot. The infected hunt them like they hunt you, and they can die for good: each still alive at extraction pays
     $500.
-  - **The holdouts**: the third co-leader, Anya and four members of the clan barricaded themselves into rooms around
+  - **The holdouts**: the third of them, Anya and four members of the clan barricaded themselves into rooms around
     the Forge, and the infected pound on their doors (they never get in). Clear a door and hold E: they slip out the
     back to the Hearth and board with you at the end. tomoe is in the HQ vault, which opens when the beacon burns.
   - **The seven embers**: seven foundries spread around the map, one for each of the Forge's currencies (IGNIS,
@@ -81,7 +81,7 @@ Pick the map on the title screen (the page reloads to build it).
     can hold. Anyone they reach there dies, so the squad holds the gate.
   - **tomoe's ledger**: four pages to find, each with a piece of where the embers went.
   - **riry's Rumble Pit**: ring the bell for three waves (optional).
-  - Every member has their own look (built in code from their name), and the leadership have their own.
+  - Every member has their own look (built in code from their name), and a few familiar faces have their own.
   - Something else happens during the last stand. Finish a run to find out.
 
   Every mode runs on both maps, co-op included.
