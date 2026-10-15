@@ -120,7 +120,7 @@ export function addHeroTorso(body: THREE.Object3D, chest: THREE.Object3D, look: 
     const ribs = put(chest, new THREE.CylinderGeometry(0.165, 0.13, 0.28, 18), top, 0, 0.39, 0);
     ribs.scale.z = 0.72;
     // a dress's bodice is smooth: a softer figure under it
-    const dress = look.heroOutfit === 'dress' || look.heroOutfit === 'uniform';
+    const dress = look.heroOutfit === 'dress' || look.heroOutfit === 'uniform' || look.heroOutfit === 'school';
     for (const s of [-1, 1]) {
       put(chest, sphere(dress ? 0.05 : 0.058), top, s * 0.054, 0.33, dress ? -0.066 : -0.074, undefined, dress ? [1.1, 0.8, 0.5] : [1, 0.88, 0.72]);
       put(chest, sphere(0.06), top, s * 0.172, 0.47, 0);
@@ -436,7 +436,7 @@ export function addHeroHair(head: THREE.Object3D, look: AvatarLook): void {
       base(1.08, 0.62);
       blob(0, 0.06, 0.014, 0.12, 1.0, 0.68, 1.06);
       blob(0, -0.01, 0.03, 0.125, 1.0, 0.8, 0.98);
-      const streak = heroMat(0xf2f4fa, 0.55);
+      const streak = look.hairTip !== undefined ? heroMat(look.hairTip, 0.55) : hi;
       for (let i = 0; i < 7; i++) {
         const x = -0.07 + i * 0.0233;
         const len = 0.058 + (i % 2) * 0.014;
@@ -528,7 +528,7 @@ export function addHeroOutfit(body: THREE.Object3D, chest: THREE.Object3D, head:
   const b = heroBuild(look);
   const w = b === 'm' ? 1 : b === 'lean' ? 0.9 : 0.82;
   // a belt with a buckle (a dress has a sash instead)
-  if (o !== 'dress') {
+  if (o !== 'dress' && o !== 'school') {
     put(body, new THREE.CylinderGeometry(0.14 * w + 0.01, 0.14 * w + 0.01, 0.05, 16), dark, 0, 1.05, 0, undefined, [1, 1, 0.75]);
     put(body, new THREE.BoxGeometry(0.05, 0.04, 0.02), heroMat(0xc8a050, 0.35, { metal: 0.8 }), 0, 1.05, -0.11);
   }
@@ -570,6 +570,27 @@ export function addHeroOutfit(body: THREE.Object3D, chest: THREE.Object3D, head:
           for (let i = 0; i < 3; i++) put(chest, sphere(0.0095, 6, 4), gold, s * 0.04, 0.3 - i * 0.075, -0.112);
         }
       }
+      break;
+    }
+    case 'school': {
+      // a white short-sleeved school blouse tucked into a short dark pleated skirt (the accent), a soft collar
+      const skirtM = doubleSided(heroMat(look.accent ?? 0x1c2238, 0.75));
+      put(body, new THREE.CylinderGeometry(0.128 * w + 0.012, 0.128 * w + 0.012, 0.045, 18), skirtM, 0, 1.06, 0, undefined, [1, 1, 0.78]);
+      put(body, new THREE.CylinderGeometry(0.13 * w, 0.23, 0.22, 14, 1, true), skirtM, 0, 0.94, 0, undefined, [1, 1, 0.86]);
+      // the pleats: thin dark folds round the skirt
+      const fold = heroMat(0x0e1018, 0.8);
+      for (let i = 0; i < 14; i++) {
+        const t = (i / 14) * Math.PI * 2;
+        put(body, new THREE.BoxGeometry(0.006, 0.2, 0.006), fold, Math.sin(t) * 0.19, 0.935, Math.cos(t) * 0.19 * 0.86, [Math.cos(t) * -0.38, 0, Math.sin(t) * 0.38]);
+      }
+      put(chest, new THREE.TorusGeometry(0.078, 0.022, 6, 18), cloth, 0, 0.53, 0, [Math.PI / 2, 0, 0], [1, 0.86, 1]);
+      for (const s of [-1, 1]) {
+        // the collar's points, and short loose sleeves
+        put(chest, new THREE.BoxGeometry(0.05, 0.06, 0.01), cloth, s * 0.04, 0.5, -0.112, [0.3, 0, s * 0.7]);
+        put(chest, sphere(0.068, 12, 10), cloth, s * 0.19, 0.44, 0, undefined, [1, 0.95, 1]);
+      }
+      // the buttons down the front
+      for (let i = 0; i < 3; i++) put(chest, sphere(0.007, 6, 4), heroMat(0xe8e8ee, 0.3), 0, 0.33 - i * 0.08, -0.106);
       break;
     }
     case 'tunic': {

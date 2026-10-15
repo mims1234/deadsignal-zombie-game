@@ -26,9 +26,9 @@ const LEADERSHIP: Record<string, Look & { color: number }> = {
   '.maidlover.': { build: 'f', female: true, anime: 'cool', heroHair: 'animeLong', hairColor: 0xf6a8c6, hairTip: 0xee86b2, skin: 0xfae6dc, eyes: 0x2ab8a0, heroOutfit: 'uniform', skirt: 'short', color: 0xc41e2c, accent: 0x161214, pants: 0x1a1416, shoes: 0x1a1416, accessories: ['oniHorns', 'headband', 'tie'] },
   // co-leader: silver undercut, goggles up, dark workwear
   Marv03K: { build: 'lean', heroHair: 'undercut', hairColor: 0xc8ccd4, skin: 0xc89a7a, eyes: 0x2a3a5a, heroOutfit: 'workwear', color: 0x2a3036, accent: 0xff9a3a, pants: 0x2a3036, accessories: ['goggles'] },
-  // drawn anime-style: a soft blue bob with a white streak, amber eyes behind thin round glasses, white headphones (the
-  // radio she kept everyone going over), a white star clip in her hair, a dark hoodie
-  Anya: { build: 'f', female: true, anime: 'soft', heroHair: 'animeBob', hairColor: 0x3a78e0, skin: 0xfae8dc, eyes: 0xd8a040, heroOutfit: 'hoodie', color: 0x283456, accent: 0xf2f4fa, pants: 0x2a2f42, accessories: ['glasses', 'headphones', 'starClip'] },
+  // drawn anime-style: a messy dark-blue bob with long locks framing the face, sleepy amber eyes, a white short-sleeved
+  // school blouse with a thin black ribbon, a short dark pleated skirt, loafers; she carries her bass
+  Anya: { build: 'f', female: true, anime: 'cool', heroHair: 'animeBob', hairColor: 0x30508e, skin: 0xfae8dc, eyes: 0xe0b434, heroOutfit: 'school', color: 0xf0f0f4, accent: 0x1a1e2e, pants: 0xf4dccc, shoes: 0x3a2a20, accessories: ['bow'], instrument: 'bass' },
 };
 
 /** Signature items picked from members' names (and a colour or two where the name asks for it). */

@@ -512,7 +512,7 @@ export class RevealCinematic {
       ease = 0.05;
     } else {
       // it goes: from the Hearth, looking up as it leaves the sky
-      P.set(h.gateX + 6, 2.2, h.gateZ + 10);
+      P.set(h.x + 5, 2.2, h.z + 6);
       L.copy(orb);
       ease = t < this.launchAt + 0.3 ? 0.2 : 1;
     }

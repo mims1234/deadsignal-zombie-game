@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.107",
+      "date": "2026-10-16",
+      "title": "The Hearth round the helipad",
+      "notes": [
+        "The Hearth is now the landing zone: a walled yard round the helipad with a gate standing open in the middle of every wall. The run starts there, the helicopter lands there, and the last stand comes at it from all four sides.",
+        "One sentry gun on a tower in the yard's corner covers the whole yard and every gate (it never fires on a boss).",
+        "The people you save take up a weak shotgun each at the Hearth and shoot the infected that get near them; their kills pay nothing, like the sentry's. The member who turns into the reborn does it right there among them.",
+        "Anya has a new look: a messy dark-blue bob, amber eyes, a white school blouse with a black ribbon, a pleated skirt, and a bass guitar in her hands - her gun at the Hearth is her bass.",
+        "Dark interiors are lit properly: indoors, the lamps in the room you are in now come before the brighter street lamps outside (which only shone through the walls), and the seven foundries have hanging work lamps.",
+        "Fixed rescued people sometimes staying drawn at their room's back door instead of appearing at the Hearth."
+      ]
+    },
+    {
       "version": "0.1.106",
       "date": "2026-10-16",
       "title": "New looks for tomoe, Anya and .maidlover.",

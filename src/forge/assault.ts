@@ -1,7 +1,8 @@
 /**
  * The last stand at the Hearth: from the extraction call until the virus burns out, the infected come for the people
  * sheltering there - wave after wave, from out of sight all around, more than the sentry can hold. Each one walks the
- * Forge's streets to the Hearth's gate (a flow field toward it, computed once), goes in, and stands over someone; if
+ * Forge's streets into the Hearth (a flow field to the middle of its yard, computed once: in through whichever of its
+ * four open gates is nearest), and stands over someone; if
  * nobody stops it in time, that person dies. Shot, or with a player right on top of it, it forgets the errand and
  * hunts as usual.
  *
@@ -53,14 +54,14 @@ class HearthScript implements ZombieScript {
     if (z.hp < this.hp - 0.01) return dir.release(z, env);
     const p = env.player;
     if (p.alive && Math.hypot(p.x - z.x, p.z - z.z) < A.releaseRange) return dir.release(z, env);
-    const inside = z.x > h.x0 - 0.3 && z.x < h.x1 + 0.3 && z.z > h.z0 - 0.3 && z.z < h.z1 + 0.6;
+    const inside = z.x > h.x0 - 0.3 && z.x < h.x1 + 0.3 && z.z > h.z0 - 0.3 && z.z < h.z1 + 0.3;
     let gx: number;
     let gz: number;
     if (!inside) {
-      // through the streets to the gate
+      // through the streets, in at a gate
       if (!dir.field.follow(z.x, z.z, this.step2, 10)) {
-        this.step2.x = h.gateX;
-        this.step2.z = h.z1 - 1.5;
+        this.step2.x = h.x;
+        this.step2.z = h.z;
       }
       gx = this.step2.x;
       gz = this.step2.z;
@@ -114,7 +115,7 @@ class HearthScript implements ZombieScript {
 }
 
 export class AssaultDirector {
-  /** The way to the Hearth's gate from anywhere (computed the first time it is needed). */
+  /** The way into the Hearth from anywhere (computed the first time it is needed). */
   readonly field: FlowField;
   private computed = false;
   active = false;
@@ -142,7 +143,7 @@ export class AssaultDirector {
 
   private ensureField(): void {
     if (this.computed) return;
-    this.field.compute(this.hearth.gateX, this.hearth.z1 - 1.2);
+    this.field.compute(this.hearth.x, this.hearth.z);
     this.computed = true;
   }
 
@@ -232,7 +233,7 @@ export class AssaultDirector {
       if (!at) continue;
       const v = rng.f();
       const type: ZombieType = v < 0.14 ? 'armored' : v < 0.44 ? 'runner' : 'shambler';
-      const z = this.zombies.spawn(type, at.x, at.z, rng, { yaw: Math.atan2(at.x - this.hearth.gateX, at.z - this.hearth.gateZ) });
+      const z = this.zombies.spawn(type, at.x, at.z, rng, { yaw: Math.atan2(at.x - this.hearth.x, at.z - this.hearth.z) });
       z.script = new HearthScript(this, z);
       z.scriptPose.lift = 0;
       this.crowd.push(z);
@@ -244,11 +245,11 @@ export class AssaultDirector {
     const h = this.hearth;
     const [d0, d1] = A.spawnAway as readonly [number, number];
     for (let k = 0; k < 14; k++) {
-      // the Hearth backs onto the Forge's north wall: they come from the south, east and west
-      const a = (rng.f() - 0.5) * Math.PI * 1.25;
+      // from every side: the Hearth has a gate in each wall
+      const a = rng.f() * Math.PI * 2;
       const d = d0 + rng.f() * (d1 - d0);
-      const x = h.gateX + Math.sin(a) * d;
-      const z = h.gateZ + Math.cos(a) * d * 0.9;
+      const x = h.x + Math.sin(a) * d;
+      const z = h.z + Math.cos(a) * d;
       if (this.nav.isBlockedAt(x, z) || !this.field.isReachable(x, z)) continue;
       if (players.some((p) => p.alive && Math.hypot(p.x - x, p.z - z) < 18)) continue;
       if (seen(x, z)) continue;

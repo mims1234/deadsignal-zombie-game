@@ -315,6 +315,12 @@ export class Game implements GameCtx {
       this.renderer.light.fill.color.set(0x9fb6d0);
     }
     this.worldRoot.add(this.level.root);
+    // which lamps are under a roof (the same test as the camera's): indoors, the room's own lamps are chosen first
+    for (const l of this.level.lights) {
+      if (l.indoor !== undefined) continue;
+      const hit = this.level.world.raycast(l.x, Math.max(0.3, l.y - 0.4), l.z, 0, 1, 0, 14, 'shots');
+      l.indoor = !!hit && hit.collider?.tag === 'roof';
+    }
     this.renderer.lightPool.setLamps(this.level.lights);
 
     this.menus.showLoading(0.6, 'PREPARING EFFECTS AND AUDIO');

@@ -4,7 +4,8 @@
  * 190 x 150 m: the four districts at its heart, and the ring around them (`forgeOuter.ts`).
  *
  *   SW  Ember Market   insertion gate, market hall, workshops (low threat)
- *   NW  The Pad        helipad and radio for extraction, fuel farm; the Hearth beyond it (low)
+ *   NW  The Pad        the Hearth: a walled yard round the helipad, four open gates and a sentry (where the run
+ *                      starts and the helicopter lands), the radio, a fuel farm (low)
  *   SE  Phoenix Plaza  the beacon to rekindle, and Vulcan HQ (the forge hall) under its phoenix billboard, with the
  *                      Great Furnace and tomoe's vault inside (medium)
  *   NE  The Crucible   open-roofed foundry with molten pools, the Infernus, the firestorm spire (high)
@@ -39,8 +40,8 @@ import { vulcanForge, vulcanSigilMaterial } from './vulcan';
 
 export const FORGE_BOUNDS = { minX: -95, maxX: 95, minZ: -75, maxZ: 75 };
 export const FORGE = {
-  /** The run starts inside the Hearth, facing its gate. */
-  start: { x: -42, z: -61.5 },
+  /** The run starts inside the Hearth, at the helipad's edge, facing its south gate. */
+  start: { x: -38, z: -21.6 },
   lz: { x: -38, z: -30, radius: 11, terminalX: -27.5, terminalZ: -22.5 },
   beacon: { x: 32, z: 29, radius: 11 },
   crucible: { x: 36, z: -29 },
@@ -242,12 +243,13 @@ export function buildForge(c: Ctx): ForgeResult {
 
   // ---- NW: The Pad ----
   helipad(b, { x: FORGE.lz.x, z: FORGE.lz.z, rot: 0, radius: 8.6 });
-  fuelTank(b, { x: -55, z: -43, radius: 3, height: 7, color: 'rust' });
-  fuelTank(b, { x: -55, z: -34, radius: 3, height: 7, color: 'grey' });
+  // the fuel farm, west of the Hearth's walls (clear of its west gate)
+  fuelTank(b, { x: -57, z: -46, radius: 3, height: 7, color: 'rust' });
+  fuelTank(b, { x: -57, z: -38, radius: 3, height: 7, color: 'grey' });
   fuelTank(b, { x: -18, z: -44, radius: 2.4, height: 3.4, horizontal: true, color: 'olive', rot: 0.1 });
   generator(b, { x: -22, z: -12, rot: 0.4, running: true });
   building(b, {
-    x: -50, z: -14, w: 12, d: 9, height: 4, wallMaterial: 'metalPanel', roofMaterial: 'roof', floorMaterial: 'floorWarehouse', ceilingMaterial: 'metalPanel',
+    x: -50, z: -12.5, w: 12, d: 9, height: 4, wallMaterial: 'metalPanel', roofMaterial: 'roof', floorMaterial: 'floorWarehouse', ceilingMaterial: 'metalPanel',
     sides: { S: { openings: [{ at: 4, width: 1.9, height: 2.3, kind: 'door', frame: 'steelDark' }, { at: 8.5, width: 2.4, height: 1.4, sill: 1, kind: 'window', lit: true }] } },
     tag: 'pad-office',
   });
@@ -328,7 +330,7 @@ export function buildForge(c: Ctx): ForgeResult {
   d.spawn('medium', 'general', [[58, 48], [58, 26], [30, 47], [10, 20], [42, 8]], 1);
   d.spawn('high', 'general', [[58, -40], [58, -11], [24, -47], [10, -16], [46, -22]], 1.2);
   d.spawn('medium', 'defense', [[20, 18], [46, 40], [44, 22], [18, 42]], 1);
-  d.spawn('low', 'lz', [[-50, -44], [-24, -40], [-50, -22], [-22, -20]], 1);
+  d.spawn('low', 'lz', [[-50, -46], [-21, -40], [-55, -26], [-21, -22]], 1);
   d.zombies('low', 'shambler', [[-30, 18], [-14, 34], [-40, 46], [-26, -36], [-48, -26], [-12, -24], [-56, 2.5]]);
   d.zombies('medium', 'shambler', [[24, 24], [40, 36], [54, 30], [12, 38]]);
   d.zombies('medium', 'runner', [[30, 16], [46, 44]]);

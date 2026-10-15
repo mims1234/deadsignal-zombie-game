@@ -69,6 +69,8 @@ export interface ForgeView {
   furnaces: FurnaceState[];
   /** The sentry's aim, a count of its shots, and where the last one went. */
   sentry: { yaw: number; shots: number; tx: number; tz: number };
+  /** Each holdout's gun at the Hearth (by holdout): a count of their shots, and where the last one went. */
+  guards: { shots: number; tx: number; tz: number }[];
   assault: AssaultPhase;
 }
 
@@ -114,9 +116,10 @@ export class ForgeStory {
   private drawT: number[] = [];
   private sentryCool = 0;
   private sentryTarget: Zombie | null = null;
+  private guardCool: number[] = [];
   /** True while the burnout is killing: those kills pay nothing and drop nothing. */
   burning = false;
-  /** True while the sentry's shot lands (its kills pay nothing either). */
+  /** True while a shot from the Hearth (the sentry, or someone there) lands: its kills pay nothing either. */
   private sentryFiring = false;
   /** The vault's seals: they drop when the beacon burns. */
   vaultOpen = false;
@@ -132,7 +135,7 @@ export class ForgeStory {
   }
 
   static empty(): ForgeView {
-    return { squad: [], holdouts: [], ledger: [], rumble: { phase: 'idle', wave: 0 }, finale: { phase: 'idle', carrier: -1 }, furnaces: [], sentry: { yaw: 0, shots: 0, tx: 0, tz: 0 }, assault: 'idle' };
+    return { squad: [], holdouts: [], ledger: [], rumble: { phase: 'idle', wave: 0 }, finale: { phase: 'idle', carrier: -1 }, furnaces: [], sentry: { yaw: 0, shots: 0, tx: 0, tz: 0 }, guards: [], assault: 'idle' };
   }
 
   /** A fresh run: draw the roster and the furnaces, put everyone in their rooms, the first infected at their doors. */
@@ -150,8 +153,10 @@ export class ForgeStory {
       finale: { phase: 'idle', carrier: -1 },
       furnaces: Array.from({ length: count }, (_, i) => ({ spot: i, flame: i, phase: 'cold' as FurnacePhase, progress: 0 })),
       sentry: { yaw: Math.atan2(-(h.gateX - h.sentryX), -(h.gateZ - h.sentryZ)), shots: 0, tx: h.gateX, tz: h.gateZ },
+      guards: roster.holdouts.map(() => ({ shots: 0, tx: 0, tz: 0 })),
       assault: 'idle',
     };
+    this.guardCool = roster.holdouts.map(() => 0);
     this.drawT = this.view.furnaces.map(() => 0);
     this.finaleAt = this.finaleT = this.killT = this.burnR = this.rumbleT = 0;
     this.nextSlot = 0;
@@ -282,6 +287,7 @@ export class ForgeStory {
     this.stepRumble(dt, t, rng);
     this.stepAssault(dt, t, rng);
     this.stepSentry(dt, t, rng);
+    this.stepGuards(dt, t, rng);
     this.stepFinale(dt, t, rng);
   }
 
@@ -378,19 +384,26 @@ export class ForgeStory {
     A.update(dt, this.hearthTargets(), t.players, t.playerCount, rng, (x, z) => t.seen(x, z));
   }
 
-  /** The Hearth's gun: the nearest infected in the courtyard or at its gate, never a boss. */
+  /** An infected the Hearth's guns may shoot: in the yard, or just outside one of its gates; never a boss. */
+  private hearthCovers(z: Zombie): boolean {
+    if (!z.alive || !z.active || z.dormant || z.isBoss) return false;
+    const h = this.sites.hearth;
+    if (z.x > h.x0 - 0.4 && z.x < h.x1 + 0.4 && z.z > h.z0 - 0.4 && z.z < h.z1 + 0.4) return true;
+    return h.gates.some((g) => {
+      const dx = z.x - g.x;
+      const dz = z.z - g.z;
+      const out = dx * g.nx + dz * g.nz;
+      return out > 0 && out < 6 && Math.abs(dx * g.nz - dz * g.nx) < 3.6;
+    });
+  }
+
+  /** The Hearth's gun, up on its tower: the nearest infected in the yard or at any of its gates, never a boss. */
   private stepSentry(dt: number, t: StoryTick, rng: Rng): void {
     const S = FORGE_STORY.sentry;
     const h = this.sites.hearth;
     const view = this.view.sentry;
     this.sentryCool = Math.max(0, this.sentryCool - dt);
-    const covered = (z: Zombie): boolean => {
-      if (!z.alive || !z.active || z.dormant || z.isBoss) return false;
-      if (Math.hypot(z.x - h.sentryX, z.z - h.sentryZ) > S.range) return false;
-      if (z.x < h.x0 - 0.4 || z.x > h.x1 + 0.4 || z.z < h.z0 - 0.4) return false;
-      if (z.z > h.z1 + 0.4) return Math.abs(z.x - h.gateX) < 3.6 && z.z < h.z1 + 5; // the apron outside the gate
-      return true;
-    };
+    const covered = (z: Zombie): boolean => this.hearthCovers(z) && Math.hypot(z.x - h.sentryX, z.z - h.sentryZ) <= S.range;
     if (!this.sentryTarget || !covered(this.sentryTarget)) {
       this.sentryTarget = null;
       let bd = Infinity;
@@ -423,6 +436,52 @@ export class ForgeStory {
     this.zombies.damage(z, head ? S.headDamage : S.damage, head, env, want, 0.6);
     this.sentryFiring = false;
     void SENTRY_Y;
+  }
+
+  /**
+   * The people at the Hearth, each with a weak shotgun: at the nearest infected in the yard or at a gate near them
+   * (never a boss; their kills pay nothing). The one turning has other things on their mind.
+   */
+  private stepGuards(dt: number, t: StoryTick, rng: Rng): void {
+    const G = FORGE_STORY.guards;
+    const h = this.sites.hearth;
+    const F = this.view.finale;
+    this.view.holdouts.forEach((p, i) => {
+      if (p.phase !== 'hearth' || p.slot < 0) return;
+      if (i === F.carrier && (F.phase === 'warning' || F.phase === 'reborn')) return;
+      this.guardCool[i] = (this.guardCool[i] ?? 0) - dt;
+      if (this.guardCool[i]! > 0) return;
+      const s = h.slots[p.slot % h.slots.length]!;
+      let best: Zombie | null = null;
+      let bd: number = G.range;
+      for (const z of this.zombies.zombies) {
+        if (!this.hearthCovers(z)) continue;
+        const d = Math.hypot(z.x - s.x, z.z - s.z);
+        if (d < bd) {
+          bd = d;
+          best = z;
+        }
+      }
+      if (!best) {
+        this.guardCool[i] = 0.3; // look again in a moment
+        return;
+      }
+      const env = t.envNear(s.x, s.z);
+      if (!env) return;
+      this.guardCool[i] = G.fireEvery * (0.85 + rng.f() * 0.3);
+      const gv = this.view.guards[i];
+      if (gv) {
+        gv.shots = (gv.shots + 1) % 10000;
+        gv.tx = best.x;
+        gv.tz = best.z;
+      }
+      // a shotgun: weaker the farther it has to reach
+      const head = rng.f() < G.headChance;
+      const k = 1 - 0.5 * (bd / G.range);
+      this.sentryFiring = true;
+      this.zombies.damage(best, (head ? G.headDamage : G.damage) * k, head, env, Math.atan2(-(best.x - s.x), -(best.z - s.z)), 0.4);
+      this.sentryFiring = false;
+    });
   }
 
   private stepFinale(dt: number, t: StoryTick, rng: Rng): void {

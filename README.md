@@ -61,12 +61,13 @@ Pick the map on the title screen (the page reloads to build it).
   molten runoff in open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. Every currency in
   the Forge ran on embers, collected by seven furnaces - and seven days ago the collection stopped. The fire with
   nowhere to go burned up the people who made it: about a third of the Forge's infected still carry the names of
-  Vulcan's members, and they look like the people they were. The run starts in **the Hearth** by the Pad; around it
+  Vulcan's members, and they look like the people they were. The run starts in **the Hearth**, walled round the helipad on the Pad; around it
   are Phoenix Plaza and the Crucible, riry's Rumble Pit, the Slag Yard, the seven foundries, the Spawn Hall and the
   Ledger House. Its contracts: **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then call the bird and
   **hold the Hearth**. On top of that:
-  - **The Hearth** is your safe zone: walk in and out through its open gate, and its sentry gun cuts down any infected
-    that come through it (it never fires on a boss).
+  - **The Hearth** is your safe zone and the landing zone: a walled yard round the helipad with a gate open in every
+    wall. One sentry gun on a tower in its corner covers the yard and all four gates (it never fires on a boss), and the
+    people you bring there take up a weak shotgun each (Anya plays her bass) and shoot whatever comes close.
   - **Two of Vulcan's own** (drawn each run from Athy, Marv03K, piryriry and .maidlover.) deploy with you, follow you and
     shoot. The infected hunt them like they hunt you, and they can die for good: each still alive at extraction pays
     $500.
@@ -78,7 +79,8 @@ Pick the map on the title screen (the page reloads to build it).
     then hold the hall for 30 seconds while a horde comes for it, wave after wave, until it catches. $150 each; all
     seven pay $700 and two armor plates.
   - **The last stand**: once the bird is called, the whole Forge comes for the Hearth in waves - more than the sentry
-    can hold. Anyone they reach there dies, so the squad holds the gate.
+    can hold, through all four gates. Anyone they reach there dies, so the squad holds the yard - and the carrier turns
+    right there among them.
   - **tomoe's ledger**: four pages to find, each with a piece of where the embers went.
   - **riry's Rumble Pit**: ring the bell for three waves (optional).
   - Every member has their own look (built in code from their name), and a few familiar faces have their own.

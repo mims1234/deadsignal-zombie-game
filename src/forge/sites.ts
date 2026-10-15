@@ -30,19 +30,22 @@ export interface SafeRoomDef {
 }
 
 export interface HearthDef {
-  /** The courtyard's centre, and the open gate on its Pad side (`gateZ` just outside it). */
+  /** The yard's centre (the helipad), and its main gate, the one the run starts facing (`gateZ` just outside it). */
   x: number;
   z: number;
   gateX: number;
   gateZ: number;
+  /** Every gate (all standing open): the middle of its gap in the wall, and the wall's outward normal. */
+  gates: { x: number; z: number; nx: number; nz: number }[];
   /** Inside the walls. */
   x0: number;
   z0: number;
   x1: number;
   z1: number;
-  /** The sentry gun in the middle. */
+  /** The sentry gun, up on its tower: where it stands, and the height it turns at. */
   sentryX: number;
   sentryZ: number;
+  sentryY: number;
   /** Where the people you save stand, and the way each faces. */
   slots: { x: number; z: number; yaw: number }[];
 }

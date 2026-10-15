@@ -120,6 +120,7 @@ export class GameRenderer {
   /** Tell the renderer whether the camera is inside a roofed building (blends sky lighting down). */
   setIndoor(indoor: boolean): void {
     this.indoorTarget = indoor ? 1 : 0;
+    this.lightPool.setFocusIndoor(indoor);
   }
 
   /**

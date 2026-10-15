@@ -251,6 +251,52 @@ describe('the Forge: the Hearth', () => {
   });
 });
 
+describe('the Forge: the Hearth round the helipad', () => {
+  it('walls in the landing zone with a gate open in every side, and the one sentry covers all four', () => {
+    const { sim, story, sites, me, run } = forgeRun();
+    const h = sites.hearth;
+    const e = sim.level.data.extraction;
+    expect(e.heliX > h.x0 && e.heliX < h.x1 && e.heliZ > h.z0 && e.heliZ < h.z1).toBe(true);
+    expect(h.gates.length).toBe(4);
+    const nav = sim.level.nav;
+    for (const g of h.gates) {
+      expect(nav.isBlockedAt(g.x, g.z)).toBe(false);
+      expect(story.assault.reachable(g.x + g.nx * 8, g.z + g.nz * 8)).toBe(true);
+    }
+    me.x = h.x + 60;
+    me.z = h.z + 40;
+    run(0.2);
+    const rng = new Rng(5);
+    for (const g of h.gates) {
+      const z = sim.zombies.spawn('shambler', g.x + g.nx * 2.5, g.z + g.nz * 2.5, rng);
+      run(4);
+      expect(z.alive).toBe(false);
+    }
+  });
+
+  it('gives the people there a weak shotgun each: they shoot the infected near them, never a boss', () => {
+    const { sim, story, sites, me, run } = forgeRun();
+    const h = sites.hearth;
+    me.x = h.x + 60;
+    me.z = h.z + 40;
+    run(0.2);
+    const i = story.view.holdouts.findIndex((p) => !sites.rooms[p.room]!.vault);
+    const p = story.view.holdouts[i]!;
+    p.phase = 'hearth';
+    p.slot = 6;
+    const s = h.slots[6]!;
+    const rng = new Rng(9);
+    const boss = sim.zombies.spawn('warden', s.x + 2.5, s.z - 3, rng, { boss: true });
+    const z = sim.zombies.spawn('shambler', s.x + 4, s.z - 5, rng);
+    const before = story.view.guards[i]!.shots;
+    run(1.5);
+    expect(story.view.guards[i]!.shots).toBeGreaterThan(before);
+    expect(Math.hypot(story.view.guards[i]!.tx - s.x - 4, story.view.guards[i]!.tz - s.z + 5)).toBeLessThan(3);
+    expect(z.hp < z.maxHp || !z.alive).toBe(true);
+    expect(boss.hp).toBe(boss.maxHp);
+  });
+});
+
 describe('the Forge: the last carrier', () => {
   it('is reborn after the call, holds the bird off, takes the Hearth but never everyone, and its death burns the virus out', () => {
     const { sim, story, sites, me, run, clear } = forgeRun(5);
@@ -307,7 +353,8 @@ describe('the Forge: the last carrier', () => {
     expect(story.view.finale.phase).toBe('burnout');
     expect(story.view.assault).toBe('over');
     expect(sim.zombies.zombies.filter((z) => z.alive).length).toBe(0);
-    run(MISSION.extraction.countdown + 1);
+    // (the squad stands with you in the Hearth, so the reborn may fall fast: the bird can be close already)
+    for (let k = 0; k < MISSION.extraction.countdown + 2 && sim.debug.extraction.phase !== 'landed'; k++) run(1);
     expect(sim.debug.extraction.phase).toBe('landed');
   }, 30000);
 });
@@ -325,12 +372,14 @@ describe('the Forge: on the wire and in the looks', () => {
     story.view.furnaces[4]!.progress = 1;
     story.view.sentry = { yaw: 1.23, shots: 17, tx: -41.5, tz: -60.2 };
     story.view.assault = 'on';
+    story.view.guards[1] = { shots: 9, tx: -44.5, tz: -24.1 };
     const back = decodeView(JSON.parse(JSON.stringify(encodeRoster(story.view))), JSON.parse(JSON.stringify(encodeState(story.view))), story.view.ledger.length, sites.furnaces.length)!;
     expect(back.squad).toEqual(story.view.squad);
     expect(back.holdouts.map((h) => [h.name, h.rank, h.room, h.phase, h.slot])).toEqual(story.view.holdouts.map((h) => [h.name, h.rank, h.room, h.phase, h.slot]));
     expect(back.ledger).toEqual(story.view.ledger);
     expect(back.furnaces).toEqual(story.view.furnaces);
     expect(back.sentry).toEqual(story.view.sentry);
+    expect(back.guards).toEqual(story.view.guards);
     expect(back.assault).toBe('on');
     expect(back.finale.carrier).toBe(-1);
     expect(decodeView(null, encodeState(story.view), 4, 16)).toBeNull();

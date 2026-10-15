@@ -23,7 +23,7 @@
  *
  * Those who held on barred themselves into rooms and listened to the infected pound on the doors for days. Anya kept
  * them going over the radio; tomoe locked themselves into the HQ vault with the ledger; the rest gathered what they
- * could at the Hearth, the walled courtyard by the Pad, behind the clan's old sentry gun. The allied clans sent one
+ * could at the Hearth, the walls they threw up round the helipad on the Pad, under the clan's old sentry gun. The allied clans sent one
  * responder when the beacon went dark - you, call sign Ember. Relighting the seven furnaces takes the embers back;
  * rekindling the beacon draws the virus out of the Forge toward the last body that still carries it. One of the
  * people you save was bitten and hid it. When they die, the fire has nowhere left to go: the infected burn out and
@@ -107,10 +107,10 @@ export const FORGE_LINES = {
   anya: 'ANYA',
   pilot: 'PILOT',
   /** The start, in the Hearth. */
-  hearthStart: "You're in the Hearth - the sentry covers the courtyard and the gate, so come back here whenever you need to breathe. The Forge is out there.",
+  hearthStart: "You're in the Hearth - the walls round the helipad. The sentry on the tower covers the yard and all four gates, so come back here whenever you need to breathe. The Forge is out there.",
   /** Anya, if she is holed up (she always is). */
   anyaGate: "Whoever just set out from the Hearth... there are people locked in all over the Forge. They can't open up with those things at the doors. Please don't leave them.",
-  anyaHearth: "Bring them to the Hearth - the courtyard by the Pad, under the phoenix gate. The old sentry still covers it.",
+  anyaHearth: "Bring them to the Hearth - the walled yard round the helipad. The old sentry still covers it, and there are shotguns there for anyone who can hold one.",
   /** A co-leader in the squad, early on. */
   squadHello: "We were out on a delivery run when the furnaces went cold. We came back to this. Let's get our people out.",
   squadLost: (name: string, other: string | null) => (other ? `We lost ${name}. Keep ${other} breathing.` : `We lost ${name}. That's both of them.`),

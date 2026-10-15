@@ -118,7 +118,7 @@ function intended(map: MapId, p: { x: number; z: number }): boolean {
   forgeSites ??= new SessionSim({ map, send: () => {} }).level.data.forge!;
   const sites = forgeSites;
   const h = sites.hearth;
-  if (Math.abs(p.x - h.x) < 12.5 && Math.abs(p.z - h.z) < 7.5) return true;
+  if (p.x > h.x0 && p.x < h.x1 && p.z > h.z0 && p.z < h.z1) return true;
   return sites.rooms.some((r) => Math.hypot(p.x - r.inX, p.z - r.inZ) < 5 || Math.hypot(p.x - r.backX, p.z - r.backZ) < 4);
 }
 

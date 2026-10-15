@@ -83,7 +83,8 @@ export class ForgeStage {
       parent.add(mesh);
       return mesh;
     };
-    this.turret.position.set(h.sentryX, 0.9, h.sentryZ);
+    this.turret.position.set(h.sentryX, h.sentryY, h.sentryZ);
+    this.turret.scale.setScalar(1.3); // up on its tower it has to read from across the yard
     add(this.turret, new THREE.CylinderGeometry(0.34, 0.4, 0.22, 14), iron, 0, 0.11, 0);
     for (const s of [-1, 1]) add(this.turret, new THREE.BoxGeometry(0.08, 0.5, 0.3), iron, s * 0.3, 0.42, 0);
     const body = new THREE.Group();

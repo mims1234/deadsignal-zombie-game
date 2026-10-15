@@ -990,7 +990,12 @@ export const FORGE_STORY = {
    * The Hearth's sentry gun: it covers the courtyard and the apron outside its gate, and never fires on a boss (its
    * friend-or-foe still reads the Infernus and the reborn as clan).
    */
-  sentry: { range: 16, turn: 7, fireEvery: 0.28, damage: 32, headDamage: 80, headChance: 0.22 },
+  sentry: { range: 34, turn: 7, fireEvery: 0.28, damage: 32, headDamage: 80, headChance: 0.22 },
+  /**
+   * The people you bring to the Hearth pick up a gun there: a weak shotgun each, at the infected in the yard or at its
+   * gates near them (never a boss). Damage falls off with distance; their kills pay nothing, like the sentry's.
+   */
+  guards: { range: 11, fireEvery: 1.5, damage: 20, headDamage: 38, headChance: 0.12 },
   /**
    * The last stand: from the extraction call until the virus burns out, the infected come for the Hearth in waves -
    * more than the sentry can hold. One that stands over someone at the Hearth for `strike` seconds kills them (no more
@@ -1031,7 +1036,7 @@ export interface AvatarLook {
   hero?: boolean;
   build?: 'm' | 'f' | 'lean';
   heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong' | 'animeSpiky' | 'animeBob';
-  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress' | 'uniform' | 'tunic';
+  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress' | 'uniform' | 'tunic' | 'school';
   /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`); tights under a dress. */
   pants?: number;
   accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash' | 'sunHat' | 'bow' | 'oniHorns' | 'headband' | 'tie' | 'skateboard' | 'starClip')[];
@@ -1047,6 +1052,8 @@ export interface AvatarLook {
   hairTip?: number;
   /** Shoes (default dark leather). */
   shoes?: number;
+  /** What they carry in their hands when they have no gun out (held like one). */
+  instrument?: 'bass';
 }
 
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */

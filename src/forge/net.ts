@@ -3,7 +3,8 @@
  *   fr  the run's roster: [squad names, [name, rank, room] per holdout, [spot, ember] per furnace] (every couple of
  *       seconds, and in the first)
  *   fg  the story's state: [holdout phases, ledger bits, rumble [phase, wave], finale [phase, carrier], Hearth spots,
- *       furnaces [phase, progress %], sentry [yaw x100, shots, x, z], assault phase]
+ *       furnaces [phase, progress %], sentry [yaw x100, shots, x, z], assault phase, the guns at the Hearth [shots, x, z]
+ *       per holdout]
  * The carrier stays -1 until they start to turn, so nobody can see it coming.
  */
 import type { VulcanRank } from './roster';
@@ -12,7 +13,7 @@ import { ASSAULT_PHASES, FINALE_PHASES, FURNACE_PHASES, ForgeStory, type ForgeVi
 const RANKS: readonly VulcanRank[] = ['leader', 'coLead', 'officer', 'member'];
 
 export type RosterWire = [string[], [string, number, number][], [number, number][]];
-export type StateWire = [number[], number, [number, number], [number, number], number[], [number, number][], [number, number, number, number], number];
+export type StateWire = [number[], number, [number, number], [number, number], number[], [number, number][], [number, number, number, number], number, [number, number, number][]];
 
 const r1 = (v: number): number => Math.round(v * 10) / 10;
 
@@ -31,6 +32,7 @@ export function encodeState(v: ForgeView): StateWire {
     v.furnaces.map((f) => [FURNACE_PHASES.indexOf(f.phase), Math.round(f.progress * 100)]),
     [Math.round(v.sentry.yaw * 100), v.sentry.shots, r1(v.sentry.tx), r1(v.sentry.tz)],
     ASSAULT_PHASES.indexOf(v.assault),
+    v.guards.map((g) => [g.shots, r1(g.tx), r1(g.tz)] as [number, number, number]),
   ];
 }
 
@@ -52,7 +54,7 @@ export function decodeView(roster: unknown, state: unknown, ledgerCount: number,
       return { spot: Math.floor(num(r[0])), flame: Math.floor(num(r[1])), phase: 'cold' as const, progress: 0 };
     })
     .filter((f) => f.spot >= 0 && f.spot < furnaceSpots);
-  const view: ForgeView = { ...ForgeStory.empty(), squad, holdouts, ledger: new Array<boolean>(ledgerCount).fill(false), furnaces };
+  const view: ForgeView = { ...ForgeStory.empty(), squad, holdouts, ledger: new Array<boolean>(ledgerCount).fill(false), furnaces, guards: holdouts.map(() => ({ shots: 0, tx: 0, tz: 0 })) };
   if (Array.isArray(state)) {
     const phases = arr(state[0]);
     view.holdouts.forEach((h, i) => (h.phase = HOLDOUT_PHASES[num(phases[i])] ?? 'room'));
@@ -74,6 +76,13 @@ export function decodeView(roster: unknown, state: unknown, ledgerCount: number,
     const se = arr(state[6]);
     view.sentry = { yaw: num(se[0]) / 100, shots: num(se[1]), tx: num(se[2]), tz: num(se[3]) };
     view.assault = ASSAULT_PHASES[num(state[7])] ?? 'idle';
+    const gu = arr(state[8]);
+    view.guards.forEach((g, i) => {
+      const r = arr(gu[i]);
+      g.shots = num(r[0]);
+      g.tx = num(r[1]);
+      g.tz = num(r[2]);
+    });
   }
   return view;
 }

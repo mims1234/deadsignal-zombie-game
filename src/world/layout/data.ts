@@ -139,7 +139,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     foot: "Two of Vulcan's own deploy with you and can die. Clear the infected off a holdout's door and they make for the Hearth. Four ledger pages and riry's Rumble Pit wait around the Forge. When you call the bird, the whole Forge comes for the Hearth.",
     brief: "Ember, Vulcan HQ went dark seven nights ago when the furnaces stopped collecting. You're in the Hearth - its sentry covers you there. People are barricaded in all over the Forge: clear their doors and they'll come to you. Relight the seven furnaces, rekindle the phoenix beacon, slay the Infernus, then call the bird and hold the Hearth.",
     rows: [
-      { tag: 'SAFE ZONE', title: 'THE HEARTH', text: 'You start here. Its sentry gun cuts down anything that comes through the gate - come back whenever you need to breathe.' },
+      { tag: 'SAFE ZONE', title: 'THE HEARTH', text: 'You start here: the walled yard round the helipad, a gate open in every wall. Its sentry cuts down anything that comes through, and the people you save take up shotguns there.' },
       { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold its circle while it catches. It opens the HQ vault.' },
       { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The first of them walks the molten floor of the Crucible.' },
       { tag: 'THE SEVEN EMBERS', title: 'RELIGHT THE FOUNDRIES', text: 'Seven foundries around the Forge, one per currency. Go in, stoke the forge and hold the hall for 30 seconds while a horde comes for it.' },

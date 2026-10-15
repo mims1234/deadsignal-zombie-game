@@ -20,6 +20,7 @@ import type { FurnaceSpot, HearthDef, LedgerSpot, RumblePitDef, SafeRoomDef } fr
 import { barrelGroup, container, corpse, crateGroup, debris, floodlightTower, fuelTank, jerseyBarrier, pallet, pipeStack, streetLamp, tireStack, vehicle } from '../props';
 import type { ColliderSpec } from '../collision';
 import { addBox, building, groundRect, type MatRef, type Side, wallDecal } from '../structures';
+import { ceilingLight } from '../interiors';
 import { neonLabelMaterial } from '../landmarks/tex';
 import { type DoorHandle, safeRoom } from './forgeRooms';
 import { ignisMaterial, ignisTerminalMaterial } from './ignis';
@@ -151,6 +152,107 @@ function foundryDeck(c: Ctx, h: HallFrame): void {
  * (`foundryDeck`); an anvil, a workbench, barrels. Holding the hall while the forge catches is the job
  * (`forge/story.ts`). Returns where it is and the forge's mouth.
  */
+/** The Hearth's walls (outside faces): round the Pad's helipad (`FORGE.lz` in forge.ts, centre -38, -30). */
+const HEARTH_YARD = { x0: -51, x1: -25, z0: -43, z1: -19 };
+
+/**
+ * The Hearth: the walled yard round the Pad's helipad, where the run starts and the helicopter lands. A gate stands
+ * open in the middle of every wall (the infected can come at it from anywhere), and one sentry up on a tower in the
+ * north-west corner sees the whole yard and every gate. The people you save wait along the walls, clear of the pad.
+ */
+function hearthYard(c: Ctx): { hearth: HearthDef; glow: THREE.MeshStandardMaterial } {
+  const { b, d } = c;
+  const { x0, x1, z0, z1 } = HEARTH_YARD;
+  const cx = (x0 + x1) / 2;
+  const cz = (z0 + z1) / 2;
+  const H = 3.8;
+  const gw = 5;
+  // the phoenix arches over the gates glow amber (the runtime turns them red at the end)
+  const glow = new THREE.MeshStandardMaterial({ color: 0x2a0f04, emissive: 0xff8a2a, emissiveIntensity: 1.3, roughness: 0.6 });
+  const label = neonLabelMaterial('THE HEARTH', '#ffb060');
+  const sigilMat = vulcanSigilMaterial();
+  const gates: HearthDef['gates'] = [
+    { x: cx, z: z1, nx: 0, nz: 1 }, // south, toward the heart of the Forge: the one the run starts facing
+    { x: cx, z: z0, nx: 0, nz: -1 },
+    { x: x0, z: cz, nx: -1, nz: 0 },
+    { x: x1, z: cz, nx: 1, nz: 0 },
+  ];
+  for (const g of gates) {
+    const across = g.nz !== 0; // this wall runs along x
+    const face = Math.atan2(g.nx, g.nz); // turns +z to face out of the gate
+    // the wall from corner to corner, but for the gap in its middle
+    const lo = across ? x0 : z0;
+    const hi = across ? x1 : z1;
+    const mid = across ? g.x : g.z;
+    const wx = g.x - g.nx * 0.2;
+    const wz = g.z - g.nz * 0.2;
+    for (const [a, e] of [[lo, mid - gw / 2], [mid + gw / 2, hi]] as const) {
+      const m = (a + e) / 2;
+      const len = e - a;
+      const x = across ? m : wx;
+      const z = across ? wz : m;
+      addBox(b, 'concreteWall', x, H / 2, z, across ? len : 0.4, H, across ? 0.4 : len);
+      b.collideBox(x, z, across ? len : 0.4, across ? 0.4 : len, H, { mapKind: 'wall', tag: 'hearth' });
+    }
+    // the gate: two barred leaves swung right open, out from the wall
+    const [ux, uz] = across ? [1, 0] : [0, 1];
+    for (const s of [-1, 1]) {
+      const lx = g.x + ux * s * (gw / 2 + 0.1);
+      const lz = g.z + uz * s * (gw / 2 + 0.1);
+      for (let k = 0; k <= 10; k++) addBox(b, 'steelDark', lx + g.nx * (0.1 + k * 0.25), 1.6, lz + g.nz * (0.1 + k * 0.25), 0.06, 3.2, 0.06, 0, { cast: false });
+      const ox = lx + g.nx * 1.35;
+      const oz = lz + g.nz * 1.35;
+      for (const y of [0.15, 1.6, 3.1]) addBox(b, 'steelDark', ox, y, oz, across ? 0.1 : 2.5, 0.08, across ? 2.5 : 0.1, 0, { cast: false });
+      b.collideBox(ox, oz, across ? 0.16 : 2.5, across ? 2.5 : 0.16, 3.3, { mapKind: 'prop', tag: 'hearth-gate', blocksShots: false });
+    }
+    // the phoenix arch over it, its name in neon, the sigil above, a lamp over the way in
+    addBox(b, 'steelDark', wx, H + 0.6, wz, gw + 1.6, 1.2, 0.5, face);
+    addBox(b, glow, g.x + g.nx * 0.07, H + 0.6, g.z + g.nz * 0.07, gw + 1.2, 0.85, 0.04, face, { cast: false });
+    addBox(b, label, g.x + g.nx * 0.11, H + 0.6, g.z + g.nz * 0.11, 4.2, 0.6, 0.05, face, { cast: false });
+    const sigil = new THREE.Mesh(new THREE.CircleGeometry(1.4, 28), sigilMat);
+    sigil.position.set(g.x + g.nx * 0.12, H + 2.3, g.z + g.nz * 0.12);
+    sigil.rotation.y = face;
+    b.add(sigil);
+    b.light({ x: g.x + g.nx * 1.5, y: H + 1.2, z: g.z + g.nz * 1.5, color: 0xff9a40, intensity: 60, distance: 13 });
+  }
+  // the sentry's tower in the north-west corner: a concrete pillar, a steel deck, a rail, a ladder up the side (the gun
+  // itself turns on top: `forge/stage.ts`)
+  const sentryX = x0 + 3.4;
+  const sentryZ = z0 + 3.4;
+  const top = 3.5;
+  addBox(b, 'concreteDark', sentryX, (top - 0.3) / 2, sentryZ, 2, top - 0.3, 2);
+  addBox(b, 'steelDark', sentryX, top - 0.15, sentryZ, 2.6, 0.3, 2.6);
+  for (const [dx, dz, w, dd] of [[0, 1.27, 2.6, 0.06], [0, -1.27, 2.6, 0.06], [1.27, 0, 0.06, 2.6], [-1.27, 0, 0.06, 2.6]] as const) {
+    addBox(b, 'steelDark', sentryX + dx, top + 0.5, sentryZ + dz, w, 0.06, dd, 0, { cast: false });
+    for (const k of [-1, 1]) addBox(b, 'steelDark', sentryX + dx + (w > 1 ? k * 1.25 : 0), top + 0.25, sentryZ + dz + (dd > 1 ? k * 1.25 : 0), 0.06, 0.5, 0.06, 0, { cast: false });
+  }
+  for (let k = 0; k < 9; k++) addBox(b, 'steelDark', sentryX + 1.04, 0.35 + k * 0.36, sentryZ, 0.05, 0.05, 0.5, 0, { cast: false });
+  // the gun's pedestal, so it stands clear of the rail and can be seen from anywhere in the yard
+  addBox(b, 'steelDark', sentryX, top + 0.25, sentryZ, 0.8, 0.5, 0.8);
+  b.collideBox(sentryX, sentryZ, 2.6, 2.6, top, { mapKind: 'prop', tag: 'sentry' });
+  // braziers in two corners, a stack of crates
+  for (const [x, z] of [[x0 + 2.4, z1 - 2.4], [x1 - 2.4, z0 + 2.4]] as const) {
+    addBox(b, 'steelDark', x, 0.45, z, 0.9, 0.9, 0.9);
+    addBox(b, b.mats.get('emAmber'), x, 0.95, z, 0.7, 0.12, 0.7, 0, { cast: false });
+    b.collideBox(x, z, 0.9, 0.9, 1, { mapKind: 'prop', tag: 'brazier' });
+    b.light({ x, y: 1.6, z, color: 0xff8a30, intensity: 26, distance: 8, weight: 0.6 });
+  }
+  crateGroup(b, { x: x1 - 2.8, z: z0 + 6, rot: 0.2, count: 3, radius: 1, seed: 504 });
+  // where the people you save stand: along the walls, off the pad and out of the gateways, facing the pad
+  const padX = cx;
+  const padZ = cz + 1;
+  const spots: [number, number][] = [
+    [-44.2, -41.2], [-42.2, -41.2], [-33.8, -41.2], [-31.8, -41.2], [-29.8, -41.2],
+    [-46, -20.8], [-44, -20.8], [-42, -20.8], [-34, -20.8], [-32, -20.8],
+    [-49.2, -37], [-49.2, -24.6], [-26.8, -25.5],
+  ];
+  const slots: HearthDef['slots'] = spots.map(([x, z]) => ({ x, z, yaw: Math.atan2(-(padX - x), -(padZ - z)) }));
+  const main = gates[0]!;
+  const hearth: HearthDef = { x: cx, z: cz, gateX: main.x, gateZ: main.z + 2.2, gates, x0: x0 + 0.4, z0: z0 + 0.4, x1: x1 - 0.4, z1: z1 - 0.4, sentryX, sentryZ, sentryY: top + 0.5, slots };
+  d.label('THE HEARTH', cx, cz - 6, 0.8);
+  return { hearth, glow };
+}
+
 function foundry(c: Ctx, i: number): { spot: FurnaceSpot; mouth: THREE.MeshStandardMaterial } {
   const { b, d } = c;
   const site = FOUNDRY_SITES[i]!;
@@ -224,7 +326,12 @@ function foundry(c: Ctx, i: number): { spot: FurnaceSpot; mouth: THREE.MeshStand
   b.collideBox(wx, wz, across ? 2.4 : 0.8, across ? 0.8 : 2.4, 1, { mapKind: 'prop', tag: 'workbench' });
   const [bx, bz] = at(-half + 0.8, -frame.halfS + 0.9);
   barrelGroup(b, { x: bx, z: bz, rot: 0, count: 2, radius: 0.6, seed: 700 + i, colors: ['rust'] });
-  b.light({ x: cx, y: 3.4, z: cz, color: flame.color, intensity: 20, distance: 11, weight: 0.6 });
+  b.light({ x: hx + nx * 1.2, y: 1.6, z: hz + nz * 1.2, color: flame.color, intensity: 26, distance: 9, weight: 0.8 });
+  // work lamps hung down the hall, one of them on its last legs
+  for (const [f, mode] of [[half * 0.4, 'steady'], [-half * 0.25, i % 2 ? 'flicker' : 'steady']] as const) {
+    const [lx, lz] = at(f, 0.6);
+    ceilingLight(b, { x: lx, z: lz, y: H - 0.2, kind: 'caged', mode, intensity: 64 });
+  }
   // the name in neon over the front door
   const fx = cx + nx * (half + 0.45);
   const fz = cz + nz * (half + 0.45);
@@ -293,61 +400,15 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
 
   const rooms: SafeRoomDef[] = [];
 
-  // ---- N: the Hearth (x -54..-30, z -72..-58): a walled courtyard where the run starts, its gate standing open onto
-  // Quench Street, a sentry gun in the middle ----
-  const hx0 = -54;
-  const hx1 = -30;
-  const hz0 = -72;
-  const hz1 = -58;
-  const gateX = -42;
-  const H = 3.8;
-  addBox(b, 'concreteWall', (hx0 + hx1) / 2, H / 2, hz0 + 0.2, hx1 - hx0, H, 0.4);
-  b.collideBox((hx0 + hx1) / 2, hz0 + 0.2, hx1 - hx0, 0.4, H, { mapKind: 'wall', tag: 'hearth' });
-  for (const x of [hx0 + 0.2, hx1 - 0.2]) {
-    addBox(b, 'concreteWall', x, H / 2, (hz0 + hz1) / 2, 0.4, H, hz1 - hz0);
-    b.collideBox(x, (hz0 + hz1) / 2, 0.4, hz1 - hz0, H, { mapKind: 'wall', tag: 'hearth' });
-  }
-  // the front wall either side of the gate, and the gate itself: two barred leaves swung open against the wall
-  const gw = 5;
-  for (const [a, e] of [[hx0, gateX - gw / 2], [gateX + gw / 2, hx1]] as const) {
-    addBox(b, 'concreteWall', (a + e) / 2, H / 2, hz1 - 0.2, e - a, H, 0.4);
-    b.collideBox((a + e) / 2, hz1 - 0.2, e - a, 0.4, H, { mapKind: 'wall', tag: 'hearth' });
-  }
-  for (const s of [-1, 1]) {
-    const lx = gateX + s * (gw / 2 + 0.1);
-    for (let k = 0; k <= 10; k++) addBox(b, 'steelDark', lx, 1.6, hz1 + 0.1 + k * 0.25, 0.06, 3.2, 0.06, 0, { cast: false });
-    for (const y of [0.15, 1.6, 3.1]) addBox(b, 'steelDark', lx, y, hz1 + 1.35, 0.1, 0.08, 2.5, 0, { cast: false });
-    b.collideBox(lx, hz1 + 1.35, 0.16, 2.5, 3.3, { mapKind: 'prop', tag: 'hearth-gate', blocksShots: false });
-  }
-  // the phoenix arch over the gate, glowing (amber; the runtime turns it red at the end)
-  const hearthGlow = new THREE.MeshStandardMaterial({ color: 0x2a0f04, emissive: 0xff8a2a, emissiveIntensity: 1.3, roughness: 0.6 });
-  addBox(b, 'steelDark', gateX, H + 0.6, hz1 - 0.2, gw + 1.6, 1.2, 0.5);
-  addBox(b, hearthGlow, gateX, H + 0.6, hz1 + 0.07, gw + 1.2, 0.85, 0.04, 0, { cast: false });
-  const sigil = new THREE.Mesh(new THREE.CircleGeometry(1.4, 28), vulcanSigilMaterial());
-  sigil.position.set(gateX, H + 2.3, hz1 + 0.12);
-  b.add(sigil);
-  addBox(b, neonLabelMaterial('THE HEARTH', '#ffb060'), gateX, H + 0.6, hz1 + 0.11, 4.2, 0.6, 0.05, 0, { cast: false });
-  b.light({ x: gateX, y: H + 1.2, z: hz1 + 1.5, color: 0xff9a40, intensity: 70, distance: 14 });
-  // inside: braziers, cots, crates (where the people you save wait), and the sentry's plinth in the middle (the gun
-  // itself turns: `forge/runtime.ts`)
-  groundRect(b, 'floorWarehouse', hx0 + 0.4, hz0 + 0.4, hx1 - 0.4, hz1 - 0.4, 0.025);
-  const sentryX = gateX;
-  const sentryZ = -66;
-  addBox(b, 'concreteDark', sentryX, 0.3, sentryZ, 1.5, 0.6, 1.5);
-  addBox(b, 'steelDark', sentryX, 0.75, sentryZ, 0.9, 0.3, 0.9);
-  b.collideBox(sentryX, sentryZ, 1.5, 1.5, 1.1, { mapKind: 'prop', tag: 'sentry' });
-  for (const [x, z] of [[-49, -68], [-35, -68]] as const) {
-    addBox(b, 'steelDark', x, 0.45, z, 0.9, 0.9, 0.9);
-    addBox(b, b.mats.get('emAmber'), x, 0.95, z, 0.7, 0.12, 0.7, 0, { cast: false });
-    b.light({ x, y: 1.6, z, color: 0xff8a30, intensity: 26, distance: 8, weight: 0.6 });
-  }
+  // ---- N: the old courtyard, where the first of them camped before the Hearth moved round the helipad ----
+  groundRect(b, 'floorWarehouse', -53.6, -71.6, -30.4, -58.4, 0.025);
   for (const x of [-52, -50, -34, -32]) addBox(b, 'canvasOlive', x, 0.3, -70, 0.9, 0.3, 2);
   crateGroup(b, { x: -52.3, z: -66.5, rot: 0.2, count: 3, radius: 1, seed: 501 });
-  // either side of the lane from the gate to the sentry, facing the gate
-  const slots: HearthDef['slots'] = [];
-  for (const z of [-61, -63.6]) for (const x of [-46, -38, -48.5, -35.5, -51, -33]) slots.push({ x, z, yaw: Math.PI });
-  const hearth: HearthDef = { x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, gateX, gateZ: hz1 + 2.2, x0: hx0 + 0.4, z0: hz0 + 0.4, x1: hx1 - 0.4, z1: hz1 - 0.4, sentryX, sentryZ, slots };
-  d.label('THE HEARTH', gateX, -66, 0.8);
+  barrelGroup(b, { x: -33, z: -62, rot: 0.4, count: 3, radius: 1, seed: 502, colors: ['rust'] });
+  debris(b, { x: -42, z: -66, radius: 2.4, seed: 503 });
+
+  // ---- the Pad: the Hearth, walled round the helipad ----
+  const { hearth, glow: hearthGlow } = hearthYard(c);
 
   // Anya's radio room, beside the Hearth
   rooms.push(safeRoom(c, { id: 'radio', place: 'the radio room', x: -23.5, z: -63, w: 7, d: 6, door: 'S', wall: 'metalPanel' }, doors));

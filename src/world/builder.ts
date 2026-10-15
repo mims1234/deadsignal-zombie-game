@@ -50,6 +50,8 @@ export interface LampSpec {
   glow?: number;
   /** Which region/zone tag - free-form, used for debugging. */
   tag?: string;
+  /** Under a roof (worked out when the level loads): the light pool favours these while the camera is indoors. */
+  indoor?: boolean;
 }
 
 export interface InstanceSet {

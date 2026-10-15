@@ -75,6 +75,8 @@ export class ForgeRuntime {
   private view: ForgeView | null = null;
   private shown: Shown | null = null;
   private people: Person[] = [];
+  /** The last shot count seen from each holdout's gun (-1: none yet). */
+  private guardSeen: number[] = [];
   private readonly pages: THREE.Group[] = [];
   private readonly hud = new ForgeHud();
   private readonly stage: ForgeStage;
@@ -204,6 +206,7 @@ export class ForgeRuntime {
   private setView(v: ForgeView): void {
     for (const p of this.people) p.avatar.dispose();
     this.view = v;
+    this.guardSeen = v.holdouts.map(() => -1);
     this.people = v.holdouts.map((h, i) => {
       const { look, color } = vulcanLook(h.name);
       const avatar = new Avatar(h.name, i, { look, color, helmet: false, weapon: 'none', tag: rankTag(h.rank), tagColor: '#ffb060' });
@@ -217,6 +220,24 @@ export class ForgeRuntime {
     this.present(v, true);
   }
 
+  /** The people at the Hearth fire their guns (the story's shots): they turn to it, the gun kicks, pellets fly. */
+  private guardShots(v: ForgeView): void {
+    const g = this.g;
+    v.guards.forEach((gv, i) => {
+      const p = this.people[i];
+      const seen = this.guardSeen[i] ?? -1;
+      this.guardSeen[i] = gv.shots;
+      if (!p || seen < 0 || gv.shots === seen || p.phase !== 'hearth') return;
+      const a = p.avatar;
+      if (!a.root.visible) return;
+      const s = this.hearthSpot(p);
+      a.set(s.x, 0, s.z, Math.atan2(-(gv.tx - s.x), -(gv.tz - s.z)), true);
+      const from = a.fire({ x: gv.tx, y: 1.1, z: gv.tz });
+      for (let k = 0; k < 3; k++) g.fx.tracer(from, { x: gv.tx + (Math.random() - 0.5) * 0.7, y: 0.8 + Math.random() * 0.6, z: gv.tz + (Math.random() - 0.5) * 0.7 }, 0xffc890);
+      g.audio.play('shotgun_shot', { pos: from, volume: 0.42, rate: 1.1 + Math.random() * 0.1, priority: 1 });
+    });
+  }
+
   /** Where someone stands at the Hearth. */
   private hearthSpot(p: Person): { x: number; z: number; yaw: number } {
     const slots = this.sites.hearth.slots;
@@ -226,11 +247,16 @@ export class ForgeRuntime {
   /** Put a person where their phase says (no animation). */
   private place(p: Person): void {
     const a = p.avatar;
+    // hidden first, so set() puts them straight there: a figure still shown would only start sliding across the map
+    // (and stop wherever it went out of sight)
+    a.root.visible = false;
     if (p.phase === 'room') {
       const r = this.sites.rooms[p.room]!;
       a.set(r.inX, 0, r.inZ, r.inYaw, true);
     } else if (p.phase === 'hearth' || p.phase === 'fallen') {
       const s = this.hearthSpot(p);
+      // at the Hearth they pick up a gun (a weak shotgun; Anya plays hers)
+      if (p.phase === 'hearth') a.arm('shotgun');
       a.set(s.x, 0, s.z, s.yaw, true);
       if (p.phase === 'fallen' && !a.fallen) a.fall(Math.sin(s.yaw), Math.cos(s.yaw), 1.2);
     } else a.root.visible = false;
@@ -610,6 +636,7 @@ export class ForgeRuntime {
         void r;
       });
     }
+    if (v) this.guardShots(v);
     if (v) {
       this.stage.furnaces(v.furnaces, this.clock, dt);
       this.stage.sentry(v.sentry.yaw, v.sentry.shots, v.sentry.tx, v.sentry.tz, dt);
@@ -1045,7 +1072,7 @@ export class ForgeRuntime {
       const sealed = r.vault && g.session.defense.status !== 'complete';
       md.markers.push({ id: `hold:${i}`, kind: 'objective', x: r.doorX, z: r.doorZ, label: sealed ? 'VAULT' : ho.name.toUpperCase(), color: '#9fd0ff', visible: true, compass: !!nearest && nearest.i === i && v.assault !== 'on', dim: sealed });
     });
-    md.markers.push({ id: 'hearth', kind: v.assault === 'on' ? 'objective' : 'landmark', x: h.gateX, z: h.gateZ - 2, label: 'HEARTH', color: '#ffb060', visible: true, dim: v.assault !== 'on', compass: v.assault === 'on' && !reborn, pulse: v.assault === 'on' });
+    md.markers.push({ id: 'hearth', kind: v.assault === 'on' ? 'objective' : 'landmark', x: h.x, z: h.z, label: 'HEARTH', color: '#ffb060', visible: true, dim: v.assault !== 'on', compass: v.assault === 'on' && !reborn, pulse: v.assault === 'on' });
     v.furnaces.forEach((f, i) => {
       if (f.phase === 'lit') return;
       const s = sites.furnaces[f.spot]!;
