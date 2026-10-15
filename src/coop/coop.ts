@@ -276,7 +276,6 @@ export class CoopSession {
     g.mission.requestCall = () => this.toHost({ k: 'call' });
     g.mission.requestBoard = () => this.toHost({ k: 'board' });
     g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
-    g.squad.requestEmber = (i) => this.toHost({ k: 'ember', i });
     // the mystery boxes and the drops are the squad's: opening, taking and picking up are requests
     g.entities.coop = this.started && this.story
       ? {
@@ -298,11 +297,12 @@ export class CoopSession {
       };
     }
     if (g.asylum) g.asylum.remote = this.started ? { door: (i) => this.toHost({ k: 'door', i }), lever: () => this.toHost({ k: 'lever' }) } : null;
-    // the Forge: talking someone out, a ledger page and riry's bell are the simulation's to decide
+    // the Forge: talking someone out, a furnace, a ledger page and riry's bell are the simulation's to decide
     if (g.forge) {
       g.forge.requestHold = (i) => this.toHost({ k: 'hold', i });
       g.forge.requestLedger = (i) => this.toHost({ k: 'ledger', i });
       g.forge.requestBell = () => this.toHost({ k: 'bell' });
+      g.forge.requestStoke = (i) => this.toHost({ k: 'stoke', i });
     }
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
@@ -473,7 +473,7 @@ export class CoopSession {
       });
       // the Forge's story first: its roster deploys the co-leaders the squad rows below are about
       if (g.forge && d.fg !== undefined) g.forge.applyWire(d.fr, d.fg);
-      g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], Number(d.em) || 0, (d.sh as number[][] | undefined) ?? []);
+      g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;

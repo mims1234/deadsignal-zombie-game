@@ -149,12 +149,12 @@ describe('co-op session simulation: the story operation', () => {
     expect(snap.fg).toBeDefined();
     expect(out.some((m) => m.d.k === 's' && m.d.fr)).toBe(true);
     void SURVIVORS;
-    const ember = sim.debug.embers[0]!;
-    where.p2 = { x: ember.x, z: ember.z, st: LIFE.up };
+    // a furnace is stoked on request, from in front of it
+    const front = sim.forge!.furnaceFront(0)!;
+    where.p2 = { x: front.x, z: front.z, st: LIFE.up };
     run(0.5);
-    sim.message('p2', { k: 'ember', i: 0 }, false);
-    expect(ember.taken).toBe(true);
-    expect(out.some((m) => m.d.k === 'cash' && m.d.c === FORGE_SQUAD.emberCash)).toBe(true);
+    sim.message('p2', { k: 'stoke', i: 0 }, false);
+    expect(sim.forge!.view.furnaces[0]!.phase).toBe('burning');
     // named infected travel in the snapshot with their tag
     const s = [...out].reverse().find((m) => m.d.k === 's')!.d as { z: number[][] };
     expect(sim.zombies.zombies.some((z) => z.tag)).toBe(true);

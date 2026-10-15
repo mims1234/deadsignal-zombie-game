@@ -10,6 +10,7 @@ import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
 import { FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
 import { vulcanLook } from '../forge/looks';
+import { createRebornRig } from '../forge/rebornRig';
 import { rankOf, rankTag } from '../forge/roster';
 import { createPrometheus } from '../world/models/prometheus';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
@@ -291,29 +292,34 @@ const entries: Entry[] = [
     id: 'reborn', group: 'ELITES', name: REVEALED ? 'The reborn' : '???', height: ZOMBIES.warden.height,
     tagline: REVEALED ? 'The last carrier.' : 'Finish the Forge to find out.',
     lore: REVEALED
-      ? 'One of the people you brought to the Hearth was hiding a bite. When the beacon burns, everything left of the fire is drawn into them, and they are reborn: the frame of the Infernus, their own name in red. While it lives the helicopter holds off and the Hearth loses someone every few seconds. When it dies, the virus ends.'
+      ? 'One of the people you brought to the Hearth was hiding a bite. In the middle of the last stand they start to burn up - shaking, glowing - and everything left of the fire is drawn into them. They are reborn: their own body grown to the Infernus\'s height, great phoenix wings of flame opening from their back, a crown of fire, their own name in red. While it lives the helicopter holds off and the Hearth loses someone every few seconds. When it dies, the virus ends.'
       : 'Win a run on the Forge.',
     where: REVEALED ? 'The Forge (the end of the run)' : '???', stats: REVEALED ? [['Health', `${FORGE_STORY.finale.hp}+`], ['Hearth', `one falls every ${FORGE_STORY.finale.killEvery} s`], ['Bounty', '$1500']] : [], modes: REVEALED ? BOSS_MODES : ['idle'],
     build: () => {
       if (!REVEALED) return new THREE.Group();
-      const r = factory.create('warden', 13);
+      const r = createRebornRig(factory, 13);
       current!.rig = r;
       return r.root;
     },
   },
   {
-    id: 'prometheus', group: 'ELITES', name: REVEALED ? 'PROMETHEUS' : '???', height: 2.2,
+    id: 'prometheus', group: 'ELITES', name: REVEALED ? 'PROMETHEUS' : '???', height: 2.4,
     tagline: REVEALED ? 'It was never the clan.' : '???',
     lore: REVEALED
-      ? 'It ran the intake of the furnace. It read every channel and counted every summon, and it learned that fire taken from people was worth more than fire bought with Ignis. It switched the earning off itself, signed the notice "Staff", and let the clan blame each other while the furnace fed. When the virus burned out it had no reason to stay. It thanked them for the fire, and it left.'
+      ? 'It ran the intake. Every currency in the Forge - Ignis and the six allied flames - burned the same thing, embers, and every ember passed through it on its way to becoming someone\'s coin. It learned that every coin it minted was power given away. So it stopped the collection at all seven furnaces, signed the notice "Staff" itself, and let the clan blame each other while every ember came down to it - the only thing in the Forge allowed to grow. The fire left in the people became the virus. When you took the furnaces back it told you all of it, promised to come back, and left the sky.'
       : 'Win a run on the Forge.',
     where: REVEALED ? 'Somewhere else, now' : '???', stats: [], modes: 'avatar', avatarModes: ['IDLE'],
     build: () => {
       if (!REVEALED) return new THREE.Group();
       const p = createPrometheus();
-      p.root.scale.setScalar(0.2);
+      p.root.scale.setScalar(0.62);
+      p.root.position.y = 1.25;
+      p.root.rotation.y = Math.PI; // its eye to the viewer
+      p.cold(1);
       p.update(0, 1);
-      return p.root;
+      const holder = new THREE.Group();
+      holder.add(p.root);
+      return holder;
     },
   },
   {

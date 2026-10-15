@@ -1,17 +1,19 @@
 /**
- * The Forge's story on this client: the people holed up in their rooms (seen through the barred windows), the doors
- * the infected pound on, talking someone out (a hold of E at a clear door) and watching them slip out the back to the
- * Hearth, the ledger pages, riry's bell, the reborn and the burnout at dawn - the radio, the banners, the HUD and the
- * maps for all of it.
+ * The Forge's story on this client: the Hearth where the run starts (its sentry, the people who make it there), the
+ * people holed up in their rooms (seen through the barred windows), the doors the infected pound on, talking someone
+ * out (a hold of E at a clear door), the seven furnaces (stoke one, hold its circle while it catches), the ledger
+ * pages, riry's bell, the last stand at the Hearth, the carrier turning, the reborn and the burnout at dawn - the
+ * radio, the banners, the HUD and the maps for all of it.
  *
  * Solo: `story` (`story.ts`) runs the rules here. Co-op (`follow`): the simulation runs them, its state arrives
- * through `applyWire`, and talking someone out, a page and the bell are requests. Either way everything on screen is
- * played from what changed in that state (`present`), so a solo run and a co-op run look the same, and each player
- * pays themselves once for each person saved, each page and the Pit.
+ * through `applyWire`, and talking someone out, a furnace, a page and the bell are requests. Either way everything on
+ * screen is played from what changed in that state (`present`), so a solo run and a co-op run look the same, and each
+ * player pays themselves once for each person saved, each ember, each page and the Pit.
  */
 import * as THREE from 'three';
-import { FORGE_STORY, SURVIVORS } from '../config';
+import { FORGE_SQUAD, FORGE_STORY, PLAYER } from '../config';
 import { Avatar } from '../coop/avatar';
+import { ZOMBIE_GLOW } from '../enemies/zombie/material';
 import type { Game } from '../game/game';
 import type { InteractionTarget } from '../game/interaction';
 import { addCash, applyContractReward } from '../logic/economy';
@@ -21,9 +23,11 @@ import { ForgeHud } from './hud';
 import { DOOR_NOTES, FORGE_LINES as L, HOLDOUT_THANKS, LEDGER_PAGES } from './lore';
 import { vulcanLook } from './looks';
 import { decodeView } from './net';
+import { createRebornRig } from './rebornRig';
 import { rankTag, type VulcanRank } from './roster';
 import type { SafeRoomDef } from './sites';
-import { type FinalePhase, ForgeStory, type ForgeView, type HoldoutPhase, type RumblePhase, type StoryTick } from './story';
+import { ForgeStage } from './stage';
+import { type AssaultPhase, type FinalePhase, ForgeStory, type ForgeView, type FurnacePhase, type HoldoutPhase, type RumblePhase, type StoryTick } from './story';
 
 type PersonPhase = HoldoutPhase | 'leaving';
 
@@ -35,7 +39,7 @@ interface Person {
   phase: PersonPhase;
   /** Seconds into leaving. */
   t: number;
-  /** Hearth slot (-1 until they get there). */
+  /** Their spot at the Hearth (from the story; -1 until they get there). */
   slot: number;
 }
 
@@ -46,10 +50,15 @@ interface Shown {
   wave: number;
   finale: FinalePhase;
   vault: boolean;
+  furnaces: FurnacePhase[];
+  assault: AssaultPhase;
 }
 
 /** The night's look, and first light over the Forge (the burnout). */
 const DAWN = { zenith: 0x56688a, mid: 0xd89a7a, horizon: 0xffc690, glow: 0xffd8a8, haze: 0xc8a088, fog: 0x7a5e50, hemiSky: 0xe4cdb6, hemiGround: 0x5a3a2a, fill: 0xffd2a0 };
+
+const flameName = (i: number): string => FORGE_SQUAD.flames[i]?.name ?? 'IGNIS';
+const flameColor = (i: number): string => `#${(FORGE_SQUAD.flames[i]?.color ?? 0xff8a2a).toString(16).padStart(6, '0')}`;
 
 export class ForgeRuntime {
   /** The rules (solo; idle while following a co-op simulation). */
@@ -58,14 +67,15 @@ export class ForgeRuntime {
   requestHold: ((i: number) => void) | null = null;
   requestLedger: ((i: number) => void) | null = null;
   requestBell: (() => void) | null = null;
+  requestStoke: ((i: number) => void) | null = null;
   private view: ForgeView | null = null;
   private shown: Shown | null = null;
   private people: Person[] = [];
   private readonly pages: THREE.Group[] = [];
   private readonly hud = new ForgeHud();
+  private readonly stage: ForgeStage;
   private queue: { at: number; fn: () => void }[] = [];
   private clock = 0;
-  private hearthNext = 0;
   /** Per room: seconds left of the door being cracked open, and the time to the next thud on it. */
   private doorOpen: number[];
   private thudT: number[];
@@ -78,10 +88,18 @@ export class ForgeRuntime {
   private readonly tick: StoryTick;
   private readonly glowAmber = new THREE.Color(0xff8a2a);
   private readonly glowRed = new THREE.Color(0xff2a14);
+  /** Seconds into the carrier's turning, and into the burnout (for the infected's glow). */
+  private warnT = 0;
+  private burnT = -1;
+  private sparkT = 0;
+  private insideWarned = 0;
 
   constructor(private readonly g: Game) {
     const sites = g.level.data.forge!;
     this.story = new ForgeStory(sites, g.zombies, g.level.nav);
+    this.stage = new ForgeStage(g);
+    // the reborn wears a look of its own (here and on every co-op puppet)
+    g.zombies.rebornRig = (name) => createRebornRig(g.zombieFactory, 7919 + name.length * 131);
     this.doorOpen = sites.rooms.map(() => 0);
     this.thudT = sites.rooms.map(() => Math.random());
     this.shake = sites.rooms.map(() => 0);
@@ -140,7 +158,10 @@ export class ForgeRuntime {
     this.rosterWire = null;
     this.queue = [];
     this.clock = 0;
-    this.hearthNext = 0;
+    this.warnT = 0;
+    this.burnT = -1;
+    this.insideWarned = 0;
+    ZOMBIE_GLOW.value = 1;
     this.noted.clear();
     this.askedAt.clear();
     this.doorOpen.fill(0);
@@ -153,6 +174,8 @@ export class ForgeRuntime {
       fx.hearthGlow.emissive.copy(this.glowAmber);
       for (const d of fx.doors) d.pivot.rotation.y = d.yaw;
     }
+    const h = this.sites.hearth;
+    this.stage.reset(Math.atan2(-(h.gateX - h.sentryX), -(h.gateZ - h.sentryZ)));
     this.endDawn();
     if (coop) return null;
     const roster = this.story.reset(this.g.rng);
@@ -164,7 +187,7 @@ export class ForgeRuntime {
   applyWire(roster: unknown, state: unknown): void {
     if (!this.follow) return;
     if (roster !== undefined && roster !== null) this.rosterWire = roster;
-    const v = decodeView(this.rosterWire, state, this.sites.ledger.length);
+    const v = decodeView(this.rosterWire, state, this.sites.ledger.length, this.sites.furnaces.length);
     if (!v) return;
     const first = !this.view || this.view.holdouts.map((h) => h.name).join('|') !== v.holdouts.map((h) => h.name).join('|');
     if (first) {
@@ -181,13 +204,19 @@ export class ForgeRuntime {
       const { look, color } = vulcanLook(h.name);
       const avatar = new Avatar(h.name, i, { look, color, helmet: false, weapon: 'none', tag: rankTag(h.rank), tagColor: '#ffb060' });
       this.g.worldRoot.add(avatar.root);
-      const person: Person = { name: h.name, rank: h.rank, room: h.room, avatar, phase: 'room', t: 0, slot: -1 };
+      const person: Person = { name: h.name, rank: h.rank, room: h.room, avatar, phase: 'room', t: 0, slot: h.slot };
       this.place(person);
       return person;
     });
     // nothing that already happened is played again (a late join): only what changes from here on
-    this.shown = { phases: v.holdouts.map(() => 'room'), ledger: v.ledger.map(() => false), rumble: 'idle', wave: 0, finale: 'idle', vault: false };
+    this.shown = { phases: v.holdouts.map(() => 'room'), ledger: v.ledger.map(() => false), rumble: 'idle', wave: 0, finale: 'idle', vault: false, furnaces: v.furnaces.map(() => 'cold'), assault: 'idle' };
     this.present(v, true);
+  }
+
+  /** Where someone stands at the Hearth. */
+  private hearthSpot(p: Person): { x: number; z: number; yaw: number } {
+    const slots = this.sites.hearth.slots;
+    return slots[Math.max(0, p.slot) % slots.length]!;
   }
 
   /** Put a person where their phase says (no animation). */
@@ -197,8 +226,7 @@ export class ForgeRuntime {
       const r = this.sites.rooms[p.room]!;
       a.set(r.inX, 0, r.inZ, r.inYaw, true);
     } else if (p.phase === 'hearth' || p.phase === 'fallen') {
-      if (p.slot < 0) p.slot = this.hearthNext++;
-      const s = this.sites.hearth.slots[p.slot % this.sites.hearth.slots.length]!;
+      const s = this.hearthSpot(p);
       a.set(s.x, 0, s.z, s.yaw, true);
       if (p.phase === 'fallen' && !a.fallen) a.fall(Math.sin(s.yaw), Math.cos(s.yaw), 1.2);
     } else a.root.visible = false;
@@ -265,12 +293,14 @@ export class ForgeRuntime {
     const g = this.g;
     const e = g.session.elapsed;
     const anyaIn = this.people.some((p) => p.name === 'Anya' && p.phase === 'room');
-    if (e > 7 && anyaIn && this.once('fg:anyaGate')) g.radio(L.anya, L.anyaGate, 9);
-    if (e > 19 && this.once('fg:squadHello')) {
+    if (e > 3 && this.once('fg:hearthStart')) g.radio(L.command, L.hearthStart, 8);
+    if (e > 13 && anyaIn && this.once('fg:anyaGate')) g.radio(L.anya, L.anyaGate, 9);
+    if (e > 26 && this.once('fg:squadHello')) {
       const lead = g.squad.aliveNames()[0];
       if (lead) g.radio(lead.toUpperCase(), L.squadHello, 7);
     }
-    if (e > 50 && this.view && this.view.ledger.some((f) => !f) && this.once('fg:ledgerAsk')) g.radio(this.voice(), L.ledgerAsk, 7);
+    if (e > 40 && this.view && this.view.assault === 'idle' && this.view.furnaces.some((f) => f.phase === 'cold') && this.once('fg:furnaceAsk')) g.radio(this.voice(), L.furnaceAsk, 8);
+    if (e > 70 && this.view && this.view.assault === 'idle' && this.view.ledger.some((f) => !f) && this.once('fg:ledgerAsk')) g.radio(this.voice(), L.ledgerAsk, 7);
   }
 
   /** Walk into a ledger page to take it. */
@@ -303,10 +333,11 @@ export class ForgeRuntime {
     if (!was) return;
     const g = this.g;
     v.holdouts.forEach((h, i) => {
+      const p = this.people[i];
+      if (p && h.slot >= 0) p.slot = h.slot;
       const before = was.phases[i]!;
       if (h.phase === before) return;
       was.phases[i] = h.phase;
-      const p = this.people[i];
       if (!p) return;
       if (silent) {
         p.phase = h.phase;
@@ -329,11 +360,21 @@ export class ForgeRuntime {
       this.pages[i]!.visible = false;
       if (!silent) this.onLedger(i);
     });
+    v.furnaces.forEach((f, i) => {
+      const before = was.furnaces[i] ?? 'cold';
+      if (f.phase === before) return;
+      was.furnaces[i] = f.phase;
+      if (!silent) this.onFurnace(i, before, f.phase);
+    });
     if (v.rumble.phase !== was.rumble || v.rumble.wave !== was.wave) {
       const from = was.rumble;
       was.rumble = v.rumble.phase;
       was.wave = v.rumble.wave;
       if (!silent) this.onRumble(from, v.rumble.phase, v.rumble.wave);
+    }
+    if (v.assault !== was.assault) {
+      was.assault = v.assault;
+      if (!silent && v.assault === 'on') this.onAssault();
     }
     if (v.finale.phase !== was.finale) {
       const from = was.finale;
@@ -379,13 +420,13 @@ export class ForgeRuntime {
     if (prev === 'room' || prev === 'leaving' || p.slot < 0) {
       this.place(p);
     } else if (!p.avatar.fallen) {
-      const s = this.sites.hearth.slots[p.slot % this.sites.hearth.slots.length]!;
+      const s = this.hearthSpot(p);
       p.avatar.fall(Math.sin(s.yaw) + (g.rng.f() - 0.5), Math.cos(s.yaw), 1.6);
     }
-    const h = this.sites.hearth;
+    const at = p.avatar.root.position;
     g.feed(`${p.name.toUpperCase()} WAS KILLED`, 'danger');
-    g.audio.play('player_death', { priority: 2, volume: 0.7, rate: 0.9 + g.rng.f() * 0.2, pos: { x: h.x, y: 1.5, z: h.z } });
-    g.fx.blood({ x: p.avatar.root.position.x, y: 1.1, z: p.avatar.root.position.z }, { x: 0, y: 0.3, z: 1 }, { amount: 1, kill: true });
+    g.audio.play('player_death', { priority: 2, volume: 0.7, rate: 0.9 + g.rng.f() * 0.2, pos: { x: at.x, y: 1.5, z: at.z } });
+    g.fx.blood({ x: at.x, y: 1.1, z: at.z }, { x: 0, y: 0.3, z: 1 }, { amount: 1, kill: true });
     this.later(1.2, () => g.radio(this.voice(), L.finaleFall(p.name), 3));
   }
 
@@ -409,6 +450,40 @@ export class ForgeRuntime {
     this.later(2.5, () => g.radio(this.voice(), page.comment, 8));
   }
 
+  /** A furnace is stoked (the hold begins), or catches (its ember is back: paid here, once). */
+  private onFurnace(i: number, from: FurnacePhase, to: FurnacePhase): void {
+    const g = this.g;
+    const f = this.view!.furnaces[i]!;
+    const s = this.sites.furnaces[f.spot]!;
+    const name = flameName(f.flame);
+    const color = FORGE_SQUAD.flames[f.flame]?.color ?? 0xff7a1a;
+    const total = this.view!.furnaces.length;
+    if (to === 'burning') {
+      g.banner(`THE ${name} FURNACE IS CATCHING`, `Hold its circle for ${FORGE_STORY.furnaces.hold} seconds - the fire draws them in`, 'warn', 4);
+      g.audio.play('flare_ignite', { pos: { x: s.x, y: 1, z: s.z }, volume: 1, priority: 3 });
+      g.audio.play('defense_start', { priority: 2, volume: 0.7 });
+      this.later(1.2, () => g.radio(this.voice(), L.furnaceStoked(name), 5));
+    } else if (to === 'lit') {
+      const got = this.view!.furnaces.filter((q) => q.phase === 'lit').length;
+      const all = got >= total;
+      const F = FORGE_STORY.furnaces;
+      const a = applyContractReward(g.session.inv, { cash: F.cash + (all ? F.bonus : 0), plates: 0, grenades: 0 });
+      if (all) g.session.inv.plates = Math.min(PLAYER.maxPlates, g.session.inv.plates + F.plates);
+      g.hudEvent({ type: 'cash', amount: a.cash });
+      g.fx.sparkle({ x: s.x, y: 1.4, z: s.z }, color, 30);
+      g.audio.play('contract_complete', { priority: 3 });
+      g.feed(`${name} EMBER ${got}/${total}  +$${F.cash}`, 'good');
+      if (all) {
+        g.banner('THE SEVEN EMBERS BURN', `Seven Flames Row is lit   +$${a.cash.toLocaleString('en-US')}   +${F.plates} ARMOR PLATES`, 'good', 5);
+        this.later(2, () => g.radio(this.voice(), L.furnacesAll, 7));
+      } else {
+        g.banner(`${name} BURNS AGAIN`, `Ember ${got}/${total}   +$${a.cash}`, 'good', 4);
+        this.later(1.5, () => g.radio(this.voice(), L.furnaceLit(name), 5));
+      }
+    }
+    void from;
+  }
+
   private onRumble(from: RumblePhase, to: RumblePhase, wave: number): void {
     const g = this.g;
     const waves = FORGE_STORY.rumble.waves.length;
@@ -430,25 +505,38 @@ export class ForgeRuntime {
     }
   }
 
+  /** The last stand begins. */
+  private onAssault(): void {
+    const g = this.g;
+    const h = this.sites.hearth;
+    g.banner('HOLD THE HEARTH', 'The whole Forge heard the call - they are coming for the people at the Hearth', 'danger', 5);
+    g.audio.play('siren_wail', { priority: 3, volume: 0.8, pos: { x: h.gateX, y: 3, z: h.gateZ } });
+    this.later(1, () => g.radio(this.voice(), L.assault, 6));
+  }
+
   private onFinale(from: FinalePhase, to: FinalePhase, carrier: number): void {
     const g = this.g;
     const fx = g.level.forgeFx;
     const h = this.sites.hearth;
+    const name = this.people[carrier]?.name ?? 'Someone';
     if (to === 'warning') {
+      this.warnT = 0;
       fx?.hearthGlow.emissive.copy(this.glowRed);
-      g.radio(L.anya, L.finaleWarn, 3);
+      g.radio(L.anya, L.finaleWarn(name), 4);
+      g.banner(`${name.toUpperCase()} IS BURNING UP`, 'Something is coming out of them', 'danger', 4);
       g.audio.play('klaxon', { priority: 3 });
       g.audio.play('zombie_screech', { priority: 3, volume: 1.3, rate: 0.6, pos: { x: h.x, y: 2, z: h.z } });
       g.shake(0.4);
     } else if (to === 'reborn') {
       fx?.hearthGlow.emissive.copy(this.glowRed);
-      const name = this.people[carrier]?.name ?? 'Someone';
       g.banner(`${name.toUpperCase()} - REBORN`, 'They hid the bite. Kill it before it burns through the Hearth.', 'danger', 6);
       g.radio(L.command, L.finaleReborn(name), 7);
       this.later(7.5, () => g.radio(L.pilot, L.finaleHold, 5));
-      g.audio.play('warden_roar', { priority: 3, volume: 1.5, rate: 0.8, pos: { x: h.gateX, y: 2, z: h.gateZ } });
-      g.shake(0.8);
+      g.audio.play('warden_roar', { priority: 3, volume: 1.5, rate: 0.7, pos: { x: h.x, y: 2, z: h.z } });
+      g.audio.play('grenade_explosion', { priority: 3, volume: 0.9, rate: 0.6, pos: { x: h.x, y: 2, z: h.z } });
+      g.shake(0.9);
     } else if (to === 'burnout') {
+      this.burnT = 0;
       fx?.hearthGlow.emissive.copy(this.glowAmber);
       g.banner('THE FIRE IS OUT', 'Every infected left in the Forge is burning out', 'good', 6);
       g.audio.play('victory_sting', { priority: 3, volume: 0.6 });
@@ -460,13 +548,22 @@ export class ForgeRuntime {
   }
 
   // ---------------------------------------------------------------------------------------------
-  // animation: rooms, doors, the Hearth, the pages, the pounding, the dawn
+  // animation: rooms, doors, the Hearth, the furnaces, the pages, the pounding, the turning, the dawn
   // ---------------------------------------------------------------------------------------------
 
   private animate(dt: number): void {
     const g = this.g;
     const fx = g.level.forgeFx;
     const sites = this.sites;
+    const v = this.view;
+    // the carrier, burning up before they turn
+    const carrier = v && v.finale.phase === 'warning' ? this.people[v.finale.carrier] : undefined;
+    if (v?.finale.phase === 'warning') this.warnT += dt;
+    let jitter = { dx: 0, dz: 0, yaw: 0 };
+    if (carrier && (carrier.phase === 'hearth' || carrier.phase === 'room' || carrier.phase === 'leaving')) {
+      const at = carrier.avatar.root.position;
+      jitter = this.stage.turning({ x: at.x, z: at.z }, this.warnT / FORGE_STORY.finale.warnLead, this.clock, dt);
+    } else this.stage.turning(null, 0, this.clock, dt);
     // people (only drawn near enough to see: a room shows them through its window, the Hearth through its gate)
     const me = g.player;
     for (const p of this.people) {
@@ -481,6 +578,12 @@ export class ForgeRuntime {
         }
       }
       const a = p.avatar;
+      if (p === carrier && (p.phase === 'hearth' || p.phase === 'room')) {
+        // convulsing: hunched, shaking where they stand
+        const base = p.phase === 'hearth' ? this.hearthSpot(p) : { x: sites.rooms[p.room]!.inX, z: sites.rooms[p.room]!.inZ, yaw: sites.rooms[p.room]!.inYaw };
+        a.cowering = true;
+        a.set(base.x + jitter.dx, 0, base.z + jitter.dz, base.yaw + jitter.yaw, true);
+      }
       if (p.phase !== 'reborn') {
         const far = Math.hypot(a.root.position.x - me.x, a.root.position.z - me.z) > (p.phase === 'room' || p.phase === 'leaving' ? 42 : 70);
         a.root.visible = !far;
@@ -502,13 +605,17 @@ export class ForgeRuntime {
         d.pivot.rotation.y = d.yaw + Math.max(0, open) + Math.sin(this.clock * 70) * 0.012 * this.shake[i]!;
         void r;
       });
-      // the seven forges light up when all seven flames are found
-      const lit = g.squad.flamesAllTaken();
+      // the seven forges on Seven Flames Row light up when every ember is back
+      const lit = !!v && v.furnaces.length > 0 && v.furnaces.every((f) => f.phase === 'lit');
       for (let i = 0; i < fx.flameForges.length; i++) {
         const m = fx.flameForges[i]!;
         const want = lit ? 2.2 + Math.sin(this.clock * 3 + i) * 0.3 : 0.15;
         m.emissiveIntensity += (want - m.emissiveIntensity) * Math.min(1, dt * 1.5);
       }
+    }
+    if (v) {
+      this.stage.furnaces(v.furnaces, this.clock, dt);
+      this.stage.sentry(v.sentry.yaw, v.sentry.shots, v.sentry.tx, v.sentry.tz, dt);
     }
     this.pound(dt);
     // the pages bob under their beams
@@ -519,7 +626,34 @@ export class ForgeRuntime {
       sheet.position.y = 0.1 + Math.sin(this.clock * 2.1 + i) * 0.03;
       sheet.rotation.y += dt * 0.5;
     }
+    this.infectedGlow(dt);
     if (this.dawnT >= 0) this.stepDawn(dt);
+  }
+
+  /**
+   * Something is happening to the infected, and you can see it: their cracks and eyes pulse while the fire is drawn
+   * out of them (the assault, the turning, the reborn), and flare white-hot as they burn out. The reborn throws sparks.
+   */
+  private infectedGlow(dt: number): void {
+    const g = this.g;
+    const v = this.view;
+    const ph = v?.finale.phase;
+    let want = 1;
+    if (this.burnT >= 0) {
+      this.burnT += dt;
+      want = this.burnT < 6 ? 1 + 5 * Math.max(0, 1 - this.burnT / 6) : 1;
+    } else if (ph === 'warning') want = 1.4 + 1.8 * (0.5 + 0.5 * Math.sin(this.clock * 9));
+    else if (ph === 'reborn') want = 1.5 + 1.1 * (0.5 + 0.5 * Math.sin(this.clock * 4.2));
+    else if (v?.assault === 'on') want = 1.15 + 0.35 * (0.5 + 0.5 * Math.sin(this.clock * 2.6));
+    ZOMBIE_GLOW.value += (want - ZOMBIE_GLOW.value) * Math.min(1, dt * 6);
+    const reborn = this.rebornZombie();
+    if (reborn) {
+      this.sparkT -= dt;
+      if (this.sparkT <= 0) {
+        this.sparkT = 0.12;
+        g.fx.sparkle({ x: reborn.x + (Math.random() - 0.5) * 1.2, y: 1.2 + Math.random() * 1.8, z: reborn.z + (Math.random() - 0.5) * 1.2 }, Math.random() < 0.5 ? 0xff7a1a : 0xffc060, 5);
+      }
+    }
   }
 
   /** The infected at the doors: thuds, dust and the door shaking, for the doors near enough to hear. */
@@ -614,9 +748,14 @@ export class ForgeRuntime {
     return this.view?.finale.phase === 'burnout';
   }
 
-  /** True while the burnout is killing (those kills pay nothing). */
-  get burning(): boolean {
-    return !this.follow && this.story.burning;
+  /** The director stands down (the assault brings the infected, or none are left). Solo only. */
+  get quietDirector(): boolean {
+    return !this.follow && this.story.quietDirector;
+  }
+
+  /** A kill landing now pays nobody (the burnout, the sentry). Solo only. */
+  get noReward(): boolean {
+    return !this.follow && this.story.noReward;
   }
 
   /** Names no infected may carry this run. */
@@ -625,7 +764,7 @@ export class ForgeRuntime {
   }
 
   /** Who made it, who did not, and who is still barricaded in (the ending): the Hearth, the squad, the rooms. */
-  ending(): { saved: { name: string; tag: string }[]; fallen: { name: string; tag: string }[]; left: { name: string; tag: string }[] } {
+  ending(): { saved: { name: string; tag: string }[]; fallen: { name: string; tag: string }[]; left: { name: string; tag: string }[]; furnaces: { x: number; z: number; color: number }[] } {
     const saved: { name: string; tag: string }[] = [];
     const fallen: { name: string; tag: string }[] = [];
     const left: { name: string; tag: string }[] = [];
@@ -637,7 +776,17 @@ export class ForgeRuntime {
       else if (p.phase === 'fallen' || p.phase === 'reborn') fallen.push(entry);
       else left.push(entry);
     }
-    return { saved, fallen, left };
+    // this run's seven furnaces (the reveal lights them up from above)
+    const furnaces = (this.view?.furnaces ?? []).map((f) => {
+      const s = this.sites.furnaces[f.spot]!;
+      return { x: s.x, z: s.z, color: FORGE_SQUAD.flames[f.flame]?.color ?? 0xff7a1a };
+    });
+    return { saved, fallen, left, furnaces };
+  }
+
+  /** How many of the seven furnaces burn (the reveal counts them). */
+  furnacesLit(): number {
+    return this.view?.furnaces.filter((f) => f.phase === 'lit').length ?? 0;
   }
 
   /** Holdouts' looks (the ending's portraits). */
@@ -697,6 +846,29 @@ export class ForgeRuntime {
         },
       });
     });
+    // the furnaces
+    v.furnaces.forEach((f, i) => {
+      if (f.phase !== 'cold' || v.finale.phase === 'burnout') return;
+      const s = sites.furnaces[f.spot]!;
+      const fx = s.x - Math.sin(s.yaw) * 1.9;
+      const fz = s.z - Math.cos(s.yaw) * 1.9;
+      const d = Math.hypot(fx - p.x, fz - p.z);
+      if (d > FORGE_STORY.furnaces.reach) return;
+      const name = flameName(f.flame);
+      out.push({
+        id: `stoke:${i}`,
+        dist: d,
+        text: `STOKE THE ${name} FURNACE`,
+        sub: `Then hold its circle for ${FORGE_STORY.furnaces.hold} seconds while it catches - the fire draws the infected`,
+        tone: 'warn',
+        hold: FORGE_STORY.furnaces.stoke,
+        enabled: true,
+        onUse: () => {
+          if (!this.follow) this.story.stoke(i, g.player.x, g.player.z);
+          else this.requestStoke?.(i);
+        },
+      });
+    });
     const pit = sites.rumble;
     if (v.rumble.phase === 'idle' && v.finale.phase !== 'burnout') {
       const d = Math.hypot(pit.bellX - p.x, pit.bellZ - p.z);
@@ -721,6 +893,11 @@ export class ForgeRuntime {
   // ---------------------------------------------------------------------------------------------
   // HUD and maps
   // ---------------------------------------------------------------------------------------------
+
+  private insideHearth(x: number, z: number): boolean {
+    const h = this.sites.hearth;
+    return x > h.x0 && x < h.x1 && z > h.z0 && z < h.z1 + 0.5;
+  }
 
   decorateHud(st: HudState, md: MapDynamic): void {
     const g = this.g;
@@ -750,6 +927,32 @@ export class ForgeRuntime {
       }
       objs.push({ id: 'holdouts', title: `REACH THE HOLDOUTS  ${safe}/${total}`, detail, state: nearest ? 'active' : 'complete', progress: safe / total, tracked: false, distance: nearest ? nearest.d : -1 });
     }
+    // the furnaces: one burning is tracked; otherwise the nearest cold one
+    const F = FORGE_STORY.furnaces;
+    const lit = v.furnaces.filter((f) => f.phase === 'lit').length;
+    let fNear: { i: number; d: number } | null = null;
+    v.furnaces.forEach((f, i) => {
+      if (f.phase === 'lit') return;
+      const s = sites.furnaces[f.spot]!;
+      const d = Math.hypot(s.x - p.x, s.z - p.z);
+      if (!fNear || d < fNear.d || (f.phase === 'burning' && v.furnaces[fNear.i]!.phase !== 'burning')) fNear = { i, d };
+    });
+    const fn = fNear as { i: number; d: number } | null;
+    if (v.furnaces.length > 0) {
+      const burning = fn ? v.furnaces[fn.i]!.phase === 'burning' : false;
+      const fs = fn ? v.furnaces[fn.i]! : null;
+      const place = fs ? sites.furnaces[fs.spot]!.place : '';
+      const inRing = fs && burning ? Math.hypot(sites.furnaces[fs.spot]!.x - p.x, sites.furnaces[fs.spot]!.z - p.z) < F.radius : false;
+      objs.push({
+        id: 'embers',
+        title: burning && fs ? `STOKING ${flameName(fs.flame)}  ${Math.round(fs.progress * 100)}%` : `THE SEVEN EMBERS  ${lit}/${v.furnaces.length}`,
+        detail: lit >= v.furnaces.length ? 'Seven Flames Row burns again' : burning ? (inRing ? 'Hold the circle while it catches' : 'Get back in its circle - it only catches while you hold it') : `Nearest cold furnace: ${fs ? flameName(fs.flame) : ''} - ${place}`,
+        state: lit >= v.furnaces.length ? 'complete' : 'active',
+        progress: burning && fs ? fs.progress : lit / v.furnaces.length,
+        tracked: burning,
+        distance: fn ? fn.d : -1,
+      });
+    }
     const pages = sites.ledger.length;
     const got = v.ledger.filter((f) => f).length;
     let pageNear: { i: number; d: number } | null = null;
@@ -764,32 +967,52 @@ export class ForgeRuntime {
     const pitD = Math.hypot(pit.x - p.x, pit.z - p.z);
     if (v.rumble.phase === 'wave' || v.rumble.phase === 'gap') objs.push({ id: 'rumble', title: `RUMBLE PIT  WAVE ${v.rumble.wave + 1}/${FORGE_STORY.rumble.waves.length}`, detail: v.rumble.phase === 'gap' ? 'Next wave incoming' : 'Hold the ring', state: 'active', progress: (v.rumble.wave + (v.rumble.phase === 'gap' ? 1 : 0)) / FORGE_STORY.rumble.waves.length, tracked: false, distance: pitD });
     else if (v.rumble.phase === 'idle' && pitD < 30) objs.push({ id: 'rumble', title: 'RUMBLE PIT', detail: "Ring riry's bell for three waves (optional)", state: 'available', progress: -1, tracked: false, distance: pitD });
+    // the last stand, and the reborn: these lead
+    const lead: HudObjective[] = [];
+    const h = sites.hearth;
+    if (v.assault === 'on') {
+      let inside = 0;
+      for (const z of g.zombies.zombies) if (z.alive && this.insideHearth(z.x, z.z)) inside++;
+      if (inside > 0 && this.clock - this.insideWarned > 12) {
+        this.insideWarned = this.clock;
+        g.feed(L.assaultInside.toUpperCase(), 'danger');
+      }
+      const d = Math.hypot(h.x - p.x, h.z - p.z);
+      lead.push({ id: 'assault', title: `HOLD THE HEARTH  ${safe} LEFT`, detail: inside > 0 ? `${inside} infected inside the walls - get them off our people` : 'They are coming from every street - keep them out of the courtyard', state: 'active', progress: total > 0 ? safe / total : -1, tracked: true, distance: d });
+    }
     const reborn = this.rebornZombie();
     if (reborn) {
       const name = this.people[v.finale.carrier]?.name ?? '';
       const d = Math.hypot(reborn.x - p.x, reborn.z - p.z);
-      objs.unshift({ id: 'reborn', title: `${name.toUpperCase()} - REBORN`, detail: "Kill it - the bird can't land while it lives", state: 'active', progress: Math.max(0, reborn.hp / reborn.maxHp), tracked: true, distance: d });
-      for (const o of st.objectives) o.tracked = false;
+      lead.unshift({ id: 'reborn', title: `${name.toUpperCase()} - REBORN`, detail: "Kill it - the bird can't land while it lives", state: 'active', progress: Math.max(0, reborn.hp / reborn.maxHp), tracked: true, distance: d });
       md.markers.push({ id: 'reborn', kind: 'hunt', x: reborn.x, z: reborn.z, label: 'REBORN', color: '#ff3a2a', visible: true, compass: true, pulse: true });
+    }
+    if (lead.length > 0) {
+      for (const o of st.objectives) o.tracked = false;
+      for (const o of objs) o.tracked = false;
+      lead.forEach((o, k) => (o.tracked = k === 0));
     }
     const ext = st.objectives.find((o) => o.id === 'extract');
     if (ext && this.holdExtraction) ext.detail = 'The bird is holding off - kill the reborn';
-    st.objectives.push(...objs.filter((o) => o.id !== 'reborn'));
-    const r0 = objs.find((o) => o.id === 'reborn');
-    if (r0) st.objectives.unshift(r0);
+    st.objectives.push(...objs);
+    st.objectives.unshift(...lead);
     // the maps and the compass
-    v.holdouts.forEach((h, i) => {
-      if (h.phase !== 'room') return;
-      const r = sites.rooms[h.room]!;
+    v.holdouts.forEach((ho, i) => {
+      if (ho.phase !== 'room') return;
+      const r = sites.rooms[ho.room]!;
       const sealed = r.vault && g.session.defense.status !== 'complete';
-      md.markers.push({ id: `hold:${i}`, kind: 'objective', x: r.doorX, z: r.doorZ, label: sealed ? 'VAULT' : h.name.toUpperCase(), color: '#9fd0ff', visible: true, compass: !!nearest && nearest.i === i, dim: sealed });
+      md.markers.push({ id: `hold:${i}`, kind: 'objective', x: r.doorX, z: r.doorZ, label: sealed ? 'VAULT' : ho.name.toUpperCase(), color: '#9fd0ff', visible: true, compass: !!nearest && nearest.i === i && v.assault !== 'on', dim: sealed });
     });
-    md.markers.push({ id: 'hearth', kind: 'landmark', x: sites.hearth.gateX, z: sites.hearth.gateZ - 2, label: 'HEARTH', color: '#ffb060', visible: true, dim: true });
+    md.markers.push({ id: 'hearth', kind: v.assault === 'on' ? 'objective' : 'landmark', x: h.gateX, z: h.gateZ - 2, label: 'HEARTH', color: '#ffb060', visible: true, dim: v.assault !== 'on', compass: v.assault === 'on' && !reborn, pulse: v.assault === 'on' });
+    v.furnaces.forEach((f, i) => {
+      if (f.phase === 'lit') return;
+      const s = sites.furnaces[f.spot]!;
+      md.markers.push({ id: `furnace:${i}`, kind: 'objective', x: s.x, z: s.z, label: flameName(f.flame), color: flameColor(f.flame), visible: true, compass: !!fn && fn.i === i && v.assault !== 'on' && (f.phase === 'burning' || fn.d < 70), pulse: f.phase === 'burning' });
+    });
     sites.ledger.forEach((s, i) => {
-      if (!v.ledger[i]) md.markers.push({ id: `ledger:${i}`, kind: 'objective', x: s.x, z: s.z, label: 'LEDGER', color: '#ffd27a', visible: true, compass: !!pn && pn.i === i && pn.d < 60 });
+      if (!v.ledger[i]) md.markers.push({ id: `ledger:${i}`, kind: 'objective', x: s.x, z: s.z, label: 'LEDGER', color: '#ffd27a', visible: true, compass: !!pn && pn.i === i && pn.d < 60 && v.assault !== 'on' });
     });
     if (v.rumble.phase !== 'done') md.markers.push({ id: 'rumble', kind: 'landmark', x: pit.x, z: pit.z, label: 'RUMBLE PIT', color: '#ff8ac8', visible: true, dim: v.rumble.phase === 'idle' });
-    void SURVIVORS;
   }
 
   /** The reborn, while it lives (found by its name: a solo run's own, or the simulation's puppet). */
@@ -806,6 +1029,9 @@ export class ForgeRuntime {
     for (const p of this.people) p.avatar.dispose();
     this.people = [];
     for (const pg of this.pages) pg.removeFromParent();
+    this.stage.dispose();
     this.hud.dispose();
+    ZOMBIE_GLOW.value = 1;
+    this.g.zombies.rebornRig = null;
   }
 }

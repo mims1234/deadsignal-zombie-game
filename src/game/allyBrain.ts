@@ -230,11 +230,6 @@ export function cageSpots(level: Level, rng: Rng, count: number): { x: number; z
  * The Seven Flames (the Forge), each snapped onto open ground. Always the same spots (a fixed seed), so the co-op
  * simulation and every player's screen agree without sending them.
  */
-export function emberSpots(level: Level): { x: number; z: number }[] {
-  const rng = new Rng(4093);
-  return FORGE_SQUAD.embers.map(([x, z]) => (level.nav.isBlockedAt(x, z) ? (level.nav.randomFreeNear(x, z, 3, () => rng.f()) ?? { x, z }) : { x, z }));
-}
-
 /** A fresh ally (positions and stats only; no model). */
 export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number, skill: TeamSkill = 'regular'): AllyBody {
   const stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);

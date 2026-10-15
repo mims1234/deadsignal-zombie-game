@@ -1,11 +1,12 @@
 /**
  * The Forge's story operation (`src/forge/`), run by the co-op simulation exactly as the solo game runs it: the roster,
  * the holdouts in their rooms and the infected at their doors (who never get in), talking someone out, the vault,
- * the ledger, riry's bell, the last carrier and the burnout; and how it all goes over the wire.
+ * the furnaces, the ledger, riry's bell, the Hearth's sentry, the last stand, the last carrier and the burnout; and how
+ * it all goes over the wire.
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
-import { FORGE_STORY, MISSION, VULCAN, VULCAN_LEADERSHIP } from '../src/config';
+import { FORGE_SQUAD, FORGE_STORY, MISSION, VULCAN, VULCAN_LEADERSHIP } from '../src/config';
 import { LEADERSHIP_NAMES, SIGNATURE_NAMES, vulcanLook } from '../src/forge/looks';
 import { decodeView, encodeRoster, encodeState } from '../src/forge/net';
 import { pickForgeRoster } from '../src/forge/roster';
@@ -170,6 +171,79 @@ describe('the Forge: the ledger and the Pit', () => {
   });
 });
 
+describe('the Forge: the furnaces', () => {
+  it('draws seven different furnaces, one for each ember', () => {
+    const { story, sites } = forgeRun();
+    const f = story.view.furnaces;
+    expect(f.length).toBe(FORGE_STORY.furnaces.count);
+    expect(new Set(f.map((q) => q.spot)).size).toBe(f.length);
+    expect(new Set(f.map((q) => q.flame)).size).toBe(FORGE_SQUAD.flames.length);
+    for (const q of f) {
+      expect(q.phase).toBe('cold');
+      expect(sites.furnaces[q.spot]).toBeDefined();
+    }
+    // a different seven another run
+    const other = forgeRun(12).story.view.furnaces.map((q) => q.spot).join(',');
+    expect(other).not.toBe(f.map((q) => q.spot).join(','));
+  });
+
+  it('is stoked only from in front of it, catches only while its circle is held, and draws the infected in', () => {
+    const { sim, story, sites, me, run } = forgeRun();
+    sim.message('p1', { k: 'stoke', i: 0 }, false);
+    expect(story.view.furnaces[0]!.phase).toBe('cold');
+    const at = story.furnaceFront(0)!;
+    me.x = at.x;
+    me.z = at.z;
+    run(0.3);
+    const before = sim.zombies.zombies.length;
+    sim.message('p1', { k: 'stoke', i: 0 }, false);
+    const f = story.view.furnaces[0]!;
+    expect(f.phase).toBe('burning');
+    run(10);
+    expect(f.progress).toBeGreaterThan(0.25);
+    expect(sim.zombies.zombies.length).toBeGreaterThan(before);
+    // walk away: it stops catching
+    const s = sites.furnaces[f.spot]!;
+    me.x = s.x + 30;
+    me.z = s.z;
+    run(0.2);
+    const held = f.progress;
+    run(5);
+    expect(f.progress).toBeCloseTo(held, 5);
+    // back in the circle until it catches
+    me.x = at.x;
+    me.z = at.z;
+    run(FORGE_STORY.furnaces.hold + 1);
+    expect(f.phase).toBe('lit');
+  }, 30000);
+});
+
+describe('the Forge: the Hearth', () => {
+  it('is where the run starts, open to walk into, and its sentry cuts down infected inside but never a boss', () => {
+    const { sim, story, sites, me, run } = forgeRun();
+    const h = sites.hearth;
+    const st = sim.level.data.playerStart;
+    expect(st.x > h.x0 && st.x < h.x1 && st.z > h.z0 && st.z < h.z1).toBe(true);
+    // walkable from the streets: the gate is open
+    const nav = sim.level.nav;
+    expect(story.assault.reachable(st.x, st.z)).toBe(true);
+    expect(story.assault.reachable(h.gateX, h.gateZ + 20)).toBe(true);
+    expect(nav.isBlockedAt(h.gateX, h.z1 + 0.2)).toBe(false);
+    // stay out of the way, far off
+    me.x = h.gateX + 40;
+    me.z = h.gateZ + 30;
+    run(0.2);
+    const rng = new Rng(77);
+    const z = sim.zombies.spawn('shambler', h.gateX - 4, h.z1 - 2, rng);
+    const boss = sim.zombies.spawn('warden', h.gateX + 5, h.z0 + 2, rng, { boss: true });
+    const shots = story.view.sentry.shots;
+    run(4);
+    expect(z.alive).toBe(false);
+    expect(story.view.sentry.shots).toBeGreaterThan(shots);
+    expect(boss.hp).toBe(boss.maxHp);
+  });
+});
+
 describe('the Forge: the last carrier', () => {
   it('is reborn after the call, holds the bird off, takes the Hearth but never everyone, and its death burns the virus out', () => {
     const { sim, story, sites, me, run, clear } = forgeRun(5);
@@ -197,6 +271,9 @@ describe('the Forge: the last carrier', () => {
     sim.message('p1', { k: 'call' }, false);
     expect(sim.debug.extraction.phase).toBe('called');
     expect(story.view.finale.carrier).toBe(-1); // nobody can see it coming
+    run(0.1);
+    expect(story.view.assault).toBe('on'); // the last stand begins with the call
+    expect(story.quietDirector).toBe(true);
     run(FORGE_STORY.finale.delayMax + 1);
     expect(story.view.finale.phase).toBe('reborn');
     const carrier = story.view.holdouts[story.view.finale.carrier]!;
@@ -211,17 +288,17 @@ describe('the Forge: the last carrier', () => {
       run(1);
       if (reborn.alive) expect(sim.debug.extraction.countdown).toBeCloseTo(cd, 3);
     }
-    // the Hearth: people fall, the members first, never the last one
+    // the Hearth: people fall (to the assault and to the reborn), never the last one
     const hearth = story.view.holdouts.filter((h) => h.phase === 'hearth');
     expect(hearth.length).toBeGreaterThanOrEqual(FORGE_STORY.finale.keep);
     const fallen = story.view.holdouts.filter((h) => h.phase === 'fallen');
     expect(fallen.length).toBeGreaterThan(0);
-    expect(fallen.every((h) => h.rank === 'member' || story.view.holdouts.filter((q) => q.rank === 'member' && q.phase === 'hearth').length === 0)).toBe(true);
     // kill it: the burnout takes every infected left, and the bird comes in
     for (let k = 0; k < 40 && reborn.alive; k++) sim.message('p1', { k: 'hit', z: reborn.id, a: 600, h: true, y: 0 }, false);
     expect(reborn.alive).toBe(false);
     run(14);
     expect(story.view.finale.phase).toBe('burnout');
+    expect(story.view.assault).toBe('over');
     expect(sim.zombies.zombies.filter((z) => z.alive).length).toBe(0);
     run(MISSION.extraction.countdown + 1);
     expect(sim.debug.extraction.phase).toBe('landed');
@@ -231,14 +308,25 @@ describe('the Forge: the last carrier', () => {
 describe('the Forge: on the wire and in the looks', () => {
   it('sends the roster and the state, and reads them back', () => {
     const { story } = forgeRun();
+    const { sites } = forgeRun();
     story.view.ledger[2] = true;
     story.view.holdouts[1]!.phase = 'hearth';
-    const back = decodeView(JSON.parse(JSON.stringify(encodeRoster(story.view))), JSON.parse(JSON.stringify(encodeState(story.view))), story.view.ledger.length)!;
+    story.view.holdouts[1]!.slot = 3;
+    story.view.furnaces[2]!.phase = 'burning';
+    story.view.furnaces[2]!.progress = 0.42;
+    story.view.furnaces[4]!.phase = 'lit';
+    story.view.furnaces[4]!.progress = 1;
+    story.view.sentry = { yaw: 1.23, shots: 17, tx: -41.5, tz: -60.2 };
+    story.view.assault = 'on';
+    const back = decodeView(JSON.parse(JSON.stringify(encodeRoster(story.view))), JSON.parse(JSON.stringify(encodeState(story.view))), story.view.ledger.length, sites.furnaces.length)!;
     expect(back.squad).toEqual(story.view.squad);
-    expect(back.holdouts.map((h) => [h.name, h.rank, h.room, h.phase])).toEqual(story.view.holdouts.map((h) => [h.name, h.rank, h.room, h.phase]));
+    expect(back.holdouts.map((h) => [h.name, h.rank, h.room, h.phase, h.slot])).toEqual(story.view.holdouts.map((h) => [h.name, h.rank, h.room, h.phase, h.slot]));
     expect(back.ledger).toEqual(story.view.ledger);
+    expect(back.furnaces).toEqual(story.view.furnaces);
+    expect(back.sentry).toEqual(story.view.sentry);
+    expect(back.assault).toBe('on');
     expect(back.finale.carrier).toBe(-1);
-    expect(decodeView(null, encodeState(story.view), 4)).toBeNull();
+    expect(decodeView(null, encodeState(story.view), 4, 16)).toBeNull();
   });
 
   it('gives everyone the same look for the same name, and every signature item belongs to a current member', () => {

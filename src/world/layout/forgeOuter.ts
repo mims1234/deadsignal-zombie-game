@@ -1,18 +1,22 @@
 /**
  * The Forge beyond the four old districts (the map grew from 124 x 100 m to 190 x 150 m). North is -Z.
  *
- *   N  Quench Street, the Hearth (the safe courtyard by the Pad, under the phoenix gate), Anya's radio room, the pump
+ *   N  Quench Street, the Hearth (the safe courtyard by the Pad where the run starts: its gate open, a sentry gun in
+ *      the middle), Anya's radio room, the pump
  *      house, the Rumble Pit (riry's arena), the quench shed, the Slag Yard and its control shed
  *   W  Flame Row and Seven Flames Row: seven small forges, one for each of Vulcan's allied foundries; the pattern shop
  *   E  Ember Road and the Spawn Hall (the clan's #infernus-spawn: where it started), its back office
  *   S  Foundry Street, the Ledger House (the Ignis ledger, the hand-delivery counter) and its office, the furnace
  *      crew's lockers, the market's cold store
  *
+ * Around it all stand sixteen small furnaces, cold since the collection stopped (`FURNACE_SPOTS`); seven are drawn each
+ * run, one for each ember (`forge/story.ts`).
+ *
  * The safe rooms are `forgeRooms.ts`. Everything here registers its colliders, spawn points and resident infected.
  */
 import * as THREE from 'three';
 import { FORGE_SQUAD } from '../../config';
-import type { HearthDef, LedgerSpot, RumblePitDef, SafeRoomDef } from '../../forge/sites';
+import type { FurnaceSpot, HearthDef, LedgerSpot, RumblePitDef, SafeRoomDef } from '../../forge/sites';
 import { barrelGroup, container, corpse, crateGroup, debris, floodlightTower, fuelTank, jerseyBarrier, pallet, pipeStack, streetLamp, tireStack, vehicle } from '../props';
 import { addBox, building, groundRect, wallDecal } from '../structures';
 import { neonLabelMaterial } from '../landmarks/tex';
@@ -30,6 +34,65 @@ export interface OuterResult {
   flameForges: THREE.MeshStandardMaterial[];
   /** The Hearth's gate glow (amber; red when the last carrier turns). */
   hearthGlow: THREE.MeshStandardMaterial;
+  furnaces: FurnaceSpot[];
+  /** Each furnace's mouth (by spot): dark while cold, the ember's colour once stoked. */
+  furnaceMouths: THREE.MeshStandardMaterial[];
+}
+
+/** Where the cold furnaces stand (each facing the middle of the Forge), with a name for the HUD. */
+const FURNACE_SPOTS: readonly [number, number, string][] = [
+  [-80, -53, 'Quench Street, west'],
+  [-10, -53, 'Quench Street'],
+  [60, -52, 'Quench Street, east'],
+  [-70, -30, 'Flame Row'],
+  [0, -20, 'the foundry quarter'],
+  [70, -25, 'Ember Road'],
+  [-84, 2, 'Seven Flames Row'],
+  [-14, -1, 'the crossroads'],
+  [50, 2, 'the east yards'],
+  [84, -1, 'Ember Road, east'],
+  [-30, 20, 'the west yards'],
+  [80, 25, 'by the Spawn Hall'],
+  [-76, 30, 'Flame Row, south'],
+  [-38, 48, 'Foundry Street, west'],
+  [30, 52, 'Foundry Street'],
+  [70, 51, 'Foundry Street, east'],
+];
+
+/**
+ * One of the small furnaces: a round brick belly under an iron hood and a chimney, an arched mouth (dark until it is
+ * stoked) and over it the Ignis mark, gone dim. Returns the mouth's material.
+ */
+function coldFurnace(c: Ctx, f: FurnaceSpot): THREE.MeshStandardMaterial {
+  const { b } = c;
+  const fx = -Math.sin(f.yaw);
+  const fz = -Math.cos(f.yaw);
+  const brick = b.mats.get('brick');
+  const iron = b.mats.get('steelDark');
+  // (the transform is set before the mesh is added: the builder takes it as it is then)
+  const put = (geo: THREE.BufferGeometry, m: THREE.Material, y: number, fwd = 0, rx = 0, ry = f.yaw, shadow = true): THREE.Mesh => {
+    const mesh = new THREE.Mesh(geo, m);
+    mesh.position.set(f.x + fx * fwd, y, f.z + fz * fwd);
+    mesh.rotation.set(rx, ry, 0);
+    mesh.castShadow = shadow;
+    mesh.receiveShadow = true;
+    b.add(mesh);
+    return mesh;
+  };
+  put(new THREE.CylinderGeometry(0.95, 1.05, 1.5, 14), brick, 0.75);
+  put(new THREE.CylinderGeometry(1.08, 1.08, 0.12, 14), iron, 1.52);
+  put(new THREE.ConeGeometry(1.0, 0.85, 14), iron, 2.0);
+  put(new THREE.CylinderGeometry(0.17, 0.2, 1.6, 8), iron, 2.9, -0.35);
+  put(new THREE.TorusGeometry(0.42, 0.06, 6, 14, Math.PI), iron, 0.55, 1.06);
+  const mouth = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0xff7a1a, emissiveIntensity: 0.04, roughness: 0.6 });
+  // the mouth glows and changes colour as it catches: kept out of the static batches
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.4, 14, 0, Math.PI), mouth);
+  m.position.set(f.x + fx * 1.07, 0.55, f.z + fz * 1.07);
+  m.rotation.y = f.yaw + Math.PI;
+  b.addDynamic(m);
+  put(new THREE.PlaneGeometry(0.42, 0.42), ignisMaterial('dim'), 1.15, 1.01, 0, f.yaw + Math.PI, false);
+  b.collideBox(f.x, f.z, 2.1, 2.1, 2.4, { mapKind: 'prop', tag: 'furnace', rot: f.yaw });
+  return mouth;
 }
 
 /** A dimmed Ignis terminal on a post, facing yaw `rot`. */
@@ -113,7 +176,8 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
 
   const rooms: SafeRoomDef[] = [];
 
-  // ---- N: the Hearth (x -54..-30, z -72..-58): a walled courtyard, its barred gate onto Quench Street ----
+  // ---- N: the Hearth (x -54..-30, z -72..-58): a walled courtyard where the run starts, its gate standing open onto
+  // Quench Street, a sentry gun in the middle ----
   const hx0 = -54;
   const hx1 = -30;
   const hz0 = -72;
@@ -126,15 +190,18 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
     addBox(b, 'concreteWall', x, H / 2, (hz0 + hz1) / 2, 0.4, H, hz1 - hz0);
     b.collideBox(x, (hz0 + hz1) / 2, 0.4, hz1 - hz0, H, { mapKind: 'wall', tag: 'hearth' });
   }
-  // the front wall either side of the gate, and the gate: steel bars you can see through but not pass
+  // the front wall either side of the gate, and the gate itself: two barred leaves swung open against the wall
   const gw = 5;
   for (const [a, e] of [[hx0, gateX - gw / 2], [gateX + gw / 2, hx1]] as const) {
     addBox(b, 'concreteWall', (a + e) / 2, H / 2, hz1 - 0.2, e - a, H, 0.4);
     b.collideBox((a + e) / 2, hz1 - 0.2, e - a, 0.4, H, { mapKind: 'wall', tag: 'hearth' });
   }
-  for (let k = 0; k <= 20; k++) addBox(b, 'steelDark', gateX - gw / 2 + k * (gw / 20), 1.6, hz1 - 0.2, 0.06, 3.2, 0.06, 0, { cast: false });
-  for (const y of [0.15, 1.6, 3.1]) addBox(b, 'steelDark', gateX, y, hz1 - 0.2, gw, 0.08, 0.1, 0, { cast: false });
-  b.collideBox(gateX, hz1 - 0.2, gw, 0.4, 3.3, { mapKind: 'wall', tag: 'hearth-gate', blocksShots: false });
+  for (const s of [-1, 1]) {
+    const lx = gateX + s * (gw / 2 + 0.1);
+    for (let k = 0; k <= 10; k++) addBox(b, 'steelDark', lx, 1.6, hz1 + 0.1 + k * 0.25, 0.06, 3.2, 0.06, 0, { cast: false });
+    for (const y of [0.15, 1.6, 3.1]) addBox(b, 'steelDark', lx, y, hz1 + 1.35, 0.1, 0.08, 2.5, 0, { cast: false });
+    b.collideBox(lx, hz1 + 1.35, 0.16, 2.5, 3.3, { mapKind: 'prop', tag: 'hearth-gate', blocksShots: false });
+  }
   // the phoenix arch over the gate, glowing (amber; the runtime turns it red at the end)
   const hearthGlow = new THREE.MeshStandardMaterial({ color: 0x2a0f04, emissive: 0xff8a2a, emissiveIntensity: 1.3, roughness: 0.6 });
   addBox(b, 'steelDark', gateX, H + 0.6, hz1 - 0.2, gw + 1.6, 1.2, 0.5);
@@ -144,19 +211,25 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
   b.add(sigil);
   addBox(b, neonLabelMaterial('THE HEARTH', '#ffb060'), gateX, H + 0.6, hz1 + 0.11, 4.2, 0.6, 0.05, 0, { cast: false });
   b.light({ x: gateX, y: H + 1.2, z: hz1 + 1.5, color: 0xff9a40, intensity: 70, distance: 14 });
-  // inside: braziers, cots, crates (where the people you save wait)
+  // inside: braziers, cots, crates (where the people you save wait), and the sentry's plinth in the middle (the gun
+  // itself turns: `forge/runtime.ts`)
   groundRect(b, 'floorWarehouse', hx0 + 0.4, hz0 + 0.4, hx1 - 0.4, hz1 - 0.4, 0.025);
-  for (const [x, z] of [[-49, -68], [-35, -68], [-42, -66]] as const) {
+  const sentryX = gateX;
+  const sentryZ = -66;
+  addBox(b, 'concreteDark', sentryX, 0.3, sentryZ, 1.5, 0.6, 1.5);
+  addBox(b, 'steelDark', sentryX, 0.75, sentryZ, 0.9, 0.3, 0.9);
+  b.collideBox(sentryX, sentryZ, 1.5, 1.5, 1.1, { mapKind: 'prop', tag: 'sentry' });
+  for (const [x, z] of [[-49, -68], [-35, -68]] as const) {
     addBox(b, 'steelDark', x, 0.45, z, 0.9, 0.9, 0.9);
     addBox(b, b.mats.get('emAmber'), x, 0.95, z, 0.7, 0.12, 0.7, 0, { cast: false });
     b.light({ x, y: 1.6, z, color: 0xff8a30, intensity: 26, distance: 8, weight: 0.6 });
   }
   for (const x of [-52, -50, -34, -32]) addBox(b, 'canvasOlive', x, 0.3, -70, 0.9, 0.3, 2);
-  crateGroup(b, { x: -51, z: -61, rot: 0.2, count: 3, radius: 1, seed: 501 });
+  crateGroup(b, { x: -52.3, z: -66.5, rot: 0.2, count: 3, radius: 1, seed: 501 });
+  // either side of the lane from the gate to the sentry, facing the gate
   const slots: HearthDef['slots'] = [];
-  for (const x of [-48, -45, -42, -39, -36]) slots.push({ x, z: -61.6, yaw: Math.PI });
-  for (const x of [-46.5, -43.5, -40.5, -37.5]) slots.push({ x, z: -64.2, yaw: Math.PI });
-  const hearth: HearthDef = { x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, gateX, gateZ: hz1 + 2.2, slots };
+  for (const z of [-61, -63.6]) for (const x of [-46, -38, -48.5, -35.5, -51, -33]) slots.push({ x, z, yaw: Math.PI });
+  const hearth: HearthDef = { x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, gateX, gateZ: hz1 + 2.2, x0: hx0 + 0.4, z0: hz0 + 0.4, x1: hx1 - 0.4, z1: hz1 - 0.4, sentryX, sentryZ, slots };
   d.label('THE HEARTH', gateX, -66, 0.8);
 
   // Anya's radio room, beside the Hearth
@@ -325,5 +398,9 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
   d.zombies('high', 'shambler', [[-6, -62], [26, -62], [44, -66], [64, -56], [80, -60], [90, -40], [80, 3], [86, 12], [78, 26], [90, 41]]);
   d.zombies('high', 'runner', [[56, -70], [84, 24], [76, -24]]);
   d.zombies('high', 'armored', [[86, 18], [68, -70], [88, -16]]);
-  return { rooms, hearth, ledger, rumble, flameForges, hearthGlow };
+
+  // ---- the cold furnaces ----
+  const furnaces: FurnaceSpot[] = FURNACE_SPOTS.map(([x, z, place]) => ({ x, z, yaw: Math.atan2(x, z), place }));
+  const furnaceMouths = furnaces.map((f) => coldFurnace(c, f));
+  return { rooms, hearth, ledger, rumble, flameForges, hearthGlow, furnaces, furnaceMouths };
 }

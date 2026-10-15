@@ -159,6 +159,9 @@ export class ZombieManager {
   private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
   carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
+  /** The Forge's reborn has a look of its own (`forge/rebornRig.ts`; client only): a one-off rig, disposed with it. */
+  rebornRig: ((name: string) => ZombieRig | null) | null = null;
+  private readonly oneOff = new Set<ZombieRig>();
   /**
    * Map scripts may place a director spawn themselves (the Asylum: in through a boarded window). Return the infected
    * it spawned, or null to let the director use its spawn points as usual. `phase` is the escalation phase.
@@ -198,7 +201,8 @@ export class ZombieManager {
   private releaseZombie(z: Zombie): void {
     z.rig.setVisible(false);
     this.untag(z);
-    if (z.ownsRig) {
+    if (this.oneOff.delete(z.rig)) z.rig.dispose();
+    else if (z.ownsRig) {
       let pool = this.pools.get(z.type);
       if (!pool) {
         pool = [];
@@ -220,8 +224,9 @@ export class ZombieManager {
     x: number,
     z: number,
     rng: Rng,
-    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean } = {},
+    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean } = {},
   ): Zombie {
+    if (opts.rig && opts.oneOff) this.oneOff.add(opts.rig);
     if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron
     const rig = opts.rig ?? this.acquireRig(type);
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
@@ -480,15 +485,17 @@ export class ZombieManager {
       let z = this.byNet.get(n.id);
       if (!z) {
         const carrier = n.carrier > 0 ? (this.carrierRig?.(n.carrier - 1) ?? null) : null;
+        const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
+        // a named Warden is the Forge's reborn, in its own look
+        const reborn = tag && n.type === 'warden' ? (this.rebornRig?.(tag) ?? null) : null;
         // a puppet carries the host's name for it, never one of its own
         const namer = this.namer;
         this.namer = null;
-        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : { yaw: n.yaw, boss: n.type === 'warden' });
+        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : reborn ? { yaw: n.yaw, boss: true, rig: reborn, oneOff: true } : { yaw: n.yaw, boss: n.type === 'warden' });
         this.namer = namer;
         z.carrierIdx = n.carrier;
         z.puppet = true;
         z.netId = n.id;
-        const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
         // a named Warden is the Forge's reborn (`forge/story.ts`), never the hunt's boss
         if (tag) this.tagZombie(z, tag, n.type === 'warden');
         this.byNet.set(n.id, z);

@@ -65,6 +65,12 @@ export function createDetailTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * How hard every infected's glowing parts burn (eyes, cracks, lamps): 1 normally. The Forge pulses it while the fire is
+ * being drawn out of them (the finale) and flares it as they burn out (`forge/runtime.ts`).
+ */
+export const ZOMBIE_GLOW = { value: 1 };
+
 export function createZombieMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -76,18 +82,19 @@ export function createZombieMaterial(map: THREE.Texture): THREE.MeshStandardMate
   });
   mat.name = 'ZombieShared';
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uGlowBoost = ZOMBIE_GLOW;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', '#include <common>\nattribute float aGlow;\nattribute float aSpec;\nvarying float vGlow;\nvarying float vSpec;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvGlow = aGlow;\nvSpec = aSpec;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vGlow;\nvarying float vSpec;')
+      .replace('#include <common>', '#include <common>\nvarying float vGlow;\nvarying float vSpec;\nuniform float uGlowBoost;')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.28, vSpec);')
       .replace('#include <metalnessmap_fragment>', '#include <metalnessmap_fragment>\nmetalnessFactor = mix(metalnessFactor, 0.7, vSpec);')
       .replace(
         '#include <emissivemap_fragment>',
-        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vGlow;\n{ float rimK = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0); totalEmissiveRadiance += vec3(0.075, 0.115, 0.17) * rimK * (1.0 - clamp(vGlow, 0.0, 1.0)); }',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vGlow * uGlowBoost;\n{ float rimK = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 3.0); totalEmissiveRadiance += vec3(0.075, 0.115, 0.17) * rimK * (1.0 - clamp(vGlow, 0.0, 1.0)); }',
       );
   };
-  mat.customProgramCacheKey = () => 'zombie-shared-v1';
+  mat.customProgramCacheKey = () => 'zombie-shared-v2';
   return mat;
 }

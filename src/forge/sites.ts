@@ -1,7 +1,8 @@
 /**
  * Where the Forge's story happens, as the layout (`world/layout/forge*.ts`) builds it: the safe rooms the holdouts
- * barricaded themselves into, the Hearth, the ledger pages, the Rumble Pit, the furnace under HQ. Plain data (no THREE),
- * shared by the solo game, the co-op simulation and every client.
+ * barricaded themselves into, the Hearth (where the run starts: open, a sentry in the middle), the ledger pages, the
+ * Rumble Pit, the cold furnaces around the Forge, the furnace under HQ. Plain data (no THREE), shared by the solo game,
+ * the co-op simulation and every client.
  */
 
 /** A room someone locked themselves into. Its door is solid: nobody (and nothing) walks in or out of the front. */
@@ -29,13 +30,30 @@ export interface SafeRoomDef {
 }
 
 export interface HearthDef {
-  /** The courtyard's centre and the barred gate on its Pad side (outside, where the reborn breaks out). */
+  /** The courtyard's centre, and the open gate on its Pad side (`gateZ` just outside it). */
   x: number;
   z: number;
   gateX: number;
   gateZ: number;
+  /** Inside the walls. */
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+  /** The sentry gun in the middle. */
+  sentryX: number;
+  sentryZ: number;
   /** Where the people you save stand, and the way each faces. */
   slots: { x: number; z: number; yaw: number }[];
+}
+
+/** A small furnace out in the Forge, cold since the collection stopped; seven of them are drawn each run. */
+export interface FurnaceSpot {
+  x: number;
+  z: number;
+  /** The way its mouth faces (where you stand to stoke it). */
+  yaw: number;
+  place: string;
 }
 
 export interface LedgerSpot {
@@ -61,6 +79,8 @@ export interface ForgeSites {
   hearth: HearthDef;
   ledger: LedgerSpot[];
   rumble: RumblePitDef;
+  /** Every furnace that can be drawn (`FORGE_STORY.furnaces.count` of them each run). */
+  furnaces: FurnaceSpot[];
   /** The Great Furnace under Vulcan HQ (its door faces `yaw`): the reveal starts here. */
   furnace: { x: number; z: number; yaw: number };
   /** Vulcan HQ's roof (the billboard): the reveal tears through it. */

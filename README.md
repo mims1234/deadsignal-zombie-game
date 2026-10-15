@@ -58,26 +58,30 @@ Pick the map on the title screen (the page reloads to build it).
 
 - **The District** — the original exclusion zone, now with the rail yard to the east. Every mode runs here.
 - **The Forge** — a 190 x 150 m foundry district at ember night, after the Vulcan community (vulcan.genxmims.org):
-  molten runoff in open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. The furnace under
-  **Vulcan HQ** starved when Ignis earning was switched off, and on the seventh day the phoenix rose wrong: about a
-  third of the Forge's infected still carry the names of Vulcan's members, and they look like the people they were.
-  Ember Market (insertion), the Pad (extraction), Phoenix Plaza and the Crucible, ringed by the Hearth, riry's Rumble
-  Pit, the Slag Yard, Seven Flames Row, the Spawn Hall and the Ledger House. The same structure as the District with
-  its own contracts: **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then **Rise from the Forge** at
-  the Pad before the firestorm. On top of that:
+  molten runoff in open channels, sodium-orange streets, Vulcan's phoenix burning in the crossroads. Every currency in
+  the Forge ran on embers, collected by seven furnaces - and seven days ago the collection stopped. The fire with
+  nowhere to go burned up the people who made it: about a third of the Forge's infected still carry the names of
+  Vulcan's members, and they look like the people they were. The run starts in **the Hearth** by the Pad; around it
+  are Phoenix Plaza and the Crucible, riry's Rumble Pit, the Slag Yard, Seven Flames Row, the Spawn Hall and the
+  Ledger House. Its contracts: **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then call the bird and
+  **hold the Hearth**. On top of that:
+  - **The Hearth** is your safe zone: walk in and out through its open gate, and its sentry gun cuts down any infected
+    that come through it (it never fires on a boss).
   - **Two of Vulcan's co-leaders** (drawn each run from Athy, Marv03K and piryriry) deploy with you, follow you and
     shoot. The infected hunt them like they hunt you, and they can die for good: each still alive at extraction pays
     $500.
   - **The holdouts**: the third co-leader, Anya and four members of the clan barricaded themselves into rooms around
     the Forge, and the infected pound on their doors (they never get in). Clear a door and hold E: they slip out the
-    back to **the Hearth** by the Pad, and board with you at the end. tomoe is in the HQ vault, which opens when the
-    beacon burns.
-  - **The Seven Flames**: one from each of Vulcan's allied foundries, hidden around the map, $150 each and $700 plus
-    two armor plates for all seven (Seven Flames Row lights up).
-  - **tomoe's ledger**: four pages to find, each with a piece of what happened at HQ.
+    back to the Hearth and board with you at the end. tomoe is in the HQ vault, which opens when the beacon burns.
+  - **The seven embers**: seven cold furnaces, drawn each run from sixteen around the map, one for each of the Forge's
+    currencies. Stoke one (hold E), then hold its circle for 30 seconds while the fire draws the infected in. $150
+    each; all seven pay $700 and two armor plates and relight Seven Flames Row.
+  - **The last stand**: once the bird is called, the whole Forge comes for the Hearth in waves - more than the sentry
+    can hold. Anyone they reach there dies, so the squad holds the gate.
+  - **tomoe's ledger**: four pages to find, each with a piece of where the embers went.
   - **riry's Rumble Pit**: ring the bell for three waves (optional).
   - Every member has their own look (built in code from their name), and the leadership have their own.
-  - Something happens after the extraction is called. Finish a run to find out.
+  - Something else happens during the last stand. Finish a run to find out.
 
   Every mode runs on both maps, co-op included.
 
@@ -111,7 +115,7 @@ Pick one on the title screen before you deploy. The choice is remembered.
   session at any time: when its owner starts it, or when you join one that is
   already running, you are brought straight into the world (on a computer, one click takes the mouse). The operation
   is the squad's: the relay, the Warden, the
-  extraction, the Forge's soldiers, cages and embers and the Mazoku carriers are shared, so anything one of you
+  extraction, the Forge's soldiers, holdouts and furnaces and the Mazoku carriers are shared, so anything one of you
   completes is done for everyone, and its reward is paid to every player once. The relay fills while at least one of
   you is in the zone. Anyone can call the helicopter from the radio, and each player boards on their own; the
   squad's bonuses go to whoever is aboard when it leaves.

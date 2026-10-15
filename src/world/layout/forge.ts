@@ -40,7 +40,8 @@ import { vulcanForge, vulcanSigilMaterial } from './vulcan';
 
 export const FORGE_BOUNDS = { minX: -95, maxX: 95, minZ: -75, maxZ: 75 };
 export const FORGE = {
-  start: { x: -50, z: 41 },
+  /** The run starts inside the Hearth, facing its gate. */
+  start: { x: -42, z: -61.5 },
   lz: { x: -38, z: -30, radius: 11, terminalX: -27.5, terminalZ: -22.5 },
   beacon: { x: 32, z: 29, radius: 11 },
   crucible: { x: 36, z: -29 },
@@ -100,6 +101,8 @@ export interface ForgeHandles {
   furnaceDoor: { left: THREE.Object3D; right: THREE.Object3D; mark: THREE.Mesh };
   /** The phoenix billboard on Vulcan HQ's roof. */
   billboard: THREE.Object3D;
+  /** Each cold furnace's mouth, in `sites.furnaces` order. */
+  furnaceMouths: THREE.MeshStandardMaterial[];
 }
 
 export interface ForgeResult {
@@ -363,6 +366,7 @@ export function buildForge(c: Ctx): ForgeResult {
     hearth: outer.hearth,
     ledger: [...outer.ledger, { x: 52.4, y: 0.06, z: 11.2, place: 'Vulcan HQ' }],
     rumble: outer.rumble,
+    furnaces: outer.furnaces,
     furnace: { x: 44.5, z: 16.2 - 1.82, yaw: 0 },
     hq: { x: 48, z: 13, roofY: 6.4 },
   };
@@ -370,6 +374,6 @@ export function buildForge(c: Ctx): ForgeResult {
     transmitter: beacon,
     spire: sp,
     sites,
-    handles: { doors: [...outerDoors, ...vaultDoors], flameForges: outer.flameForges, hearthGlow: outer.hearthGlow, furnaceDoor, billboard },
+    handles: { doors: [...outerDoors, ...vaultDoors], flameForges: outer.flameForges, hearthGlow: outer.hearthGlow, furnaceDoor, billboard, furnaceMouths: outer.furnaceMouths },
   };
 }

@@ -29,7 +29,7 @@ import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS,
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
@@ -181,7 +181,6 @@ export class SessionSim {
   private outcome: { won: boolean; reason: string } | null = null;
   private readonly aboard = new Set<string>();
   private allies: SimAlly[] = [];
-  private embers: { x: number; z: number; taken: boolean }[] = [];
   /** The mystery boxes and kill drops, shared by the squad (`logic/sharedLoot.ts`). */
   private loot: LootState = createLoot(0);
   private shots: number[][] = [];
@@ -318,7 +317,6 @@ export class SessionSim {
     this.outcome = null;
     this.aboard.clear();
     this.allies = [];
-    this.embers = [];
     this.shots = [];
     this.loot = createLoot(this.level.data.crates.length);
     this.records = createRecords();
@@ -349,7 +347,7 @@ export class SessionSim {
     if (this.hunt.status === 'available' && b && b.alive) this.zombies.remove(b);
   }
 
-  /** The story operation's world: residents and the boss, the Vulcan names, the squad, the cages, embers, carriers. */
+  /** The story operation's world: residents and the boss, the Vulcan names, the squad, the cages, carriers. */
   private setUpStory(): void {
     const level = this.level;
     const rng = this.rng;
@@ -373,7 +371,6 @@ export class SessionSim {
     const squad = roster ? roster.squad : squadRoster(this.map);
     const at = soldierSpots(level, rng, squad.length);
     squad.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
-    if (this.map === 'forge') this.embers = emberSpots(level).map((e) => ({ ...e, taken: false }));
     // cages everywhere but the Forge (its people are holed up in rooms)
     const caged = this.forge ? [] : survivorRoster(this.map);
     cageSpots(level, rng, caged.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, caged[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
@@ -513,15 +510,10 @@ export class SessionSim {
         this.send('all', { k: 'cash', c: SURVIVORS.rescueCash, t: `${a.name.toUpperCase()} FREED ${freed}/${total}` });
         return;
       }
-      case 'ember': {
-        // one of the Seven Flames
-        const i = Number(d.i);
-        const e = this.embers[i];
-        if (!this.story || !up || !e || e.taken || Math.hypot(e.x - p.ref.x, e.z - p.ref.z) > FORGE_SQUAD.emberRadius + 2.5) return;
-        e.taken = true;
-        const got = this.embers.filter((q) => q.taken).length;
-        this.send('all', { k: 'cash', c: FORGE_SQUAD.emberCash, t: `${FORGE_SQUAD.flames[i]?.name ?? 'IGNIS'} ${got}/${this.embers.length}` });
-        if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'THE SEVEN FLAMES BURN - COMPLETE', pl: 2 });
+      case 'stoke': {
+        // the Forge: stoke furnace i (its circle must then be held while it catches)
+        if (!this.forge || !this.story || !up) return;
+        this.forge.stoke(Number(d.i), p.ref.x, p.ref.z);
         return;
       }
       case 'hold': {
@@ -754,9 +746,10 @@ export class SessionSim {
         phase: escalationPhase(this.elapsed, this.clock),
         quality: 'medium',
         defenseActive: this.defense.status === 'active',
-        extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? this.elapsed - ex.calledAt : null,
+        // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
+        extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null && !this.forge ? this.elapsed - ex.calledAt : null,
         // the Forge after the burnout: the virus is over, nothing more comes
-        paused: this.forge?.burnedOut ?? false,
+        paused: this.forge?.quietDirector ?? false,
       };
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
@@ -953,7 +946,7 @@ export class SessionSim {
 
   private onKill(z: Zombie, head: boolean): void {
     // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
-    if (this.forge?.burning) return;
+    if (this.forge?.noReward) return;
     if (z.isBoss && this.story && z !== this.forge?.reborn) completeHunt(this.hunt);
     const p = this.killer ? this.peers.get(this.killer) : null;
     // a nuke's kills pay nothing and drop nothing (the nuke pays)
@@ -995,7 +988,6 @@ export class SessionSim {
       out.ms = [r1(this.elapsed), RELAY_STATUSES.indexOf(this.hunt.status), this.hunt.identified ? 1 : 0, EXTRACTION_PHASES.indexOf(ex.phase), r1(ex.countdown), r1(ex.windowLeft), ex.calledAt === null ? -1 : r1(ex.calledAt), this.outcome ? (this.outcome.won ? 1 : 2) : 0];
       if (this.outcome) out.why = this.outcome.reason;
       out.sq = this.allies.map((a, i) => [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]);
-      out.em = this.embers.reduce((m, e, i) => (e.taken ? m | (1 << i) : m), 0);
       out.sh = this.shots;
       this.shots = [];
       // power-ups: the timers (insta-kill, double points) and the drops [id, kind, x, z, age]
@@ -1042,7 +1034,6 @@ export class SessionSim {
     hunt: ReturnType<typeof createHunt>;
     extraction: ReturnType<typeof createExtraction>;
     allies: SimAlly[];
-    embers: { x: number; z: number; taken: boolean }[];
     aboard: Set<string>;
     records: ReturnType<typeof createRecords>;
     barricades: BarricadeDirector | null;
@@ -1050,7 +1041,7 @@ export class SessionSim {
     /** Move the mission clock (nightfall on the Asylum without waiting for it). */
     setElapsed(t: number): void;
   } {
-    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, embers: this.embers, aboard: this.aboard, records: this.records, barricades: this.barricades, powerups: this.powerups, setElapsed: (t) => void (this.elapsed = t) };
+    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, aboard: this.aboard, records: this.records, barricades: this.barricades, powerups: this.powerups, setElapsed: (t) => void (this.elapsed = t) };
   }
 }
 

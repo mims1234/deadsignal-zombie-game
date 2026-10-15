@@ -95,7 +95,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     forgeSites = r.sites;
     forgeFx = r.handles;
     site = {
-      start: { x: FORGE.start.x, z: FORGE.start.z, yaw: yawFacing(0.7, -0.7) },
+      start: { x: FORGE.start.x, z: FORGE.start.z, yaw: yawFacing(0, 1) }, // in the Hearth, facing its gate
       lz: { ...FORGE.lz, terminalYaw: yawFacing(-0.8, -0.6) },
       defense: { ...FORGE.beacon },
       hunt: { wardenX: FORGE.infernus.x, wardenZ: FORGE.infernus.z, searchX: FORGE.crucible.x, searchZ: FORGE.crucible.z, searchRadius: 22 },

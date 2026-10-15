@@ -1445,9 +1445,10 @@ export class Game implements GameCtx {
           phase: escalationPhase(s.elapsed, this.mission.clock), // the Asylum's clock runs longer
           quality: this.settings.quality,
           defenseActive: s.defense.status === 'active',
-          extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null ? s.elapsed - ex.calledAt : null,
-          // the Forge after the burnout: the virus is over, nothing more comes
-          paused: this.forge?.burnedOut ?? false,
+          // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
+          extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null && !this.forge ? s.elapsed - ex.calledAt : null,
+          // the Forge: the director stands down for the assault, and after the burnout nothing more comes
+          paused: this.forge?.quietDirector ?? false,
         },
         z,
         this.rng,
@@ -1562,7 +1563,7 @@ export class Game implements GameCtx {
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {
-    if (this.forge?.burning) return; // the Forge's burnout: the virus ending pays nobody
+    if (this.forge?.noReward) return; // the Forge's burnout and its sentry pay nobody
     if (this.squad.allyShooting) {
       // an ally's kill: it still counts for the contract, but it is not the player's
       if (z.isBoss) this.mission.onWardenKilled();

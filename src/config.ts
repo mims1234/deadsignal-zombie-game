@@ -945,10 +945,9 @@ export const FORGE_SQUAD = {
   /** Cash per co-leader who is still alive at extraction. */
   saveBonus: 500,
   /**
-   * The Seven Flames: one from each of Vulcan's allied foundries, spread across the Forge (the layout's own spots, in
-   * this order). All seven relight the forges on Seven Flames Row.
+   * The seven embers - the Forge's seven currencies, one furnace each (`FORGE_STORY.furnaces`): Vulcan's own Ignis and
+   * the six allied flames. All seven relight the forges on Seven Flames Row.
    */
-  embers: [[-38, 48], [-76, 30], [-10, -64], [8, -42], [86, -40], [88, 46], [34, 70]] as [number, number][],
   flames: [
     { name: 'IGNIS', color: 0xff7a1a },
     { name: 'AMETHYST FLAME', color: 0xb26bff },
@@ -958,9 +957,6 @@ export const FORGE_SQUAD = {
     { name: 'VOID EMBER', color: 0x8a6bff },
     { name: 'FROSTFIRE', color: 0x7fd8ff },
   ],
-  emberRadius: 1.6,
-  emberCash: 150,
-  trialsBonus: 700,
 } as const;
 
 /**
@@ -983,12 +979,29 @@ export const FORGE_STORY = {
   siege: { min: 3, max: 5, refillEvery: 24, releaseRange: 11, spawnAway: 26 },
   ledger: { pickupRadius: 1.9, cashEach: 250, bonus: 900 },
   rumble: { waves: [6, 9, 13] as readonly number[], gap: 7, cash: 1100, plates: 2, radius: 10 },
+  /**
+   * The seven furnaces, one per ember (`FORGE_SQUAD.flames`), at `count` of the layout's furnace spots drawn each run:
+   * stoke one (a hold of E), then stay within `radius` for `hold` seconds while the fire draws the infected in (a few
+   * every `drawEvery` seconds, `drawAway` metres out). Each ember pays `cash`; all seven pay `bonus` and plates.
+   */
+  furnaces: { count: 7, hold: 30, radius: 6, reach: 2.8, stoke: 0.8, cash: 150, bonus: 700, plates: 2, drawEvery: 7, draw: [2, 3] as readonly number[], drawAway: [16, 26] as readonly number[] },
+  /**
+   * The Hearth's sentry gun: it covers the courtyard and the apron outside its gate, and never fires on a boss (its
+   * friend-or-foe still reads the Infernus and the reborn as clan).
+   */
+  sentry: { range: 16, turn: 7, fireEvery: 0.28, damage: 32, headDamage: 80, headChance: 0.22 },
+  /**
+   * The last stand: from the extraction call until the virus burns out, the infected come for the Hearth in waves -
+   * more than the sentry can hold. One that stands over someone at the Hearth for `strike` seconds kills them (no more
+   * than one every `takeEvery` seconds, and never the last `finale.keep`).
+   */
+  assault: { waveEvery: 7, wave: 7, perPlayer: 0.45, maxAlive: 30, spawnAway: [26, 44] as readonly number[], strike: 2.4, takeEvery: 8, releaseRange: 5 },
   finale: {
-    /** Seconds after the extraction is called before the carrier turns (random between). */
-    delayMin: 12,
-    delayMax: 28,
-    /** The warning on the radio comes this long before the reborn appears. */
-    warnLead: 4,
+    /** Seconds after the extraction is called before the carrier turns (random between): the siege comes first. */
+    delayMin: 30,
+    delayMax: 45,
+    /** The carrier convulses and glows for this long (the radio cuts in) before the reborn appears. */
+    warnLead: 6,
     /** One more person at the Hearth falls every this many seconds while the reborn lives. */
     killEvery: 8,
     /** At least this many are always left at the Hearth. */
