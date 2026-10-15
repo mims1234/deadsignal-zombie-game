@@ -3415,3 +3415,15 @@ html.ds-touch .ds-title-side .ds-sidepanel {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* the lobby: a phone or a computer before each name */
+.ds-lobby .person .dev {
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  margin-right: 0.45em;
+  color: var(--ds-cyan);
+}
+.ds-lobby .person .dev.pc {
+  color: var(--ds-ink-dim);
+}

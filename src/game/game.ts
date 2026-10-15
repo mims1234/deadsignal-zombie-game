@@ -157,7 +157,7 @@ export class Game implements GameCtx {
   private roamKeys = '';
   private noLock = false;
   /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
-  private readonly touchMode = isTouchDevice();
+  readonly touchMode = isTouchDevice();
 
   /** Flying with no damage and no HUD: free roam, a co-op free-roam session, and spectators. */
   get flying(): boolean {
@@ -422,6 +422,7 @@ export class Game implements GameCtx {
       revive: (id) => this.coop.revive(id),
     });
     this.coop = new CoopSession(this);
+    this.coop.room.device = this.touchMode ? 'phone' : 'pc'; // shown beside our name in the lobby
     this.squad = new SquadRuntime(this);
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,

@@ -58,7 +58,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
   const send = (ws, msg) => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg));
   };
-  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar, ping: m.ping ?? null, ready: m.ready === true });
+  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar, ping: m.ping ?? null, ready: m.ready === true, device: m.device === 'phone' ? 'phone' : 'pc' });
   /** Every seated player but the owner has pressed ready (the owner starts, so the owner is ready). */
   const allReady = (room) => visible(room, 'player').every((p) => p.id === room.ownerId || p.ready === true);
   /** The countdown ran out: the session is live. */
@@ -206,6 +206,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
     switch (msg.t) {
       case 'create': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
+        m.device = msg.device === 'phone' ? 'phone' : 'pc'; // a phone or a computer, shown beside the name
         let hosting = msg.hosting === 'self' ? 'self' : 'server';
         if (hosting === 'server' && (!existsSync(SIM_FILE) || simRooms() >= SIM_MAX)) {
           return send(m.ws, { t: 'error', msg: 'Server hosting is busy right now - choose SELF HOST to start a session on your own device' });
@@ -239,6 +240,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
       }
       case 'join': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
+        m.device = msg.device === 'phone' ? 'phone' : 'pc';
         const r = rooms.get(String(msg.code || '').toUpperCase());
         if (!r) return send(m.ws, { t: 'error', msg: 'That session does not exist or has ended' });
         const hidden = msg.hidden === true && m.admin;

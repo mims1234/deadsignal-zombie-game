@@ -10,6 +10,8 @@ export interface RoomPerson {
   ping: number | null;
   /** Pressed ready in the lobby (the owner is always ready: they start the session). */
   ready?: boolean;
+  /** Playing on a phone / tablet or a computer. */
+  device?: 'phone' | 'pc';
 }
 
 /** 'server': the game server runs the session (everyone is an equal client). 'self': the owner's browser runs it. */
@@ -170,11 +172,11 @@ export class RoomClient {
   }
 
   create(visibility: 'public' | 'private', hosting: Hosting = 'server', map: RoomView['map'] = 'district', kind: RoomView['kind'] = 'mission', difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' }): Promise<void> {
-    return this.command({ t: 'create', visibility, hosting, map, kind, zombies: difficulty.zombies, team: difficulty.team });
+    return this.command({ t: 'create', visibility, hosting, map, kind, zombies: difficulty.zombies, team: difficulty.team, device: this.device });
   }
 
   join(code: string, as: RoomRole, hidden = false): Promise<void> {
-    return this.command({ t: 'join', code, as, hidden });
+    return this.command({ t: 'join', code, as, hidden, device: this.device });
   }
 
   leave(): void {
@@ -184,6 +186,9 @@ export class RoomClient {
     this.you = null;
     this.handlers.onRoom(null, null);
   }
+
+  /** What this player plays on (set by the game at start-up), shown to the others. */
+  device: 'phone' | 'pc' = 'pc';
 
   /** A player in the lobby: ready (or not) to start. */
   setReady(value: boolean): void {

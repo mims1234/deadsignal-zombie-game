@@ -25,11 +25,12 @@
  * Out: `send(to, d)` - to 'all' or one player id.
  */
 import * as THREE from 'three';
-import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
+import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
+import { type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
@@ -88,6 +89,8 @@ interface Peer {
   life: Life;
   /** What the player shows the others: weapon (index into AVATAR_WEAPONS), view pitch, shots fired (a counter). */
   gear: [number, number, number];
+  /** What the others see over this player: armour, cash, and 1 on a phone. */
+  info: [number, number, number];
   env: ZombieEnv;
   field: FlowField;
   fieldT: number;
@@ -177,6 +180,8 @@ export class SessionSim {
   private readonly aboard = new Set<string>();
   private allies: SimAlly[] = [];
   private embers: { x: number; z: number; taken: boolean }[] = [];
+  /** The mystery boxes and kill drops, shared by the squad (`logic/sharedLoot.ts`). */
+  private loot: LootState = createLoot(0);
   private shots: number[][] = [];
   private directorTurn = 0;
   private readonly allyWorld: AllyWorld;
@@ -280,6 +285,7 @@ export class SessionSim {
     this.allies = [];
     this.embers = [];
     this.shots = [];
+    this.loot = createLoot(this.level.data.crates.length);
     this.records = createRecords();
     this.barricades?.reset();
     this.purses.clear();
@@ -386,6 +392,7 @@ export class SessionSim {
         p.yaw = Number(d.yaw) || 0;
         p.hp = Number(d.hp) || 0;
         p.gear = [Math.max(0, Math.min(4, Math.floor(Number(d.w) || 0))), Math.max(-1.6, Math.min(1.6, Number(d.pi) || 0)), Math.floor(Number(d.f) || 0) % 4096];
+        p.info = [Math.max(0, Math.min(999, Math.round(Number(d.ar) || 0))), Math.max(0, Math.min(9999999, Math.round(Number(d.cs) || 0))), d.dv === 1 ? 1 : 0];
         p.seen = this.time;
         if (p.life === LIFE.aboard) return; // aboard for good
         const st = Number(d.st);
@@ -474,6 +481,25 @@ export class SessionSim {
         if (got === this.embers.length) this.send('all', { k: 'cash', c: FORGE_SQUAD.trialsBonus, t: 'TRIALS OF IGNIS COMPLETE', pl: 2 });
         return;
       }
+      case 'box': {
+        // a mystery box: the first to open it wins it (their client rolled the prize; it pays the opening cash on 'boxed')
+        const i = Number(d.i);
+        const c = this.level.data.crates[i];
+        if (!this.story || !up || !c || Math.hypot(c.x - p.ref.x, c.z - p.ref.z) > 4) return;
+        if (openBox(this.loot, i, from, String(d.pz ?? ''))) this.send(from, { k: 'boxed', i });
+        return;
+      }
+      case 'boxTake': {
+        takeBox(this.loot, Number(d.i), from);
+        return;
+      }
+      case 'pick': {
+        // a drop: whoever walks over it first (their client applies it on 'picked')
+        if (!up) return;
+        const kind = pickDrop(this.loot, Number(d.id), p.ref.x, p.ref.z);
+        if (kind) this.send(from, { k: 'picked', id: Number(d.id), kind });
+        return;
+      }
       case 'rec': {
         // the Asylum: a patient file, taken by whoever stands at it (every client pays itself once for each file)
         const i = Number(d.i);
@@ -535,7 +561,7 @@ export class SessionSim {
     if (p) return p;
     const ref: PlayerRef = { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false };
     const field = new FlowField(this.level.nav);
-    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, gear: [0, 0, 0], env: null as never, field, fieldT: 0 };
+    p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, gear: [0, 0, 0], info: [0, 0, 0], env: null as never, field, fieldT: 0 };
     p.env = this.makeEnv(ref, field, (amount, sx, sz, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }));
     this.peers.set(id, p);
     return p;
@@ -631,6 +657,7 @@ export class SessionSim {
 
   private tickStory(dt: number, envs: ZombieEnv[], up: number, reported: number): void {
     this.elapsed += dt;
+    tickLoot(this.loot, dt);
     const peers = this.upPeers();
     // the squad: allies who are fighting are targets too
     const allyEnvs: ZombieEnv[] = [];
@@ -856,7 +883,9 @@ export class SessionSim {
     if (!p || this.nuking) return;
     p.kills++;
     const cash = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)); // double points
-    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: cash, x: r1(z.x), zz: r1(z.z), dc: z.def.dropChance });
+    // the drop is the squad's (shared below), so the killer's client does not roll its own
+    this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: cash, x: r1(z.x), zz: r1(z.z), dc: 0 });
+    if (this.story && !z.isBoss) rollKillDrop(this.loot, r1(z.x), r1(z.z), z.def.dropChance * REGIONS[this.level.regionAt(z.x, z.z)].dropMul, this.rng);
     if (this.story) rollDrop(this.powerups, this.rng, z.x, z.z, { eligible: !z.isBoss && !z.curable, carpenter: !!this.barricades && anyDamaged(this.barricades.state) });
   }
 
@@ -877,7 +906,7 @@ export class SessionSim {
       z.push(row);
     }
     const p: unknown[][] = [];
-    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs, q.life, q.gear[0], r2(q.gear[1]), q.gear[2]]);
+    for (const q of this.peers.values()) p.push([q.id, r1(q.ref.x), r1(q.ref.y), r1(q.ref.z), r2(q.yaw), q.ref.alive ? 1 : 0, q.hp, q.kills, q.downs, q.life, q.gear[0], r2(q.gear[1]), q.gear[2], q.info[0], q.info[1], q.info[2]]);
     const c: number[][] = [];
     for (const u of this.carriers) {
       if (u.state) c.push([u.index, CARRIER_PHASES.indexOf(u.state.phase), Math.round(u.state.downLeft), r1(u.lootX), r1(u.lootZ)]);
@@ -896,6 +925,9 @@ export class SessionSim {
       const pw = this.powerups;
       out.pu = [r1(pw.timers.instaKill), r1(pw.timers.doublePoints)];
       out.pd = pw.drops.map((q) => [q.id, POWERUP_KINDS.indexOf(q.kind), r1(q.x), r1(q.z), r1(q.age)]);
+      // shared loot: each box [phase, opener, prize, seconds in phase]; each drop [id, kind, x, z]
+      out.bx = this.loot.boxes.map((b) => [b.phase, b.owner ?? '', b.prize, r1(b.t)]);
+      out.dr = this.loot.drops.map((q) => [q.id, q.kind, q.x, q.z]);
       if (this.asylum) {
         out.rc = bits(this.records.found); // the patient files taken
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window

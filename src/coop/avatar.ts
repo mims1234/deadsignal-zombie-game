@@ -184,6 +184,47 @@ function reach(arm: Limb, target: THREE.Vector3, pole: THREE.Vector3): void {
   arm.joint.quaternion.copy(qUpper.invert()).multiply(qFore);
 }
 
+/** What a co-op teammate's card over their head shows. */
+export interface AvatarInfo {
+  hp: number;
+  armor: number;
+  cash: number;
+  weapon: AvatarWeapon;
+  device: 'phone' | 'pc';
+  down: boolean;
+}
+
+/** A small phone or computer glyph at (x, y), `s` px tall. */
+function deviceGlyph(g: CanvasRenderingContext2D, device: 'phone' | 'pc', x: number, y: number, s: number): void {
+  g.save();
+  g.strokeStyle = '#cfe0ff';
+  g.fillStyle = '#cfe0ff';
+  g.lineWidth = Math.max(2, s * 0.1);
+  if (device === 'phone') {
+    const w = s * 0.55;
+    g.beginPath();
+    g.roundRect(x, y, w, s, s * 0.12);
+    g.stroke();
+    g.beginPath();
+    g.arc(x + w / 2, y + s * 0.84, s * 0.06, 0, Math.PI * 2);
+    g.fill();
+  } else {
+    const w = s * 1.15;
+    g.beginPath();
+    g.roundRect(x, y, w, s * 0.7, s * 0.06);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(x + w / 2, y + s * 0.7);
+    g.lineTo(x + w / 2, y + s * 0.9);
+    g.moveTo(x + w * 0.25, y + s * 0.95);
+    g.lineTo(x + w * 0.75, y + s * 0.95);
+    g.stroke();
+  }
+  g.restore();
+}
+
+const WEAPON_NAME: Record<AvatarWeapon, string> = { rifle: 'KR-16', pistol: 'VX-9', shotgun: 'SHOTGUN', rpg: 'HX-7', none: 'UNARMED' };
+
 export class Avatar {
   readonly root = new THREE.Group();
   private readonly body = new THREE.Group();
@@ -196,6 +237,9 @@ export class Avatar {
   private readonly arms: Limb[] = [];
   private readonly helmet: THREE.Mesh;
   private readonly tag: THREE.Sprite;
+  /** Co-op: the teammate card that replaces the plain name tag (drawn when what it shows changes). */
+  private card: { canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; key: string } | null = null;
+  private readonly displayName: string;
   private readonly gunHolder = new THREE.Group();
   private gun: GunRig | null = null;
   private weaponKind: AvatarWeapon = 'none';
@@ -308,10 +352,70 @@ export class Avatar {
     this.flash.visible = false;
     this.setWeapon(style.weapon ?? (geared ? 'rifle' : 'none'));
     this.tag = nameTag(name, style.tag, style.tagColor ?? '#ffb060');
+    this.displayName = name;
     this.tilt.add(this.body);
     this.root.add(this.tilt, this.tag);
     this.root.visible = false;
     this.pose(0, 0, 1);
+  }
+
+  /**
+   * A teammate's card over their head: their device and name, health and armour bars, the gun in their hands and
+   * their money. Redrawn only when something it shows changes (health and armour in steps of 2).
+   */
+  setInfo(info: AvatarInfo): void {
+    const key = `${Math.round(info.hp / 2)}|${Math.round(info.armor / 2)}|${info.cash}|${info.weapon}|${info.device}|${info.down ? 1 : 0}`;
+    if (this.card?.key === key) return;
+    if (!this.card) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 320;
+      canvas.height = 150;
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      this.tag.material.map = tex;
+      this.tag.material.needsUpdate = true;
+      this.tag.scale.set(1.55, 0.73, 1);
+      this.tag.position.y = 2.42;
+      this.card = { canvas, tex, key: '' };
+    }
+    this.card.key = key;
+    const g = this.card.canvas.getContext('2d')!;
+    const W = 320;
+    g.clearRect(0, 0, W, 150);
+    // a dark plate so it reads against any sky
+    g.fillStyle = 'rgba(8, 11, 10, 0.62)';
+    g.beginPath();
+    g.roundRect(4, 4, W - 8, 142, 10);
+    g.fill();
+    // device and name
+    deviceGlyph(g, info.device, 16, 14, 28);
+    g.font = '700 26px system-ui, sans-serif';
+    g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.fillStyle = info.down ? '#ff8a7a' : '#eef4e6';
+    g.fillText(this.displayName.slice(0, 16), info.device === 'phone' ? 42 : 52, 29, W - 70);
+    // health and armour
+    const bar = (y: number, frac: number, color: string, label: string): void => {
+      g.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      g.fillRect(16, y, W - 92, 14);
+      g.fillStyle = color;
+      g.fillRect(16, y, (W - 92) * Math.max(0, Math.min(1, frac)), 14);
+      g.font = '700 17px system-ui, sans-serif';
+      g.textAlign = 'right';
+      g.fillStyle = '#dfe8d8';
+      g.fillText(label, W - 16, y + 8);
+      g.textAlign = 'left';
+    };
+    bar(56, info.hp / Math.max(100, info.hp), info.down ? '#d8503c' : '#78d06a', info.down ? 'DOWN' : String(Math.max(0, Math.round(info.hp))));
+    bar(78, info.armor / Math.max(100, info.armor), '#5ab4f0', String(Math.round(info.armor)));
+    // the gun and the money
+    g.font = '700 22px system-ui, sans-serif';
+    g.fillStyle = '#e2b04a';
+    g.fillText(WEAPON_NAME[info.weapon], 16, 120);
+    g.textAlign = 'right';
+    g.fillStyle = '#9fe08a';
+    g.fillText(`$${info.cash.toLocaleString('en-US')}`, W - 16, 120);
+    this.card.tex.needsUpdate = true;
   }
 
   get weapon(): AvatarWeapon {
@@ -399,7 +503,7 @@ export class Avatar {
     // the tilt group takes over the heading so the fall happens in the figure's own frame
     this.tilt.rotation.set(0, this.body.rotation.y, 0, 'YXZ');
     this.body.rotation.y = 0;
-    this.tag.visible = false;
+    this.tag.visible = !!this.card; // a downed teammate's card stays up (it says DOWN); others' tags go
     this.gunHolder.visible = false; // the weapon is dropped
     this.flash.visible = false;
   }

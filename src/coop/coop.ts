@@ -48,6 +48,8 @@ interface Peer {
   life: Life;
   /** Weapon (index into AVATAR_WEAPONS), view pitch, shots fired (a counter; -1 before the first report). */
   gear: [number, number, number];
+  /** Armour, cash, and 1 on a phone (shown over their head). */
+  info: [number, number, number];
 }
 
 export interface ScoreRow {
@@ -227,6 +229,7 @@ export class CoopSession {
     this.g.mission.follow = false;
     this.g.zombies.netDamage = null;
     this.g.cards.coopMode = 'off';
+    this.g.entities.coop = null;
     if (this.g.asylum) this.g.asylum.remote = null;
     if (this.g.barricades) this.g.barricades.requestRepair = null;
     for (const id of [...this.peers.keys()]) this.dropPeer(id);
@@ -272,6 +275,16 @@ export class CoopSession {
     g.mission.requestBoard = () => this.toHost({ k: 'board' });
     g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
     g.squad.requestEmber = (i) => this.toHost({ k: 'ember', i });
+    // the mystery boxes and the drops are the squad's: opening, taking and picking up are requests
+    g.entities.coop = this.started && this.story
+      ? {
+          me: () => this.room.you?.id ?? null,
+          nameOf: (id) => this.peers.get(id)?.name ?? 'A teammate',
+          open: (i, prize) => this.toHost({ k: 'box', i, pz: prize }),
+          take: (i) => this.toHost({ k: 'boxTake', i }),
+          pick: (id) => this.toHost({ k: 'pick', id }),
+        }
+      : null;
     // the Asylum: files, doors, the power switch and window repairs are the simulation's to decide
     this.recordAsked.length = 0;
     if (g.mission.night) {
@@ -335,7 +348,7 @@ export class CoopSession {
       const p = g.player;
       const inv = g.session.inv;
       const w = Math.max(0, AVATAR_WEAPONS.indexOf(inv.slots[inv.activeSlot]?.id ?? 'none'));
-      this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health), w, pi: r2(p.pitch), f: g.session.stats.shotsFired % 4096 });
+      this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health), w, pi: r2(p.pitch), f: g.session.stats.shotsFired % 4096, ar: Math.round(g.session.vitals.armor), cs: Math.round(g.session.inv.cash), dv: g.touchMode ? 1 : 0 });
     }
   }
 
@@ -352,6 +365,8 @@ export class CoopSession {
     else if (p.life === LIFE.up && a.fallen) a.rise();
     a.set(p.ref.x, p.ref.y, p.ref.z, p.yaw, p.life !== LIFE.aboard && (p.ref.alive || a.fallen));
     a.setWeapon(AVATAR_WEAPONS[p.gear[0]] ?? 'rifle');
+    // their card: device, name, health, armour, gun and money
+    a.setInfo({ hp: p.hp, armor: p.info[0], cash: p.info[1], weapon: a.weapon, device: p.info[2] === 1 ? 'phone' : 'pc', down: p.life === LIFE.down || p.life === LIFE.out });
     a.pitch = p.gear[1];
     if (fired && p.life === LIFE.up && a.root.visible) {
       // a teammate's shot: their weapon kicks and flashes, and you hear it from where they stand
@@ -395,6 +410,12 @@ export class CoopSession {
       case 'boarded':
         this.life = LIFE.aboard;
         g.coopBoarded();
+        return;
+      case 'boxed':
+        g.entities.boxGranted(Number(d.i));
+        return;
+      case 'picked':
+        if (d.kind === 'ammo' || d.kind === 'plate' || d.kind === 'grenade') g.entities.dropGranted(Number(d.id), d.kind);
         return;
       case 'revived':
         if (this.life !== LIFE.down) return;
@@ -447,6 +468,9 @@ export class CoopSession {
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;
     if (pu) g.powerups.applyRemote(Number(pu[0]) || 0, Number(pu[1]) || 0, (d.pd as number[][] | undefined) ?? []);
+    // the squad's mystery boxes and drops
+    if (Array.isArray(d.bx)) g.entities.applyBoxes(d.bx as (number | string)[][]);
+    if (Array.isArray(d.dr)) g.entities.applyDrops(d.dr as number[][]);
     if (typeof d.rc === 'number' && g.mission.night) g.mission.night.applyRecords(flags(d.rc, g.mission.night.records.found.length));
     const lp = d.lp as number[] | undefined;
     if (lp && g.asylum) g.asylum.applyRemote(Number(lp[0]) || 0, lp[1] === 1);
@@ -477,6 +501,7 @@ export class CoopSession {
       const shots = Number(row[12] ?? 0);
       const fired = p.gear[2] >= 0 && shots !== p.gear[2];
       p.gear = [Number(row[10]) || 0, Number(row[11]) || 0, shots];
+      p.info = [Number(row[13]) || 0, Number(row[14]) || 0, Number(row[15]) || 0];
       this.showAvatar(p, fired);
     }
     for (const id of [...this.peers.keys()]) if (!seen.has(id)) this.dropPeer(id);
@@ -497,7 +522,7 @@ export class CoopSession {
     if (p) return p;
     const person = this.room.room?.players.find((q) => q.id === id);
     if (!person || id === this.room.you?.id) return null;
-    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, life: LIFE.up, gear: [0, 0, -1] };
+    p = { id, name: person.name, ref: { x: 0, y: 0, z: 0, eyeY: 1.6, alive: false, sprinting: false }, yaw: 0, hp: 100, kills: 0, downs: 0, life: LIFE.up, gear: [0, 0, -1], info: [0, 0, 0] };
     this.peers.set(id, p);
     return p;
   }

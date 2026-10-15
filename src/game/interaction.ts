@@ -202,7 +202,7 @@ export class Interaction {
         targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: 'MYSTERY BOX', sub: 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
       } else {
         const t = this.entities.offerText(c);
-        targets.push({ id: `crate-take:${c.def.id}`, dist: d, text: t.text, sub: t.sub, tone: 'good', hold: 0, enabled: true, onUse: () => this.entities.takeBoxPrize(c) });
+        targets.push({ id: `crate-take:${c.def.id}`, dist: d, text: t.text, sub: t.sub, tone: t.mine ? 'good' : 'normal', hold: 0, enabled: t.mine, onUse: () => this.entities.takeBoxPrize(c) });
       }
     }
     for (const s of this.entities.stations) {

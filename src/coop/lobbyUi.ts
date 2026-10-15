@@ -6,7 +6,7 @@
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import type { Hosting } from '../net/room';
-import { el } from '../ui/dom';
+import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 
 const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM' };
@@ -15,6 +15,21 @@ const KIND_NOTE: Record<'mission' | 'mazoku' | 'roam', string> = {
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
   roam: 'No infected and no clock: fly anywhere together.',
 };
+
+/** A phone or a computer, before a name: what they are playing on. */
+function deviceIcon(parent: HTMLElement, device: 'phone' | 'pc'): void {
+  const svg = svgEl('svg', { viewBox: '0 0 24 24', class: `dev ${device}`, 'aria-hidden': 'true' }, parent);
+  if (device === 'phone') {
+    svgEl('rect', { x: 7, y: 2.5, width: 10, height: 19, rx: 2, fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, svg);
+    svgEl('circle', { cx: 12, cy: 18, r: 1.1, fill: 'currentColor' }, svg);
+  } else {
+    svgEl('rect', { x: 2.5, y: 4, width: 19, height: 12.5, rx: 1.5, fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, svg);
+    svgEl('path', { d: 'M12 16.5v3.5M7.5 21h9', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, svg);
+  }
+  const t = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+  t.textContent = device === 'phone' ? 'Playing on a phone or tablet' : 'Playing on a computer';
+  svg.prepend(t);
+}
 
 /** A ping readout, coloured: good under 80 ms, fair under 160, poor above. */
 function pingTag(parent: HTMLElement, ms: number | null, prefix = ''): HTMLElement {
@@ -219,11 +234,12 @@ export class CoopUi {
     el('div', 'tag', body, server ? 'SERVER HOSTED  -  the game server runs this session for everyone' : `SELF HOSTED  -  runs on ${owner ? owner.name : 'the owner'}'s device`);
     if (hidden) el('div', 'problem ok', body, 'You are watching unseen. Nobody in this session can tell.');
 
-    const list = (title: string, people: { id: string; name: string; ping: number | null; ready?: boolean }[], max: number, readiness = false): void => {
+    const list = (title: string, people: { id: string; name: string; ping: number | null; ready?: boolean; device?: 'phone' | 'pc' }[], max: number, readiness = false): void => {
       el('div', 'lbl', body, `${title}  ${people.length} / ${max}`);
       const ul = el('div', 'people', body);
       for (const person of people) {
         const row = el('div', 'person', ul);
+        deviceIcon(row, person.device ?? 'pc');
         el('span', 'name', row, person.name + (person.id === room.ownerId ? (server ? '  (owner)' : '  (host)') : '') + (person.id === me ? '  (you)' : ''));
         // the ready check: who the owner is waiting for
         if (readiness && person.id !== room.ownerId) el('span', person.ready ? 'rdy on' : 'rdy', row, person.ready ? 'READY' : 'NOT READY');
