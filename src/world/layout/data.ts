@@ -50,6 +50,8 @@ export function asMapId(v: unknown): MapId {
 /** Everything the mission says out loud that depends on the map. */
 export interface MapText {
   name: string;
+  /** One line under the map's name on the title screen. */
+  tagline: string;
   defenseTitle: string;
   /** Short map / compass label of the defense site. */
   defenseSite: string;
@@ -83,6 +85,7 @@ export interface MapText {
 export const MAP_TEXT: Record<MapId, MapText> = {
   district: {
     name: 'THE DISTRICT',
+    tagline: 'Quarantined city blocks at blue hour',
     defenseTitle: 'RESTORE THE RELAY',
     defenseSite: 'RELAY',
     defensePrompt: 'ACTIVATE TRANSMITTER',
@@ -112,6 +115,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
   },
   forge: {
     name: 'THE FORGE',
+    tagline: 'Vulcan HQ, a foundry at ember night',
     defenseTitle: 'REKINDLE THE BEACON',
     defenseSite: 'BEACON',
     defensePrompt: 'IGNITE THE PHOENIX BEACON',
@@ -142,6 +146,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
   asylum: {
     // day and night: the hour and the day / night missions are in asylum/nightConfig.ts, the story in asylum/lore.ts
     name: 'THE ASYLUM',
+    tagline: 'Blackwood Hill, from day into night',
     defenseTitle: 'RESTORE THE POWER',
     defenseSite: 'BOILER HOUSE',
     defensePrompt: 'START THE GENERATORS',

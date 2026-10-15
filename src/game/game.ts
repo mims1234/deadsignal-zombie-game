@@ -4,7 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import type { MapId } from '../world/layout/data';
+import { MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
 import { createAudioEngine } from '../audio/engine';
@@ -64,6 +64,18 @@ export interface GameDeps {
 }
 
 const nextFrame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+
+/** Set when the map is changed with Co-op picked, so the reloaded page opens the lobby again. */
+const REOPEN_LOBBY = 'deadsignal.reopenLobby';
+function reopenLobby(): boolean {
+  try {
+    const on = sessionStorage.getItem(REOPEN_LOBBY) === '1';
+    sessionStorage.removeItem(REOPEN_LOBBY);
+    return on;
+  } catch {
+    return false;
+  }
+}
 
 export class Game implements GameCtx {
   // ---- subsystems (assigned in init) ----
@@ -400,9 +412,16 @@ export class Game implements GameCtx {
     });
     // a session that goes live (or is already live when you join it) brings you in without hunting for a button
     const lobbyChanged = this.coop.onChange;
+    let lockedMap: MapId | null = null;
     this.coop.onChange = () => {
       lobbyChanged();
       this.coopAutoJoin();
+      // the title locks its map while you are in a session (and unlocks when you leave)
+      const locked = this.coop.room.room?.map ?? null;
+      if (locked !== lockedMap && this.state === 'title') {
+        lockedMap = locked;
+        this.menus.setModeInfo(this.modeInfo());
+      }
     };
 
     this.hud = createHud();
@@ -491,6 +510,9 @@ export class Game implements GameCtx {
       this.setMode('coop');
       this.coopUi.open(code);
       if (invite.get('watch') === 'admin' && this.account.admin) void this.coop.room.join(code, 'spectator', true);
+    } else if (reopenLobby()) {
+      // the map was changed with Co-op picked: back to the lobby on the new map
+      this.setMode('coop');
     }
     this.lastT = 0;
     this.raf = requestAnimationFrame(this.frame);
@@ -579,7 +601,7 @@ export class Game implements GameCtx {
 
   /** What the title screen shows as picked. */
   private modeInfo(): ModeInfo {
-    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty } };
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null };
   }
 
   /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */
@@ -613,7 +635,18 @@ export class Game implements GameCtx {
   /** Title screen only: the other map is built on a fresh page load. */
   setMap(map: MapId): void {
     if (this.state !== 'title' || map === this.mapId) return;
+    // a co-op session is on one map: changing it would reload the page and drop you from the session
+    if (this.coop.room.room) {
+      this.menus.flash('You are in a co-op session on ' + MAP_TEXT[this.coop.room.room.map].name + '. Leave it to change the map.');
+      return;
+    }
     saveMap(map);
+    // with Co-op picked, the lobby opens again on the new map
+    try {
+      if (this.mode === 'coop') sessionStorage.setItem(REOPEN_LOBBY, '1');
+    } catch {
+      /* ignore */
+    }
     // a clean address: any invite or sign-in parameters belong to the page that is being left
     window.location.assign(window.location.pathname);
   }

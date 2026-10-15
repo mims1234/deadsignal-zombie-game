@@ -217,7 +217,7 @@ export class CoopUi {
     list('SPECTATORS', room.spectators, room.maxSpectators);
 
     el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
-    const variant = el('div', 'row', body);
+    const variant = el('div', 'row choice', body);
     const kinds = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ['roam', 'FREE ROAM']] as const;
     if (isOwner && room.state !== 'playing') {
       for (const [kind, label] of kinds) this.button(variant, label, room.kind === kind ? 'on' : '', () => this.coop.setKind(kind));
@@ -232,11 +232,11 @@ export class CoopUi {
     const editable = isOwner && room.state !== 'playing' && room.kind !== 'roam';
     if (room.kind !== 'roam') {
       el('div', 'lbl', body, 'INFECTED');
-      const zr = el('div', 'row', body);
+      const zr = el('div', 'row choice', body);
       if (editable) for (const id of ZOMBIE_DIFFICULTIES) this.button(zr, ZOMBIE_DIFFICULTY[id].label, zd === id ? 'on' : '', () => this.coop.setDifficulty({ zombies: id })).title = ZOMBIE_DIFFICULTY[id].note;
       else el('span', 'name', zr, ZOMBIE_DIFFICULTY[zd].label);
       el('div', 'lbl', body, 'SQUAD AI');
-      const tr = el('div', 'row', body);
+      const tr = el('div', 'row choice', body);
       if (editable) for (const id of TEAM_SKILLS) this.button(tr, TEAM_SKILL[id].label, ts === id ? 'on' : '', () => this.coop.setDifficulty({ team: id })).title = TEAM_SKILL[id].note;
       else el('span', 'name', tr, TEAM_SKILL[ts].label);
       el('div', 'tag', body, `${ZOMBIE_DIFFICULTY[zd].note} ${TEAM_SKILL[ts].note}`);

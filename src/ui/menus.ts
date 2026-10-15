@@ -151,6 +151,51 @@ class Menus implements MenusApi {
     this.deployStamp = t;
     this.cb.onDeploy();
   }
+
+  /**
+   * A compact choice: a button showing the current pick that opens a short list (with a line about each option)
+   * right under it. Closes on a pick, a click elsewhere or Escape.
+   */
+  private picker(parent: HTMLElement, label: string, options: { id: string; label: string; note: string }[], current: string, pick: (id: string) => void): void {
+    const wrap = el('div', 'picker', parent);
+    const cur = options.find((o) => o.id === current) ?? options[0]!;
+    const btn = this.button(wrap, '', 'pick', () => toggle());
+    el('span', 'pl', btn, label);
+    el('span', 'pv', btn, cur.label);
+    btn.setAttribute('aria-haspopup', 'listbox');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.title = cur.note;
+    const list = el('div', 'ds-pop ds-panel', wrap);
+    list.hidden = true;
+    list.setAttribute('role', 'listbox');
+    const away = (e: Event): void => {
+      if (!wrap.contains(e.target as Node)) toggle(false);
+    };
+    const esc = (e: KeyboardEvent): void => {
+      if (e.code === 'Escape') toggle(false);
+    };
+    const toggle = (open = list.hidden): void => {
+      list.hidden = !open;
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        document.addEventListener('pointerdown', away, true);
+        document.addEventListener('keydown', esc, true);
+      } else {
+        document.removeEventListener('pointerdown', away, true);
+        document.removeEventListener('keydown', esc, true);
+      }
+    };
+    for (const o of options) {
+      const item = this.button(list, '', o.id === current ? 'opt on' : 'opt', () => {
+        toggle(false);
+        if (o.id !== current) pick(o.id);
+      });
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', o.id === current ? 'true' : 'false');
+      el('b', '', item, o.label);
+      el('span', '', item, o.note);
+    }
+  }
 
   private button(parent: HTMLElement, label: string, cls: string, onClick: () => void): HTMLButtonElement {
     const b = el('button', `ds-btn ${cls}`.trim(), parent, label);
@@ -274,22 +319,33 @@ class Menus implements MenusApi {
       }
     }
 
-    // ---- which map ----
-    const maps = el('div', 'modes', main);
-    el('span', 'lbl', maps, 'MAP');
-    const mapSeg = el('div', 'seg', maps);
+    // ---- the setup card: map, mode, difficulty ----
+    const setup = el('div', 'setup', main);
+    const locked = this.info.lockedMap ?? null;
+    const maps = el('div', 'maps', setup);
+    maps.setAttribute('role', 'radiogroup');
+    maps.setAttribute('aria-label', 'Map');
     for (const id of MAP_IDS) {
-      const b = this.button(mapSeg, MAP_TEXT[id].name, id === this.info.map ? 'on' : '', () => {
-        if (id !== this.info.map) this.cb.onMapChange(id);
+      const on = id === this.info.map;
+      const tile = this.button(maps, '', on ? 'maptile on' : 'maptile', () => {
+        if (!on) this.cb.onMapChange(id);
       });
-      b.setAttribute('aria-pressed', id === this.info.map ? 'true' : 'false');
+      el('span', 'mt-name', tile, MAP_TEXT[id].name);
+      el('span', 'mt-sub', tile, MAP_TEXT[id].tagline);
+      tile.setAttribute('role', 'radio');
+      tile.setAttribute('aria-checked', on ? 'true' : 'false');
+      if (locked && !on) {
+        tile.disabled = true;
+        tile.title = 'Leave the co-op session to change the map';
+      }
     }
+    if (locked) el('div', 'lockline', setup, `Co-op session on ${MAP_TEXT[locked].name} - leave it to change the map`);
 
-    // ---- what DEPLOY starts ----
-    const modes = el('div', 'modes', main);
+    const modes = el('div', 'modes', setup);
     el('span', 'lbl', modes, 'MODE');
     const seg = el('div', 'seg', modes);
     seg.setAttribute('role', 'radiogroup');
+    seg.setAttribute('aria-label', 'Mode');
     for (const m of MODES) {
       const b = this.button(seg, m.label, m.id === mode ? 'on' : '', () => {
         if (m.id !== this.info.mode) this.cb.onModeChange(m.id);
@@ -297,40 +353,30 @@ class Menus implements MenusApi {
       b.setAttribute('role', 'radio');
       b.setAttribute('aria-checked', m.id === mode ? 'true' : 'false');
     }
-    el('div', 'modenote', main, MODES.find((m) => m.id === mode)!.note);
 
-    // ---- difficulty: the infected and the AI squad, picked separately (nothing to fight in free roam) ----
+    // difficulty: two compact pickers (the infected, the AI squad) instead of two rows of buttons
+    let note = MODES.find((m) => m.id === mode)!.note;
     if (mode !== 'roam') {
       const d = this.info.difficulty;
-      const row = (label: string, ids: readonly string[], on: string, name: (id: string) => string, note: (id: string) => string, pick: (id: string) => void): void => {
-        const r = el('div', 'modes diff', main);
-        el('span', 'lbl', r, label);
-        const s = el('div', 'seg', r);
-        s.setAttribute('role', 'radiogroup');
-        s.setAttribute('aria-label', label);
-        for (const id of ids) {
-          const b = this.button(s, name(id), id === on ? 'on' : '', () => {
-            if (id !== on) pick(id);
-          });
-          b.title = note(id);
-          b.setAttribute('role', 'radio');
-          b.setAttribute('aria-checked', id === on ? 'true' : 'false');
-        }
-      };
-      row('INFECTED', ZOMBIE_DIFFICULTIES, d.zombies, (id) => ZOMBIE_DIFFICULTY[id as keyof typeof ZOMBIE_DIFFICULTY].label, (id) => ZOMBIE_DIFFICULTY[id as keyof typeof ZOMBIE_DIFFICULTY].note, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
-      row('SQUAD AI', TEAM_SKILLS, d.team, (id) => TEAM_SKILL[id as keyof typeof TEAM_SKILL].label, (id) => TEAM_SKILL[id as keyof typeof TEAM_SKILL].note, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
-      el('div', 'modenote', main, mode === 'coop' ? 'Co-op: these are the defaults for a session you create; its owner can change them in the lobby.' : `${ZOMBIE_DIFFICULTY[d.zombies].note} ${TEAM_SKILL[d.team].note}`);
+      const diff = el('div', 'modes diffbar', setup);
+      el('span', 'lbl', diff, 'DIFFICULTY');
+      const pickers = el('div', 'seg', diff);
+      this.picker(pickers, 'INFECTED', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
+      this.picker(pickers, 'SQUAD AI', TEAM_SKILLS.map((id) => ({ id, label: TEAM_SKILL[id].label, note: TEAM_SKILL[id].note })), d.team, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
+      note = mode === 'coop' ? `${note} Difficulty here is the default for a session you create; its owner can change it in the lobby.` : `${note} ${ZOMBIE_DIFFICULTY[d.zombies].note}`;
     }
+    el('div', 'modenote', setup, note);
 
     const actions = el('div', 'actions', main);
     const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : mode === 'coop' ? 'LOBBY' : 'DEPLOY', 'primary big', () => this.deploy());
     deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
     deployBtn.disabled = this.locked;
     let showTab: (w: 'controls' | 'settings') => void = () => {};
-    this.button(actions, 'SETTINGS', '', () => showTab('settings'));
-    this.button(actions, 'CONTROLS', '', () => showTab('controls'));
+    const minor = el('div', 'minor', actions);
+    this.button(minor, 'SETTINGS', '', () => showTab('settings'));
+    this.button(minor, 'CONTROLS', '', () => showTab('controls'));
     // every infected (and the people beside you) in 3D, on its own page
-    this.button(actions, 'BESTIARY', '', () => window.open('./bestiary.html', '_blank', 'noopener'));
+    this.button(minor, 'BESTIARY', '', () => window.open('./bestiary.html', '_blank', 'noopener'));
     el(
       'div',
       'note',
@@ -374,8 +420,22 @@ class Menus implements MenusApi {
     }
     el('div', 'foot', brief, text.foot);
 
+    // controls and settings: a side panel on big screens; on smaller ones an overlay opened by its buttons
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
-    showTab = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
+    const close = this.button(panel, 'CLOSE', 'mini closer', () => {
+      panel.classList.remove('floating');
+      side.append(panel);
+    });
+    close.setAttribute('aria-label', 'Close');
+    const show = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
+    showTab = (w) => {
+      show(w);
+      // hidden in the side column (a smaller screen): float it over the title instead
+      if (!panel.classList.contains('floating') && getComputedStyle(panel).display === 'none') {
+        root.append(panel);
+        panel.classList.add('floating');
+      }
+    };
 
     el('div', 'ds-title-foot', root, `DEAD SIGNAL: EXCLUSION ZONE  //  SINGLE-PLAYER  //  ${this.touch ? 'TOUCH CONTROLS' : 'KEYBOARD AND MOUSE'}`);
 

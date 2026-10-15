@@ -2970,3 +2970,367 @@ html.ds-lobby-open .ds-title-side {
 .ds-flash.out {
   opacity: 0;
 }
+
+/* ---------------------------------------------------------------------------------------------
+   title, reworked: one setup card (map tiles, mode, two difficulty pickers), a compact action row,
+   and controls / settings as an overlay on anything smaller than a big desktop screen
+   --------------------------------------------------------------------------------------------- */
+.ds-title-main {
+  top: 0;
+  bottom: 0;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 2.4em 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.ds-title-main::-webkit-scrollbar {
+  display: none;
+}
+.ds-title-main .setup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  width: min(44em, 100%);
+  margin-bottom: 1.2em;
+  padding: 0.8em 0.9em 0.7em;
+  background: linear-gradient(90deg, rgba(8, 11, 9, 0.62), rgba(8, 11, 9, 0.18));
+  border-left: 2px solid var(--ds-amber-dim);
+}
+.ds-title-main .maps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45em;
+}
+.ds-title-main .maptile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25em;
+  min-height: 3.6em;
+  padding: 0.55em 0.75em;
+  text-align: left;
+  white-space: normal;
+}
+.ds-title-main .maptile .mt-name {
+  font-size: max(10px, 0.82em);
+  letter-spacing: 0.16em;
+}
+.ds-title-main .maptile .mt-sub {
+  font-size: max(9px, 0.66em);
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-transform: none;
+  font-weight: 500;
+  color: var(--ds-ink-dim);
+}
+.ds-title-main .maptile.on {
+  border-color: var(--ds-amber);
+  background: rgba(226, 176, 74, 0.16);
+  box-shadow: inset 0 -2px 0 var(--ds-amber);
+}
+.ds-title-main .maptile.on .mt-name {
+  color: var(--ds-amber);
+}
+.ds-title-main .maptile:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.ds-title-main .lockline {
+  font-size: max(9px, 0.68em);
+  letter-spacing: 0.12em;
+  color: var(--ds-amber);
+}
+.ds-title-main .setup .modes {
+  margin-bottom: 0;
+}
+.ds-title-main .setup .modes .lbl {
+  min-width: 7.6em;
+}
+.ds-title-main .setup .modenote {
+  min-height: 0;
+  margin: 0.1em 0 0;
+  line-height: 1.45;
+  max-width: 44em;
+}
+.ds-title-main .picker {
+  position: relative;
+}
+.ds-title-main .picker .pick {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6em;
+}
+.ds-title-main .picker .pick .pl {
+  font-size: 0.85em;
+  letter-spacing: 0.18em;
+  color: var(--ds-ink-dim);
+}
+.ds-title-main .picker .pick .pv {
+  color: var(--ds-amber);
+}
+.ds-title-main .picker .pick .pv::after {
+  content: ' \25BE';
+  color: var(--ds-ink-dim);
+}
+.ds-pop {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.35em);
+  z-index: 30;
+  width: min(24em, 80vw);
+  padding: 0.3em;
+  background: var(--ds-panel-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+}
+.ds-pop .opt {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2em;
+  width: 100%;
+  padding: 0.5em 0.7em;
+  text-align: left;
+  white-space: normal;
+  border-color: transparent;
+}
+.ds-pop .opt b {
+  font-size: max(10px, 0.8em);
+  letter-spacing: 0.18em;
+}
+.ds-pop .opt span {
+  font-size: max(9px, 0.68em);
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  text-transform: none;
+  font-weight: 500;
+  color: var(--ds-ink-dim);
+}
+.ds-pop .opt.on {
+  border-color: var(--ds-amber);
+  background: rgba(226, 176, 74, 0.12);
+}
+.ds-pop .opt.on b {
+  color: var(--ds-amber);
+}
+.ds-title-main .actions .minor {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+}
+.ds-title-main .actions .minor .ds-btn {
+  padding: 0.7em 1.1em;
+  font-size: max(10px, 0.8em);
+}
+.ds-sidepanel .closer {
+  display: none;
+}
+
+/* anything smaller than a big desktop: the brief stays; controls / settings float over the title when opened */
+@media (max-height: 860px), (max-width: 1360px) {
+  .ds-title-side .ds-sidepanel {
+    display: none;
+  }
+}
+html.ds-touch .ds-title-side .ds-sidepanel {
+  display: none;
+}
+.ds-sidepanel.floating {
+  display: block;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(42em, 94vw);
+  max-height: 88vh;
+  max-height: 88dvh;
+  overflow-y: auto;
+  z-index: 40;
+  pointer-events: auto;
+  background: var(--ds-panel-strong);
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.6);
+}
+.ds-sidepanel.floating .closer {
+  display: block;
+  position: sticky;
+  top: 0;
+  margin: 0.4em 0.4em 0.2em auto;
+  z-index: 1;
+}
+
+/* shorter screens: tighter title block */
+@media (max-height: 760px) {
+  .ds-title-main .kicker {
+    margin-bottom: 1.2em;
+  }
+  .ds-title-main .name .l1 {
+    font-size: min(6.4em, 6vw);
+  }
+  .ds-title-main .sigline {
+    margin: 0.8em 0 0.6em;
+  }
+  .ds-title-main .premise {
+    display: none;
+  }
+  .ds-title-main .best {
+    margin-top: 1em;
+  }
+  .ds-title-foot {
+    display: none;
+  }
+}
+
+/* phones held sideways and other very short screens */
+@media (max-height: 520px) {
+  .ds-title-main {
+    left: 3.2vw;
+    width: min(46em, 60vw);
+    padding: 0.8em 0;
+    justify-content: flex-start;
+  }
+  .ds-title-main .kicker,
+  .ds-title-main .sigline,
+  .ds-title-main .note {
+    display: none;
+  }
+  .ds-title-main .name .l1 {
+    font-size: min(4.6em, 6vw);
+  }
+  .ds-title-main .name .l2 {
+    font-size: 1.3em;
+  }
+  .ds-title-main .acct {
+    margin: 0.6em 0;
+  }
+  .ds-title-main .setup {
+    margin: 0.6em 0 0.7em;
+    padding: 0.55em 0.6em;
+    gap: 0.4em;
+  }
+  .ds-title-main .maptile {
+    min-height: 0;
+    padding: 0.45em 0.6em;
+  }
+  .ds-title-main .maptile .mt-sub {
+    display: none;
+  }
+  .ds-title-main .setup .modenote {
+    display: none;
+  }
+  .ds-title-main .best {
+    margin-top: 0.6em;
+    padding-top: 0.5em;
+  }
+  .ds-title-side {
+    right: 2.4vw;
+    width: min(22em, 33vw);
+  }
+  .ds-brief .row .text,
+  .ds-brief .foot,
+  .ds-brief .ds-panel-head .aux {
+    display: none;
+  }
+}
+
+/* narrow-but-tall windows (a desktop window snapped to half the screen) */
+@media (max-width: 900px) and (min-height: 521px) {
+  .ds-title-main {
+    width: 92vw;
+    left: 4vw;
+  }
+  .ds-title-side {
+    display: none;
+  }
+}
+@media (max-height: 520px) {
+  .ds-title-main .setup .modes .lbl {
+    min-width: 6.4em;
+  }
+  .ds-title-main .setup .modes .ds-btn {
+    padding: 0.42em 0.6em;
+  }
+}
+
+/* the picker's current choice stays readable (buttons marked on are amber-filled elsewhere) */
+.ds-pop .opt.on {
+  color: var(--ds-ink);
+  background: rgba(226, 176, 74, 0.14);
+  text-shadow: none;
+}
+
+/* the lobby's choice rows: compact, like the title's */
+.ds-lobby .row.choice > .ds-btn {
+  padding: 0.42em 0.75em;
+  font-size: max(10px, 0.78em);
+}
+
+/* the footer line gives way on anything but a tall screen */
+@media (max-height: 860px) {
+  .ds-title-foot {
+    display: none;
+  }
+}
+
+/* ---- HUD: objectives stay readable without covering the screen ---- */
+/* only the tracked objective shows its details and progress; the rest are one line each */
+.ds-obj-row:not([data-tracked='1']) .detail,
+.ds-obj-row:not([data-tracked='1']) .prog {
+  display: none;
+}
+.ds-obj-row:not([data-tracked='1']) {
+  padding-top: 0.38em;
+  padding-bottom: 0.38em;
+}
+.ds-obj-row[data-tracked='1'] .detail {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-height: 760px) {
+  .ds-right {
+    width: 19em;
+  }
+  .ds-obj-row[data-state='locked']:not([data-tracked='1']),
+  .ds-obj-row[data-state='complete']:not([data-tracked='1']) {
+    display: none;
+  }
+}
+/* the banner sits below the clocks and never runs under the objectives column */
+.ds-banner {
+  top: 27%;
+  max-width: min(62%, 52em);
+}
+.ds-banner .sub {
+  line-height: 1.4;
+}
+@media (max-height: 520px) {
+  .ds-banner {
+    top: 34%;
+    max-width: 70%;
+    padding: 0.2em 2em;
+  }
+  .ds-banner .title {
+    font-size: 1.6em;
+  }
+  .ds-banner .sub {
+    font-size: 0.85em;
+    letter-spacing: 0.12em;
+  }
+}
+.ds-title-main .modes .ds-pop .ds-btn.opt.on {
+  color: var(--ds-ink);
+  background: rgba(226, 176, 74, 0.14);
+  border-color: var(--ds-amber);
+  text-shadow: none;
+}
+/* the picker list never runs off a short screen */
+.ds-pop {
+  max-height: min(58vh, 24em);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

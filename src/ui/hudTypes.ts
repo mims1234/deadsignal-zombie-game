@@ -190,6 +190,8 @@ export interface ModeInfo {
   cards: CardCollectionEntry[];
   /** The infected's difficulty and the AI squad's skill. */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill };
+  /** In a co-op session: its map (the map cannot be changed without leaving it). */
+  lockedMap?: MapId | null;
 }
 
 export type MapMarkerKind =
