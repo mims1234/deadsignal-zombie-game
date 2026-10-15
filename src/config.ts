@@ -1205,7 +1205,8 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1,
   fov: 90,
   masterVolume: 0.7,
-  quality: 'medium',
+  // everyone starts on the lightest preset (smooth on any device); Settings raises it, and that choice is kept
+  quality: 'low',
   reducedMotion: false,
   invertY: false,
   showFps: false,

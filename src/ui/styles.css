@@ -3349,3 +3349,23 @@ html.ds-touch .ds-title-side .ds-sidepanel {
   border-style: solid;
   text-shadow: none;
 }
+
+/* the title's graphics button: what the preset is, and that Settings changes it */
+.ds-title-main .actions .minor .ds-btn.quality {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.55em;
+  border-style: dashed;
+}
+.ds-btn.quality .ql {
+  color: var(--ds-ink-dim);
+  font-size: 0.86em;
+  letter-spacing: 0.18em;
+}
+.ds-btn.quality .qv {
+  color: var(--ds-cyan);
+}
+.ds-btn.quality .qv::after {
+  content: ' \2699';
+  color: var(--ds-ink-dim);
+}

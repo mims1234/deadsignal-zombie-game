@@ -104,8 +104,20 @@ class Menus implements MenusApi {
     if (this.kind === 'title') this.showTitle(this.lastBest);
   }
 
+  /** The title's graphics button (null off the title). */
+  private qualityChip: HTMLButtonElement | null = null;
+
+  private syncQualityChip(): void {
+    const c = this.qualityChip;
+    if (!c) return;
+    c.replaceChildren();
+    el('span', 'ql', c, 'GRAPHICS');
+    el('span', 'qv', c, this.settings.quality.toUpperCase());
+  }
+
   private pushSetting(patch: Partial<Settings>): void {
     this.settings = { ...this.settings, ...patch };
+    this.syncQualityChip();
     if (patch.reducedMotion !== undefined) setReducedMotionSetting(patch.reducedMotion);
     for (const p of this.panels) p.sync(this.settings);
     this.cb.onSettingsChange({ ...this.settings });
@@ -151,7 +163,7 @@ class Menus implements MenusApi {
     this.deployStamp = t;
     this.cb.onDeploy();
   }
-
+
   /**
    * A compact choice: a button showing the current pick that opens a short list (with a line about each option)
    * right under it. Closes on a pick, a click elsewhere or Escape.
@@ -385,6 +397,10 @@ class Menus implements MenusApi {
     this.button(minor, 'CONTROLS', '', () => showTab('controls'));
     // every infected (and the people beside you) in 3D, on its own page
     this.button(minor, 'BESTIARY', '', () => window.open('./bestiary.html', '_blank', 'noopener'));
+    // the graphics preset, in plain sight: one tap opens Settings to change it
+    this.qualityChip = this.button(minor, '', 'quality', () => showTab('settings'));
+    this.qualityChip.title = 'Graphics quality - open Settings to change it';
+    this.syncQualityChip();
     el(
       'div',
       'note',

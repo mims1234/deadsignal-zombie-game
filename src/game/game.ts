@@ -27,7 +27,7 @@ import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, repo
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
-import { DetailCuller, halveTextures, isWeakDevice } from '../render/lite';
+import { DetailCuller, halveTextures } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
 import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
@@ -77,6 +77,23 @@ function reopenLobby(): boolean {
   }
 }
 
+/** The first-deploy graphics hint is shown once per browser. */
+const QUALITY_HINT = 'deadsignal.qualityHint.v1';
+function hintShown(): boolean {
+  try {
+    return localStorage.getItem(QUALITY_HINT) === '1';
+  } catch {
+    return true;
+  }
+}
+function markHintShown(): void {
+  try {
+    localStorage.setItem(QUALITY_HINT, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
 export class Game implements GameCtx {
   // ---- subsystems (assigned in init) ----
   renderer!: GameRenderer;
@@ -110,6 +127,8 @@ export class Game implements GameCtx {
   private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
+  /** Show the "graphics are on Low, raise them in Settings" hint on the first deploy. */
+  private qualityHint = false;
   /** Free roam is an option on a mode: the one it was switched on from. */
   roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
@@ -206,8 +225,8 @@ export class Game implements GameCtx {
   async init(): Promise<boolean> {
     const { canvas, uiRoot } = this.deps;
     this.settings = loadSettings();
-    // Phones and weak computers start on the lightest preset; once the player has saved settings their choice is respected.
-    if (!hasStoredSettings() && isWeakDevice(this.touchMode)) this.settings.quality = 'low';
+    // everyone starts on Low (DEFAULT_SETTINGS); a player who never opened Settings is told once where to raise it
+    this.qualityHint = !hasStoredSettings() && !hintShown();
     this.best = loadBest();
     this.mode = loadMode();
     this.mapId = loadMap();
@@ -585,6 +604,7 @@ export class Game implements GameCtx {
     const qualityChanged = s.quality !== this.settings.quality;
     this.settings = { ...s };
     if (persist) saveSettings(this.settings);
+    if (persist) this.qualityHint = false; // they found Settings: no need to point at it
     this.renderer.hFov = s.fov;
     this.renderer.updateFov();
     this.audio.setMasterVolume(s.masterVolume);
@@ -861,6 +881,12 @@ export class Game implements GameCtx {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, free the clan. Rise.', 'info', 5);
       } else if (this.mode === 'cards') this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Recover the cards. Free the survivors. Extract.', 'info', 4.5);
       else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
+      // the first deploy on a browser that never opened Settings: where to raise the graphics
+      if (this.qualityHint && !spectating) {
+        this.qualityHint = false;
+        markHintShown();
+        this.feed(`GRAPHICS: ${this.settings.quality.toUpperCase()} FOR A SMOOTH START - ${this.touchMode ? 'II' : 'ESC'} > SETTINGS TO RAISE IT`, 'normal');
+      }
     }
   }
 
