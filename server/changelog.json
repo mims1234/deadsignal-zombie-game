@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.104",
+      "date": "2026-10-16",
+      "title": "A more compact admin page",
+      "notes": [
+        "The admin page is split into tabs (Overview, Runs, Players, Co-op, Reports, Versions); the open tab is kept in the address, so a link or a reload lands on it.",
+        "Denser layout: the overview's tiles, charts and tables fit on about one screen.",
+        "Every table pages (10/25/50/100 a page) and sorts by its columns; Runs now goes back through all history, filtered by player, mode, map, result, device and date; Players by name and ban status; Reports, live co-op sessions and versions have search boxes."
+      ]
+    },
+    {
       "version": "0.1.103",
       "date": "2026-10-16",
       "title": "The foundries get a second level",

@@ -1,7 +1,7 @@
 {
   "name": "dead-signal-exclusion-zone",
   "private": true,
-  "version": "0.1.103",
+  "version": "0.1.104",
   "description": "DEAD SIGNAL: EXCLUSION ZONE - the Sonnet 5.5 Zombies Game, a single-player extraction-survival FPS built with Three.js",
   "license": "MIT",
   "repository": {

@@ -207,6 +207,25 @@ app.get('/admin', { preHandler: admin }, async (_req, reply) => reply.type('text
 // what each version brought (newest first): the same file the game takes its version from
 app.get('/api/admin/changelog', { preHandler: admin }, async () => JSON.parse(readFileSync(join(here, 'changelog.json'), 'utf8')));
 app.get('/api/admin/overview', { preHandler: admin }, async (req) => db.overview(Math.max(1, Math.min(90, Number(req.query.days) || 30))));
+// the Runs and Players tabs: a page at a time, filtered
+const pageArgs = (q) => ({ page: Math.max(0, Math.floor(Number(q.page) || 0)), size: Math.max(5, Math.min(200, Math.floor(Number(q.size) || 25))) });
+const pick = (v, allowed) => (allowed.includes(String(v ?? '')) ? String(v) : '');
+app.get('/api/admin/runs', { preHandler: admin }, async (req) => {
+  const q = req.query;
+  return db.runPage({
+    ...pageArgs(q),
+    days: Math.max(0, Math.min(3650, Number(q.days) || 0)),
+    mode: pick(q.mode, MODES),
+    map: pick(q.map, ['district', 'forge', 'asylum']),
+    outcome: pick(q.outcome, ['victory', 'defeat', 'abandoned', 'unfinished']),
+    device: pick(q.device, ['touch', 'desktop']),
+    q: String(q.q || '').slice(0, 64),
+  });
+});
+app.get('/api/admin/players', { preHandler: admin }, async (req) => ({
+  ...db.userPage({ ...pageArgs(req.query), q: String(req.query.q || '').slice(0, 64), status: pick(req.query.status, ['banned', 'active']) }),
+  admins: [...ADMIN_IDS],
+}));
 app.get('/api/admin/users', { preHandler: admin }, async (req) => ({ users: db.users(String(req.query.q || '')), admins: [...ADMIN_IDS] }));
 app.get('/api/admin/rooms', { preHandler: admin }, async () => ({ rooms: rooms.live() }));
 app.get('/api/admin/reports', { preHandler: admin }, async (req) => ({ reports: db.reports(String(req.query.status || 'open')) }));

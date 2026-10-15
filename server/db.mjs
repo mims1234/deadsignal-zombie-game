@@ -253,6 +253,63 @@ export function openDb(file) {
       const maps = all("SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ? GROUP BY 1", since);
       return { days, totals, daily, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
     },
+    /**
+     * Runs, a page at a time, newest first, with filters (the admin page's Runs tab). `days` 0 = all time. Returns the page
+     * and how many match in all.
+     */
+    runPage({ page = 0, size = 25, days = 0, mode = '', map = '', outcome = '', device = '', q = '' } = {}) {
+      const where = [];
+      const args = [];
+      if (days > 0) {
+        where.push('r.day >= ?');
+        args.push(day(now() - (days - 1) * 86400));
+      }
+      if (mode) {
+        where.push('r.mode = ?');
+        args.push(mode);
+      }
+      if (map) {
+        where.push("COALESCE(r.map, 'district') = ?");
+        args.push(map);
+      }
+      if (outcome === 'unfinished') where.push('r.outcome IS NULL');
+      else if (outcome) {
+        where.push('r.outcome = ?');
+        args.push(outcome);
+      }
+      if (device === 'touch') where.push('r.touch = 1');
+      else if (device === 'desktop') where.push('r.touch = 0');
+      if (q) {
+        const like = `%${String(q).replace(/[%_]/g, '')}%`;
+        where.push('(u.display_name LIKE ? OR u.username LIKE ? OR u.id LIKE ?)');
+        args.push(like, like, like);
+      }
+      const w = where.length ? `WHERE ${where.join(' AND ')}` : '';
+      const total = db.prepare(`SELECT COUNT(*) n FROM runs r JOIN users u ON u.id = r.user_id ${w}`).get(...args).n;
+      const rows = db
+        .prepare(
+          `SELECT r.id, r.started_at, r.mode, r.map, r.touch, r.outcome, r.reason, r.duration, r.kills, r.cards, u.display_name name, u.id user_id
+           FROM runs r JOIN users u ON u.id = r.user_id ${w} ORDER BY r.id DESC LIMIT ? OFFSET ?`,
+        )
+        .all(...args, size, page * size);
+      return { rows, total };
+    },
+    /** Players, a page at a time, most recently seen first: by name / id, and optionally only the banned. */
+    userPage({ page = 0, size = 25, q = '', status = '' } = {}) {
+      const like = `%${String(q ?? '').replace(/[%_]/g, '')}%`;
+      const ban = status === 'banned' ? 'AND u.banned = 1' : status === 'active' ? 'AND u.banned = 0' : '';
+      const w = `WHERE (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ${ban}`;
+      const total = db.prepare(`SELECT COUNT(*) n FROM users u ${w}`).get(like, like, like).n;
+      const rows = db
+        .prepare(
+          `SELECT u.id, u.username, u.display_name, u.created_at, u.last_seen, u.banned, u.ban_reason,
+             (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id) runs,
+             (SELECT COUNT(*) FROM reports p WHERE p.target_id = u.id) reports
+           FROM users u ${w} ORDER BY u.last_seen DESC LIMIT ? OFFSET ?`,
+        )
+        .all(like, like, like, size, page * size);
+      return { rows, total };
+    },
     users(search) {
       const like = `%${(search ?? '').replace(/[%_]/g, '')}%`;
       return db
