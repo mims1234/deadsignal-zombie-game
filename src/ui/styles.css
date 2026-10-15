@@ -3334,3 +3334,18 @@ html.ds-touch .ds-title-side .ds-sidepanel {
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+
+/* free roam is a switch on a mode, not a mode: it looks like one */
+.ds-title-main .modes .ds-btn.toggle,
+.ds-lobby .row .ds-btn.toggle {
+  border-style: dashed;
+  margin-left: 0.5em;
+}
+.ds-title-main .modes .ds-btn.toggle.on,
+.ds-lobby .row .ds-btn.toggle.on {
+  color: var(--ds-cyan);
+  background: rgba(110, 198, 214, 0.16);
+  border-color: var(--ds-cyan);
+  border-style: solid;
+  text-shadow: none;
+}

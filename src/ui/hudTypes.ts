@@ -192,6 +192,8 @@ export interface ModeInfo {
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill };
   /** In a co-op session: its map (the map cannot be changed without leaving it). */
   lockedMap?: MapId | null;
+  /** Free roam is an option, not a mode: the mode it was switched on from (and returns to). */
+  roamBase?: 'standard' | 'cards';
 }
 
 export type MapMarkerKind =
@@ -289,6 +291,8 @@ export interface MenuCallbacks {
   onLogout(): void;
   /** Title screen only: switch maps (the page reloads to build the other one). */
   onMapChange(map: MapId): void;
+  /** Title screen: free roam switched on or off (an option on Standard / Standard Mazoku). */
+  onRoamChange(on: boolean): void;
   /** Title screen: the difficulty picks changed. */
   onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }

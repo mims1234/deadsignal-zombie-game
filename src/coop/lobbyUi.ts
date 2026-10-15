@@ -40,6 +40,8 @@ export interface LobbyHost {
 }
 
 export class CoopUi {
+  /** Free roam is a switch on a mode: the one it returns to when switched off. */
+  private roamBase: 'mission' | 'mazoku' = 'mission';
   private readonly panel: HTMLElement;
   private readonly board: HTMLElement;
   private wanted = false;
@@ -218,11 +220,24 @@ export class CoopUi {
 
     el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
     const variant = el('div', 'row choice', body);
-    const kinds = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ['roam', 'FREE ROAM']] as const;
+    // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
+    const kinds = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU']] as const;
+    const roam = room.kind === 'roam';
+    if (!roam) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';
+    const active = roam ? this.roamBase : room.kind;
     if (isOwner && room.state !== 'playing') {
-      for (const [kind, label] of kinds) this.button(variant, label, room.kind === kind ? 'on' : '', () => this.coop.setKind(kind));
+      for (const [kind, label] of kinds) {
+        this.button(variant, label, active === kind ? 'on' : '', () => {
+          if (roam) {
+            this.roamBase = kind; // free roam stays on; this is what it returns to
+            this.render();
+          } else this.coop.setKind(kind);
+        });
+      }
+      const t = this.button(variant, roam ? 'FREE ROAM  ON' : 'FREE ROAM  OFF', roam ? 'toggle on' : 'toggle', () => this.coop.setKind(roam ? this.roamBase : 'roam'));
+      t.setAttribute('aria-pressed', roam ? 'true' : 'false');
     } else {
-      el('span', 'name', variant, kinds.find((k) => k[0] === room.kind)?.[1] ?? 'STANDARD');
+      el('span', 'name', variant, `${kinds.find((k) => k[0] === active)?.[1] ?? 'STANDARD'}${roam ? '  +  FREE ROAM' : ''}`);
     }
     el('div', 'tag', body, KIND_NOTE[room.kind]);
 

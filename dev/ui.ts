@@ -289,6 +289,7 @@ const menus = createMenus({
   onResume: () => calls.push('resume'),
   onRestart: () => calls.push('restart'),
   onDifficultyChange: () => calls.push('difficulty'),
+  onRoamChange: () => calls.push('roam'),
   onQuitToTitle: () => calls.push('title'),
   onModeChange: (m) => calls.push(`mode:${m}`),
   onLogout: () => calls.push('logout'),

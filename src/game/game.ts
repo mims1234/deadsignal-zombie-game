@@ -30,7 +30,7 @@ import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { DetailCuller, halveTextures, isWeakDevice } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveSettings } from '../storage';
+import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
 import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
@@ -110,6 +110,8 @@ export class Game implements GameCtx {
   private coopUi!: CoopUi;
   /** What DEPLOY starts; chosen on the title screen and fixed for the run. */
   mode: GameMode = 'standard';
+  /** Free roam is an option on a mode: the one it was switched on from. */
+  roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
   account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
@@ -210,6 +212,7 @@ export class Game implements GameCtx {
     this.mode = loadMode();
     this.mapId = loadMap();
     this.difficulty = loadDifficulty();
+    this.roamBase = loadRoamBase();
     if (this.touchMode) document.documentElement.classList.add('ds-touch');
 
     this.menus = createMenus({
@@ -222,6 +225,7 @@ export class Game implements GameCtx {
       onLogout: () => void logout().then(() => window.location.reload()),
       onMapChange: (m) => this.setMap(m),
       onDifficultyChange: (d) => this.setDifficulty(d),
+      onRoamChange: (on) => this.setRoam(on),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -601,7 +605,7 @@ export class Game implements GameCtx {
 
   /** What the title screen shows as picked. */
   private modeInfo(): ModeInfo {
-    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null };
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase };
   }
 
   /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */
@@ -620,6 +624,13 @@ export class Game implements GameCtx {
   /** Title screen only: switch what DEPLOY starts. The backdrop is a pristine run, so only the carriers change. */
   setMode(mode: GameMode): void {
     if (this.state !== 'title') return;
+    // with free roam on, picking Standard / Standard Mazoku only changes what it returns to
+    if (this.mode === 'roam' && (mode === 'standard' || mode === 'cards')) {
+      this.roamBase = mode;
+      saveRoamBase(mode);
+      this.menus.setModeInfo(this.modeInfo());
+      return;
+    }
     this.mode = mode;
     if (mode === 'coop') {
       this.coopUi.open();
@@ -630,6 +641,19 @@ export class Game implements GameCtx {
     }
     this.cards.reset(mode === 'cards', false);
     this.menus.setModeInfo(this.modeInfo());
+  }
+
+  /** Title screen: free roam on (from Standard / Standard Mazoku) or off (back to the one it came from). */
+  setRoam(on: boolean): void {
+    if (this.state !== 'title') return;
+    if (on && (this.mode === 'standard' || this.mode === 'cards')) {
+      this.roamBase = this.mode;
+      saveRoamBase(this.mode);
+      this.setMode('roam');
+    } else if (!on && this.mode === 'roam') {
+      this.mode = this.roamBase; // set first so setMode does not treat it as a pick within free roam
+      this.setMode(this.roamBase);
+    }
   }
 
   /** Title screen only: the other map is built on a fresh page load. */

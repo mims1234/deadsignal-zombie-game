@@ -146,6 +146,25 @@ export function saveDifficulty(d: { zombies: ZombieDifficulty; team: TeamSkill }
   }
 }
 
+const KEY_ROAM_BASE = 'deadsignal.roamBase.v1';
+
+/** Free roam is an option on Standard or Standard Mazoku: the one it was switched on from. */
+export function loadRoamBase(): 'standard' | 'cards' {
+  try {
+    return window.localStorage.getItem(KEY_ROAM_BASE) === 'cards' ? 'cards' : 'standard';
+  } catch {
+    return 'standard';
+  }
+}
+
+export function saveRoamBase(base: 'standard' | 'cards'): void {
+  try {
+    window.localStorage.setItem(KEY_ROAM_BASE, base);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function saveMode(mode: GameMode): void {
   try {
     window.localStorage.setItem(KEY_MODE, mode);

@@ -89,12 +89,12 @@ Pick one on the title screen before you deploy. The choice is remembered.
   to purge the signal before it gets back up (24 seconds). The card is left on the ground; walk into it to take it.
   Each card pays $350 and the full set pays a $1,500 bonus. The carriers appear only in this mode (and in Mazoku
   co-op). The side contract is optional: you can extract without it.
-- **Free roam** — no mission, no clock and no damage. Fly anywhere, through anything, and look around.
+- **Free roam** (a switch next to the modes, on Standard or Standard Mazoku) — no mission, no clock and no damage. Fly anywhere, through anything, and look around. Switch it off to go back to the mode it was on.
   `W A S D` moves along the view, `Space` climbs, `C` descends, `Shift` goes fast. On touch, look where you want to
   go and push the stick.
 
 - **Co-op** (needs the game server and a signed-in account) — up to three players run a map's operation together:
-  Standard, Standard Mazoku or Free Roam, on the District or the Forge. Create a session in the lobby and share the
+  Standard or Standard Mazoku (or free roam, switched on in the lobby), on any map. Create a session in the lobby and share the
   invite link, or join with a code; a player following an invite to another map is moved onto it. The session's
   owner picks the mode and both difficulties in the lobby before starting (a new session starts with the owner's
   title-screen picks). You can join a session at any time: when its owner starts it, or when you join one that is
