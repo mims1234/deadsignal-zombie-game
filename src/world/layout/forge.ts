@@ -94,14 +94,12 @@ function furnace(c: Ctx, x: number, z: number, rot: number): void {
 export interface ForgeHandles {
   /** One per safe room, in `sites.rooms` order. */
   doors: DoorHandle[];
-  /** The seven forges' fires on Seven Flames Row. */
-  flameForges: THREE.MeshStandardMaterial[];
   hearthGlow: THREE.MeshStandardMaterial;
   /** The Great Furnace's iron door (two leaves) and the Ignis mark on it. */
   furnaceDoor: { left: THREE.Object3D; right: THREE.Object3D; mark: THREE.Mesh };
   /** The phoenix billboard on Vulcan HQ's roof. */
   billboard: THREE.Object3D;
-  /** Each cold furnace's mouth, in `sites.furnaces` order. */
+  /** Each foundry forge's mouth, in `sites.furnaces` order. */
   furnaceMouths: THREE.MeshStandardMaterial[];
 }
 
@@ -358,7 +356,7 @@ export function buildForge(c: Ctx): ForgeResult {
   d.zombies('high', 'runner', [[30, -40], [50, -36]]);
   d.zombies('high', 'armored', [[24, -32], [48, -32], [40, -10]]);
 
-  // ---- the ring around it all: the Hearth, the Pit, Seven Flames Row, the Spawn Hall, the Ledger House ----
+  // ---- the ring around it all: the Hearth, the Pit, the seven foundries, the Spawn Hall, the Ledger House ----
   const outerDoors: DoorHandle[] = [];
   const outer = buildForgeOuter(c, outerDoors);
   const sites: ForgeSites = {
@@ -374,6 +372,6 @@ export function buildForge(c: Ctx): ForgeResult {
     transmitter: beacon,
     spire: sp,
     sites,
-    handles: { doors: [...outerDoors, ...vaultDoors], flameForges: outer.flameForges, hearthGlow: outer.hearthGlow, furnaceDoor, billboard, furnaceMouths: outer.furnaceMouths },
+    handles: { doors: [...outerDoors, ...vaultDoors], hearthGlow: outer.hearthGlow, furnaceDoor, billboard, furnaceMouths: outer.furnaceMouths },
   };
 }

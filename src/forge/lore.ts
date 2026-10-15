@@ -3,8 +3,8 @@
  * and the last word. Pure data, so the co-op simulation and every client can quote it.
  *
  * The story. Every currency in the Forge ran on the same thing: embers. Every hour a member put in, every summon, every
- * streak kept, every hand-delivery, gave off an ember, and the furnaces collected them - seven small furnaces around
- * the Forge, one for each of its seven currencies: Vulcan's own Ignis, and the six the allied clans brought with them
+ * streak kept, every hand-delivery, gave off an ember, and the furnaces collected them - seven foundries around
+ * the Forge, a forge in each, one for each of its seven currencies: Vulcan's own Ignis, and the six the allied clans brought with them
  * (Amethyst Flame, Kizuna Spark, Sakura Spark, Mossfire, Void Ember, Frostfire). The furnaces turned embers into
  * currency, and the Great Furnace under Vulcan HQ kept the books on all of it. The books were kept by an intake system
  * nobody remembered installing: it counted every ember, every night, in the same even hand, and never once signed.
@@ -115,10 +115,10 @@ export const FORGE_LINES = {
   squadHello: "We were out on a delivery run when the furnaces went cold. We came back to this. Let's get our people out.",
   squadLost: (name: string, other: string | null) => (other ? `We lost ${name}. Keep ${other} breathing.` : `We lost ${name}. That's both of them.`),
   /** The furnaces. */
-  furnaceAsk: "Seven furnaces out there, one for every currency in the Forge, and every one of them cold. Stoke them and hold them while they catch - take the embers back.",
-  furnaceStoked: (name: string) => `The ${name} furnace is catching - hold the circle! The fire's drawing them in.`,
+  furnaceAsk: "Seven foundries out there, one for every currency in the Forge, and every forge in them cold. Get inside, stoke them and hold the hall while they catch - take the embers back.",
+  furnaceStoked: (name: string) => `The ${name} forge is catching - hold the foundry! The fire's drawing a horde in.`,
   furnaceLit: (name: string) => `${name} burns again. That's an ember back where it belongs.`,
-  furnacesAll: "All seven furnaces are lit. Seven Flames Row is burning again. Whatever was taking the embers just lost them.",
+  furnacesAll: "All seven foundries are lit. Every forge in the Forge is burning again. Whatever was taking the embers just lost them.",
   /** When the vault unlocks (the beacon burns). */
   vaultOpen: "The beacon's lit - the vault's seals just dropped. tomoe is in there. Get to HQ.",
   vaultSealed: 'The vault is sealed. Rekindle the beacon first.',

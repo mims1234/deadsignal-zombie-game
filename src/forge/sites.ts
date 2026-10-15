@@ -1,7 +1,7 @@
 /**
  * Where the Forge's story happens, as the layout (`world/layout/forge*.ts`) builds it: the safe rooms the holdouts
  * barricaded themselves into, the Hearth (where the run starts: open, a sentry in the middle), the ledger pages, the
- * Rumble Pit, the cold furnaces around the Forge, the furnace under HQ. Plain data (no THREE), shared by the solo game,
+ * Rumble Pit, the seven foundries around the Forge, the furnace under HQ. Plain data (no THREE), shared by the solo game,
  * the co-op simulation and every client.
  */
 
@@ -47,13 +47,24 @@ export interface HearthDef {
   slots: { x: number; z: number; yaw: number }[];
 }
 
-/** A small furnace out in the Forge, cold since the collection stopped; seven of them are drawn each run. */
+/**
+ * One of the seven foundries: a brick hall with a cold forge inside, one per ember (`FORGE_SQUAD.flames` order). `x`/`z` is
+ * where you stand to stoke the forge; the hall (inside its walls) is what you hold while it catches.
+ */
 export interface FurnaceSpot {
   x: number;
   z: number;
-  /** The way its mouth faces (where you stand to stoke it). */
+  /** The way the forge's mouth faces. */
   yaw: number;
   place: string;
+  /** Inside the hall's walls. */
+  x0: number;
+  z0: number;
+  x1: number;
+  z1: number;
+  /** Just outside its front door. */
+  doorX: number;
+  doorZ: number;
 }
 
 export interface LedgerSpot {
@@ -79,7 +90,7 @@ export interface ForgeSites {
   hearth: HearthDef;
   ledger: LedgerSpot[];
   rumble: RumblePitDef;
-  /** Every furnace that can be drawn (`FORGE_STORY.furnaces.count` of them each run). */
+  /** The seven foundries, one per ember. */
   furnaces: FurnaceSpot[];
   /** The Great Furnace under Vulcan HQ (its door faces `yaw`): the reveal starts here. */
   furnace: { x: number; z: number; yaw: number };

@@ -980,11 +980,12 @@ export const FORGE_STORY = {
   ledger: { pickupRadius: 1.9, cashEach: 250, bonus: 900 },
   rumble: { waves: [6, 9, 13] as readonly number[], gap: 7, cash: 1100, plates: 2, radius: 10 },
   /**
-   * The seven furnaces, one per ember (`FORGE_SQUAD.flames`), at `count` of the layout's furnace spots drawn each run:
-   * stoke one (a hold of E), then stay within `radius` for `hold` seconds while the fire draws the infected in (a few
-   * every `drawEvery` seconds, `drawAway` metres out). Each ember pays `cash`; all seven pay `bonus` and plates.
+   * The seven foundries, one per ember (`FORGE_SQUAD.flames`), spread over the map: stoke the forge inside one (a hold of
+   * E within `reach`), then hold the hall for `hold` seconds while a horde comes for it (`draw` more every `drawEvery`
+   * seconds, from `drawAway` metres out, plus `drawPerPlayer` each for every extra player) until it catches. Each ember
+   * pays `cash`; all seven pay `bonus` and plates.
    */
-  furnaces: { count: 7, hold: 30, radius: 6, reach: 2.8, stoke: 0.8, cash: 150, bonus: 700, plates: 2, drawEvery: 7, draw: [2, 3] as readonly number[], drawAway: [16, 26] as readonly number[] },
+  furnaces: { count: 7, hold: 30, reach: 2.8, stoke: 0.8, cash: 150, bonus: 700, plates: 2, drawEvery: 6, draw: [3, 5] as readonly number[], drawPerPlayer: 1, drawAway: [18, 30] as readonly number[] },
   /**
    * The Hearth's sentry gun: it covers the courtyard and the apron outside its gate, and never fires on a boss (its
    * friend-or-foe still reads the Infernus and the reborn as clan).

@@ -422,7 +422,9 @@ export class Zombie {
       r.rotation.set(0, this.yaw, 0, 'YXZ');
       return;
     }
-    // tumble about the middle of the body, not the feet: place the root so the hips stay on the flight path
+    // tumble about the middle of the body, not the feet. `flingY` is the height of the body's lowest point, so the hips
+    // drop as it tips over: upright they are a half-height up, lying flat only a body's thickness - a body tipped flat
+    // lies on the ground instead of floating at waist height
     const h = 0.9;
     const sp = Math.sin(this.tumbleP);
     const cp = Math.cos(this.tumbleP);
@@ -431,9 +433,11 @@ export class Zombie {
     const lx = -h * sr;
     const ly = h * cr * cp;
     const lz = h * cr * sp;
+    const up = Math.abs(cr * cp);
+    const hips = this.flingY + h * up + 0.14 * (1 - up);
     const sy = Math.sin(this.yaw);
     const cy = Math.cos(this.yaw);
-    r.position.set(this.x - (lx * cy + lz * sy), this.flingY + h - ly, this.z - (-lx * sy + lz * cy));
+    r.position.set(this.x - (lx * cy + lz * sy), hips - ly, this.z - (-lx * sy + lz * cy));
     r.rotation.set(this.tumbleP, this.yaw, this.tumbleR, 'YXZ');
   }
 
@@ -458,6 +462,14 @@ export class Zombie {
 
   private stepFling(dt: number, env: ZombieEnv): void {
     if (!this.flying) return;
+    // never left hanging: a body still in the air or tumbling a few seconds after it died settles where it is
+    if (this.deathT > 3) {
+      this.flying = false;
+      this.flingY = this.tumbleP = this.tumbleR = 0;
+      this.flingVX = this.flingVY = this.flingVZ = 0;
+      this.tumblePV = this.tumbleRV = 0;
+      return;
+    }
     this.flingVY -= RAGDOLL.gravity * dt;
     this.flingY += this.flingVY * dt;
     const p = this.flingPos;

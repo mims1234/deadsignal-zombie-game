@@ -1,7 +1,7 @@
 /**
  * The Forge's story on this client: the Hearth where the run starts (its sentry, the people who make it there), the
  * people holed up in their rooms (seen through the barred windows), the doors the infected pound on, talking someone
- * out (a hold of E at a clear door), the seven furnaces (stoke one, hold its circle while it catches), the ledger
+ * out (a hold of E at a clear door), the seven foundries (stoke the forge inside one, hold the hall against a horde while it catches), the ledger
  * pages, riry's bell, the last stand at the Hearth, the carrier turning, the reborn and the burnout at dawn - the
  * radio, the banners, the HUD and the maps for all of it.
  *
@@ -170,7 +170,6 @@ export class ForgeRuntime {
     for (const p of this.pages) p.visible = true;
     const fx = this.g.level.forgeFx;
     if (fx) {
-      for (const m of fx.flameForges) m.emissiveIntensity = 0.15;
       fx.hearthGlow.emissive.copy(this.glowAmber);
       for (const d of fx.doors) d.pivot.rotation.y = d.yaw;
     }
@@ -459,7 +458,7 @@ export class ForgeRuntime {
     const color = FORGE_SQUAD.flames[f.flame]?.color ?? 0xff7a1a;
     const total = this.view!.furnaces.length;
     if (to === 'burning') {
-      g.banner(`THE ${name} FURNACE IS CATCHING`, `Hold its circle for ${FORGE_STORY.furnaces.hold} seconds - the fire draws them in`, 'warn', 4);
+      g.banner(`THE ${name} FORGE IS CATCHING`, `Hold the foundry for ${FORGE_STORY.furnaces.hold} seconds - a horde is coming for it`, 'warn', 4);
       g.audio.play('flare_ignite', { pos: { x: s.x, y: 1, z: s.z }, volume: 1, priority: 3 });
       g.audio.play('defense_start', { priority: 2, volume: 0.7 });
       this.later(1.2, () => g.radio(this.voice(), L.furnaceStoked(name), 5));
@@ -474,7 +473,7 @@ export class ForgeRuntime {
       g.audio.play('contract_complete', { priority: 3 });
       g.feed(`${name} EMBER ${got}/${total}  +$${F.cash}`, 'good');
       if (all) {
-        g.banner('THE SEVEN EMBERS BURN', `Seven Flames Row is lit   +$${a.cash.toLocaleString('en-US')}   +${F.plates} ARMOR PLATES`, 'good', 5);
+        g.banner('THE SEVEN EMBERS BURN', `All seven foundries are lit   +$${a.cash.toLocaleString('en-US')}   +${F.plates} ARMOR PLATES`, 'good', 5);
         this.later(2, () => g.radio(this.voice(), L.furnacesAll, 7));
       } else {
         g.banner(`${name} BURNS AGAIN`, `Ember ${got}/${total}   +$${a.cash}`, 'good', 4);
@@ -605,13 +604,6 @@ export class ForgeRuntime {
         d.pivot.rotation.y = d.yaw + Math.max(0, open) + Math.sin(this.clock * 70) * 0.012 * this.shake[i]!;
         void r;
       });
-      // the seven forges on Seven Flames Row light up when every ember is back
-      const lit = !!v && v.furnaces.length > 0 && v.furnaces.every((f) => f.phase === 'lit');
-      for (let i = 0; i < fx.flameForges.length; i++) {
-        const m = fx.flameForges[i]!;
-        const want = lit ? 2.2 + Math.sin(this.clock * 3 + i) * 0.3 : 0.15;
-        m.emissiveIntensity += (want - m.emissiveIntensity) * Math.min(1, dt * 1.5);
-      }
     }
     if (v) {
       this.stage.furnaces(v.furnaces, this.clock, dt);
@@ -846,20 +838,18 @@ export class ForgeRuntime {
         },
       });
     });
-    // the furnaces
+    // the foundries' forges
     v.furnaces.forEach((f, i) => {
       if (f.phase !== 'cold' || v.finale.phase === 'burnout') return;
       const s = sites.furnaces[f.spot]!;
-      const fx = s.x - Math.sin(s.yaw) * 1.9;
-      const fz = s.z - Math.cos(s.yaw) * 1.9;
-      const d = Math.hypot(fx - p.x, fz - p.z);
+      const d = Math.hypot(s.x - p.x, s.z - p.z);
       if (d > FORGE_STORY.furnaces.reach) return;
       const name = flameName(f.flame);
       out.push({
         id: `stoke:${i}`,
         dist: d,
-        text: `STOKE THE ${name} FURNACE`,
-        sub: `Then hold its circle for ${FORGE_STORY.furnaces.hold} seconds while it catches - the fire draws the infected`,
+        text: `STOKE THE ${name} FORGE`,
+        sub: `Then hold the foundry for ${FORGE_STORY.furnaces.hold} seconds while it catches - a horde will come for it`,
         tone: 'warn',
         hold: FORGE_STORY.furnaces.stoke,
         enabled: true,
@@ -927,8 +917,7 @@ export class ForgeRuntime {
       }
       objs.push({ id: 'holdouts', title: `REACH THE HOLDOUTS  ${safe}/${total}`, detail, state: nearest ? 'active' : 'complete', progress: safe / total, tracked: false, distance: nearest ? nearest.d : -1 });
     }
-    // the furnaces: one burning is tracked; otherwise the nearest cold one
-    const F = FORGE_STORY.furnaces;
+    // the foundries: one burning is tracked; otherwise the nearest cold one
     const lit = v.furnaces.filter((f) => f.phase === 'lit').length;
     let fNear: { i: number; d: number } | null = null;
     v.furnaces.forEach((f, i) => {
@@ -942,11 +931,11 @@ export class ForgeRuntime {
       const burning = fn ? v.furnaces[fn.i]!.phase === 'burning' : false;
       const fs = fn ? v.furnaces[fn.i]! : null;
       const place = fs ? sites.furnaces[fs.spot]!.place : '';
-      const inRing = fs && burning ? Math.hypot(sites.furnaces[fs.spot]!.x - p.x, sites.furnaces[fs.spot]!.z - p.z) < F.radius : false;
+      const inRing = fs && burning ? this.story.inFoundry(fs.spot, p.x, p.z) : false;
       objs.push({
         id: 'embers',
         title: burning && fs ? `STOKING ${flameName(fs.flame)}  ${Math.round(fs.progress * 100)}%` : `THE SEVEN EMBERS  ${lit}/${v.furnaces.length}`,
-        detail: lit >= v.furnaces.length ? 'Seven Flames Row burns again' : burning ? (inRing ? 'Hold the circle while it catches' : 'Get back in its circle - it only catches while you hold it') : `Nearest cold furnace: ${fs ? flameName(fs.flame) : ''} - ${place}`,
+        detail: lit >= v.furnaces.length ? 'All seven foundries burn again' : burning ? (inRing ? 'Hold the foundry while it catches' : 'Get back inside - it only catches while you hold it') : `Nearest cold foundry: ${fs ? flameName(fs.flame) : ''} - ${place}`,
         state: lit >= v.furnaces.length ? 'complete' : 'active',
         progress: burning && fs ? fs.progress : lit / v.furnaces.length,
         tracked: burning,

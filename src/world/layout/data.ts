@@ -142,7 +142,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'SAFE ZONE', title: 'THE HEARTH', text: 'You start here. Its sentry gun cuts down anything that comes through the gate - come back whenever you need to breathe.' },
       { tag: 'CONTRACT ALPHA', title: 'REKINDLE THE BEACON', text: 'Ignite the phoenix beacon on the plaza and hold its circle while it catches. It opens the HQ vault.' },
       { tag: 'CONTRACT BRAVO', title: 'SLAY THE INFERNUS', text: 'The first of them walks the molten floor of the Crucible.' },
-      { tag: 'THE SEVEN EMBERS', title: 'RELIGHT THE FURNACES', text: 'Seven cold furnaces, a different seven every run. Stoke one and hold its circle for 30 seconds while the fire draws them in.' },
+      { tag: 'THE SEVEN EMBERS', title: 'RELIGHT THE FOUNDRIES', text: 'Seven foundries around the Forge, one per currency. Go in, stoke the forge and hold the hall for 30 seconds while a horde comes for it.' },
       { tag: 'EXTRACT', title: 'HOLD THE HEARTH', text: 'Call the bird from the Pad, then hold the Hearth against everything the Forge sends. Board with whoever is left.' },
     ],
   },

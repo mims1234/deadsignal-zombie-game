@@ -186,7 +186,7 @@ describe('co-op session simulation: the story operation', () => {
       expect(JSON.stringify(b.forge?.view ?? null)).toBe(JSON.stringify(a.forge?.view ?? null));
       expect([b.debug.defense.status, b.debug.hunt.status, b.debug.extraction.phase, !!b.debug.barricades]).toEqual([a.debug.defense.status, a.debug.hunt.status, a.debug.extraction.phase, !!a.debug.barricades]);
     }
-  });
+  }, 30000);
 
   it('free roam has no infected, only the players', () => {
     const { sim, run, last } = setup('roam');

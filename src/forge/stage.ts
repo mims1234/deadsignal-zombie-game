@@ -1,14 +1,14 @@
 /**
  * The Forge's moving set pieces on this client (`runtime.ts` drives them from the story's state):
- *   the furnaces   each drawn furnace's mouth (dark, catching in its ember's colour, then roaring), the circle you
- *                  hold while it catches, and a light while it burns
+ *   the foundries  each forge's mouth (dark, catching in its ember's colour, then roaring), the hall's floor lit
+ *                  in that colour while you hold it, and a light while it burns
  *   the sentry     the Hearth's gun: a turret on its plinth that turns to the story's aim, a muzzle flash and a
  *                  tracer for every shot
  *   the turning    the carrier convulsing in a red-gold glow before they are reborn
  * Nothing here decides anything.
  */
 import * as THREE from 'three';
-import { FORGE_SQUAD, FORGE_STORY } from '../config';
+import { FORGE_SQUAD } from '../config';
 import type { Game } from '../game/game';
 import { ignisMaterial } from '../world/layout/ignis';
 import type { FurnaceState } from './story';
@@ -18,15 +18,11 @@ const smooth = (x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** One furnace's circle on the ground while it catches. */
+/** A foundry's hall marked out on its floor while it catches: a glowing border, and the floor filling in with light. */
 interface Ring {
   root: THREE.Group;
-  band: THREE.Mesh;
-  fill: THREE.Mesh;
   mat: THREE.MeshBasicMaterial;
   fillMat: THREE.MeshBasicMaterial;
-  /** The progress the inner band was last drawn at. */
-  drawn: number;
 }
 
 export class ForgeStage {
@@ -44,23 +40,33 @@ export class ForgeStage {
 
   constructor(private readonly g: Game) {
     const sites = g.level.data.forge!;
-    // the hold circles (one per drawn furnace; placed each run)
-    for (let i = 0; i < FORGE_STORY.furnaces.count; i++) {
+    // each foundry's hall, marked out on its floor (shown while it catches)
+    for (const f of sites.furnaces) {
       const root = new THREE.Group();
-      const mat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff8a2a, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
       const fillMat = mat.clone();
-      fillMat.opacity = 0.16;
-      const R = FORGE_STORY.furnaces.radius;
-      const band = new THREE.Mesh(new THREE.RingGeometry(R - 0.18, R, 64), mat);
-      band.rotation.x = -Math.PI / 2;
-      band.position.y = 0.05;
-      const fill = new THREE.Mesh(new THREE.RingGeometry(R - 0.5, R - 0.2, 64, 1, 0, Math.PI * 2), fillMat);
+      fillMat.opacity = 0;
+      const w = f.x1 - f.x0 - 0.3;
+      const d = f.z1 - f.z0 - 0.3;
+      const cx = (f.x0 + f.x1) / 2;
+      const cz = (f.z0 + f.z1) / 2;
+      const strip = (sx: number, sz: number, x: number, z: number): void => {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(sx, sz), mat);
+        m.rotation.x = -Math.PI / 2;
+        m.position.set(x, 0.05, z);
+        root.add(m);
+      };
+      strip(w, 0.16, cx, cz - d / 2);
+      strip(w, 0.16, cx, cz + d / 2);
+      strip(0.16, d, cx - w / 2, cz);
+      strip(0.16, d, cx + w / 2, cz);
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.3, d - 0.3), fillMat);
       fill.rotation.x = -Math.PI / 2;
-      fill.position.y = 0.05;
-      root.add(band, fill);
+      fill.position.set(cx, 0.045, cz);
+      root.add(fill);
       root.visible = false;
       g.worldRoot.add(root);
-      this.rings.push({ root, band, fill, mat, fillMat, drawn: -1 });
+      this.rings.push({ root, mat, fillMat });
     }
     this.furnaceLight = new THREE.PointLight(0xff8a2a, 0, 12, 2);
     g.worldRoot.add(this.furnaceLight);
@@ -113,10 +119,7 @@ export class ForgeStage {
 
   /** A new run: the circles away, the sentry facing its gate. */
   reset(yaw: number): void {
-    for (const r of this.rings) {
-      r.root.visible = false;
-      r.drawn = -1;
-    }
+    for (const r of this.rings) r.root.visible = false;
     this.furnaceLight.intensity = 0;
     this.aim = yaw;
     this.turret.rotation.y = yaw;
@@ -139,7 +142,7 @@ export class ForgeStage {
     let lightAt: { x: number; z: number; c: number; k: number } | null = null;
     list.forEach((f, i) => {
       const s = sites.furnaces[f.spot];
-      const ring = this.rings[i];
+      const ring = this.rings[f.spot];
       if (!s || !ring) return;
       const color = FORGE_SQUAD.flames[f.flame]?.color ?? 0xff7a1a;
       const mouth = fx?.furnaceMouths[f.spot];
@@ -151,21 +154,14 @@ export class ForgeStage {
       }
       ring.root.visible = f.phase === 'burning';
       if (f.phase !== 'burning') return;
-      ring.root.position.set(s.x, 0, s.z);
       ring.mat.color.setHex(color);
       ring.fillMat.color.setHex(color);
-      const inside = Math.hypot(p.x - s.x, p.z - s.z) < FORGE_STORY.furnaces.radius;
-      ring.mat.opacity = inside ? 0.75 : 0.35 + 0.2 * Math.sin(clock * 4);
-      // the inner band sweeps round as it catches
-      const k = Math.max(0.001, f.progress);
-      if (Math.abs(k - ring.drawn) > 0.01) {
-        ring.drawn = k;
-        ring.fill.geometry.dispose();
-        ring.fill.geometry = new THREE.RingGeometry(FORGE_STORY.furnaces.radius - 0.6, FORGE_STORY.furnaces.radius - 0.22, 48, 1, Math.PI / 2, -Math.PI * 2 * k);
-      }
-      ring.fillMat.opacity = 0.45;
+      const inside = p.x > s.x0 && p.x < s.x1 && p.z > s.z0 && p.z < s.z1;
+      ring.mat.opacity = inside ? 0.8 : 0.35 + 0.25 * Math.sin(clock * 4);
+      // the floor fills with light as it catches
+      ring.fillMat.opacity = 0.04 + 0.16 * f.progress;
       const d = Math.hypot(p.x - s.x, p.z - s.z);
-      if (!lightAt || d < Math.hypot(p.x - lightAt.x, p.z - lightAt.z)) lightAt = { x: s.x - Math.sin(s.yaw) * 1.6, z: s.z - Math.cos(s.yaw) * 1.6, c: color, k: f.progress };
+      if (!lightAt || d < Math.hypot(p.x - lightAt.x, p.z - lightAt.z)) lightAt = { x: s.x + Math.sin(s.yaw) * 1.2, z: s.z + Math.cos(s.yaw) * 1.2, c: color, k: f.progress };
     });
     const L = lightAt as { x: number; z: number; c: number; k: number } | null;
     if (L) {

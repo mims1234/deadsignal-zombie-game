@@ -172,19 +172,26 @@ describe('the Forge: the ledger and the Pit', () => {
 });
 
 describe('the Forge: the furnaces', () => {
-  it('draws seven different furnaces, one for each ember', () => {
+  it('has the seven foundries, one for each ember, each one a hall you can walk into', () => {
     const { story, sites } = forgeRun();
     const f = story.view.furnaces;
+    expect(sites.furnaces.length).toBe(FORGE_SQUAD.flames.length);
     expect(f.length).toBe(FORGE_STORY.furnaces.count);
-    expect(new Set(f.map((q) => q.spot)).size).toBe(f.length);
-    expect(new Set(f.map((q) => q.flame)).size).toBe(FORGE_SQUAD.flames.length);
+    expect(f.map((q) => q.flame)).toEqual(FORGE_SQUAD.flames.map((_, i) => i));
     for (const q of f) {
       expect(q.phase).toBe('cold');
-      expect(sites.furnaces[q.spot]).toBeDefined();
+      const s = sites.furnaces[q.spot]!;
+      // you stand to stoke it inside the hall, and the hall is reachable on foot from the Hearth and its door
+      expect(story.inFoundry(q.spot, s.x, s.z)).toBe(true);
+      expect(story.assault.reachable(s.x, s.z)).toBe(true);
+      expect(story.assault.reachable(s.doorX, s.doorZ)).toBe(true);
     }
-    // a different seven another run
-    const other = forgeRun(12).story.view.furnaces.map((q) => q.spot).join(',');
-    expect(other).not.toBe(f.map((q) => q.spot).join(','));
+    // spread out over the map
+    for (let a = 0; a < sites.furnaces.length; a++) for (let b = a + 1; b < sites.furnaces.length; b++) {
+      const A = sites.furnaces[a]!;
+      const B = sites.furnaces[b]!;
+      expect(Math.hypot(A.x - B.x, A.z - B.z)).toBeGreaterThan(25);
+    }
   });
 
   it('is stoked only from in front of it, catches only while its circle is held, and draws the infected in', () => {
@@ -202,10 +209,10 @@ describe('the Forge: the furnaces', () => {
     run(10);
     expect(f.progress).toBeGreaterThan(0.25);
     expect(sim.zombies.zombies.length).toBeGreaterThan(before);
-    // walk away: it stops catching
+    // walk out of the hall: it stops catching
     const s = sites.furnaces[f.spot]!;
-    me.x = s.x + 30;
-    me.z = s.z;
+    me.x = s.doorX + (s.doorX - s.x) * 3;
+    me.z = s.doorZ + (s.doorZ - s.z) * 3;
     run(0.2);
     const held = f.progress;
     run(5);

@@ -4,13 +4,13 @@
  *   N  Quench Street, the Hearth (the safe courtyard by the Pad where the run starts: its gate open, a sentry gun in
  *      the middle), Anya's radio room, the pump
  *      house, the Rumble Pit (riry's arena), the quench shed, the Slag Yard and its control shed
- *   W  Flame Row and Seven Flames Row: seven small forges, one for each of Vulcan's allied foundries; the pattern shop
+ *   W  Flame Row; the pattern shop
  *   E  Ember Road and the Spawn Hall (the clan's #infernus-spawn: where it started), its back office
  *   S  Foundry Street, the Ledger House (the Ignis ledger, the hand-delivery counter) and its office, the furnace
  *      crew's lockers, the market's cold store
  *
- * Around it all stand sixteen small furnaces, cold since the collection stopped (`FURNACE_SPOTS`); seven are drawn each
- * run, one for each ember (`forge/story.ts`).
+ * Around it all stand the seven foundries, one for each ember (`FOUNDRY_SITES`): brick halls with a cold forge inside,
+ * spread over the whole map. Stoke one and hold the hall while it catches (`forge/story.ts`).
  *
  * The safe rooms are `forgeRooms.ts`. Everything here registers its colliders, spawn points and resident infected.
  */
@@ -18,7 +18,7 @@ import * as THREE from 'three';
 import { FORGE_SQUAD } from '../../config';
 import type { FurnaceSpot, HearthDef, LedgerSpot, RumblePitDef, SafeRoomDef } from '../../forge/sites';
 import { barrelGroup, container, corpse, crateGroup, debris, floodlightTower, fuelTank, jerseyBarrier, pallet, pipeStack, streetLamp, tireStack, vehicle } from '../props';
-import { addBox, building, groundRect, wallDecal } from '../structures';
+import { addBox, building, groundRect, type Side, wallDecal } from '../structures';
 import { neonLabelMaterial } from '../landmarks/tex';
 import { type DoorHandle, safeRoom } from './forgeRooms';
 import { ignisMaterial, ignisTerminalMaterial } from './ignis';
@@ -30,69 +30,115 @@ export interface OuterResult {
   hearth: HearthDef;
   ledger: LedgerSpot[];
   rumble: RumblePitDef;
-  /** The seven forges' fires on Seven Flames Row (dim until all seven flames are found). */
-  flameForges: THREE.MeshStandardMaterial[];
   /** The Hearth's gate glow (amber; red when the last carrier turns). */
   hearthGlow: THREE.MeshStandardMaterial;
+  /** The seven foundries' forges (in `FORGE_SQUAD.flames` order). */
   furnaces: FurnaceSpot[];
-  /** Each furnace's mouth (by spot): dark while cold, the ember's colour once stoked. */
+  /** Each forge's mouth: dark while cold, its ember's colour once stoked. */
   furnaceMouths: THREE.MeshStandardMaterial[];
 }
 
-/** Where the cold furnaces stand (each facing the middle of the Forge), with a name for the HUD. */
-const FURNACE_SPOTS: readonly [number, number, string][] = [
-  [-80, -53, 'Quench Street, west'],
-  [-10, -53, 'Quench Street'],
-  [60, -52, 'Quench Street, east'],
-  [-70, -30, 'Flame Row'],
-  [0, -20, 'the foundry quarter'],
-  [70, -25, 'Ember Road'],
-  [-84, 2, 'Seven Flames Row'],
-  [-14, -1, 'the crossroads'],
-  [50, 2, 'the east yards'],
-  [84, -1, 'Ember Road, east'],
-  [-30, 20, 'the west yards'],
-  [80, 25, 'by the Spawn Hall'],
-  [-76, 30, 'Flame Row, south'],
-  [-38, 48, 'Foundry Street, west'],
-  [30, 52, 'Foundry Street'],
-  [70, 51, 'Foundry Street, east'],
+/** Where the seven foundries stand (one per ember, in `FORGE_SQUAD.flames` order), their size, and the side they open on. */
+const FOUNDRY_SITES: readonly { x: number; z: number; w: number; d: number; front: Side; side: Side; place: string }[] = [
+  { x: -11, z: -66, w: 10, d: 12, front: 'S', side: 'E', place: 'the north end, by Quench Street' },
+  { x: 78, z: -36, w: 12, d: 10, front: 'W', side: 'N', place: 'Ember Road, by the Slag Yard' },
+  { x: 12, z: 22, w: 12, d: 10, front: 'W', side: 'S', place: 'the middle, off Anvil Road' },
+  { x: -87, z: -43, w: 10, d: 12, front: 'E', side: 'S', place: 'the far west, off Flame Row' },
+  { x: 72, z: 65, w: 10, d: 12, front: 'N', side: 'W', place: 'the south-east corner, off Foundry Street' },
+  { x: -69, z: 65, w: 10, d: 12, front: 'N', side: 'E', place: 'the south-west corner, off Foundry Street' },
+  { x: -83, z: 12, w: 10, d: 12, front: 'E', side: 'N', place: 'the west, off Flame Row' },
 ];
 
+/** Which way a side faces (outward). */
+const OUT: Record<Side, [number, number]> = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+
 /**
- * One of the small furnaces: a round brick belly under an iron hood and a chimney, an arched mouth (dark until it is
- * stoked) and over it the Ignis mark, gone dim. Returns the mouth's material.
+ * One of the seven foundries: a brick hall you walk into (a wide door at the front, a narrower one at the side), its
+ * name in neon over the front door in its ember's colour. Inside, against the back wall, the forge: a brick hearth with
+ * a chimney up through the roof and a mouth that is dark until it is stoked; an anvil, a workbench, barrels. Holding
+ * the hall while the forge catches is the job (`forge/story.ts`). Returns where it is and the forge's mouth.
  */
-function coldFurnace(c: Ctx, f: FurnaceSpot): THREE.MeshStandardMaterial {
-  const { b } = c;
-  const fx = -Math.sin(f.yaw);
-  const fz = -Math.cos(f.yaw);
-  const brick = b.mats.get('brick');
-  const iron = b.mats.get('steelDark');
-  // (the transform is set before the mesh is added: the builder takes it as it is then)
-  const put = (geo: THREE.BufferGeometry, m: THREE.Material, y: number, fwd = 0, rx = 0, ry = f.yaw, shadow = true): THREE.Mesh => {
+function foundry(c: Ctx, i: number): { spot: FurnaceSpot; mouth: THREE.MeshStandardMaterial } {
+  const { b, d } = c;
+  const site = FOUNDRY_SITES[i]!;
+  const flame = FORGE_SQUAD.flames[i]!;
+  const H = 5.4;
+  const len = (s: Side): number => (s === 'N' || s === 'S' ? site.w : site.d);
+  const info = building(b, {
+    x: site.x,
+    z: site.z,
+    w: site.w,
+    d: site.d,
+    height: H,
+    wallMaterial: 'brick',
+    roofMaterial: 'roof',
+    floorMaterial: 'floorWarehouse',
+    ceilingMaterial: 'concreteDark',
+    parapet: 0.5,
+    sides: {
+      [site.front]: { openings: [{ at: len(site.front) / 2, width: 3.4, height: 3.3, kind: 'door', frame: 'steelDark' }] },
+      [site.side]: { openings: [{ at: 2.6, width: 2.2, height: 2.5, kind: 'door', frame: 'steelDark' }, { at: len(site.side) - 2.6, width: 1.8, height: 1.1, sill: 2.4, kind: 'window', lit: true }] },
+    },
+    tag: 'foundry',
+  });
+  const [nx, nz] = OUT[site.front];
+  const inner = info.inner;
+  const cx = (inner.x0 + inner.x1) / 2;
+  const cz = (inner.z0 + inner.z1) / 2;
+  const half = nx !== 0 ? (inner.x1 - inner.x0) / 2 : (inner.z1 - inner.z0) / 2;
+  // the forge against the back wall, its mouth to the front door
+  const hx = cx - nx * (half - 0.75);
+  const hz = cz - nz * (half - 0.75);
+  const yaw = Math.atan2(-nx, -nz);
+  const across = nx !== 0;
+  const put = (geo: THREE.BufferGeometry, m: THREE.Material, x: number, y: number, z: number, ry = 0): void => {
     const mesh = new THREE.Mesh(geo, m);
-    mesh.position.set(f.x + fx * fwd, y, f.z + fz * fwd);
-    mesh.rotation.set(rx, ry, 0);
-    mesh.castShadow = shadow;
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = ry;
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     b.add(mesh);
-    return mesh;
   };
-  put(new THREE.CylinderGeometry(0.95, 1.05, 1.5, 14), brick, 0.75);
-  put(new THREE.CylinderGeometry(1.08, 1.08, 0.12, 14), iron, 1.52);
-  put(new THREE.ConeGeometry(1.0, 0.85, 14), iron, 2.0);
-  put(new THREE.CylinderGeometry(0.17, 0.2, 1.6, 8), iron, 2.9, -0.35);
-  put(new THREE.TorusGeometry(0.42, 0.06, 6, 14, Math.PI), iron, 0.55, 1.06);
-  const mouth = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: 0xff7a1a, emissiveIntensity: 0.04, roughness: 0.6 });
-  // the mouth glows and changes colour as it catches: kept out of the static batches
-  const m = new THREE.Mesh(new THREE.CircleGeometry(0.4, 14, 0, Math.PI), mouth);
-  m.position.set(f.x + fx * 1.07, 0.55, f.z + fz * 1.07);
-  m.rotation.y = f.yaw + Math.PI;
+  const brick = b.mats.get('brick');
+  const iron = b.mats.get('steelDark');
+  put(new THREE.BoxGeometry(across ? 1.5 : 2.8, 1.7, across ? 2.8 : 1.5), brick, hx, 0.85, hz);
+  put(new THREE.BoxGeometry(across ? 1.1 : 1.8, 1.0, across ? 1.8 : 1.1), b.mats.get('concreteDark'), hx - nx * 0.1, 2.2, hz - nz * 0.1);
+  put(new THREE.BoxGeometry(0.7, H + 1.6 - 2.7, 0.7), iron, hx - nx * 0.3, 2.7 + (H + 1.6 - 2.7) / 2, hz - nz * 0.3);
+  b.collideBox(hx, hz, across ? 1.6 : 2.9, across ? 2.9 : 1.6, 2.6, { mapKind: 'prop', tag: 'foundry-forge' });
+  // the mouth (it glows as it catches: kept out of the static batches)
+  const mouth = new THREE.MeshStandardMaterial({ color: 0x0c0806, emissive: flame.color, emissiveIntensity: 0.05, roughness: 0.6 });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.8), mouth);
+  m.position.set(hx + nx * 0.77, 0.75, hz + nz * 0.77);
+  m.rotation.y = yaw + Math.PI;
   b.addDynamic(m);
-  put(new THREE.PlaneGeometry(0.42, 0.42), ignisMaterial('dim'), 1.15, 1.01, 0, f.yaw + Math.PI, false);
-  b.collideBox(f.x, f.z, 2.1, 2.1, 2.4, { mapKind: 'prop', tag: 'furnace', rot: f.yaw });
-  return mouth;
+  // the Ignis mark over the mouth, gone dim
+  const mark = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), ignisMaterial('dim'));
+  mark.position.set(hx + nx * 0.56, 2.2, hz + nz * 0.56);
+  mark.rotation.y = yaw + Math.PI;
+  b.add(mark);
+  // an anvil on a block in front of it, a workbench along a side wall, barrels in the corners
+  put(new THREE.BoxGeometry(0.5, 0.6, 0.5), iron, cx - nx * 0.6 + nz * 1.6, 0.3, cz - nz * 0.6 - nx * 1.6);
+  put(new THREE.BoxGeometry(across ? 0.9 : 0.35, 0.22, across ? 0.35 : 0.9), iron, cx - nx * 0.6 + nz * 1.6, 0.71, cz - nz * 0.6 - nx * 1.6);
+  b.collideBox(cx - nx * 0.6 + nz * 1.6, cz - nz * 0.6 - nx * 1.6, 0.6, 0.6, 0.85, { mapKind: 'prop', tag: 'anvil' });
+  const sideX = nz !== 0 ? (nz > 0 ? inner.x0 + 0.45 : inner.x1 - 0.45) : cx;
+  const sideZ = nx !== 0 ? (nx > 0 ? inner.z1 - 0.45 : inner.z0 + 0.45) : cz;
+  put(new THREE.BoxGeometry(across ? 2.4 : 0.8, 0.9, across ? 0.8 : 2.4), b.mats.get('wood'), sideX, 0.45, sideZ);
+  b.collideBox(sideX, sideZ, across ? 2.4 : 0.8, across ? 0.8 : 2.4, 1, { mapKind: 'prop', tag: 'workbench' });
+  barrelGroup(b, { x: cx - nx * (half - 0.8) - nz * 0 + (nx !== 0 ? 0 : half - 0.9), z: cz - nz * (half - 0.8) + (nz !== 0 ? 0 : half - 0.9), rot: 0, count: 2, radius: 0.6, seed: 700 + i, colors: ['rust'] });
+  b.light({ x: cx, y: 3.4, z: cz, color: flame.color, intensity: 20, distance: 11, weight: 0.6 });
+  // the name in neon over the front door
+  const fx = cx + nx * (half + 0.45);
+  const fz = cz + nz * (half + 0.45);
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.6, 0.62), neonLabelMaterial(flame.name, `#${flame.color.toString(16).padStart(6, '0')}`));
+  sign.position.set(fx, 3.95, fz);
+  sign.rotation.y = Math.atan2(nx, nz);
+  b.add(sign);
+  d.label(flame.name, cx, cz, 0.7);
+  const stand = { x: hx + nx * 2.2, z: hz + nz * 2.2 };
+  return {
+    spot: { x: stand.x, z: stand.z, yaw, place: site.place, x0: inner.x0, z0: inner.z0, x1: inner.x1, z1: inner.z1, doorX: cx + nx * (half + 2.5), doorZ: cz + nz * (half + 2.5) },
+    mouth,
+  };
 }
 
 /** A dimmed Ignis terminal on a post, facing yaw `rot`. */
@@ -117,34 +163,6 @@ function slagHeap(c: Ctx, x: number, z: number, r: number, h: number): void {
   m.receiveShadow = true;
   b.add(m);
   b.collide({ x, z, hx: r * 0.72, hz: r * 0.72, rot: 0.785, y1: h * 0.8, mapKind: 'prop', tag: 'slag', surface: 'concrete' });
-}
-
-/** One of the seven small forges: an open-fronted brick shed facing east onto Flame Row, its hearth in the flame's colour. */
-function flameForge(c: Ctx, z: number, color: number, name: string): THREE.MeshStandardMaterial {
-  const { b } = c;
-  const x0 = -92;
-  const x1 = -80;
-  const h = 4;
-  // back and side walls (the east side is open)
-  addBox(b, 'brick', x0 + 0.2, h / 2, z, 0.4, h, 7);
-  b.collideBox(x0 + 0.2, z, 0.4, 7, h, { mapKind: 'wall', tag: 'forge-shed' });
-  for (const s of [-1, 1]) {
-    addBox(b, 'brick', (x0 + x1) / 2, h / 2, z + s * 3.3, x1 - x0, h, 0.4);
-    b.collideBox((x0 + x1) / 2, z + s * 3.3, x1 - x0, 0.4, h, { mapKind: 'wall', tag: 'forge-shed' });
-  }
-  addBox(b, 'roof', (x0 + x1) / 2 + 0.5, h + 0.2, z, x1 - x0 + 1, 0.4, 7.4);
-  b.collide({ x: (x0 + x1) / 2 + 0.5, z, hx: (x1 - x0 + 1) / 2, hz: 3.7, y0: h, y1: h + 0.4, mapKind: 'none', tag: 'roof' });
-  groundRect(b, 'floorWarehouse', x0 + 0.4, z - 3.1, x1, z + 3.1, 0.03);
-  // the hearth: a brick block against the back wall with an opening glowing in the flame's colour
-  addBox(b, 'brick', x0 + 1.6, 0.9, z, 2.2, 1.8, 2.6);
-  addBox(b, 'concreteDark', x0 + 1.4, 2.6, z, 1.4, 1.6, 1.6);
-  const fire = new THREE.MeshStandardMaterial({ color: 0x1a0a04, emissive: color, emissiveIntensity: 0.15, roughness: 0.5 });
-  addBox(b, fire, x0 + 2.72, 0.9, z, 0.05, 0.9, 1.6, 0, { cast: false });
-  b.collideBox(x0 + 1.6, z, 2.2, 2.6, 1.8, { mapKind: 'prop', tag: 'forge-hearth' });
-  // its foundry's name over the front
-  addBox(b, neonLabelMaterial(name, `#${color.toString(16).padStart(6, '0')}`), x1 - 0.1, h - 0.5, z, 0.08, 0.5, 4.6, HALF_PI, { cast: false });
-  b.light({ x: x0 + 3.2, y: 1.2, z, color, intensity: 16, distance: 7, weight: 0.4 });
-  return fire;
 }
 
 export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
@@ -291,11 +309,7 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
   barrelGroup(b, { x: 80, z: -18, rot: 0, count: 6, radius: 1.6, seed: 522, colors: ['rust', 'yellow'] });
   d.label('SLAG YARD', 70, -60, 0.8);
 
-  // ---- W: Seven Flames Row (four forges north of Cinder Way, three south) ----
-  const flameForges: THREE.MeshStandardMaterial[] = [];
-  const forgeZ = [-44, -33, -22, -11, 13, 24, 35];
-  FORGE_SQUAD.flames.forEach((f, i) => flameForges.push(flameForge(c, forgeZ[i]!, f.color, f.name)));
-  d.label('SEVEN FLAMES ROW', -78, 0, 0.8);
+  // ---- W: Flame Row ----
   barrelGroup(b, { x: -76, z: 44, rot: 0, count: 4, radius: 1.3, seed: 530, colors: ['rust'] });
   tireStack(b, { x: -76, z: -48, rot: 0 });
 
@@ -399,8 +413,9 @@ export function buildForgeOuter(c: Ctx, doors: DoorHandle[]): OuterResult {
   d.zombies('high', 'runner', [[56, -70], [84, 24], [76, -24]]);
   d.zombies('high', 'armored', [[86, 18], [68, -70], [88, -16]]);
 
-  // ---- the cold furnaces ----
-  const furnaces: FurnaceSpot[] = FURNACE_SPOTS.map(([x, z, place]) => ({ x, z, yaw: Math.atan2(x, z), place }));
-  const furnaceMouths = furnaces.map((f) => coldFurnace(c, f));
-  return { rooms, hearth, ledger, rumble, flameForges, hearthGlow, furnaces, furnaceMouths };
+  // ---- the seven foundries ----
+  const built = FORGE_SQUAD.flames.map((_, i) => foundry(c, i));
+  const furnaces: FurnaceSpot[] = built.map((f) => f.spot);
+  const furnaceMouths = built.map((f) => f.mouth);
+  return { rooms, hearth, ledger, rumble, hearthGlow, furnaces, furnaceMouths };
 }

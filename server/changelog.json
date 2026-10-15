@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.101",
+      "date": "2026-10-15",
+      "title": "The seven foundries",
+      "notes": [
+        "The embers come from the seven named foundries (IGNIS, AMETHYST FLAME, KIZUNA SPARK, SAKURA SPARK, MOSSFIRE, VOID EMBER, FROSTFIRE), now brick halls spread around the Forge instead of one row.",
+        "Go in, stoke the forge and hold the hall for 30 seconds while a horde comes for it, wave after wave, until it catches.",
+        "The small round furnaces are gone.",
+        "Killed infected no longer float in the air lying flat: a body knocked over rests on the ground, and any still tumbling after 3 seconds settles."
+      ]
+    },
+    {
       "version": "0.1.100",
       "date": "2026-10-15",
       "title": "Standard Mazoku made plain, and version numbers",

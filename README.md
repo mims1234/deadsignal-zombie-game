@@ -62,7 +62,7 @@ Pick the map on the title screen (the page reloads to build it).
   the Forge ran on embers, collected by seven furnaces - and seven days ago the collection stopped. The fire with
   nowhere to go burned up the people who made it: about a third of the Forge's infected still carry the names of
   Vulcan's members, and they look like the people they were. The run starts in **the Hearth** by the Pad; around it
-  are Phoenix Plaza and the Crucible, riry's Rumble Pit, the Slag Yard, Seven Flames Row, the Spawn Hall and the
+  are Phoenix Plaza and the Crucible, riry's Rumble Pit, the Slag Yard, the seven foundries, the Spawn Hall and the
   Ledger House. Its contracts: **Rekindle the beacon**, **Slay the Infernus** in the Crucible, then call the bird and
   **hold the Hearth**. On top of that:
   - **The Hearth** is your safe zone: walk in and out through its open gate, and its sentry gun cuts down any infected
@@ -73,9 +73,10 @@ Pick the map on the title screen (the page reloads to build it).
   - **The holdouts**: the third co-leader, Anya and four members of the clan barricaded themselves into rooms around
     the Forge, and the infected pound on their doors (they never get in). Clear a door and hold E: they slip out the
     back to the Hearth and board with you at the end. tomoe is in the HQ vault, which opens when the beacon burns.
-  - **The seven embers**: seven cold furnaces, drawn each run from sixteen around the map, one for each of the Forge's
-    currencies. Stoke one (hold E), then hold its circle for 30 seconds while the fire draws the infected in. $150
-    each; all seven pay $700 and two armor plates and relight Seven Flames Row.
+  - **The seven embers**: seven foundries spread around the map, one for each of the Forge's currencies (IGNIS,
+    AMETHYST FLAME, KIZUNA SPARK, SAKURA SPARK, MOSSFIRE, VOID EMBER, FROSTFIRE). Go inside, stoke the forge (hold E),
+    then hold the hall for 30 seconds while a horde comes for it, wave after wave, until it catches. $150 each; all
+    seven pay $700 and two armor plates.
   - **The last stand**: once the bird is called, the whole Forge comes for the Hearth in waves - more than the sentry
     can hold. Anyone they reach there dies, so the squad holds the gate.
   - **tomoe's ledger**: four pages to find, each with a piece of where the embers went.

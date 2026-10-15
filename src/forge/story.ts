@@ -6,7 +6,8 @@
  *   holdouts  barricaded into rooms; once nothing is on its feet at a door, a hold of E there and they slip out the
  *             back to the Hearth, where each takes a spot (tomoe's vault opens when the beacon burns)
  *   siege     the infected at the doors (`siege.ts`)
- *   furnaces  seven of the cold furnaces around the Forge, one per ember: stoke one, hold its circle while it catches
+ *   furnaces  the seven foundries around the Forge, one per ember: stoke the forge inside, hold the hall while a horde
+ *             comes for it, until it catches
  *   ledger    four pages to pick up
  *   rumble    riry's bell: three waves in the Rumble Pit
  *   sentry    the Hearth's gun: it covers the courtyard and its gate (never a boss)
@@ -45,7 +46,7 @@ export type FurnacePhase = 'cold' | 'burning' | 'lit';
 export const FURNACE_PHASES: readonly FurnacePhase[] = ['cold', 'burning', 'lit'];
 
 export interface FurnaceState {
-  /** Which of the layout's furnaces (`sites.furnaces`). */
+  /** Which foundry (`sites.furnaces`). */
   spot: number;
   /** Which ember it gives (`FORGE_SQUAD.flames`). */
   flame: number;
@@ -138,18 +139,8 @@ export class ForgeStory {
   reset(rng: Rng): ForgeRoster {
     const roster = pickForgeRoster(rng, this.sites.rooms);
     this.carrier = roster.carrier;
-    // seven of the furnaces, each given one of the seven embers
-    const spots = this.sites.furnaces.map((_, i) => i);
-    for (let i = spots.length - 1; i > 0; i--) {
-      const j = Math.floor(rng.f() * (i + 1));
-      [spots[i], spots[j]] = [spots[j]!, spots[i]!];
-    }
-    const flames = FORGE_SQUAD.flames.map((_, i) => i);
-    for (let i = flames.length - 1; i > 0; i--) {
-      const j = Math.floor(rng.f() * (i + 1));
-      [flames[i], flames[j]] = [flames[j]!, flames[i]!];
-    }
-    const count = Math.min(FORGE_STORY.furnaces.count, spots.length, flames.length);
+    // the seven foundries, each its own ember
+    const count = Math.min(FORGE_STORY.furnaces.count, this.sites.furnaces.length, FORGE_SQUAD.flames.length);
     const h = this.sites.hearth;
     this.view = {
       squad: [...roster.squad],
@@ -157,7 +148,7 @@ export class ForgeStory {
       ledger: this.sites.ledger.map(() => false),
       rumble: { phase: 'idle', wave: 0 },
       finale: { phase: 'idle', carrier: -1 },
-      furnaces: Array.from({ length: count }, (_, i) => ({ spot: spots[i]!, flame: flames[i]!, phase: 'cold' as FurnacePhase, progress: 0 })),
+      furnaces: Array.from({ length: count }, (_, i) => ({ spot: i, flame: i, phase: 'cold' as FurnacePhase, progress: 0 })),
       sentry: { yaw: Math.atan2(-(h.gateX - h.sentryX), -(h.gateZ - h.sentryZ)), shots: 0, tx: h.gateX, tz: h.gateZ },
       assault: 'idle',
     };
@@ -231,12 +222,17 @@ export class ForgeStory {
     return true;
   }
 
-  /** Where you stand to stoke furnace `i` (in front of its mouth). */
+  /** Where you stand to stoke foundry `i`'s forge (in front of its mouth). */
   furnaceFront(i: number): { x: number; z: number } | null {
     const f = this.view.furnaces[i];
     const s = f ? this.sites.furnaces[f.spot] : undefined;
-    if (!s) return null;
-    return { x: s.x - Math.sin(s.yaw) * 1.9, z: s.z - Math.cos(s.yaw) * 1.9 };
+    return s ? { x: s.x, z: s.z } : null;
+  }
+
+  /** Is (x, z) inside foundry `spot`'s hall? */
+  inFoundry(spot: number, x: number, z: number): boolean {
+    const s = this.sites.furnaces[spot];
+    return !!s && x > s.x0 - 0.3 && x < s.x1 + 0.3 && z > s.z0 - 0.3 && z < s.z1 + 0.3;
   }
 
   /** Furnace `i` is stoked: its circle must now be held while it catches. */
@@ -298,23 +294,23 @@ export class ForgeStory {
         // the virus is over: the fire catches by itself
         f.progress = Math.min(1, f.progress + dt / 4);
       } else {
-        const held = t.players.some((p) => p.alive && Math.hypot(p.x - s.x, p.z - s.z) < F.radius);
+        const held = t.players.some((p) => p.alive && this.inFoundry(f.spot, p.x, p.z));
         if (held) f.progress = Math.min(1, f.progress + dt / F.hold);
-        // the fire draws the infected in
+        // the fire draws a horde to the hall, wave after wave, until it catches
         this.drawT[i]! -= dt;
         if (this.drawT[i]! <= 0) {
-          this.drawT[i] = F.drawEvery * (0.8 + rng.f() * 0.4);
+          this.drawT[i] = F.drawEvery * (0.85 + rng.f() * 0.3);
           const [a, b] = F.draw as readonly [number, number];
-          const n = a + Math.floor(rng.f() * (b - a + 1));
-          for (let k = 0; k < n; k++) this.drawOne(s.x, s.z, t, rng);
+          const n = a + Math.floor(rng.f() * (b - a + 1)) + F.drawPerPlayer * Math.max(0, t.playerCount - 1);
+          for (let k = 0; k < n; k++) this.drawOne(s.doorX, s.doorZ, (s.x0 + s.x1) / 2, (s.z0 + s.z1) / 2, t, rng);
         }
       }
       if (f.progress >= 1) f.phase = 'lit';
     });
   }
 
-  /** One infected drawn to the fire at (x, z), from a spot nobody can see. */
-  private drawOne(x: number, z: number, t: StoryTick, rng: Rng): void {
+  /** One infected drawn to the fire: from a spot nobody can see, around the hall's door at (x, z), headed inside (hx, hz). */
+  private drawOne(x: number, z: number, hx: number, hz: number, t: StoryTick, rng: Rng): void {
     const [d0, d1] = FORGE_STORY.furnaces.drawAway as readonly [number, number];
     for (let k = 0; k < 10; k++) {
       const a = rng.f() * Math.PI * 2;
@@ -323,8 +319,8 @@ export class ForgeStory {
       const sz = z + Math.cos(a) * d;
       if (this.nav.isBlockedAt(sx, sz) || !this.assault.reachable(sx, sz) || t.seen(sx, sz)) continue;
       const v = rng.f();
-      const zz = this.zombies.spawn(v < 0.35 ? 'runner' : 'shambler', sx, sz, rng, { yaw: Math.atan2(sx - x, sz - z) });
-      zz.aggro(x, z);
+      const zz = this.zombies.spawn(v < 0.12 ? 'armored' : v < 0.45 ? 'runner' : 'shambler', sx, sz, rng, { yaw: Math.atan2(sx - x, sz - z) });
+      zz.aggro(hx, hz);
       return;
     }
   }
