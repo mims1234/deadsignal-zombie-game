@@ -104,6 +104,8 @@ export class CoopUi {
 
   /** Ticks the start countdown while it shows. */
   private countdownTimer: number | null = null;
+  /** What is typed in the owner's invite field (kept across redraws). */
+  private inviteDraft = '';
 
   private render(): void {
     if (this.countdownTimer !== null) {
@@ -116,7 +118,26 @@ export class CoopUi {
     document.documentElement.classList.toggle('ds-lobby-open', show);
     if (!show) return;
     const p = this.panel;
+    // the panel is rebuilt on every change (pings arrive every few seconds): keep where the reader had scrolled to,
+    // and the field they were typing in, so neither jumps back
+    const prevBody = p.querySelector<HTMLElement>('.body');
+    const scroll = prevBody?.scrollTop ?? 0;
+    const focused = document.activeElement instanceof HTMLInputElement && p.contains(document.activeElement) ? document.activeElement : null;
+    const field = focused ? { name: focused.name, start: focused.selectionStart, end: focused.selectionEnd } : null;
     p.replaceChildren();
+    queueMicrotask(() => {
+      const body = p.querySelector<HTMLElement>('.body');
+      if (body) body.scrollTop = scroll;
+      if (!field) return;
+      const again = p.querySelector<HTMLInputElement>(`input[name="${field.name}"]`);
+      if (!again) return;
+      again.focus({ preventScroll: true });
+      try {
+        if (field.start !== null && field.end !== null) again.setSelectionRange(field.start, field.end);
+      } catch {
+        /* inputs without a selection (numeric on some browsers) */
+      }
+    });
     const head = el('div', 'ds-panel-head big', p);
     el('span', '', head, 'CO-OP SESSION');
     el('span', 'aux', head, `UP TO ${COOP.maxPlayers} PLAYERS`);
@@ -167,6 +188,7 @@ export class CoopUi {
       vis.title = 'Who can join';
       const join = el('div', 'row', body);
       const input = el('input', 'code', join);
+      input.name = 'code';
       input.placeholder = 'SESSION CODE';
       input.maxLength = 6;
       input.value = this.codeDraft;
@@ -273,10 +295,16 @@ export class CoopUi {
       if (room.visibility === 'private') {
         const inv = el('div', 'row', body);
         const input = el('input', '', inv);
+        input.name = 'invite';
         input.placeholder = 'DISCORD ID TO INVITE';
         input.inputMode = 'numeric';
+        input.value = this.inviteDraft;
+        input.addEventListener('input', () => (this.inviteDraft = input.value));
         this.button(inv, 'INVITE', '', () => {
-          if (/^\d{5,20}$/.test(input.value.trim())) this.coop.room.manage('invite', { id: input.value.trim() });
+          if (/^\d{5,20}$/.test(input.value.trim())) {
+            this.coop.room.manage('invite', { id: input.value.trim() });
+            this.inviteDraft = '';
+          }
         });
         const chips = el('div', 'people', body);
         for (const id of room.invites ?? []) {
