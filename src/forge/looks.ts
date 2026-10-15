@@ -14,14 +14,17 @@ type Look = Omit<AvatarLook, 'hero'>;
 const LEADERSHIP: Record<string, Look & { color: number }> = {
   // the leader: a long ember-lined coat, dark hair tied low, a phoenix pin and a sash
   tomoe: { build: 'lean', heroHair: 'lowPony', hairColor: 0x15121a, skin: 0xe9c7a8, eyes: 0x3a2418, heroOutfit: 'coat', color: 0x1e1a22, accent: 0xff7a1a, pants: 0x18161c, accessories: ['phoenixPin', 'sash'] },
-  // co-leader: long waves, a cropped ember jacket, a scarf
-  Athy: { build: 'f', female: true, heroHair: 'waves', hairColor: 0x6a3a22, skin: 0xf0d0b8, eyes: 0x4a6a3a, heroOutfit: 'jacket', color: 0x8a2a1a, accent: 0xffb060, pants: 0x22201f, accessories: ['scarf'] },
-  // co-leader: the rumbles - a pink high ponytail, a hoodie and headphones
-  piryriry: { build: 'f', female: true, heroHair: 'highPony', hairColor: 0xe88ab4, skin: 0xf6dccb, eyes: 0x6a2a4a, heroOutfit: 'hoodie', color: 0x2a2440, accent: 0xff8ac8, pants: 0x1c1a24, accessories: ['headphones'] },
+  // co-leader, drawn anime-style: calm, very long pale-blue hair fading to deep blue at the ends, a white wide-brimmed
+  // hat with a glowing butterfly on the brim, a long white dress fading to blue at the hem
+  Athy: { build: 'f', female: true, anime: 'cool', heroHair: 'animeLong', hairColor: 0xdde8f6, hairTip: 0x3f6fd0, skin: 0xf6e2d6, eyes: 0x4aa6d8, heroOutfit: 'dress', skirt: 'long', color: 0xc2d6f4, accent: 0x2a4fb0, pants: 0xeef2f8, accessories: ['sunHat'] },
+  // co-leader, the rumbles, drawn anime-style: round-cheeked and bright, fluffy pink hair with a side bun and a
+  // lavender bow, big violet eyes and a cat smile, a soft white dress
+  piryriry: { build: 'f', female: true, anime: 'soft', heroHair: 'animeBun', hairColor: 0xf6a6c8, skin: 0xfae6dc, eyes: 0x8a6ad8, heroOutfit: 'dress', skirt: 'short', color: 0xdccdfa, accent: 0xa58ae0, pants: 0xf2eef4, accessories: ['bow'] },
   // co-leader: silver undercut, goggles up, dark workwear
   Marv03K: { build: 'lean', heroHair: 'undercut', hairColor: 0xc8ccd4, skin: 0xc89a7a, eyes: 0x2a3a5a, heroOutfit: 'workwear', color: 0x2a3036, accent: 0xff9a3a, pants: 0x2a3036, accessories: ['goggles'] },
-  // the officer: braids, a forge apron over rolled sleeves, the radio headset she kept everyone going with
-  Anya: { build: 'f', female: true, heroHair: 'braids', hairColor: 0x2a1810, skin: 0xd8a888, eyes: 0x3a2a1a, heroOutfit: 'apron', color: 0x3a2a22, accent: 0xff7a1a, pants: 0x2a2420, accessories: ['headset'] },
+  // the officer: two long braids down the front, a forge apron over rolled sleeves, the radio headset she kept
+  // everyone going with
+  Anya: { build: 'f', female: true, heroHair: 'braids', hairColor: 0x3a2014, skin: 0xd8a888, eyes: 0x4a3018, heroOutfit: 'apron', color: 0x3a2a22, accent: 0xff7a1a, pants: 0x2a2420, accessories: ['headset'] },
 };
 
 /** Signature items picked from members' names (and a colour or two where the name asks for it). */

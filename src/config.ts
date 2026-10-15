@@ -1016,12 +1016,21 @@ export interface AvatarLook {
    */
   hero?: boolean;
   build?: 'm' | 'f' | 'lean';
-  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls';
-  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat';
-  /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`). */
+  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong';
+  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress';
+  /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`); tights under a dress. */
   pants?: number;
-  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash')[];
+  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash' | 'sunHat' | 'bow')[];
   stubble?: boolean;
+  /**
+   * An anime-style figure (two of the co-leaders): a bigger head, large shining eyes, a small nose, and the mouth -
+   * 'soft' is round-cheeked with a blush and a cat smile, 'cool' is calm with a fine line of a mouth.
+   */
+  anime?: 'soft' | 'cool';
+  /** A dress's skirt: to mid-thigh, or long and flared below the knee (fading to the accent at the hem). */
+  skirt?: 'short' | 'long';
+  /** The colour long hair fades to at its ends. */
+  hairTip?: number;
 }
 
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */

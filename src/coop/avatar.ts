@@ -299,7 +299,7 @@ export class Avatar {
     // a woman's figure has shaped limbs and a torso with a waist and hips (`avatarLook.ts`); the rest are boxes
     const F = hero ? heroParts(heroBuild(look!), UPPER, FORE, THIGH, SHIN) : female ? getFemaleParts(UPPER, FORE, THIGH, SHIN) : null;
     const slim = female || (hero && heroBuild(look!) === 'f');
-    const shortSleeves = outfit === 'nurse' || outfit === 'gown' || (hero && look?.heroOutfit === 'apron');
+    const shortSleeves = outfit === 'nurse' || outfit === 'gown' || (hero && (look?.heroOutfit === 'apron' || look?.heroOutfit === 'dress'));
     if (!female && !hero) add(new THREE.BoxGeometry(0.36, 0.2, 0.23), trim, 0, 0.97, 0, this.body); // pelvis
     if (!hero && (!female || geared || outfit === 'coat')) add(new THREE.BoxGeometry(female ? 0.34 : 0.38, 0.05, 0.25), dark, 0, 1.06, 0, this.body); // belt
     for (const s of [-1, 1]) {
@@ -335,7 +335,8 @@ export class Avatar {
     if (!hero) add(new THREE.SphereGeometry(0.12, 16, 12), skin, 0, 0, 0, this.head);
     if (hero && look) {
       // a handsome face, hair with volume, the Forge outfit and its signature items; then the still parts merged
-      this.head.scale.setScalar(slim ? 1.06 : 1.02);
+      // an anime figure has the bigger head of the style
+      this.head.scale.setScalar(look.anime ? 1.2 : slim ? 1.06 : 1.02);
       addHeroFace(this.head, look, skin);
       addHeroHair(this.head, look);
       addHeroOutfit(this.body, this.chest, this.head, look, cloth);
