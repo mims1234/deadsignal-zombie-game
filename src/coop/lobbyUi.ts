@@ -102,7 +102,14 @@ export class CoopUi {
     return `${location.origin}/?room=${code}`;
   }
 
+  /** Ticks the start countdown while it shows. */
+  private countdownTimer: number | null = null;
+
   private render(): void {
+    if (this.countdownTimer !== null) {
+      window.clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
     const show = this.wanted && this.host.canShow();
     this.panel.hidden = !show;
     // the lobby takes the title screen's side column: the brief and controls step aside while it is open
@@ -190,12 +197,14 @@ export class CoopUi {
     el('div', 'tag', body, server ? 'SERVER HOSTED  -  the game server runs this session for everyone' : `SELF HOSTED  -  runs on ${owner ? owner.name : 'the owner'}'s device`);
     if (hidden) el('div', 'problem ok', body, 'You are watching unseen. Nobody in this session can tell.');
 
-    const list = (title: string, people: { id: string; name: string; ping: number | null }[], max: number): void => {
+    const list = (title: string, people: { id: string; name: string; ping: number | null; ready?: boolean }[], max: number, readiness = false): void => {
       el('div', 'lbl', body, `${title}  ${people.length} / ${max}`);
       const ul = el('div', 'people', body);
       for (const person of people) {
         const row = el('div', 'person', ul);
         el('span', 'name', row, person.name + (person.id === room.ownerId ? (server ? '  (owner)' : '  (host)') : '') + (person.id === me ? '  (you)' : ''));
+        // the ready check: who the owner is waiting for
+        if (readiness && person.id !== room.ownerId) el('span', person.ready ? 'rdy on' : 'rdy', row, person.ready ? 'READY' : 'NOT READY');
         // the ping that matters: to the server, or (self-hosted) through the server to the host's device
         const own = person.id === me && this.coop.room.ping !== null ? Math.round(this.coop.room.ping) : person.ping;
         const hostPing = owner?.id === me && this.coop.room.ping !== null ? Math.round(this.coop.room.ping) : (owner?.ping ?? null);
@@ -215,7 +224,7 @@ export class CoopUi {
       }
       if (people.length === 0) el('div', 'person empty', ul, 'Nobody yet');
     };
-    list('PLAYERS', room.players, room.maxPlayers);
+    list('PLAYERS', room.players, room.maxPlayers, room.state !== 'playing');
     list('SPECTATORS', room.spectators, room.maxSpectators);
 
     el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
@@ -280,13 +289,30 @@ export class CoopUi {
 
     const actions = el('div', 'row actions', body);
     const spectator = this.coop.role === 'spectator';
+    const waiting = room.players.filter((p) => p.id !== room.ownerId && p.ready !== true);
     if (room.state === 'playing') {
       this.button(actions, spectator ? 'START WATCHING' : 'DEPLOY INTO SESSION', 'primary', () => this.host.deploy());
+    } else if (room.state === 'starting') {
+      // everyone sees the same countdown; at zero the session goes live and everyone is brought in
+      const cd = el('div', 'countdown', actions);
+      el('span', 'lbl', cd, 'STARTING IN');
+      const n = el('b', 'n', cd, '5');
+      const end = room.startsAtLocal ?? performance.now() + (room.startIn ?? 0);
+      const tick = (): void => {
+        const left = Math.ceil((end - performance.now()) / 1000);
+        n.textContent = left > 0 ? String(left) : 'GO';
+      };
+      tick();
+      this.countdownTimer = window.setInterval(tick, 200);
+      if (isOwner) this.button(actions, 'CANCEL', '', () => this.coop.cancelStart());
     } else if (isOwner) {
-      this.button(actions, 'START SESSION', 'primary', () => {
-        this.coop.start();
-        this.host.deploy();
-      });
+      const start = this.button(actions, 'START SESSION', 'primary', () => this.coop.requestStart());
+      start.disabled = waiting.length > 0;
+      el('span', 'wait', actions, waiting.length > 0 ? `Waiting for ${waiting.map((p) => p.name).join(', ')} to be ready` : room.players.length > 1 ? 'Everyone is ready' : 'Start whenever you like - others can still join');
+    } else if (!spectator) {
+      const ready = room.players.find((p) => p.id === me)?.ready === true;
+      this.button(actions, ready ? 'READY  \u2713' : 'READY UP', ready ? 'primary readybtn on' : 'primary readybtn', () => this.coop.setReady(!ready));
+      el('span', 'wait', actions, ready ? `Waiting for ${owner ? owner.name : 'the owner'} to start...` : 'Press ready when you are set');
     } else {
       el('span', 'wait', actions, `Waiting for ${owner ? owner.name : 'the owner'} to start...`);
     }

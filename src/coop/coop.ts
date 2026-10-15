@@ -175,17 +175,39 @@ export class CoopSession {
 
   /** Owner: what the session plays (lobby only). */
   setKind(kind: SessionKind): void {
-    if (!this.room.isOwner || !this.room.room || this.room.room.state === 'playing') return;
+    if (!this.room.isOwner || !this.room.room || this.room.room.state !== 'lobby') return;
     this.room.manage('config', { value: kind });
   }
 
   /** Owner: how hard the session is (lobby only). */
   setDifficulty(d: { zombies?: ZombieDifficulty; team?: TeamSkill }): void {
-    if (!this.room.isOwner || !this.room.room || this.room.room.state === 'playing') return;
+    if (!this.room.isOwner || !this.room.room || this.room.room.state !== 'lobby') return;
     this.room.manage('config', d);
   }
 
-  /** Owner: open the session for play. */
+  /** Owner: start the ready check's countdown (every player must be ready; the server checks). */
+  requestStart(): void {
+    if (!this.room.isOwner || this.room.room?.state !== 'lobby') return;
+    this.room.manage('start');
+  }
+
+  /** Owner: stop the countdown. */
+  cancelStart(): void {
+    if (this.room.isOwner && this.room.room?.state === 'starting') this.room.manage('cancel');
+  }
+
+  /** A player: ready or not. */
+  setReady(value: boolean): void {
+    if (this.room.room?.state === 'lobby' && this.role !== 'spectator') this.room.setReady(value);
+  }
+
+  /** Every seated player is ready (the owner counts as ready). */
+  get allReady(): boolean {
+    const r = this.room.room;
+    return !!r && r.players.every((p) => p.id === r.ownerId || p.ready === true);
+  }
+
+  /** Owner: open the session for play at once (tools and tests; the lobby uses the ready check). */
   start(): void {
     if (!this.room.isOwner || !this.room.room) return;
     this.room.manage('state', { value: 'playing' });

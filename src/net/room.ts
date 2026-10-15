@@ -8,6 +8,8 @@ export interface RoomPerson {
   avatar: string | null;
   /** Their round trip to the game server in ms (null until measured). */
   ping: number | null;
+  /** Pressed ready in the lobby (the owner is always ready: they start the session). */
+  ready?: boolean;
 }
 
 /** 'server': the game server runs the session (everyone is an equal client). 'self': the owner's browser runs it. */
@@ -28,7 +30,11 @@ export interface RoomView {
   zombies?: ZombieDifficulty;
   team?: TeamSkill;
   visibility: 'public' | 'private';
-  state: 'lobby' | 'playing';
+  /** 'starting': the owner pressed start and the countdown runs; then 'playing'. */
+  state: 'lobby' | 'starting' | 'playing';
+  /** The countdown left when this view was sent (ms), and when it ends on this machine's clock. */
+  startIn?: number;
+  startsAtLocal?: number;
   players: RoomPerson[];
   spectators: RoomPerson[];
   maxPlayers: number;
@@ -134,6 +140,7 @@ export class RoomClient {
         }
         if (m.t === 'room') {
           this.room = m.room as RoomView;
+          if (this.room.startIn !== undefined) this.room.startsAtLocal = performance.now() + this.room.startIn;
           this.you = m.you as RoomClient['you'];
           this.handlers.onRoom(this.room, this.you);
         } else if (m.t === 'relay') {
@@ -178,7 +185,12 @@ export class RoomClient {
     this.handlers.onRoom(null, null);
   }
 
-  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config', arg: { id?: string; value?: string; zombies?: ZombieDifficulty; team?: TeamSkill } = {}): void {
+  /** A player in the lobby: ready (or not) to start. */
+  setReady(value: boolean): void {
+    void this.command({ t: 'ready', value });
+  }
+
+  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config' | 'start' | 'cancel', arg: { id?: string; value?: string; zombies?: ZombieDifficulty; team?: TeamSkill } = {}): void {
     void this.command({ t: 'manage', op, ...arg });
   }
 

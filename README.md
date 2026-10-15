@@ -97,7 +97,9 @@ Pick one on the title screen before you deploy. The choice is remembered.
   Standard or Standard Mazoku (or free roam, switched on in the lobby), on any map. Create a session in the lobby and share the
   invite link, or join with a code; a player following an invite to another map is moved onto it. The session's
   owner picks the mode and both difficulties in the lobby before starting (a new session starts with the owner's
-  title-screen picks). You can join a session at any time: when its owner starts it, or when you join one that is
+  title-screen picks). Every other player presses READY in the lobby; once they all have, the owner starts a
+  five-second countdown everyone sees (the owner can cancel it), and at zero the whole squad goes in. You can join a
+  session at any time: when its owner starts it, or when you join one that is
   already running, you are brought straight into the world (on a computer, one click takes the mouse). The operation
   is the squad's: the relay, the Warden, the
   extraction, the Forge's soldiers, cages and embers and the Mazoku carriers are shared, so anything one of you

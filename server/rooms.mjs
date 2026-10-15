@@ -13,6 +13,7 @@
  *            map, kind,  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
  *            zombies, team}  difficulty: the infected (easy..nightmare) and the AI squad (rookie..elite)
  *   {t:'join', code, as, hidden}                    {t:'relay', from, d}      a game message from another member / the host
+ *   {t:'ready', value}     a player, in the lobby: ready (the owner can start once every player is)
  *   {t:'leave'}                                     {t:'closed', reason}      kicked / ended / host left
  *   {t:'manage', op, ...}   owner only              {t:'error', msg}
  *   {t:'relay', to, d}      to: 'all'|'host'|<id>   {t:'pong', n}             answer to a ping
@@ -30,6 +31,8 @@ const MAX_PER_SECOND = 90;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 /** The host id of a server-hosted room. */
 export const SIM_ID = 'sim';
+/** The countdown between the owner pressing start and everyone being brought in. */
+const START_COUNTDOWN_MS = 5000;
 const MAPS = ['district', 'forge', 'asylum'];
 const KINDS = ['mission', 'mazoku', 'roam'];
 const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
@@ -55,7 +58,23 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
   const send = (ws, msg) => {
     if (ws.readyState === 1) ws.send(JSON.stringify(msg));
   };
-  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar, ping: m.ping ?? null });
+  const person = (m) => ({ id: m.id, name: m.name, avatar: m.avatar, ping: m.ping ?? null, ready: m.ready === true });
+  /** Every seated player but the owner has pressed ready (the owner starts, so the owner is ready). */
+  const allReady = (room) => visible(room, 'player').every((p) => p.id === room.ownerId || p.ready === true);
+  /** The countdown ran out: the session is live. */
+  function goLive(room) {
+    if (room.state !== 'starting' || !rooms.has(room.code)) return;
+    clearTimeout(room.startTimer);
+    room.startTimer = null;
+    room.state = 'playing';
+    if (room.simReady) room.sim?.postMessage({ type: 'begin' });
+    broadcast(room);
+  }
+  function cancelStart(room) {
+    clearTimeout(room.startTimer);
+    room.startTimer = null;
+    if (room.state === 'starting') room.state = 'lobby';
+  }
   const simRooms = () => [...rooms.values()].filter((r) => r.sim).length;
   const visible = (room, role) => [...room.members.values()].filter((m) => m.role === role && !m.hidden);
 
@@ -72,6 +91,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
       team: room.team,
       visibility: room.visibility,
       state: room.state,
+      // the countdown: what is left of it as this view is sent (each client counts down from its own clock)
+      startIn: room.state === 'starting' ? Math.max(0, room.startsAt - Date.now()) : undefined,
       players: visible(room, 'player').map(person),
       spectators: visible(room, 'spectator').map(person),
       maxPlayers: MAX_PLAYERS,
@@ -128,6 +149,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
 
   function closeRoom(room, reason) {
     if (!rooms.delete(room.code)) return;
+    cancelStart(room);
     stopSim(room);
     for (const m of room.members.values()) {
       members.delete(m.id);
@@ -168,6 +190,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
   function place(m, room, role, hidden) {
     m.room = room;
     m.role = role;
+    m.ready = false; // a new seat starts unready
     m.hidden = hidden;
     room.members.set(m.id, m);
     members.set(m.id, m);
@@ -248,6 +271,12 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
         }
         return;
       }
+      case 'ready': {
+        // a seated player in the lobby; frozen once the countdown runs
+        if (!room || m.role !== 'player' || room.state !== 'lobby') return;
+        m.ready = msg.value === true;
+        return broadcast(room);
+      }
       case 'manage': {
         if (!room || room.ownerId !== m.id) return send(m.ws, { t: 'error', msg: 'Only the session owner can manage it' });
         if (msg.op === 'end') return closeRoom(room, 'The session owner ended the session');
@@ -274,18 +303,30 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
           room.invites.delete(String(msg.id));
         } else if (msg.op === 'config') {
           // what the session plays and how hard; only between runs
-          if (room.state !== 'playing' && KINDS.includes(msg.value)) {
+          if (room.state === 'lobby' && KINDS.includes(msg.value)) {
             room.kind = msg.value;
             room.sim?.postMessage({ type: 'kind', kind: room.kind });
           }
-          if (room.state !== 'playing' && (ZOMBIE_LEVELS.includes(msg.zombies) || TEAM_LEVELS.includes(msg.team))) {
+          if (room.state === 'lobby' && (ZOMBIE_LEVELS.includes(msg.zombies) || TEAM_LEVELS.includes(msg.team))) {
             if (ZOMBIE_LEVELS.includes(msg.zombies)) room.zombies = msg.zombies;
             if (TEAM_LEVELS.includes(msg.team)) room.team = msg.team;
             room.sim?.postMessage({ type: 'difficulty', zombies: room.zombies, team: room.team });
           }
+        } else if (msg.op === 'start') {
+          // the ready check: every player ready, then a countdown everyone sees, then live
+          if (room.state !== 'lobby') return;
+          if (!allReady(room)) return send(m.ws, { t: 'error', msg: 'Not everyone is ready yet' });
+          room.state = 'starting';
+          room.startsAt = Date.now() + START_COUNTDOWN_MS;
+          room.startTimer = setTimeout(() => goLive(room), START_COUNTDOWN_MS);
+        } else if (msg.op === 'cancel') {
+          cancelStart(room);
         } else if (msg.op === 'state') {
+          // a direct switch (tools and tests; the lobby uses 'start'). Back to the lobby clears everyone's ready.
           const was = room.state;
+          cancelStart(room);
           room.state = msg.value === 'playing' ? 'playing' : 'lobby';
+          if (room.state === 'lobby') for (const p of room.members.values()) p.ready = false;
           if (room.state === 'playing' && was !== 'playing' && room.simReady) room.sim?.postMessage({ type: 'begin' });
         }
         return broadcast(room);

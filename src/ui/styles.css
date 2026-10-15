@@ -3370,3 +3370,48 @@ html.ds-touch .ds-title-side .ds-sidepanel {
   content: ' \2699';
   color: var(--ds-ink-dim);
 }
+
+/* ---- the lobby's ready check ---- */
+.ds-lobby .person .rdy {
+  margin-left: auto;
+  padding: 0.1em 0.5em;
+  font-size: max(9px, 0.68em);
+  letter-spacing: 0.16em;
+  color: var(--ds-ink-faint);
+  border: 1px solid var(--ds-line);
+}
+.ds-lobby .person .rdy.on {
+  color: var(--ds-green);
+  border-color: var(--ds-green);
+}
+.ds-lobby .person .rdy + .ping {
+  margin-left: 0.6em;
+}
+.ds-lobby .readybtn.on {
+  background: rgba(143, 209, 138, 0.2);
+  border-color: var(--ds-green);
+  color: var(--ds-green);
+  text-shadow: none;
+}
+.ds-lobby .countdown {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  padding: 0.3em 0.8em;
+  border: 1px solid var(--ds-amber);
+  background: rgba(226, 176, 74, 0.12);
+}
+.ds-lobby .countdown .lbl {
+  margin: 0;
+  color: var(--ds-amber);
+}
+.ds-lobby .countdown .n {
+  font: 700 2.2em var(--ds-font-num);
+  color: #f4f7ea;
+  min-width: 1.6em;
+  text-align: center;
+}
+.ds-lobby .ds-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
