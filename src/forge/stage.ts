@@ -221,6 +221,21 @@ export class ForgeStage {
     return { dx: (Math.random() - 0.5) * a, dz: (Math.random() - 0.5) * a, yaw: (Math.random() - 0.5) * (0.2 + 0.6 * e) };
   }
 
+  /** The reborn's red-gold light, following it (null: none). The turning's light: the two never overlap. */
+  rebornGlow(at: { x: number; z: number } | null, clock: number, enraged: boolean): void {
+    if (!at) return;
+    const pulse = 0.5 + 0.5 * Math.sin(clock * 5.3) * Math.sin(clock * 1.7 + 1);
+    this.glow.visible = false;
+    this.glowLight.position.set(at.x, 2.4, at.z);
+    this.glowLight.distance = 12;
+    this.glowLight.intensity = 26 + 22 * pulse + (enraged ? 15 : 0);
+  }
+
+  /** The two lights the reveal may use (both already in the scene: adding one now would recompile everything). */
+  cinemaLights(): [THREE.PointLight, THREE.PointLight] {
+    return [this.furnaceLight, this.glowLight];
+  }
+
   dispose(): void {
     for (const r of this.rings) r.root.removeFromParent();
     this.turret.removeFromParent();

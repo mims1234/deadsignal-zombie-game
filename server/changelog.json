@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.102",
+      "date": "2026-10-16",
+      "title": "No first-time stutter, and themed scrollbars",
+      "notes": [
+        "The reborn, the PROMETHEUS cutscene and the RPG no longer stutter the first time they appear: nothing adds a light mid-run any more (that recompiled every material), and their shaders and shapes are prepared while the map loads.",
+        "Scrollbars across the game and the bestiary are a thin amber rail in the game's style; the settings panel no longer shows a sideways scrollbar."
+      ]
+    },
+    {
       "version": "0.1.101",
       "date": "2026-10-15",
       "title": "The seven foundries",

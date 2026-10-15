@@ -41,6 +41,34 @@
   box-sizing: border-box;
 }
 
+/* every scrollable panel: a thin amber rail on a dark track, no arrow buttons (the browser's grey bars break the look) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ds-amber-dim) rgba(0, 0, 0, 0.35);
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ds-amber-dim);
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ds-amber);
+}
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .ds-hud [hidden],
 .ds-menus [hidden] {
   display: none !important;
@@ -3149,6 +3177,7 @@ html.ds-touch .ds-title-side .ds-sidepanel {
   width: min(42em, 94vw);
   max-height: 88vh;
   max-height: 88dvh;
+  overflow-x: hidden;
   overflow-y: auto;
   z-index: 40;
   pointer-events: auto;

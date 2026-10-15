@@ -37,7 +37,7 @@ import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
 import { createTouchControls, type TouchControlsApi } from '../ui/touchControls';
 import type { MenusApi, ModeInfo } from '../ui/hudTypes';
-import { GrenadeSystem } from '../weapons/grenades';
+import { GrenadeSystem, rocketForPrewarm } from '../weapons/grenades';
 import { createViewmodels } from '../weapons/viewmodels';
 import type { ViewmodelSet } from '../weapons/viewmodelTypes';
 import { WeaponSystem, type WeaponInput } from '../weapons/weaponSystem';
@@ -388,6 +388,7 @@ export class Game implements GameCtx {
         hurtPlayerExplosion: (amount, x, z, closeness) => this.blastPlayer(amount, x, z, closeness),
         onExplosion: (x, y, z) => this.onExplosion(x, y, z),
         playerVelocity: () => ({ x: this.player.vx, z: this.player.vz }),
+        rocketGlow: (at) => this.rocketGlow(at),
       },
       () => createGrenadeModel(this.mats),
     );
@@ -591,7 +592,32 @@ export class Game implements GameCtx {
     try {
       // a failed shader still reports through three's own checks the first time it is drawn
       if (import.meta.env.PROD) r.renderer.debug.checkShaderErrors = false;
-      await r.renderer.compileAsync(r.scene, r.camera);
+      // what only appears later (a rocket in flight; on the Forge the reborn and PROMETHEUS) is compiled now too, out of
+      // sight below the ground, so its first appearance has nothing left to build
+      const warm = new THREE.Group();
+      warm.position.set(this.level.data.playerStart.x, -60, this.level.data.playerStart.z);
+      warm.add(rocketForPrewarm());
+      const forgeWarm = this.forge?.prewarmObjects() ?? [];
+      for (const o of forgeWarm) warm.add(o);
+      r.scene.add(warm);
+      try {
+        await r.renderer.compileAsync(r.scene, r.camera);
+      } finally {
+        r.scene.remove(warm);
+      }
+      // ...and drawn once into a tiny target, off screen: that sends their shapes and textures to the GPU now as well
+      const stage = new THREE.Scene();
+      stage.add(warm);
+      const eye = new THREE.PerspectiveCamera(70, 1, 0.1, 200);
+      eye.position.set(warm.position.x, warm.position.y + 4, warm.position.z + 22);
+      eye.lookAt(warm.position);
+      const target = new THREE.WebGLRenderTarget(4, 4);
+      const before = r.renderer.getRenderTarget();
+      r.renderer.setRenderTarget(target);
+      r.renderer.render(stage, eye);
+      r.renderer.setRenderTarget(before);
+      target.dispose();
+      stage.remove(warm);
       const hidden = r.viewScene.children.filter((c) => !c.visible);
       for (const c of hidden) c.visible = true;
       try {
@@ -1588,7 +1614,25 @@ export class Game implements GameCtx {
     if (z.isBoss && !this.coop.live) this.mission.onWardenKilled();
   }
 
+  /** True while the explosion light is lent to a rocket in flight. */
+  private rocketLit = false;
+
+  /** A rocket's motor lights its way, on the explosion light while no blast needs it (no light is ever added mid-run). */
+  private rocketGlow(at: { x: number; y: number; z: number } | null): void {
+    const l = this.renderer.explosionLight;
+    if (at) {
+      if (!this.rocketLit && l.intensity > 1) return; // a blast is fading: it keeps the light
+      this.rocketLit = true;
+      l.position.set(at.x, at.y, at.z);
+      l.intensity = 28;
+    } else if (this.rocketLit) {
+      this.rocketLit = false;
+      l.intensity = 0;
+    }
+  }
+
   private onExplosion(x: number, y: number, z: number): void {
+    this.rocketLit = false;
     const r = this.renderer;
     r.explosionLight.position.set(x, y + 1, z);
     r.explosionLight.intensity = 900;

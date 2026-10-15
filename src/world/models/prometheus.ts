@@ -13,7 +13,7 @@ import { ignisMaterial } from '../layout/ignis';
 
 export interface PrometheusRig {
   root: THREE.Group;
-  /** Turn its parts and set the brightness of its core, seams and eye (0..1+). */
+  /** Turn its parts and set the brightness of its core, seams and eye (0..1+). It brings no light of its own. */
   update(dt: number, glow: number): void;
   /** How cold the eye has gone: 0 ember-orange, 1 cold white. */
   cold(k: number): void;
@@ -126,10 +126,6 @@ export function createPrometheus(): PrometheusRig {
   }
   // ---- a heat haze around it ----
   const auraMesh = add(new THREE.SphereGeometry(1.35, 24, 16), aura, 0, 0, 0);
-  // ---- its light ----
-  const light = new THREE.PointLight(0xff8a3a, 0, 0, 1.5);
-  light.position.set(0, -0.6, -1.4);
-  root.add(light);
 
   let t = 0;
   let coldK = 0;
@@ -151,9 +147,6 @@ export function createPrometheus(): PrometheusRig {
       lens.emissiveIntensity = (2.5 + 1.5 * coldK) * glow;
       aura.opacity = 0.08 + 0.06 * glow * pulse;
       flame.opacity = 0.4 + 0.15 * glow;
-      light.color.copy(warm).lerp(white, coldK * 0.7);
-      light.intensity = 120 * glow * root.scale.x * root.scale.x;
-      light.distance = 40 * root.scale.x;
       void auraMesh;
     },
     cold(k) {

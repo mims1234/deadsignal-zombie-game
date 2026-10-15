@@ -24,6 +24,7 @@ import { DOOR_NOTES, FORGE_LINES as L, HOLDOUT_THANKS, LEDGER_PAGES } from './lo
 import { vulcanLook } from './looks';
 import { decodeView } from './net';
 import { createRebornRig } from './rebornRig';
+import { createPrometheus } from '../world/models/prometheus';
 import { rankTag, type VulcanRank } from './roster';
 import type { SafeRoomDef } from './sites';
 import { ForgeStage } from './stage';
@@ -56,6 +57,9 @@ interface Shown {
 
 /** The night's look, and first light over the Forge (the burnout). */
 const DAWN = { zenith: 0x56688a, mid: 0xd89a7a, horizon: 0xffc690, glow: 0xffd8a8, haze: 0xc8a088, fog: 0x7a5e50, hemiSky: 0xe4cdb6, hemiGround: 0x5a3a2a, fill: 0xffd2a0 };
+
+/** The reborn's body (a fixed one, so the one warmed up while the level loads is the one that appears). */
+const REBORN_SEED = 4242;
 
 const flameName = (i: number): string => FORGE_SQUAD.flames[i]?.name ?? 'IGNIS';
 const flameColor = (i: number): string => `#${(FORGE_SQUAD.flames[i]?.color ?? 0xff8a2a).toString(16).padStart(6, '0')}`;
@@ -99,7 +103,8 @@ export class ForgeRuntime {
     this.story = new ForgeStory(sites, g.zombies, g.level.nav);
     this.stage = new ForgeStage(g);
     // the reborn wears a look of its own (here and on every co-op puppet)
-    g.zombies.rebornRig = (name) => createRebornRig(g.zombieFactory, 7919 + name.length * 131);
+    // (always the same body: the one compiled and sent to the GPU while the level loaded)
+    g.zombies.rebornRig = () => createRebornRig(g.zombieFactory, REBORN_SEED);
     this.doorOpen = sites.rooms.map(() => 0);
     this.thudT = sites.rooms.map(() => Math.random());
     this.shake = sites.rooms.map(() => 0);
@@ -639,6 +644,8 @@ export class ForgeRuntime {
     else if (v?.assault === 'on') want = 1.15 + 0.35 * (0.5 + 0.5 * Math.sin(this.clock * 2.6));
     ZOMBIE_GLOW.value += (want - ZOMBIE_GLOW.value) * Math.min(1, dt * 6);
     const reborn = this.rebornZombie();
+    if (reborn) this.stage.rebornGlow(reborn, this.clock, reborn.enraged);
+    else if (ph === 'reborn') this.stage.rebornGlow(null, this.clock, false);
     if (reborn) {
       this.sparkT -= dt;
       if (this.sparkT <= 0) {
@@ -774,6 +781,52 @@ export class ForgeRuntime {
       return { x: s.x, z: s.z, color: FORGE_SQUAD.flames[f.flame]?.color ?? 0xff7a1a };
     });
     return { saved, fallen, left, furnaces };
+  }
+
+  /** The lights the reveal borrows (see `ForgeStage.cinemaLights`). */
+  cinemaLights(): [THREE.PointLight, THREE.PointLight] {
+    return this.stage.cinemaLights();
+  }
+
+  /**
+   * Things that first appear late in a run - the reborn, PROMETHEUS and the reveal's beams - for the game to compile
+   * with the level (`Game.compileShaders`), so their first appearance does not stall a frame. Kept (never disposed):
+   * their materials keep the compiled programs alive for the real ones.
+   */
+  prewarmObjects(): THREE.Object3D[] {
+    if (!this.warm) {
+      const reborn = createRebornRig(this.g.zombieFactory, REBORN_SEED);
+      const orb = createPrometheus();
+      this.orb = orb;
+      orb.cold(1);
+      orb.update(0, 1);
+      const cold = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), ignisMaterial('cold'));
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2, 8, 1, true), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      const star = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      reborn.root.position.x = -4;
+      orb.root.position.x = 6;
+      this.warm = [reborn.root, orb.root, cold, beam, star];
+    }
+    return this.warm;
+  }
+
+  private warm: THREE.Object3D[] | null = null;
+  private orb: ReturnType<typeof createPrometheus> | null = null;
+
+  /** The reveal's PROMETHEUS: the one warmed up while the level loaded (null: already out, build another). */
+  takeOrb(): ReturnType<typeof createPrometheus> | null {
+    const o = this.orb;
+    this.orb = null;
+    if (o) o.root.position.set(0, 0, 0);
+    return o;
+  }
+
+  /** The reveal is done with it: kept for the next one (never disposed, so it stays on the GPU). */
+  returnOrb(o: ReturnType<typeof createPrometheus>): void {
+    o.root.removeFromParent();
+    o.root.visible = true;
+    o.root.rotation.set(0, 0, 0);
+    this.orb = o;
   }
 
   /** How many of the seven furnaces burn (the reveal counts them). */
@@ -1005,12 +1058,12 @@ export class ForgeRuntime {
   }
 
   /** The reborn, while it lives (found by its name: a solo run's own, or the simulation's puppet). */
-  private rebornZombie(): { x: number; z: number; hp: number; maxHp: number } | null {
+  private rebornZombie(): { x: number; z: number; hp: number; maxHp: number; enraged: boolean } | null {
     const v = this.view;
     if (!v || v.finale.phase !== 'reborn') return null;
     const name = this.people[v.finale.carrier]?.name;
     if (!name) return null;
-    for (const z of this.g.zombies.zombies) if (z.alive && z.type === 'warden' && z.tag === name) return { x: z.x, z: z.z, hp: z.hp, maxHp: z.maxHp };
+    for (const z of this.g.zombies.zombies) if (z.alive && z.type === 'warden' && z.tag === name) return { x: z.x, z: z.z, hp: z.hp, maxHp: z.maxHp, enraged: z.enraged };
     return null;
   }
 

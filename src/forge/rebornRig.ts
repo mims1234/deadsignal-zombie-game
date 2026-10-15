@@ -2,7 +2,8 @@
  * The reborn's own look, nothing like the Infernus: not a plated brute but the member who hid the bite - one of the
  * Forge's burned clan bodies, grown to the Infernus's height - with the fire breaking out of them. Two great phoenix
  * wings of flame open from their back and beat slowly (wide open when it roars, swept back when it charges), a crown
- * of flame burns over the head, and a red-gold light pulses around them so it reads from across the Forge.
+ * of flame burns over the head, and a red-gold glow pulses around them so it reads from across the Forge (its light is
+ * the stage's, `stage.ts`: a light added at runtime would recompile every material in the scene).
  *
  * A `ZombieRig` wrapping one of the factory's Forge bodies: the body animates as usual (every mode the Warden uses),
  * everything here rides on top. Client only (the simulation's infected have no looks).
@@ -26,8 +27,26 @@ function flameMat(color: number, opacity: number, own = false): THREE.MeshBasicM
   return m;
 }
 
+/**
+ * The wings', crown's and halo's shapes, shared by every reborn and never disposed: the one built while the level loads
+ * (and drawn once, off screen) has already sent them to the GPU, so the reborn's first appearance builds nothing.
+ */
+const shapes = new Map<string, THREE.BufferGeometry>();
+function shared(key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry {
+  let g = shapes.get(key);
+  if (!g) {
+    g = make();
+    shapes.set(key, g);
+  }
+  return g;
+}
+
 /** A feather of flame: a long flat leaf, its base at the origin, pointing along +Y. */
 function feather(len: number, width: number): THREE.BufferGeometry {
+  return shared(`f${len.toFixed(3)}|${width}`, () => featherShape(len, width));
+}
+
+function featherShape(len: number, width: number): THREE.BufferGeometry {
   const shape = new THREE.Shape();
   shape.moveTo(0, 0);
   shape.quadraticCurveTo(width, len * 0.35, width * 0.25, len);
@@ -36,7 +55,7 @@ function feather(len: number, width: number): THREE.BufferGeometry {
 }
 
 /** One wing (mirrored by `side`): a fan of feathers in three layers, white-gold at the root to deep red at the tips. */
-function wing(side: number, geos: THREE.BufferGeometry[]): THREE.Group {
+function wing(side: number): THREE.Group {
   const g = new THREE.Group();
   const layers: [number, number, number, THREE.Material][] = [
     [1.0, 0.24, 9, flameMat(0xff3a10, 0.5)],
@@ -47,7 +66,6 @@ function wing(side: number, geos: THREE.BufferGeometry[]): THREE.Group {
     for (let i = 0; i < n; i++) {
       const t = i / (n - 1);
       const geo = feather(len * (0.75 + 0.35 * Math.sin(t * Math.PI)), w);
-      geos.push(geo);
       const f = new THREE.Mesh(geo, m);
       // fanned out from straight up to sweeping down and out
       f.rotation.z = -side * (0.15 + t * 1.75);
@@ -65,13 +83,12 @@ export function createRebornRig(factory: ZombieFactory, seed: number): ZombieRig
   root.name = 'Zombie:reborn';
   body.root.scale.setScalar(S);
   root.add(body.root);
-  const geos: THREE.BufferGeometry[] = [];
   // the wings, from between the shoulder blades
   const back = new THREE.Group();
   back.position.set(0, 1.42 * S, 0.16 * S);
   root.add(back);
   const wings = [-1, 1].map((side) => {
-    const w = wing(side, geos);
+    const w = wing(side);
     w.scale.setScalar(1.55);
     w.position.x = side * 0.08;
     back.add(w);
@@ -82,8 +99,7 @@ export function createRebornRig(factory: ZombieFactory, seed: number): ZombieRig
   const crownMat = flameMat(0xffb040, 0.85);
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * Math.PI * 2;
-    const geo = new THREE.ConeGeometry(0.035, 0.16 + (i % 2) * 0.09, 5, 1, true);
-    geos.push(geo);
+    const geo = shared(`c${i % 2}`, () => new THREE.ConeGeometry(0.035, 0.16 + (i % 2) * 0.09, 5, 1, true));
     const c = new THREE.Mesh(geo, crownMat);
     c.position.set(Math.cos(a) * 0.1, 0.13, Math.sin(a) * 0.1);
     c.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35);
@@ -92,14 +108,10 @@ export function createRebornRig(factory: ZombieFactory, seed: number): ZombieRig
   body.headAttach?.(crown);
   // the glow around them
   const haloMat = flameMat(0xff4a18, 0.08, true);
-  const halo = new THREE.Mesh(new THREE.SphereGeometry(0.9 * S, 16, 12), haloMat);
-  geos.push(halo.geometry);
+  const halo = new THREE.Mesh(shared('halo', () => new THREE.SphereGeometry(0.9 * S, 16, 12)), haloMat);
   halo.position.y = 1.1 * S;
   halo.scale.set(1, 1.5, 1);
   root.add(halo);
-  const light = new THREE.PointLight(0xff5a20, 30, 11, 2);
-  light.position.set(0, 1.6 * S, 0);
-  root.add(light);
   let open = 0.3;
   const local = new THREE.Vector3();
   const place = (out: THREE.Vector3): THREE.Vector3 => {
@@ -134,7 +146,6 @@ export function createRebornRig(factory: ZombieFactory, seed: number): ZombieRig
         w.scale.setScalar(1.55 * (dead ? Math.max(0.01, 1 - state.deathT / 1.4) : 1));
       });
       const pulse = 0.5 + 0.5 * Math.sin(state.time * 5.3) * Math.sin(state.time * 1.7 + 1);
-      light.intensity = dead ? Math.max(0, 30 * (1 - state.deathT)) : 22 + 20 * pulse + (state.enraged ? 15 : 0);
       haloMat.opacity = dead ? 0 : 0.035 + 0.045 * pulse;
       crown.visible = !dead;
     },
@@ -146,10 +157,10 @@ export function createRebornRig(factory: ZombieFactory, seed: number): ZombieRig
       body.setVisible(true);
     },
     dispose(): void {
+      crown.removeFromParent(); // its shapes are shared: not the head's to dispose
       body.clearAttach?.();
       body.dispose();
       root.removeFromParent();
-      for (const g of geos) g.dispose();
       haloMat.dispose();
     },
   };

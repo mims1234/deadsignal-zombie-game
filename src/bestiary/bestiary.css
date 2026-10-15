@@ -257,3 +257,31 @@ body {
     padding: 0.4em 1em 1.2em;
   }
 }
+
+/* every scrollable panel: a thin amber rail on a dark track, no arrow buttons (the browser's grey bars break the look) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #9b7a30 rgba(0, 0, 0, 0.35);
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.35);
+}
+::-webkit-scrollbar-thumb {
+  background: #9b7a30;
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--amber);
+}
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

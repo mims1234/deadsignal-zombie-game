@@ -96,7 +96,9 @@ export class RevealCinematic {
   private shakeT = 0;
   private fog0 = 0;
   private far0 = 0;
-  private coldLight: THREE.PointLight | null = null;
+  /** Borrowed from the Forge's stage (a light added now would recompile every material): the furnace door, the orb. */
+  private doorLight: THREE.PointLight | null = null;
+  private orbLight: THREE.PointLight | null = null;
   private billboard0: { pos: THREE.Vector3; rot: THREE.Euler } | null = null;
   private played = new Set<string>();
   private drone: { stop(fade?: number): void } | null = null;
@@ -279,10 +281,14 @@ export class RevealCinematic {
     // ---- 13: the furnace door; the mark goes cold; the intake terminal ----
     this.once('cold', 14.5, () => {
       if (fx) fx.furnaceDoor.mark.material = ignisMaterial('cold');
-      const l = new THREE.PointLight(0xcfe8ff, 60, 9, 2);
-      l.position.set(sites.furnace.x, 1.7, sites.furnace.z - 1.2);
-      g.worldRoot.add(l);
-      this.coldLight = l;
+      const lights = g.forge?.cinemaLights();
+      if (lights) {
+        [this.doorLight, this.orbLight] = lights;
+        this.doorLight.color.setHex(0xcfe8ff);
+        this.doorLight.intensity = 60;
+        this.doorLight.distance = 9;
+        this.doorLight.position.set(sites.furnace.x, 1.7, sites.furnace.z - 1.2);
+      }
       g.audio.play('box_reveal', { priority: 3, volume: 0.8, rate: 0.6 });
     });
     this.once('term', 15.6, () => this.say(REVEAL.terminal, undefined, 'term'));
@@ -303,7 +309,9 @@ export class RevealCinematic {
       g.audio.play('grenade_explosion', { priority: 3, volume: 1.4, rate: 0.55 });
       g.audio.play('warden_roar', { priority: 3, volume: 1.2, rate: 0.4 });
       this.shakeT = 2.4;
-      this.model = createPrometheus();
+      // the one warmed up while the level loaded (so this frame builds nothing), or a new one
+      this.model = g.forge?.takeOrb() ?? createPrometheus();
+      this.model.cold(0);
       this.model.root.position.set(hq.x, hq.roofY - 2, hq.z);
       this.model.root.scale.setScalar(2.5);
       g.worldRoot.add(this.model.root);
@@ -368,6 +376,7 @@ export class RevealCinematic {
     });
     this.once('vanish', this.goneAt, () => {
       if (this.model) this.model.root.visible = false;
+      if (this.orbLight) this.orbLight.intensity = 0;
       g.audio.play('box_reveal', { priority: 3, volume: 0.9, rate: 1.6 });
       // a star where it was, for a moment
       const star = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), new THREE.MeshBasicMaterial({ color: 0xe8f6ff, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
@@ -405,6 +414,14 @@ export class RevealCinematic {
       m.cold(smooth((t - (SPEAK - 1.5)) / 1.5));
       const glow = t < SPEAK ? 0.7 + 0.3 * rise : t < this.launchAt ? 1.2 + (this.lineNow() >= 0 ? 0.25 : 0) : 2.2;
       m.update(dt, glow);
+      // its light on the Forge below it (and on the street it came out of)
+      const ol = this.orbLight;
+      if (ol) {
+        ol.color.setHex(t < SPEAK ? 0xff8a3a : 0xdcecff);
+        ol.position.set(m.root.position.x, m.root.position.y - m.root.scale.x * 1.2, m.root.position.z);
+        ol.distance = 60 * m.root.scale.x;
+        ol.intensity = m.root.visible ? 90 * glow * m.root.scale.x * m.root.scale.x : 0;
+      }
       if (fog) fog.density = this.fog0 * (1 - 0.88 * smooth((t - 20) / 6));
     }
     // the helicopter: up over the Forge, there for it to look at, then away
@@ -532,7 +549,10 @@ export class RevealCinematic {
     if (fog) fog.density = this.fog0;
     g.renderer.camera.far = this.far0;
     g.renderer.camera.updateProjectionMatrix();
-    this.model?.dispose();
+    if (this.model) {
+      if (g.forge) g.forge.returnOrb(this.model);
+      else this.model.dispose();
+    }
     this.model = null;
     for (const p of this.pillars) {
       p.removeFromParent();
@@ -546,7 +566,7 @@ export class RevealCinematic {
       (this.star.material as THREE.Material).dispose();
       this.star = null;
     }
-    this.coldLight?.removeFromParent();
+    for (const l of [this.doorLight, this.orbLight]) if (l) l.intensity = 0;
     const fx = g.level.forgeFx;
     if (fx) {
       fx.furnaceDoor.mark.material = ignisMaterial('dim');
