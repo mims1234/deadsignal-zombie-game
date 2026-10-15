@@ -362,6 +362,7 @@ export class SquadRuntime {
       }
       a.ref.x = x;
       a.ref.z = z;
+      a.ref.y = g.level.world.floorHeight(x, z, 0.2); // the host sends no height: a deck's is the same here
       a.yaw = yaw;
       a.hp = hp;
     }
@@ -369,7 +370,7 @@ export class SquadRuntime {
       const a = this.allies[i!];
       if (!a || !a.ref.alive) continue;
       const to = { x: tx!, y: ty!, z: tz! };
-      a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+      a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       const from = a.avatar.fire(to);
       g.fx.tracer(from, to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
       g.audio.play(a.avatar.shotSound, { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
@@ -407,7 +408,7 @@ export class SquadRuntime {
         continue;
       }
       if (this.follow) {
-        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
         a.avatar.update(dt);
         continue;
       }
@@ -422,7 +423,7 @@ export class SquadRuntime {
       if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw);
       const shot = allyFight(a, this.world, dt);
       if (shot) {
-        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
         const muzzle = a.avatar.fire(shot.to);
         g.fx.tracer(muzzle, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
         g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
@@ -433,7 +434,7 @@ export class SquadRuntime {
         }
         if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
       }
-      a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+      a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
     }
   }

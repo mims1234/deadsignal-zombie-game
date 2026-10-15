@@ -18,7 +18,8 @@ import * as THREE from 'three';
 import { FORGE_SQUAD } from '../../config';
 import type { FurnaceSpot, HearthDef, LedgerSpot, RumblePitDef, SafeRoomDef } from '../../forge/sites';
 import { barrelGroup, container, corpse, crateGroup, debris, floodlightTower, fuelTank, jerseyBarrier, pallet, pipeStack, streetLamp, tireStack, vehicle } from '../props';
-import { addBox, building, groundRect, type Side, wallDecal } from '../structures';
+import type { ColliderSpec } from '../collision';
+import { addBox, building, groundRect, type MatRef, type Side, wallDecal } from '../structures';
 import { neonLabelMaterial } from '../landmarks/tex';
 import { type DoorHandle, safeRoom } from './forgeRooms';
 import { ignisMaterial, ignisTerminalMaterial } from './ignis';
@@ -53,10 +54,102 @@ const FOUNDRY_SITES: readonly { x: number; z: number; w: number; d: number; fron
 const OUT: Record<Side, [number, number]> = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 
 /**
+ * A foundry's hall in its own frame: `f` runs from the back wall (-half) out through the front door (+half) along
+ * (nx, nz); `s` runs across it, from the side door's wall (-halfS) to the deck's (+halfS) along (sx, sz).
+ */
+interface HallFrame {
+  cx: number;
+  cz: number;
+  nx: number;
+  nz: number;
+  sx: number;
+  sz: number;
+  half: number;
+  halfS: number;
+}
+
+/** The deck in every foundry: how high it stands, its stairs (each step's rise is height / steps), its railing. */
+const DECK = { height: 2.2, steps: 8, tread: 0.42, stairW: 1.8, rail: 1.05 };
+
+/**
+ * The charging deck: a raised steel floor along one wall at the back of the hall, up a flight of stairs from the
+ * front, railed along its open edges - somewhere to stand over the hall and shoot down while the forge catches. It
+ * is solid underneath, so the infected still path on one level (its top and the stairs are `floor` colliders, open
+ * ground to the nav grid; the rails along the open edges, from the ground up past the railing, block it), and they
+ * follow you up the stairs (`Zombie.y`).
+ */
+function foundryDeck(c: Ctx, h: HallFrame): void {
+  const { b } = c;
+  const D = DECK;
+  const rise = D.height / D.steps;
+  const stairLen = D.steps * D.tread;
+  // as long as leaves the foot of the stairs well clear of the front wall, as wide as clears the forge
+  const len = Math.min(5.5, 2 * h.half - stairLen - 2.4);
+  const wide = Math.min(3.6, h.halfS - 1.75);
+  const fD = -h.half + len; // the deck's front edge (the stairs come down from it toward the front door)
+  const fB = fD + stairLen; // the foot of the stairs
+  const sIn = h.halfS - wide; // the deck's inner edge
+  const sSt = h.halfS - D.stairW; // the stairs' inner edge
+  const across = h.nx !== 0;
+  const at = (f: number, s: number): [number, number] => [h.cx + h.nx * f + h.sx * s, h.cz + h.nz * f + h.sz * s];
+  /** A box over [f0, f1] x [s0, s1] x [y0, y1]: drawn in `mat` (if any), and a collider (if `spec`). */
+  const box = (f0: number, f1: number, s0: number, s1: number, y0: number, y1: number, mat: MatRef | null, spec: Partial<ColliderSpec> | null): void => {
+    const [x, z] = at((f0 + f1) / 2, (s0 + s1) / 2);
+    const w = across ? f1 - f0 : s1 - s0;
+    const dd = across ? s1 - s0 : f1 - f0;
+    if (mat) addBox(b, mat, x, (y0 + y1) / 2, z, w, y1 - y0, dd);
+    if (spec) b.collide({ x, z, hx: w / 2, hz: dd / 2, y0, y1, ...spec });
+  };
+  const top = D.height;
+  const rimTop = top + D.rail;
+  // the deck: a concrete block with a steel grating floor
+  box(-h.half, fD, sIn, h.halfS, 0, top - 0.06, 'concreteDark', null);
+  box(-h.half, fD, sIn - 0.04, h.halfS, top - 0.06, top, 'grating', null);
+  box(-h.half, fD, sIn, h.halfS, 0, top, null, { floor: true, surface: 'metal', mapKind: 'prop', tag: 'foundry-deck' });
+  // the stairs, the top step level with the deck
+  for (let k = 0; k < D.steps; k++) {
+    const y = top - k * rise;
+    box(fD + k * D.tread, fD + (k + 1) * D.tread, sSt, h.halfS, 0, y - 0.05, 'concreteDark', null);
+    box(fD + k * D.tread - 0.02, fD + (k + 1) * D.tread, sSt, h.halfS, y - 0.05, y, 'grating', null);
+    box(fD + k * D.tread, fD + (k + 1) * D.tread, sSt, h.halfS, 0, y, null, { floor: true, surface: 'metal', mapKind: 'prop', tag: 'foundry-stair' });
+  }
+  // the rims along the open edges: from the floor up past the railing, so nobody walks off the deck or the stairs,
+  // or up their sides. Bullets and eyes pass between the rails
+  const rim: Partial<ColliderSpec> = { blocksShots: false, mapKind: 'none', tag: 'foundry-rail' };
+  box(fD - 0.1, fD, sIn, sSt, 0, rimTop, null, rim);
+  box(-h.half, fD, sIn, sIn + 0.1, 0, rimTop, null, rim);
+  box(fD, fB, sSt, sSt + 0.1, 0, rimTop, null, rim);
+  // the railing: posts, a mid rail and a top rail along the deck's edges
+  const steel = 'steelDark';
+  for (const y of [top + 0.5, top + D.rail - 0.03]) {
+    box(fD - 0.08, fD - 0.02, sIn, sSt + 0.06, y - 0.03, y + 0.03, steel, null);
+    box(-h.half, fD, sIn + 0.02, sIn + 0.08, y - 0.03, y + 0.03, steel, null);
+  }
+  const posts: [number, number][] = [[fD - 0.05, sIn + 0.05], [fD - 0.05, (sIn + sSt) / 2]];
+  for (let f = fD - 1.2; f > -h.half + 0.3; f -= 1.2) posts.push([f, sIn + 0.05]);
+  for (const [f, s] of posts) box(f - 0.04, f + 0.04, s - 0.04, s + 0.04, top, top + D.rail, steel, null);
+  // down the stairs: a post on every other step, and a handrail sloping with them
+  for (let k = 0; k <= D.steps; k += 2) {
+    const f = fD + Math.min(k + 0.5, D.steps - 0.5) * D.tread;
+    const y = top - Math.min(k, D.steps - 1) * rise;
+    box(f - 0.04, f + 0.04, sSt + 0.01, sSt + 0.09, y, y + D.rail, steel, null);
+  }
+  const slope = Math.atan2(rise, D.tread);
+  const railLen = Math.hypot(stairLen - D.tread, top - rise);
+  const [rx, rz] = at((fD + fB - D.tread) / 2, sSt + 0.05);
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(railLen, 0.06, 0.06), b.mats.get(steel));
+  hand.position.set(rx, (top + rise) / 2 + D.rail - 0.03, rz);
+  hand.rotation.set(0, Math.atan2(-h.nz, h.nx), -slope, 'YXZ');
+  hand.castShadow = true;
+  b.add(hand);
+}
+
+/**
  * One of the seven foundries: a brick hall you walk into (a wide door at the front, a narrower one at the side), its
  * name in neon over the front door in its ember's colour. Inside, against the back wall, the forge: a brick hearth with
- * a chimney up through the roof and a mouth that is dark until it is stoked; an anvil, a workbench, barrels. Holding
- * the hall while the forge catches is the job (`forge/story.ts`). Returns where it is and the forge's mouth.
+ * a chimney up through the roof and a mouth that is dark until it is stoked; up one wall the charging deck
+ * (`foundryDeck`); an anvil, a workbench, barrels. Holding the hall while the forge catches is the job
+ * (`forge/story.ts`). Returns where it is and the forge's mouth.
  */
 function foundry(c: Ctx, i: number): { spot: FurnaceSpot; mouth: THREE.MeshStandardMaterial } {
   const { b, d } = c;
@@ -116,15 +209,21 @@ function foundry(c: Ctx, i: number): { spot: FurnaceSpot; mouth: THREE.MeshStand
   mark.position.set(hx + nx * 0.56, 2.2, hz + nz * 0.56);
   mark.rotation.y = yaw + Math.PI;
   b.add(mark);
-  // an anvil on a block in front of it, a workbench along a side wall, barrels in the corners
-  put(new THREE.BoxGeometry(0.5, 0.6, 0.5), iron, cx - nx * 0.6 + nz * 1.6, 0.3, cz - nz * 0.6 - nx * 1.6);
-  put(new THREE.BoxGeometry(across ? 0.9 : 0.35, 0.22, across ? 0.35 : 0.9), iron, cx - nx * 0.6 + nz * 1.6, 0.71, cz - nz * 0.6 - nx * 1.6);
-  b.collideBox(cx - nx * 0.6 + nz * 1.6, cz - nz * 0.6 - nx * 1.6, 0.6, 0.6, 0.85, { mapKind: 'prop', tag: 'anvil' });
-  const sideX = nz !== 0 ? (nz > 0 ? inner.x0 + 0.45 : inner.x1 - 0.45) : cx;
-  const sideZ = nx !== 0 ? (nx > 0 ? inner.z1 - 0.45 : inner.z0 + 0.45) : cz;
-  put(new THREE.BoxGeometry(across ? 2.4 : 0.8, 0.9, across ? 0.8 : 2.4), b.mats.get('wood'), sideX, 0.45, sideZ);
-  b.collideBox(sideX, sideZ, across ? 2.4 : 0.8, across ? 0.8 : 2.4, 1, { mapKind: 'prop', tag: 'workbench' });
-  barrelGroup(b, { x: cx - nx * (half - 0.8) - nz * 0 + (nx !== 0 ? 0 : half - 0.9), z: cz - nz * (half - 0.8) + (nz !== 0 ? 0 : half - 0.9), rot: 0, count: 2, radius: 0.6, seed: 700 + i, colors: ['rust'] });
+  // the deck up one wall (opposite the side door) and its stairs; the rest keeps to the other side of the hall
+  const [ox, oz] = OUT[site.side];
+  const frame: HallFrame = { cx, cz, nx, nz, sx: -ox, sz: -oz, half, halfS: (across ? inner.z1 - inner.z0 : inner.x1 - inner.x0) / 2 };
+  const at = (f: number, s: number): [number, number] => [cx + nx * f + frame.sx * s, cz + nz * f + frame.sz * s];
+  foundryDeck(c, frame);
+  // an anvil on a block in front of the forge, a workbench along the side door's wall, barrels in its back corner
+  const [ax, az] = at(-0.5, -1.6);
+  put(new THREE.BoxGeometry(0.5, 0.6, 0.5), iron, ax, 0.3, az);
+  put(new THREE.BoxGeometry(across ? 0.9 : 0.35, 0.22, across ? 0.35 : 0.9), iron, ax, 0.71, az);
+  b.collideBox(ax, az, 0.6, 0.6, 0.85, { mapKind: 'prop', tag: 'anvil' });
+  const [wx, wz] = at(0, -frame.halfS + 0.45);
+  put(new THREE.BoxGeometry(across ? 2.4 : 0.8, 0.9, across ? 0.8 : 2.4), b.mats.get('wood'), wx, 0.45, wz);
+  b.collideBox(wx, wz, across ? 2.4 : 0.8, across ? 0.8 : 2.4, 1, { mapKind: 'prop', tag: 'workbench' });
+  const [bx, bz] = at(-half + 0.8, -frame.halfS + 0.9);
+  barrelGroup(b, { x: bx, z: bz, rot: 0, count: 2, radius: 0.6, seed: 700 + i, colors: ['rust'] });
   b.light({ x: cx, y: 3.4, z: cz, color: flame.color, intensity: 20, distance: 11, weight: 0.6 });
   // the name in neon over the front door
   const fx = cx + nx * (half + 0.45);

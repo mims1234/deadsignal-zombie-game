@@ -66,7 +66,7 @@ export class NavGrid {
 
   /** Block the cells (within the given index range) an agent's centre cannot occupy because of one collider. */
   private stamp(c: BoxCollider, ci0: number, ci1: number, cj0: number, cj1: number): void {
-    if (!c.blocksMove) return;
+    if (!c.blocksMove || c.floor) return; // a raised floor is walked on (its open edges carry rims that are stamped)
     if (c.y1 <= 0.5 || c.y0 >= 1.7) return;
     const inflate = this.inflate;
     const infl2 = inflate * inflate;

@@ -1218,7 +1218,7 @@ export class Game implements GameCtx {
     };
     this.player.update(dt, control);
     // mutual push with the horde (the player yields less)
-    this.zombies.pushPlayer(this.player.x, this.player.z, this.pushOut);
+    this.zombies.pushPlayer(this.player.x, this.player.z, this.pushOut, this.player.y);
     if (this.pushOut.x !== 0 || this.pushOut.z !== 0) {
       const p = { x: this.player.x + this.pushOut.x, z: this.player.z + this.pushOut.z };
       this.level.world.resolveCircle(p, PLAYER.radius, this.player.y + PLAYER.stepHeight, this.player.y + this.player.height, 3);

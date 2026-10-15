@@ -203,7 +203,7 @@ export class CardRuntime {
         const down = st?.phase === 'downed';
         u.ring.visible = down;
         if (down) {
-          u.ring.position.set(z.x, 0.04, z.z);
+          u.ring.position.set(z.x, z.y + 0.04, z.z);
           u.ring.scale.setScalar(0.5 + 1.1 * (st.downLeft / CARD_MODE.downTime));
         }
       }
@@ -298,7 +298,7 @@ export class CardRuntime {
     ctx.audio.play('upgrade_ok', { priority: 3 });
     ctx.hudEvent({ type: 'flash', color: cssColor(u.def.accent), strength: 0.35 });
     ctx.feed(`${u.def.name.toUpperCase()} PURGED - TAKE THE CARD`, 'good');
-    u.loot.position.set(z.x, 0, z.z);
+    u.loot.position.set(z.x, z.y, z.z);
     u.loot.visible = true;
     u.portrait.visible = false;
     u.ring.visible = false;

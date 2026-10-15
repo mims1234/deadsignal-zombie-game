@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.103",
+      "date": "2026-10-16",
+      "title": "The foundries get a second level",
+      "notes": [
+        "Every one of the Forge's seven foundries has a raised steel deck up a flight of stairs at the back of the hall, railed along its open edges: somewhere to stand over the hall and shoot down while the forge catches.",
+        "The infected follow you up the stairs (they climb a step at a time and can no longer reach you from the floor below), and the squad follows you up too.",
+        "Shots, blasts and bodies thrown by them all work up there, in co-op as well."
+      ]
+    },
+    {
       "version": "0.1.102",
       "date": "2026-10-16",
       "title": "No first-time stutter, and themed scrollbars",

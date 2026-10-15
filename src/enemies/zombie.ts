@@ -88,6 +88,13 @@ export class Zombie {
   rig: ZombieRig;
   x = 0;
   z = 0;
+  /**
+   * The floor under its feet: 0 on the ground, higher on a raised floor (a foundry's deck and its stairs,
+   * `CollisionWorld.floorHeight`). Worked out from (x, z) wherever it moves, the host and co-op guests alike.
+   */
+  y = 0;
+  /** `y` eased for drawing, so it climbs a stair step by step rather than in jumps. */
+  private drawY = 0;
   yaw = 0;
   vx = 0;
   vz = 0;
@@ -220,6 +227,7 @@ export class Zombie {
     this.curable = opts.curable ?? false;
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
+    this.y = this.drawY = 0; // stood on whatever floor is there at its first step
     this.yaw = yaw;
     this.vx = this.vz = 0;
     this.maxHp = this.def.hp * (opts.hpScale ?? 1);
@@ -390,9 +398,17 @@ export class Zombie {
     this.x += (this.netX - this.x) * k;
     this.z += (this.netZ - this.z) * k;
     this.yaw = wrap(this.yaw + wrap(this.netYaw - this.yaw) * k);
+    this.settle(env.world, dt);
     this.hitKick = Math.max(0, this.hitKick - dt * 5);
     if (this.state === 'dead' || this.state === 'downed') this.deathT += dt;
     this.pose(env, this.netSpeed);
+  }
+
+  /** Stand on the floor under it now (`y`), easing the height it is drawn at toward it. */
+  private settle(world: CollisionWorld, dt: number): void {
+    this.y = world.floorHeight(this.x, this.z, 0.2);
+    const d = this.y - this.drawY;
+    this.drawY = Math.abs(d) < 0.003 ? this.y : this.drawY + d * Math.min(1, dt * 14);
   }
 
   /** Flinch as if hit (a guest's own shots, before the host confirms the damage). */
@@ -418,7 +434,7 @@ export class Zombie {
   private syncRoot(): void {
     const r = this.rig.root;
     if (this.flingY === 0 && this.tumbleP === 0 && this.tumbleR === 0) {
-      r.position.set(this.x, this.scriptPose.lift, this.z);
+      r.position.set(this.x, this.drawY + this.scriptPose.lift, this.z);
       r.rotation.set(0, this.yaw, 0, 'YXZ');
       return;
     }
@@ -434,7 +450,7 @@ export class Zombie {
     const ly = h * cr * cp;
     const lz = h * cr * sp;
     const up = Math.abs(cr * cp);
-    const hips = this.flingY + h * up + 0.14 * (1 - up);
+    const hips = this.drawY + this.flingY + h * up + 0.14 * (1 - up);
     const sy = Math.sin(this.yaw);
     const cy = Math.cos(this.yaw);
     r.position.set(this.x - (lx * cy + lz * sy), hips - ly, this.z - (-lx * sy + lz * cy));
@@ -476,7 +492,7 @@ export class Zombie {
     p.x = this.x + this.flingVX * dt;
     p.z = this.z + this.flingVZ * dt;
     // walls stop the body (and take most of its speed)
-    if (env.world.resolveCircle(p, 0.3, this.flingY + 0.2, this.flingY + 1.4, 2)) {
+    if (env.world.resolveCircle(p, 0.3, this.y + this.flingY + 0.2, this.y + this.flingY + 1.4, 2)) {
       this.flingVX *= -0.25;
       this.flingVZ *= -0.25;
       this.tumblePV *= 0.5;
@@ -484,6 +500,11 @@ export class Zombie {
     }
     this.x = p.x;
     this.z = p.z;
+    // thrown off a deck it falls to the floor below (and onto one, lands there): its height stays put in the world
+    const top = this.y + this.flingY;
+    this.settle(env.world, dt);
+    this.drawY = this.y;
+    this.flingY = Math.max(0, top - this.y);
     let grounded = false;
     if (this.flingY <= 0) {
       this.flingY = 0;
@@ -492,7 +513,7 @@ export class Zombie {
         this.flingVY = -this.flingVY * RAGDOLL.bounce;
         this.tumblePV *= 0.6;
         this.tumbleRV *= 0.6;
-        env.fx.dust({ x: this.x, y: 0.1, z: this.z }, 0.35);
+        env.fx.dust({ x: this.x, y: this.y + 0.1, z: this.z }, 0.35);
       } else {
         this.flingVY = 0;
       }
@@ -735,7 +756,7 @@ export class Zombie {
     const R = ZOMBIE_AI.separationRadius;
     for (let i = 0; i < neighbors.length; i++) {
       const o = neighbors[i]!;
-      if (o === this || !o.active) continue;
+      if (o === this || !o.active || Math.abs(o.y - this.y) > 1.2) continue; // one up on a deck, one below
       const ox = this.x - o.x;
       const oz = this.z - o.z;
       const d2 = ox * ox + oz * oz;
@@ -749,7 +770,7 @@ export class Zombie {
       sz += (oz / d) * k * w;
     }
     // keep off the player's body (mutual push is handled in the manager for the player side)
-    if (p.alive && dist < this.def.radius + 0.34 + 0.05 && dist > 1e-4) {
+    if (p.alive && dist < this.def.radius + 0.34 + 0.05 && dist > 1e-4 && Math.abs(p.y - this.y) < 1.2) {
       const k = (this.def.radius + 0.39 - dist) / 0.4;
       sx -= (dx / dist) * k * 1.5;
       sz -= (dz / dist) * k * 1.5;
@@ -759,7 +780,7 @@ export class Zombie {
     const bx = this.x;
     const bz = this.z;
     const move = { x: this.x + (this.vx + sx * ZOMBIE_AI.separationStrength) * dt, z: this.z + (this.vz + sz * ZOMBIE_AI.separationStrength) * dt };
-    // sub-step long moves so nothing tunnels through thin walls
+    // sub-step long moves so nothing tunnels through thin walls (and a stair is climbed a step at a time)
     const stepLen = Math.hypot(move.x - bx, move.z - bz);
     if (stepLen > ZOMBIE_AI.maxStepDistance) {
       const n = Math.ceil(stepLen / ZOMBIE_AI.maxStepDistance);
@@ -767,15 +788,17 @@ export class Zombie {
       for (let i = 1; i <= n; i++) {
         p2.x = bx + ((move.x - bx) * i) / n;
         p2.z = bz + ((move.z - bz) * i) / n;
-        env.world.resolveCircle(p2, this.def.radius, 0.5, 1.7, 2);
+        env.world.resolveCircle(p2, this.def.radius, this.y + 0.5, this.y + 1.7, 2);
+        if (i < n) this.y = env.world.floorHeight(p2.x, p2.z, 0.2);
       }
       move.x = p2.x;
       move.z = p2.z;
     } else {
-      env.world.resolveCircle(move, this.def.radius, 0.5, 1.7, 2);
+      env.world.resolveCircle(move, this.def.radius, this.y + 0.5, this.y + 1.7, 2);
     }
     this.x = move.x;
     this.z = move.z;
+    this.settle(env.world, dt);
     const actual = Math.hypot(this.x - bx, this.z - bz) / Math.max(dt, 1e-4);
 
     // stuck detection while chasing: nudge sideways / re-path
@@ -842,7 +865,7 @@ export class Zombie {
           const facing = Math.atan2(-(p.x - this.x), -(p.z - this.z));
           inView = Math.abs(wrap(facing - this.yaw)) < 1.25 || dist < 6;
         }
-        if (inView && !env.world.segmentBlocked(this.x, 1.5, this.z, p.x, p.eyeY - 0.15, p.z, 'shots')) sees = true;
+        if (inView && !env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.15, p.z, 'shots')) sees = true;
       }
       // very close: they smell/hear you regardless
       if (dist < ZOMBIE_AI.footstepHearing * 0.5 && this.state === 'idle') sees = true;
@@ -900,7 +923,7 @@ export class Zombie {
         this.wanderWait = stop.wait;
       } else if (this.wanderWait <= 0) {
         const pt = env.nav.randomFreeNear(this.homeX, this.homeZ, ZOMBIE_AI.wanderRadius, () => env.rng.f());
-        if (pt && env.world.segmentBlocked(this.x, 0.9, this.z, pt.x, 0.9, pt.z, 'move') === false) {
+        if (pt && env.world.segmentBlocked(this.x, this.y + 0.9, this.z, pt.x, this.y + 0.9, pt.z, 'move') === false) {
           this.wanderX = pt.x;
           this.wanderZ = pt.z;
         }
@@ -978,8 +1001,8 @@ export class Zombie {
     }
     // ---- melee ----
     const reach = this.def.attackRange;
-    if (this.cooldown <= 0 && dist < reach * 0.94 && Math.abs(p.y - 0) < ZOMBIE_AI.attackVerticalReach) {
-      if (!env.world.segmentBlocked(this.x, 1.1, this.z, p.x, Math.max(0.6, p.eyeY - 0.5), p.z, 'move')) {
+    if (this.cooldown <= 0 && dist < reach * 0.94 && Math.abs(p.y - this.y) < ZOMBIE_AI.attackVerticalReach) {
+      if (!env.world.segmentBlocked(this.x, this.y + 1.1, this.z, p.x, Math.max(p.y + 0.6, p.eyeY - 0.5), p.z, 'move')) {
         this.beginAttack('melee', env);
         return 0;
       }
@@ -1142,7 +1165,7 @@ export class Zombie {
       env.fx.explosion({ x: pos.x, y: 0.2, z: pos.z }, 1.5);
       env.shake(0.9);
       const d = Math.hypot(p.x - pos.x, p.z - pos.z);
-      if (d < WARDEN.slamRadius && p.y < 1.4) {
+      if (d < WARDEN.slamRadius && Math.abs(p.y - this.y) < 1.4) {
         const fall = 1 - 0.6 * (d / WARDEN.slamRadius);
         env.hurtPlayer(WARDEN.slamDamage * fall * this.dmgScale, pos.x, pos.z, 'slam', 10);
       }
@@ -1151,10 +1174,10 @@ export class Zombie {
     // melee: distance, cone, vertical reach and a wall check
     const reach = this.def.attackRange + 0.35;
     if (dist > reach) return;
-    if (Math.abs(p.y) > ZOMBIE_AI.attackVerticalReach) return;
+    if (Math.abs(p.y - this.y) > ZOMBIE_AI.attackVerticalReach) return;
     const facing = Math.atan2(-(p.x - this.x), -(p.z - this.z));
     if (Math.abs(wrap(facing - this.yaw)) > (ZOMBIE_AI.attackCone * Math.PI) / 180) return;
-    if (env.world.segmentBlocked(this.x, 1.1, this.z, p.x, Math.max(0.6, p.eyeY - 0.5), p.z, 'move')) return;
+    if (env.world.segmentBlocked(this.x, this.y + 1.1, this.z, p.x, Math.max(p.y + 0.6, p.eyeY - 0.5), p.z, 'move')) return;
     env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
   }
 

@@ -530,12 +530,12 @@ export class ZombieManager {
   }
 
   /** Mutual push between the player and nearby zombies (player yields less). Returns the displacement to apply to the player. */
-  pushPlayer(px: number, pz: number, out: { x: number; z: number }): void {
+  pushPlayer(px: number, pz: number, out: { x: number; z: number }, py = 0): void {
     out.x = 0;
     out.z = 0;
     this.grid.query(px, pz, this.nearby);
     for (const z of this.nearby) {
-      if (!z.active) continue;
+      if (!z.active || Math.abs(z.y - py) > 1.2) continue;
       const dx = px - z.x;
       const dz = pz - z.z;
       const d = Math.hypot(dx, dz);
@@ -603,7 +603,7 @@ export class ZombieManager {
       z.rig.getHeadWorld(this.tmpHead);
       const headT = raySphere(ox, oy, oz, dx, dy, dz, this.tmpHead.x, this.tmpHead.y, this.tmpHead.z, z.def.headRadius * 1.08);
       const bodyTop = Math.max(0.6, z.def.height - z.def.headRadius * 1.6);
-      const bodyT = rayCylinder(ox, oy, oz, dx, dy, dz, z.x, z.z, z.def.radius * 0.88, 0.05, bodyTop);
+      const bodyT = rayCylinder(ox, oy, oz, dx, dy, dz, z.x, z.z, z.def.radius * 0.88, z.y + 0.05, z.y + bodyTop);
       let t = -1;
       let head = false;
       if (headT >= 0 && (bodyT < 0 || headT <= bodyT + 0.03)) {
@@ -627,9 +627,10 @@ export class ZombieManager {
       if (!z.active || z.dormant) continue;
       const dx = z.x - cx;
       const dz = z.z - cz;
-      const d = Math.hypot(dx, dz);
+      // up on a deck or down below it: only the height beyond a body's own counts
+      const d = Math.hypot(dx, dz, Math.max(0, Math.abs(z.y + 0.9 - cy) - 0.9));
       if (d > radius + z.def.radius) continue;
-      const covered = env.world.segmentBlocked(cx, cy + 0.3, cz, z.x, 1.0, z.z, 'shots');
+      const covered = env.world.segmentBlocked(cx, cy + 0.3, cz, z.x, z.y + 1.0, z.z, 'shots');
       if (covered && coverMul <= 0) continue;
       let dmg = centerDamage + (edgeDamage - centerDamage) * Math.min(1, d / radius);
       if (covered) dmg *= coverMul;

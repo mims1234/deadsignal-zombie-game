@@ -84,6 +84,8 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
     if (at) {
       a.ref.x = at.x;
       a.ref.z = at.z;
+      a.ref.y = w.level.world.floorHeight(at.x, at.z, 0.2);
+      a.ref.eyeY = a.ref.y + 1.6;
     }
     a.stuckT = 0;
     return;
@@ -106,13 +108,14 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const sd = Math.hypot(sx, sz) || 1;
   const speed = (d > 10 ? 6.2 : 4.4) * dt;
   const step = { x: a.ref.x + (sx / sd) * Math.min(speed, sd), z: a.ref.z + (sz / sd) * Math.min(speed, sd) };
-  w.level.world.resolveCircle(step, 0.32, 0.5, 1.7, 3);
+  w.level.world.resolveCircle(step, 0.32, a.ref.y + 0.5, a.ref.y + 1.7, 3);
   // making no headway toward a far leader means caught on geometry
   const progress = Math.hypot(step.x - a.ref.x, step.z - a.ref.z);
   a.stuckT = d > 6 && progress < speed * 0.25 ? a.stuckT + dt : Math.max(0, a.stuckT - dt * 2);
   a.ref.x = step.x;
   a.ref.z = step.z;
-  a.ref.eyeY = 1.6;
+  a.ref.y = w.level.world.floorHeight(step.x, step.z, 0.2); // up a foundry's deck after the leader
+  a.ref.eyeY = a.ref.y + 1.6;
   if (!a.target) a.yaw = Math.atan2(-sx, -sz);
 }
 
@@ -131,7 +134,7 @@ export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | nul
       const d = Math.hypot(z.x - a.ref.x, z.z - a.ref.z);
       if (d >= best) continue;
       z.rig.getChestWorld(tmpA);
-      if (w.level.world.segmentBlocked(a.ref.x, 1.45, a.ref.z, tmpA.x, tmpA.y, tmpA.z, 'shots')) continue;
+      if (w.level.world.segmentBlocked(a.ref.x, a.ref.y + 1.45, a.ref.z, tmpA.x, tmpA.y, tmpA.z, 'shots')) continue;
       best = d;
       a.target = z;
     }
@@ -147,7 +150,7 @@ export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | nul
   const head = hit && w.rng.f() < a.stats.headChance;
   if (head) t.rig.getHeadWorld(tmpB);
   else t.rig.getChestWorld(tmpB);
-  const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
+  const from = { x: a.ref.x - Math.sin(a.yaw) * 0.6, y: a.ref.y + 1.35, z: a.ref.z - Math.cos(a.yaw) * 0.6 };
   const to = hit ? { x: tmpB.x, y: tmpB.y, z: tmpB.z } : { x: tmpB.x + (w.rng.f() - 0.5) * 2, y: tmpB.y + (w.rng.f() - 0.3) * 1.5, z: tmpB.z + (w.rng.f() - 0.5) * 2 };
   return { from, to, hit, head, target: t };
 }
