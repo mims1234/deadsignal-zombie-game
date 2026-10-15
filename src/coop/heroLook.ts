@@ -120,7 +120,7 @@ export function addHeroTorso(body: THREE.Object3D, chest: THREE.Object3D, look: 
     const ribs = put(chest, new THREE.CylinderGeometry(0.165, 0.13, 0.28, 18), top, 0, 0.39, 0);
     ribs.scale.z = 0.72;
     // a dress's bodice is smooth: a softer figure under it
-    const dress = look.heroOutfit === 'dress';
+    const dress = look.heroOutfit === 'dress' || look.heroOutfit === 'uniform';
     for (const s of [-1, 1]) {
       put(chest, sphere(dress ? 0.05 : 0.058), top, s * 0.054, 0.33, dress ? -0.066 : -0.074, undefined, dress ? [1.1, 0.8, 0.5] : [1, 0.88, 0.72]);
       put(chest, sphere(0.06), top, s * 0.172, 0.47, 0);
@@ -430,6 +430,56 @@ export function addHeroHair(head: THREE.Object3D, look: AvatarLook): void {
       }
       break;
     }
+    case 'animeBob': {
+      // a soft, full bob to the jaw, wispy bangs over the brow (clear of the eyes), longer locks framing the face, and
+      // one white streak through the bangs
+      base(1.08, 0.62);
+      blob(0, 0.06, 0.014, 0.12, 1.0, 0.68, 1.06);
+      blob(0, -0.01, 0.03, 0.125, 1.0, 0.8, 0.98);
+      const streak = heroMat(0xf2f4fa, 0.55);
+      for (let i = 0; i < 7; i++) {
+        const x = -0.07 + i * 0.0233;
+        const len = 0.058 + (i % 2) * 0.014;
+        put(head, new THREE.ConeGeometry(0.021, len, 5), i === 4 ? streak : i % 2 ? hi : hair, x, 0.06 + (0.06 - len) * 0.5, -0.102 + Math.abs(x) * 0.12, [Math.PI - 0.32, 0, x * -2.6], [1, 1, 0.55]);
+      }
+      for (const s of [-1, 1]) {
+        put(head, capsule(0.024, 0.09), hair, s * 0.1, -0.05, -0.045, [0.1, 0, s * 0.08]);
+        put(head, new THREE.ConeGeometry(0.024, 0.05, 6), hi, s * 0.101, -0.13, -0.05, [Math.PI + 0.1, 0, s * 0.08]);
+        // the bob's rounded edge behind the ears
+        blob(s * 0.09, -0.07, 0.04, 0.05, 0.8, 0.9, 1.1);
+      }
+      break;
+    }
+    case 'animeSpiky': {
+      // a big, light, messy shock of spikes in every direction, spiked bangs over the brow (clear of the eyes)
+      base(1.08, 0.52);
+      blob(0, 0.08, 0.01, 0.128, 1.08, 0.72, 1.12);
+      const spikes: [number, number, number, number][] = [
+        [0, 1.3, 0.17, 0.042], [0.7, 1.15, 0.15, 0.04], [-0.7, 1.15, 0.15, 0.04], [1.4, 0.9, 0.14, 0.038], [-1.4, 0.9, 0.14, 0.038],
+        [2.1, 0.75, 0.13, 0.036], [-2.1, 0.75, 0.13, 0.036], [2.7, 0.7, 0.12, 0.034], [-2.7, 0.7, 0.12, 0.034], [Math.PI, 0.8, 0.13, 0.036],
+        [0.35, 0.55, 0.12, 0.034], [-0.35, 0.55, 0.12, 0.034], [1.05, 0.45, 0.11, 0.032], [-1.05, 0.45, 0.11, 0.032],
+        [1.75, 0.35, 0.1, 0.03], [-1.75, 0.35, 0.1, 0.03], [2.45, 0.3, 0.1, 0.03], [-2.45, 0.3, 0.1, 0.03],
+      ];
+      // [heading round the head (0 = back), lean out from straight up, length, thickness]
+      spikes.forEach(([a, lean0, len0, r], i) => {
+        const ox = Math.sin(a);
+        const oz = Math.cos(a);
+        // up and out, rooted on the scalp: the spike's middle sits half its length out from its root
+        const lean = lean0 * 0.62;
+        const len = len0 * 1.5;
+        const dx = ox * Math.sin(lean);
+        const dy = Math.cos(lean);
+        const dz = oz * Math.sin(lean);
+        const m = put(head, new THREE.ConeGeometry(r * 1.3, len, 5), i % 3 === 0 ? hi : hair, ox * 0.06 + dx * len * 0.42, 0.075 + dy * len * 0.42, oz * 0.055 + 0.01 + dz * len * 0.42);
+        m.rotation.set(oz * lean, 0, -ox * lean);
+      });
+      for (let i = 0; i < 6; i++) {
+        const x = -0.065 + i * 0.026;
+        put(head, new THREE.ConeGeometry(0.022, 0.07 + (i % 2) * 0.02, 5), i % 2 ? hi : hair, x, 0.06, -0.103 + Math.abs(x) * 0.12, [Math.PI - 0.45, 0, x * -3], [1, 1, 0.55]);
+      }
+      for (const s of [-1, 1]) put(head, new THREE.ConeGeometry(0.024, 0.09, 5), hair, s * 0.105, 0.0, -0.02, [0, 0, s * -2.4]);
+      break;
+    }
     case 'animeLong': {
       // long and straight to the waist, fading to `hairTip` at the ends: fine bangs, long locks framing the face and
       // falling down the front, and a curtain down the back
@@ -483,7 +533,8 @@ export function addHeroOutfit(body: THREE.Object3D, chest: THREE.Object3D, head:
     put(body, new THREE.BoxGeometry(0.05, 0.04, 0.02), heroMat(0xc8a050, 0.35, { metal: 0.8 }), 0, 1.05, -0.11);
   }
   switch (o) {
-    case 'dress': {
+    case 'dress':
+    case 'uniform': {
       // a fitted bodice (the torso, in the dress's colour), a sash at the waist and a flared skirt: to mid-thigh, or
       // long, fading through a paler band to the accent at the hem
       const skirtM = doubleSided(cloth as THREE.MeshStandardMaterial);
@@ -509,7 +560,27 @@ export function addHeroOutfit(body: THREE.Object3D, chest: THREE.Object3D, head:
         put(chest, new THREE.TorusGeometry(0.052, 0.009, 6, 14), accent, s * 0.205, 0.39, 0, [Math.PI / 2, 0, s * 0.25]);
       }
       put(chest, new THREE.BoxGeometry(0.05, 0.3, 0.01), accent, 0, 0.17, -0.1, [0.08, 0, 0], [1, 1, 1]);
-      for (let i = 0; i < 3; i++) put(chest, sphere(0.008, 6, 4), heroMat(0xf8f8fc, 0.3), 0, 0.27 - i * 0.07, -0.108);
+      if (o === 'dress') for (let i = 0; i < 3; i++) put(chest, sphere(0.008, 6, 4), heroMat(0xf8f8fc, 0.3), 0, 0.27 - i * 0.07, -0.108);
+      else {
+        // the uniform: a high dark collar, wide dark lapels, two rows of gold buttons
+        const gold = heroMat(0xe0b040, 0.3, { metal: 0.8 });
+        put(chest, new THREE.TorusGeometry(0.078, 0.026, 6, 18), accent, 0, 0.55, 0, [Math.PI / 2, 0, 0], [1, 0.86, 1]);
+        for (const s of [-1, 1]) {
+          put(chest, new THREE.BoxGeometry(0.05, 0.16, 0.012), accent, s * 0.05, 0.43, -0.112, [0.25, 0, s * 0.45]);
+          for (let i = 0; i < 3; i++) put(chest, sphere(0.0095, 6, 4), gold, s * 0.04, 0.3 - i * 0.075, -0.112);
+        }
+      }
+      break;
+    }
+    case 'tunic': {
+      // a loose shirt to mid-thigh over a navy turtleneck: the roll of the collar, the V of its neck, the shirt's hem
+      const tunic = doubleSided(cloth as THREE.MeshStandardMaterial);
+      put(body, new THREE.CylinderGeometry(0.15 * w, 0.2, 0.3, 20, 1, true), tunic, 0, 0.9, 0, undefined, [1, 1, 0.82]);
+      put(chest, new THREE.TorusGeometry(0.068, 0.03, 8, 18), accent, 0, 0.55, 0, [Math.PI / 2, 0, 0], [1, 0.9, 1]);
+      for (const s of [-1, 1]) put(chest, new THREE.BoxGeometry(0.03, 0.17, 0.012), accent, s * 0.032, 0.44, -0.11 * w, [0.2, 0, s * 0.32]);
+      put(chest, new THREE.BoxGeometry(0.045, 0.06, 0.012), accent, 0, 0.47, -0.112 * w);
+      // short loose sleeves over the long navy ones
+      for (const s of [-1, 1]) put(chest, sphere(0.072, 12, 10), cloth, s * 0.2, 0.44, 0, undefined, [1, 1.05, 1]);
       break;
     }
     case 'apron': {
@@ -603,7 +674,7 @@ export function addHeroAccessory(body: THREE.Object3D, chest: THREE.Object3D, he
       put(head, new THREE.TorusGeometry(0.122, 0.009, 6, 24), dark, 0, 0.075, 0, [Math.PI / 2 - 0.15, 0, 0]);
       break;
     case 'headphones':
-      put(head, new THREE.TorusGeometry(0.128, 0.012, 6, 20, Math.PI), dark, 0, 0.02, 0, [0, Math.PI / 2, 0]);
+      put(head, new THREE.TorusGeometry(0.128, 0.012, 6, 20, Math.PI), look.anime ? accent : dark, 0, 0.02, 0, [0, Math.PI / 2, 0]);
       for (const s of [-1, 1]) put(head, new THREE.CylinderGeometry(0.04, 0.04, 0.03, 14), accent, s * 0.125, -0.005, 0, [0, 0, Math.PI / 2]);
       break;
     case 'headset':
@@ -613,11 +684,14 @@ export function addHeroAccessory(body: THREE.Object3D, chest: THREE.Object3D, he
     case 'glasses':
     case 'shades': {
       const frame = heroMat(a === 'shades' ? 0x101012 : 0x22262c, 0.4, { metal: 0.4 });
+      // an anime face's eyes are bigger and lower: round thin frames around them
+      const big = !!look.anime && a === 'glasses';
+      const ey = big ? -0.003 : 0.012;
       for (const s of [-1, 1]) {
         if (a === 'shades') put(head, new THREE.BoxGeometry(0.04, 0.022, 0.006), frame, s * 0.043, 0.012, -0.125);
-        else put(head, new THREE.TorusGeometry(0.024, 0.0035, 6, 16), frame, s * 0.043, 0.012, -0.123);
+        else put(head, new THREE.TorusGeometry(big ? 0.031 : 0.024, big ? 0.0028 : 0.0035, 6, 20), frame, s * (big ? 0.042 : 0.043), ey, big ? -0.114 : -0.123);
       }
-      put(head, new THREE.BoxGeometry(0.03, 0.005, 0.005), frame, 0, 0.018, -0.126);
+      put(head, new THREE.BoxGeometry(big ? 0.022 : 0.03, 0.004, 0.005), frame, 0, ey + 0.006, big ? -0.117 : -0.126);
       break;
     }
     case 'moonPin':
@@ -652,6 +726,50 @@ export function addHeroAccessory(body: THREE.Object3D, chest: THREE.Object3D, he
       }
       put(hg, capsule(0.005, 0.04), dark, bx, 0.032, bz);
       head.add(hg);
+      break;
+    }
+    case 'starClip': {
+      // a little white star clip in the hair, above one ear, and a small bow beside it
+      const white = heroMat(0xf6f8ff, 0.4, { emissive: 0xdfe8ff, glow: 0.25 });
+      const g = new THREE.Group();
+      g.position.set(-0.095, 0.075, -0.045);
+      g.rotation.set(0, -1.1, 0.3);
+      head.add(g);
+      for (let i = 0; i < 5; i++) {
+        const t = (i / 5) * Math.PI * 2;
+        put(g, new THREE.ConeGeometry(0.012, 0.03, 4), white, Math.sin(t) * 0.014, Math.cos(t) * 0.014, 0, [0, 0, -t], [1, 1, 0.4]);
+      }
+      put(g, sphere(0.01, 8, 6), white, 0, 0, 0, undefined, [1, 1, 0.5]);
+      for (const s of [-1, 1]) put(head, sphere(0.014, 8, 6), white, -0.085 + s * 0.016, 0.1, 0.0, [0, 0, s * 0.5], [1, 0.6, 0.5]);
+      break;
+    }
+    case 'oniHorns':
+      // two small red horns, high on the brow, through the hair
+      for (const s of [-1, 1]) put(head, new THREE.ConeGeometry(0.017, 0.075, 12), heroMat(0xd01a26, 0.25, { emissive: 0x5a0408, glow: 0.4 }), s * 0.052, 0.14, -0.04, [-0.35, 0, s * 0.42]);
+      break;
+    case 'headband':
+      // a white band over the crown, ear to ear, just behind the bangs
+      put(head, new THREE.TorusGeometry(0.13, 0.008, 6, 28, Math.PI), heroMat(0xf6f6f8, 0.5), 0, 0.005, -0.03, [-0.42, 0, 0]);
+      break;
+    case 'tie': {
+      // a short orange tie at the collar
+      const t = heroMat(0xf08a1a, 0.55);
+      put(chest, new THREE.BoxGeometry(0.05, 0.035, 0.02), t, 0, 0.5, -0.13);
+      put(chest, new THREE.BoxGeometry(0.04, 0.12, 0.012), t, 0, 0.43, -0.128, [0.12, 0, 0]);
+      break;
+    }
+    case 'skateboard': {
+      // a yellow deck slung across the back, a red arrow on it, wheels to the body
+      const g = new THREE.Group();
+      g.position.set(0.02, 0.28, 0.17);
+      g.rotation.set(0.12, 0, 0.42);
+      chest.add(g);
+      put(g, new THREE.BoxGeometry(0.2, 0.74, 0.024), heroMat(0xf0d018, 0.5), 0, 0, 0);
+      for (const s of [-1, 1]) put(g, new THREE.CylinderGeometry(0.1, 0.1, 0.024, 16, 1, false, 0, Math.PI), heroMat(0xf0d018, 0.5), 0, s * 0.37, 0, [Math.PI / 2, s > 0 ? 0 : Math.PI, 0]);
+      const red = heroMat(0xd82018, 0.5);
+      put(g, new THREE.BoxGeometry(0.05, 0.3, 0.004), red, 0, -0.04, 0.014);
+      put(g, new THREE.ConeGeometry(0.075, 0.13, 3), red, 0, 0.17, 0.014, [0, 0, 0], [1, 1, 0.05]);
+      for (const y of [-0.26, 0.26]) for (const s of [-1, 1]) put(g, new THREE.CylinderGeometry(0.028, 0.028, 0.03, 10), heroMat(0xe8e0d8, 0.6), s * 0.075, y, -0.03, [0, 0, Math.PI / 2]);
       break;
     }
     case 'bow':

@@ -264,8 +264,8 @@ const entries: Entry[] = [
   },
   {
     id: 'vulcan-leadership', group: 'VULCAN', name: 'Familiar faces', height: 1.85,
-    tagline: 'tomoe, Athy, Marv03K, piryriry and Anya.',
-    lore: "Two of Athy, Marv03K and piryriry deploy with you on the Forge each run (they were out on a hand-delivery run when HQ fell); the third is holed up somewhere in the Forge with Anya, who kept everyone going over the radio. tomoe locked themselves into the HQ vault with the ledger, and the vault only opens when the beacon burns. The two with you follow you and fight, and can die for good.",
+    tagline: 'tomoe, Athy, Marv03K, piryriry, .maidlover. and Anya.',
+    lore: "Two of Athy, Marv03K, piryriry and .maidlover. deploy with you on the Forge each run (they were out on a hand-delivery run when HQ fell); the other two are holed up somewhere in the Forge, and so is Anya, who kept everyone going over the radio. tomoe locked themselves into the HQ vault with the ledger, and the vault only opens when the beacon burns. The two with you follow you and fight, and can die for good.",
     where: 'The Forge', stats: [['Health', '160'], ['Weapons', 'rifle / shotgun'], ['Extracted alive', '+$500 each']], modes: 'avatar',
     cast: LEADERS.map((n) => n.toUpperCase()),
     avatarModes: [...LEADERS.map((n) => n.toUpperCase()), 'IDLE', 'WALK', 'RIFLE'],
@@ -279,8 +279,8 @@ const entries: Entry[] = [
   {
     id: 'vulcan-clan', group: 'VULCAN', name: 'The clan', height: 1.85,
     tagline: 'Every member, in their own look.',
-    lore: `Every member of Vulcan has their own look on the Forge, the same every time - and some carry what they are known for. ${FORGE_STORY.members} of them, the third of Athy, Marv03K and piryriry, and Anya are barricaded into rooms around the Forge each run: clear the infected off a door and they slip out the back to the Hearth. One of them is hiding a bite.`,
-    where: 'The Forge (holed up, at the Hearth, and among the infected)', stats: [['Holed up each run', `${FORGE_STORY.members} + 2`], ['Reached', `+$${FORGE_STORY.rescueCash} each`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    lore: `Every member of Vulcan has their own look on the Forge, the same every time - and some carry what they are known for. ${FORGE_STORY.members} of them, the two of Athy, Marv03K, piryriry and .maidlover. who are not with you, and Anya are barricaded into rooms around the Forge each run: clear the infected off a door and they slip out the back to the Hearth. One of them is hiding a bite.`,
+    where: 'The Forge (holed up, at the Hearth, and among the infected)', stats: [['Holed up each run', `${FORGE_STORY.members} + 3`], ['Reached', `+$${FORGE_STORY.rescueCash} each`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
     cast: CLAN_GALLERY.map((n) => n.toUpperCase()),
     avatarModes: [...CLAN_GALLERY.map((n) => n.toUpperCase()), 'IDLE', 'WALK'],
     build: () => {

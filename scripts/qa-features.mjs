@@ -224,7 +224,7 @@ async function session(map) {
     check('two of the co-leaders deploy', leads.length === 2 && leads.every((n) => ['Athy', 'Marv03K', 'piryriry'].includes(n)), leads.join(', '));
     check('nobody is caged on the Forge', sq.every((s) => s.kind !== 'survivor'));
     const holdouts = await page.evaluate(() => window.__dead.game.forge.story.view.holdouts.map((h) => h.name));
-    check('tomoe, Anya and four members are holed up', holdouts.includes('tomoe') && holdouts.includes('Anya') && holdouts.length === 7, holdouts.join(', '));
+    check('tomoe, Anya, two of the four and four members are holed up', holdouts.includes('tomoe') && holdouts.includes('Anya') && holdouts.length === 8, holdouts.join(', '));
     const tags = (await call('zombieInfo')).filter((z) => z.tag).map((z) => z.tag);
     check('some infected carry Vulcan names', tags.length >= 3, `${tags.length}: ${tags.slice(0, 6).join(', ')}`);
     check('names are not repeated', new Set(tags).size === tags.length);

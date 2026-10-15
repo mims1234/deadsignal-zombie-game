@@ -287,7 +287,7 @@ export class Avatar {
     const geared = soldier || outfit === 'tactical';
     // legs and shoes by outfit: white tights under a nurse's dress, bare under a gown, scrubs under a coat
     const legMat = hero ? (look?.heroOutfit === 'workwear' ? cloth : pants) : outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xf0ece8, roughness: 0.7 }) : outfit === 'gown' ? skin : outfit === 'coat' ? new THREE.MeshStandardMaterial({ color: look?.accent ?? 0x6c8fae, roughness: 0.85 }) : outfit === 'habit' ? dark : null;
-    const shoeMat = hero ? heroMat(0x231a14, 0.6) : outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xe6e2da, roughness: 0.5 }) : outfit === 'gown' ? skin : dark;
+    const shoeMat = hero ? heroMat(look?.shoes ?? 0x231a14, 0.6) : outfit === 'nurse' ? new THREE.MeshStandardMaterial({ color: 0xe6e2da, roughness: 0.5 }) : outfit === 'gown' ? skin : dark;
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, parent: THREE.Object3D): THREE.Mesh => {
       const m = new THREE.Mesh(geo, mat);
       m.position.set(x, y, z);
@@ -308,7 +308,7 @@ export class Avatar {
       add(F?.thigh ?? P.thigh, legMat ?? cloth, 0, 0, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -THIGH;
-      add(F?.shin ?? P.shin, legMat ?? trim, 0, 0, 0, joint);
+      add(F?.shin ?? P.shin, hero && look?.heroOutfit === 'tunic' ? skin : (legMat ?? trim), 0, 0, 0, joint); // a tunic: shorts, bare shins
       add(F?.shoe ?? P.boot, shoeMat, 0, -SHIN, 0, joint);
       root.add(joint);
       this.body.add(root);
@@ -358,7 +358,7 @@ export class Avatar {
       add(F?.upper ?? P.upper, hero && look?.heroOutfit === 'apron' ? heroMat(0xd8d0c4, 0.85) : cloth, 0, 0.02, 0, root);
       const joint = new THREE.Group();
       joint.position.y = -UPPER;
-      add(F?.fore ?? P.fore, shortSleeves ? skin : cloth, 0, 0, 0, joint);
+      add(F?.fore ?? P.fore, shortSleeves ? skin : hero && look?.heroOutfit === 'tunic' ? heroMat(look.accent ?? 0x1c2a6a, 0.8) : cloth, 0, 0, 0, joint);
       add(F?.hand ?? P.hand, geared ? glove : skin, 0, -FORE, 0, joint);
       root.add(joint);
       this.chest.add(root);

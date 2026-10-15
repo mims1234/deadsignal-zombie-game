@@ -56,7 +56,8 @@ function shuffle<T>(list: T[], rng: Rng): T[] {
 export function pickForgeRoster(rng: Rng, rooms: readonly SafeRoomDef[]): ForgeRoster {
   const co = shuffle([...VULCAN_LEADERSHIP.coLeads], rng);
   const squad = co.slice(0, 2);
-  const leftOver = co[2]!;
+  // the rest of them are holed up somewhere in the Forge
+  const leftOver = co.slice(2);
   const members = shuffle([...VULCAN.infected], rng).slice(0, FORGE_STORY.members);
   const vault = rooms.findIndex((r) => r.vault);
   const radio = rooms.findIndex((r) => r.id === 'radio');
@@ -67,7 +68,7 @@ export function pickForgeRoster(rng: Rng, rooms: readonly SafeRoomDef[]): ForgeR
   const holdouts: HoldoutDef[] = [];
   if (vault >= 0) holdouts.push({ name: VULCAN_LEADERSHIP.leader, rank: 'leader', room: vault });
   for (const officer of VULCAN_LEADERSHIP.officers) holdouts.push({ name: officer, rank: 'officer', room: radio >= 0 ? radio : free.shift() ?? 0 });
-  holdouts.push({ name: leftOver, rank: 'coLead', room: free.shift() ?? 0 });
+  for (const name of leftOver) holdouts.push({ name, rank: 'coLead', room: free.shift() ?? 0 });
   for (const m of members) {
     const room = free.shift();
     if (room === undefined) break;

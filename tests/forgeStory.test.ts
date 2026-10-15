@@ -37,15 +37,15 @@ function forgeRun(seed = 11) {
 }
 
 describe('the Forge: who is where', () => {
-  it('draws two different co-leaders for the squad, the third holed up, Anya in the radio room, tomoe in the vault, four members', () => {
+  it('draws two different co-leaders for the squad, the rest holed up, Anya in the radio room, tomoe in the vault, four members', () => {
     const { story, sites } = forgeRun();
     const v = story.view;
     expect(v.squad.length).toBe(2);
     expect(new Set(v.squad).size).toBe(2);
     const left = VULCAN_LEADERSHIP.coLeads.filter((n) => !v.squad.includes(n));
-    expect(left.length).toBe(1);
+    expect(left.length).toBe(VULCAN_LEADERSHIP.coLeads.length - 2);
     const names = v.holdouts.map((h) => h.name);
-    expect(names).toContain(left[0]);
+    for (const n of left) expect(names).toContain(n);
     expect(names).toContain('Anya');
     expect(names).toContain('tomoe');
     expect(v.holdouts.filter((h) => h.rank === 'member').length).toBe(FORGE_STORY.members);

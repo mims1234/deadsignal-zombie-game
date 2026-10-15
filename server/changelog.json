@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.106",
+      "date": "2026-10-16",
+      "title": "New looks for tomoe, Anya and .maidlover.",
+      "notes": [
+        "tomoe gets an anime look: a shock of spiky white hair, blue eyes, a loose white tunic over a navy turtleneck, blue shorts, purple sneakers and a yellow skateboard slung across the back.",
+        "Anya gets an anime look: a blue bob with a white streak, amber eyes behind round glasses, white headphones, a white star clip and a dark hoodie.",
+        ".maidlover. joins the Forge: they can now be one of the two who deploy with you (or be holed up with the others), with an anime look of long pink hair, small red horns, a white headband and a red uniform with an orange tie."
+      ]
+    },
+    {
       "version": "0.1.105",
       "date": "2026-10-16",
       "title": "No rank titles",

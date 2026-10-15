@@ -926,7 +926,7 @@ export const TEAM_SKILL: Record<TeamSkill, TeamTuning> = {
  */
 export const VULCAN_LEADERSHIP = {
   leader: 'tomoe',
-  coLeads: ['Athy', 'Marv03K', 'piryriry'],
+  coLeads: ['Athy', 'Marv03K', 'piryriry', '.maidlover.'],
   officers: ['Anya'],
 } as const;
 
@@ -1030,11 +1030,11 @@ export interface AvatarLook {
    */
   hero?: boolean;
   build?: 'm' | 'f' | 'lean';
-  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong';
-  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress';
+  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong' | 'animeSpiky' | 'animeBob';
+  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress' | 'uniform' | 'tunic';
   /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`); tights under a dress. */
   pants?: number;
-  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash' | 'sunHat' | 'bow')[];
+  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash' | 'sunHat' | 'bow' | 'oniHorns' | 'headband' | 'tie' | 'skateboard' | 'starClip')[];
   stubble?: boolean;
   /**
    * An anime-style figure (two of the co-leaders): a bigger head, large shining eyes, a small nose, and the mouth -
@@ -1045,6 +1045,8 @@ export interface AvatarLook {
   skirt?: 'short' | 'long';
   /** The colour long hair fades to at its ends. */
   hairTip?: number;
+  /** Shoes (default dark leather). */
+  shoes?: number;
 }
 
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */
@@ -1102,6 +1104,7 @@ export const SURVIVORS = {
     { name: 'Athy', tag: 'VULCAN', color: 0x8a4a22 },
     { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
     { name: 'piryriry', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: '.maidlover.', tag: 'VULCAN', color: 0xb8202a },
     { name: 'Anya', tag: 'VULCAN', color: 0x9a3d1c },
   ],
   hp: 110,
@@ -1137,7 +1140,7 @@ export const VULCAN = {
     'Peaches_MLG', 'ReNoin', 'Saku', 'senchou', 'Shua', 'SniperKing12341', 'Spidey', 'Wind', 'Abhay', 'Aesc',
     'AnimeFreak', 'Arsam', 'Beru', 'dattoh', 'Downhill', 'Eeriie', 'Fallen', 'Gouda', 'H0LL0W', 'hiro', 'Kazu',
     'Lenkun', 'Nex Venrick', 'Quintino', 'Salagast', 'Serenity', 'SJ', 'ToastiestOrb', 'Xarosa', 'Yuichiro', 'Zaraki',
-    '_itz_diablo_', '!sikao', '.piesek.', 'Maidlover', 'jnkyu', 'Vorn', 'AndriD', 'hemantt', '$hivam', 'abi', 'Adisty',
+    '_itz_diablo_', '!sikao', '.piesek.', 'jnkyu', 'Vorn', 'AndriD', 'hemantt', '$hivam', 'abi', 'Adisty',
     'Akansha', 'Aoi', 'Bai Momints', 'BikRaM69', 'BROKE', 'bron', 'Claw', 'Danish.', 'DEMON', 'Dev', 'e1sh3ths',
     'Ezer', 'Fear', 'FonduKing', 'hsyil', 'IDK', 'Jackette', 'Jum', 'J18F.5R', 'King', 'Kitsune', 'Lab',
     'Lord Autismo', 'Lost', 'March', 'moon', 'Phlangor Mutupil', 'Qifrey', 'Regen', 'Rhea', 'Sen', 'Sloth broth',
