@@ -3130,11 +3130,12 @@ html.ds-lobby-open .ds-title-side {
   display: none;
 }
 
-/* anything smaller than a big desktop: the brief stays; controls / settings float over the title when opened */
-@media (max-height: 860px), (max-width: 1360px) {
-  .ds-title-side .ds-sidepanel {
-    display: none;
-  }
+/* every screen: the brief stays beside the title; controls / settings float over it when opened */
+.ds-title-side .ds-sidepanel {
+  display: none;
+}
+.ds-title-foot {
+  display: none;
 }
 html.ds-touch .ds-title-side .ds-sidepanel {
   display: none;
