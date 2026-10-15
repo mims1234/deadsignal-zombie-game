@@ -9,6 +9,16 @@ import { dirname } from 'node:path';
 const now = () => Math.floor(Date.now() / 1000);
 export const MODES = ['standard', 'cards', 'roam', 'coop'];
 export const OUTCOMES = ['victory', 'defeat', 'abandoned'];
+export const DIFFICULTIES = ['easy', 'normal', 'hard', 'nightmare'];
+
+/**
+ * The leaderboards: one per map, per way of playing (free roam has none), per thing ranked. Each player's best run
+ * counts once. `key` is what an admin switches off.
+ */
+export const BOARD_MAPS = ['district', 'forge', 'asylum'];
+export const BOARD_MODES = ['standard', 'cards', 'coop'];
+export const BOARD_METRICS = ['fastest', 'kills', 'headshots'];
+export const boardKey = (map, mode, metric) => `${map}:${mode}:${metric}`;
 
 export function openDb(file) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -91,14 +101,22 @@ export function openDb(file) {
     CREATE TABLE IF NOT EXISTS audit (
       id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, admin_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
-  // added after the first release: older databases get the column here
-  try {
-    db.exec('ALTER TABLE runs ADD COLUMN map TEXT');
-  } catch {
-    /* already there */
+  // added after the first release: older databases get the columns here (the build a run was played on and its
+  // difficulty arrived with the leaderboards; older runs have neither)
+  for (const col of ['map TEXT', 'version TEXT', 'difficulty TEXT']) {
+    try {
+      db.exec(`ALTER TABLE runs ADD COLUMN ${col}`);
+    } catch {
+      /* already there */
+    }
   }
+  db.exec('CREATE INDEX IF NOT EXISTS runs_board ON runs(map, mode, outcome)');
 
   const q = {
     upsertUser: db.prepare(`INSERT INTO users (id, username, display_name, avatar, created_at, last_seen) VALUES (@id, @username, @display_name, @avatar, @t, @t)
@@ -111,7 +129,9 @@ export function openDb(file) {
     dropUserSessions: db.prepare('DELETE FROM sessions WHERE user_id = ?'),
     purgeSessions: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
     addVisit: db.prepare('INSERT INTO visits (ts, day, visitor, user_id, touch) VALUES (?, ?, ?, ?, ?)'),
-    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map) VALUES (?, ?, ?, ?, ?, ?)'),
+    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map, version, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
+    setSetting: db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     run: db.prepare('SELECT * FROM runs WHERE id = ?'),
     endRun: db.prepare(`UPDATE runs SET ended_at = @t, outcome = @outcome, reason = @reason, duration = @duration, kills = @kills, headshots = @headshots,
       contracts = @contracts, cards = @cards, cash = @cash, shots_fired = @shots_fired, shots_hit = @shots_hit, region = @region WHERE id = @id AND ended_at IS NULL`),
@@ -147,7 +167,96 @@ export function openDb(file) {
     },
     dropSession: (token) => q.dropSession.run(token),
     visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
-    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), ['forge', 'asylum'].includes(map) ? map : 'district').lastInsertRowid),
+    startRun: (userId, mode, touch, map, version, difficulty) =>
+      Number(
+        q.startRun.run(
+          userId,
+          mode,
+          touch ? 1 : 0,
+          now(),
+          day(),
+          ['forge', 'asylum'].includes(map) ? map : 'district',
+          typeof version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,4}$/.test(version) ? version : null,
+          DIFFICULTIES.includes(difficulty) ? difficulty : null,
+        ).lastInsertRowid,
+      ),
+    setting: (key) => q.getSetting.get(key)?.value ?? null,
+    audit: (adminId, action, target, detail) => q.audit.run(now(), adminId, action, target, detail ?? null),
+    setSetting: (key, value) => q.setSetting.run(key, String(value)),
+    /**
+     * One leaderboard: each player's best finished run on it (never an admin's, never a banned player's). Fastest
+     * extraction ranks victories by time; the others rank any finished run by its count.
+     */
+    leaderboard({ map, mode, metric, version = '', difficulty = '', exclude = [], limit = 25 }) {
+      const where = ["COALESCE(r.map, 'district') = ?", 'r.mode = ?', 'u.banned = 0', 'r.ended_at IS NOT NULL'];
+      const args = [map, mode];
+      if (exclude.length) {
+        where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
+        args.push(...exclude);
+      }
+      if (version) {
+        where.push('r.version = ?');
+        args.push(version);
+      }
+      if (difficulty) {
+        where.push('r.difficulty = ?');
+        args.push(difficulty);
+      }
+      let pick;
+      let order;
+      if (metric === 'fastest') {
+        where.push("r.outcome = 'victory'", 'r.duration > 0');
+        pick = 'MIN(r.duration)';
+        order = 'value ASC';
+      } else {
+        const col = metric === 'headshots' ? 'r.headshots' : 'r.kills';
+        where.push("r.outcome IN ('victory', 'defeat')", `${col} > 0`);
+        pick = `MAX(${col})`;
+        order = 'value DESC';
+      }
+      // SQLite: with one MIN / MAX, the row's other columns come from the row that holds it
+      const rows = db
+        .prepare(
+          `SELECT u.id, u.display_name name, u.avatar, ${pick} value, r.version, r.day, r.difficulty
+           FROM runs r JOIN users u ON u.id = r.user_id WHERE ${where.join(' AND ')}
+           GROUP BY r.user_id ORDER BY ${order}, r.ended_at ASC LIMIT ?`,
+        )
+        .all(...args, limit);
+      return rows.map((r, i) => ({
+        rank: i + 1,
+        name: r.name,
+        avatar: r.avatar ? `https://cdn.discordapp.com/avatars/${r.id}/${r.avatar}.png?size=64` : null,
+        value: metric === 'fastest' ? Math.round(r.value * 10) / 10 : r.value,
+        version: r.version,
+        day: r.day,
+        difficulty: r.difficulty,
+      }));
+    },
+    /** The builds that have finished runs on a map and mode (newest first): the leaderboards' version filter. */
+    boardVersions(map, mode) {
+      return db
+        .prepare("SELECT DISTINCT version FROM runs WHERE COALESCE(map, 'district') = ? AND mode = ? AND version IS NOT NULL AND ended_at IS NOT NULL")
+        .all(map, mode)
+        .map((r) => r.version)
+        .sort((a, b) => {
+          const x = a.split('.').map(Number);
+          const y = b.split('.').map(Number);
+          return y[0] - x[0] || y[1] - x[1] || y[2] - x[2];
+        });
+    },
+    /** How many players rank on each board (the admin page's list). */
+    boardCounts(exclude = []) {
+      const ex = exclude.length ? `AND r.user_id NOT IN (${exclude.map(() => '?').join(', ')})` : '';
+      return db
+        .prepare(
+          `SELECT COALESCE(r.map, 'district') map, r.mode, COUNT(DISTINCT CASE WHEN r.outcome = 'victory' THEN r.user_id END) winners,
+             COUNT(DISTINCT r.user_id) players
+           FROM runs r JOIN users u ON u.id = r.user_id
+           WHERE r.ended_at IS NOT NULL AND r.outcome IN ('victory', 'defeat') AND u.banned = 0 ${ex}
+           GROUP BY 1, 2`,
+        )
+        .all(...exclude);
+    },
     /** Close a run with the client's numbers. They are for analytics only: nothing is granted from them. */
     endRun(userId, id, body) {
       const run = q.run.get(id);

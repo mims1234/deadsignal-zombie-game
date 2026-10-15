@@ -13,7 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { MODES, openDb } from './db.mjs';
+import { BOARD_MAPS, BOARD_METRICS, BOARD_MODES, DIFFICULTIES, MODES, boardKey, openDb } from './db.mjs';
 import { createRooms } from './rooms.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -170,7 +170,7 @@ app.post('/api/ping', { preHandler: player }, async () => ({ ok: true }));
 app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
-  return { id: db.startRun(req.user.id, mode, !!req.body?.touch, req.body?.map) };
+  return { id: db.startRun(req.user.id, mode, !!req.body?.touch, req.body?.map, req.body?.version, req.body?.difficulty) };
 });
 
 app.post('/api/runs/:id/end', { preHandler: player }, async (req) => ({ ok: db.endRun(req.user.id, Number(req.params.id), req.body ?? {}) }));
@@ -191,6 +191,32 @@ app.post('/api/reports', { preHandler: player }, async (req, reply) => {
   if (!db.user(target)) return reply.code(404).send({ error: 'no such player' });
   if (!db.addReport(req.user.id, target, reason, String(req.body?.context || '').slice(0, 200) || null)) return reply.code(429).send({ error: 'too many reports, try later' });
   return { ok: true };
+});
+
+// ---- leaderboards (public: anyone may look, signed in or not) -------------------------------------------
+
+/** Which boards are on: all of them unless an admin switched them all off, or some of them. */
+function boardSwitches() {
+  let off = [];
+  try {
+    off = JSON.parse(db.setting('lb.off') || '[]');
+  } catch {
+    off = [];
+  }
+  return { all: db.setting('lb.all') !== 'off', off: Array.isArray(off) ? off.filter((k) => typeof k === 'string') : [] };
+}
+
+app.get('/api/leaderboards', async (req, reply) => {
+  const { map, mode, metric } = req.query;
+  if (!BOARD_MAPS.includes(map) || !BOARD_MODES.includes(mode) || !BOARD_METRICS.includes(metric)) return reply.code(400).send({ error: 'unknown board' });
+  const version = typeof req.query.version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,4}$/.test(req.query.version) ? req.query.version : '';
+  const difficulty = DIFFICULTIES.includes(req.query.difficulty) ? req.query.difficulty : '';
+  const sw = boardSwitches();
+  const versions = db.boardVersions(map, mode);
+  if (!sw.all) return { enabled: false, all: false, versions, entries: [] };
+  if (sw.off.includes(boardKey(map, mode, metric))) return { enabled: false, all: true, versions, entries: [] };
+  reply.header('cache-control', 'public, max-age=20');
+  return { enabled: true, all: true, versions, entries: db.leaderboard({ map, mode, metric, version, difficulty, exclude: [...ADMIN_IDS] }) };
 });
 
 app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code) ?? reply.code(404).send({ error: 'no such session' }));
@@ -228,6 +254,36 @@ app.get('/api/admin/players', { preHandler: admin }, async (req) => ({
 }));
 app.get('/api/admin/users', { preHandler: admin }, async (req) => ({ users: db.users(String(req.query.q || '')), admins: [...ADMIN_IDS] }));
 app.get('/api/admin/rooms', { preHandler: admin }, async () => ({ rooms: rooms.live() }));
+app.get('/api/admin/leaderboards', { preHandler: admin }, async () => {
+  const sw = boardSwitches();
+  const counts = db.boardCounts([...ADMIN_IDS]);
+  const boards = [];
+  for (const map of BOARD_MAPS)
+    for (const mode of BOARD_MODES)
+      for (const metric of BOARD_METRICS) {
+        const c = counts.find((x) => x.map === map && x.mode === mode);
+        const key = boardKey(map, mode, metric);
+        boards.push({ key, map, mode, metric, on: !sw.off.includes(key), players: (metric === 'fastest' ? c?.winners : c?.players) ?? 0 });
+      }
+  return { all: sw.all, boards };
+});
+/** Switch every board ({ all }) or one ({ key, on }) on or off. */
+app.post('/api/admin/leaderboards', { preHandler: admin }, async (req, reply) => {
+  const b = req.body ?? {};
+  if (typeof b.all === 'boolean') {
+    db.setSetting('lb.all', b.all ? 'on' : 'off');
+    db.audit(req.user.id, b.all ? 'boards-on' : 'boards-off', 'all', '');
+  } else if (typeof b.key === 'string' && typeof b.on === 'boolean') {
+    const [map, mode, metric] = b.key.split(':');
+    if (!BOARD_MAPS.includes(map) || !BOARD_MODES.includes(mode) || !BOARD_METRICS.includes(metric)) return reply.code(400).send({ error: 'unknown board' });
+    const off = new Set(boardSwitches().off);
+    if (b.on) off.delete(b.key);
+    else off.add(b.key);
+    db.setSetting('lb.off', JSON.stringify([...off]));
+    db.audit(req.user.id, b.on ? 'board-on' : 'board-off', b.key, '');
+  } else return reply.code(400).send({ error: 'nothing to change' });
+  return { ok: true, ...boardSwitches() };
+});
 app.get('/api/admin/reports', { preHandler: admin }, async (req) => ({ reports: db.reports(String(req.query.status || 'open')) }));
 
 app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {

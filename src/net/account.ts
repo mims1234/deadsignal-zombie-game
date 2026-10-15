@@ -91,10 +91,11 @@ export class RunTracker {
     return this.open;
   }
 
-  start(mode: GameMode, touch: boolean, map: string): void {
+  /** `version` is the build (no leading v), `difficulty` the infected's: the leaderboards are split by both. */
+  start(mode: GameMode, touch: boolean, map: string, version: string, difficulty: string): void {
     if (!this.enabled()) return;
     this.open = true;
-    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', { mode, touch, map }))?.id ?? null);
+    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', { mode, touch, map, version, difficulty }))?.id ?? null);
   }
 
   /** `keepalive` lets the request outlive the page (tab closing). */

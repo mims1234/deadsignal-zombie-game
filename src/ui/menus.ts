@@ -5,8 +5,8 @@
  */
 import './styles.css';
 import { DEFAULT_SETTINGS, REGIONS, TEAM_SKILL, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY } from '../config';
-import type { BestRun, GameMode, MissionStats, Settings } from '../types';
-import { MAP_IDS, MAP_TEXT } from '../world/layout/data';
+import type { BestRun, MissionStats, Settings } from '../types';
+import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
 import { icon } from './icons';
@@ -22,12 +22,53 @@ const CARD_BRIEF = {
   text: 'Five card carriers walk the map. They cannot be killed: put one down, purge the signal, take the card.',
 };
 
-const MODES: { id: GameMode; label: string; note: string }[] = [
-  { id: 'standard', label: 'STANDARD', note: 'The operation as briefed.' },
-  { id: 'cards', label: 'STANDARD MAZOKU', note: 'The standard operation, plus five Mazoku card carriers to put down, purge and collect.' },
-  { id: 'coop', label: 'CO-OP', note: 'Up to three players run this map together: Standard or Standard Mazoku, or free roam. Revive anyone who goes down, then extract together.' },
-];
-const ROAM_NOTE = 'Free roam: no mission, no clock and no damage. Fly anywhere around the map and look around.';
+const ROAM_NOTE = 'No mission, no clock and no damage: fly anywhere and learn the zone before you fight on it.';
+const PLAY_LEAD = 'Fight through the quarantine zone, finish the contracts, and reach the helicopter alive.';
+const COOP_LEAD = 'Play this zone with up to two friends: open a lobby, share the link, press ready together. Revive anyone who goes down, then extract together.';
+
+/** The leaderboards page: which board it shows. */
+interface BoardQuery {
+  map: MapId;
+  mode: 'standard' | 'cards' | 'coop';
+  metric: 'fastest' | 'kills' | 'headshots';
+  version: string;
+  difficulty: string;
+}
+/** `/api/leaderboards`: `all` false when every board is switched off. */
+interface BoardReply {
+  enabled: boolean;
+  all?: boolean;
+  versions?: string[];
+  entries: { rank: number; name: string; avatar: string | null; value: number; version: string | null; day: string | null }[];
+}
+const BOARD_MODES = [
+  { id: 'standard', label: 'SOLO' },
+  { id: 'cards', label: 'MAZOKU' },
+  { id: 'coop', label: 'CO-OP' },
+] as const;
+const BOARD_METRICS = [
+  { id: 'fastest', label: 'FASTEST EXTRACTION' },
+  { id: 'kills', label: 'MOST KILLS' },
+  { id: 'headshots', label: 'MOST HEADSHOTS' },
+] as const;
+
+const sentence = (t: string): string => t.charAt(0) + t.slice(1).toLowerCase();
+
+type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'keys' | 'sliders';
+const NAV_PATHS: Record<NavGlyph, string[]> = {
+  play: ['M7 4.5v15l12-7.5z'],
+  friends: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c1.2-3.5 3.7-5.2 6.5-5.2s5.3 1.7 6.5 5.2', 'M16.5 11.5a2.8 2.8 0 1 0 0-5.6', 'M17.5 14.8c2 .4 3.4 1.8 4.2 4.2'],
+  explore: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M15.5 8.5l-2 5-5 2 2-5z'],
+  trophy: ['M8 21h8', 'M12 17v4', 'M7 4h10v5a5 5 0 0 1-10 0z', 'M7 6H4a3 3 0 0 0 3 4', 'M17 6h3a3 3 0 0 1-3 4'],
+  book: ['M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z', 'M4 21V5', 'M9 8h6'],
+  keys: ['M3 7h18v10H3z', 'M7 11h.01', 'M11 11h.01', 'M15 11h.01', 'M8 14h8'],
+  sliders: ['M4 7h16', 'M4 17h16', 'M9 4.5v5', 'M15 14.5v5'],
+};
+function navIcon(name: NavGlyph): SVGSVGElement {
+  const svg = svgEl('svg', { viewBox: '0 0 24 24', class: 'ds-ic', 'aria-hidden': 'true', focusable: 'false' });
+  for (const d of NAV_PATHS[name]) svgEl('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
+  return svg;
+}
 
 const DISCORD_MARK =
   'M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z';
@@ -272,199 +313,336 @@ class Menus implements MenusApi {
   // title
   // -------------------------------------------------------------------------------------------
 
+  /** The title's page: the side menu's PLAY / WITH FRIENDS / EXPLORE follow the mode; LEADERBOARDS is its own page. */
+  private titlePage: 'play' | 'boards' = 'play';
+  /** The title's extra options (squad skill, the card hunt) stay open across redraws once opened. */
+  private moreOpen = false;
+  /** What the leaderboards page shows. */
+  private board: BoardQuery = { map: 'district', mode: 'standard', metric: 'fastest', version: '', difficulty: '' };
+  private boardMapSet = false;
+  private boardReq = 0;
+
+  /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards changes nothing. */
+  private goPage(p: 'play' | 'friends' | 'explore' | 'boards'): void {
+    const m = this.info.mode;
+    this.titlePage = p === 'boards' ? 'boards' : 'play';
+    if (p === 'play') {
+      if (m === 'roam') this.cb.onRoamChange(false);
+      else if (m === 'coop') this.cb.onModeChange(this.info.roamBase ?? 'standard');
+    } else if (p === 'friends') {
+      if (m !== 'coop') this.cb.onModeChange('coop');
+    } else if (p === 'explore') {
+      if (m === 'coop') this.cb.onModeChange(this.info.roamBase ?? 'standard');
+      if (this.info.mode !== 'roam') this.cb.onRoamChange(true);
+    }
+    // a mode change has redrawn the title already; this one lands the page and the focus
+    this.showTitle(this.lastBest);
+    this.screen?.querySelector<HTMLElement>('.ds-l-item.on')?.focus({ preventScroll: true });
+  }
+
   showTitle(best: BestRun | null): void {
     this.clearScreen();
     this.lastBest = best;
+    if (!this.boardMapSet) {
+      this.board.map = this.info.map;
+      this.boardMapSet = true;
+    }
     const mode = this.info.mode;
-    const root = el('div', '');
+    const roam = mode === 'roam';
+    const coop = mode === 'coop';
+    const boards = this.titlePage === 'boards';
+    const text = MAP_TEXT[this.info.map];
+    const root = el('div', 'ds-launch');
     el('div', 'ds-shade', root);
     el('div', 'ds-scanlines', root);
 
-    // ---- left: title block ----
-    const main = el('div', 'ds-title-main', root);
-    const kicker = el('div', 'kicker', main);
-    el('span', 'haz', kicker);
-    const text = MAP_TEXT[this.info.map];
-    el('span', '', kicker, text.kicker);
-    const h1 = el('h1', 'name', main);
-    el('span', 'l1', h1, 'DEAD SIGNAL');
-    el('span', 'l2', h1, 'EXCLUSION ZONE');
-    const sig = el('div', 'sigline', main);
-    for (let i = 0; i < 5; i++) el('i', '', sig);
-    el('span', '', sig, text.signal);
-    el(
-      'p',
-      'premise',
-      main,
-      text.premise,
-    );
-
-    // ---- account: its own row, first, because nothing else works without it ----
-    let signInBtn: HTMLButtonElement | null = null;
-    if (this.account.online) {
-      const acct = el('div', this.locked ? 'acct out' : 'acct', main);
-      if (this.locked) {
-        signInBtn = this.button(acct, '', 'discord', () => window.location.assign(this.account.loginUrl));
-        const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, signInBtn);
-        svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
-        el('span', '', signInBtn, 'SIGN IN WITH DISCORD');
-        const why = el('div', 'why', acct);
-        el('b', '', why, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE - TRY AGAIN' : 'STEP 1  -  SIGN IN TO PLAY');
-        el('span', '', why, 'Only your Discord name and avatar are read.');
-      } else {
-        if (this.account.avatar) {
-          const img = el('img', 'avatar', acct);
-          img.src = this.account.avatar;
-          img.alt = '';
-        } else {
-          el('span', 'avatar', acct, (this.account.name ?? '?').slice(0, 1).toUpperCase());
-        }
-        const who = el('div', 'who', acct);
-        el('span', 'lbl', who, 'SIGNED IN');
-        el('b', '', who, this.account.name ?? '');
-        const tools = el('div', 'tools', acct);
-        if (this.account.admin) {
-          const link = el('a', 'ds-btn', tools, 'ADMIN DASHBOARD');
-          link.href = '/admin';
-        }
-        this.button(tools, 'SIGN OUT', '', () => this.cb.onLogout());
-      }
-    }
-
-    // ---- the setup card: map, mode, difficulty ----
-    const setup = el('div', 'setup', main);
-    const locked = this.info.lockedMap ?? null;
-    const maps = el('div', 'maps', setup);
-    maps.setAttribute('role', 'radiogroup');
-    maps.setAttribute('aria-label', 'Map');
-    for (const id of MAP_IDS) {
-      const on = id === this.info.map;
-      const tile = this.button(maps, '', on ? 'maptile on' : 'maptile', () => {
-        if (!on) this.cb.onMapChange(id);
-      });
-      el('span', 'mt-name', tile, MAP_TEXT[id].name);
-      el('span', 'mt-sub', tile, MAP_TEXT[id].tagline);
-      tile.setAttribute('role', 'radio');
-      tile.setAttribute('aria-checked', on ? 'true' : 'false');
-      if (locked && !on) {
-        tile.disabled = true;
-        tile.title = 'Leave the co-op session to change the map';
-      }
-    }
-    if (locked) el('div', 'lockline', setup, `Co-op session on ${MAP_TEXT[locked].name} - leave it to change the map`);
-
-    // the mode, and free roam as a switch on Standard / Standard Mazoku (not a mode of its own)
-    const roam = mode === 'roam';
-    const active = roam ? (this.info.roamBase ?? 'standard') : mode;
-    const modes = el('div', 'modes', setup);
-    el('span', 'lbl', modes, 'MODE');
-    const seg = el('div', 'seg', modes);
-    seg.setAttribute('role', 'radiogroup');
-    seg.setAttribute('aria-label', 'Mode');
-    for (const m of MODES) {
-      const b = this.button(seg, m.label, m.id === active ? 'on' : '', () => {
-        if (m.id !== active) this.cb.onModeChange(m.id);
-      });
-      b.setAttribute('role', 'radio');
-      b.setAttribute('aria-checked', m.id === active ? 'true' : 'false');
-    }
-    if (mode !== 'coop') {
-      const t = this.button(seg, roam ? 'FREE ROAM  ON' : 'FREE ROAM  OFF', roam ? 'toggle on' : 'toggle', () => this.cb.onRoamChange(!roam));
-      t.setAttribute('aria-pressed', roam ? 'true' : 'false');
-      t.title = 'Explore the map: no mission, no clock, no damage';
-    }
-
-    // difficulty: two compact pickers (the infected, the AI squad) instead of two rows of buttons
-    let note = roam ? ROAM_NOTE : MODES.find((m) => m.id === mode)!.note;
-    if (mode !== 'roam') {
-      const d = this.info.difficulty;
-      const diff = el('div', 'modes diffbar', setup);
-      el('span', 'lbl', diff, 'DIFFICULTY');
-      const pickers = el('div', 'seg', diff);
-      this.picker(pickers, 'INFECTED', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
-      this.picker(pickers, 'SQUAD AI', TEAM_SKILLS.map((id) => ({ id, label: TEAM_SKILL[id].label, note: TEAM_SKILL[id].note })), d.team, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
-      note = mode === 'coop' ? `${note} Difficulty here is the default for a session you create; its owner can change it in the lobby.` : `${note} ${ZOMBIE_DIFFICULTY[d.zombies].note}`;
-    }
-    el('div', 'modenote', setup, note);
-
-    const actions = el('div', 'actions', main);
-    const deployBtn = this.button(actions, mode === 'roam' ? 'FLY' : mode === 'coop' ? 'LOBBY' : 'DEPLOY', 'primary big', () => this.deploy());
-    deployBtn.setAttribute('aria-label', mode === 'roam' ? 'Fly around the exclusion zone' : 'Deploy into the exclusion zone');
-    deployBtn.disabled = this.locked;
-    let showTab: (w: 'controls' | 'settings') => void = () => {};
-    const minor = el('div', 'minor', actions);
-    this.button(minor, 'SETTINGS', '', () => showTab('settings'));
-    this.button(minor, 'CONTROLS', '', () => showTab('controls'));
-    // every infected (and the people beside you) in 3D, on its own page
-    this.button(minor, 'BESTIARY', '', () => window.open('./bestiary.html', '_blank', 'noopener'));
-    // the graphics preset, in plain sight: one tap opens Settings to change it
-    this.qualityChip = this.button(minor, '', 'quality', () => showTab('settings'));
-    this.qualityChip.title = 'Graphics quality - open Settings to change it';
-    this.syncQualityChip();
-    el(
-      'div',
-      'note',
-      main,
-      this.locked ? 'Sign in above to unlock deployment.' : this.touch ? 'Deploy goes fullscreen. Tap II at any time to pause.' : 'Deploy captures the mouse. Press ESC at any time to pause.',
-    );
-
-    const bestEl = el('div', 'best', main);
-    if (best) {
-      el('span', 'lbl', bestEl, 'BEST EXTRACTION');
-      el('span', 'val', bestEl, fmtClock(best.time));
-      el(
-        'span',
-        'sub',
-        bestEl,
-        `${fmtInt(best.kills)} KILLS  /  ${fmtInt(best.headshots)} HEADSHOTS  /  ${fmtMoney(best.cash)}  /  ${best.date.slice(0, 10)}`,
-      );
-    } else {
-      el('span', 'lbl', bestEl, 'SERVICE RECORD');
-      el('span', 'sub', bestEl, 'NO SUCCESSFUL EXTRACTIONS ON FILE');
-    }
-
-    // ---- right: brief + tabbed controls/settings ----
-    const side = el('div', 'ds-title-side', root);
-    const brief = el('div', 'ds-brief ds-panel ds-brk', side);
-    const bh = el('div', 'ds-panel-head', brief);
-    el('span', '', bh, 'OPERATION BRIEF');
-    el('span', 'aux', bh, 'PRIORITY ALPHA');
-    const rows = MAP_TEXT[this.info.map].rows;
-    // the card hunt goes in before the extraction (the last row; the Asylum has four)
-    const briefRows = mode === 'cards' ? [...rows.slice(0, -1), CARD_BRIEF, rows[rows.length - 1]!] : rows;
-    for (let i = 0; i < briefRows.length; i++) {
-      const item = briefRows[i]!;
-      const row = el('div', 'row', brief);
-      el('span', 'n', row, String(i + 1));
-      const body = el('div', 'body', row);
-      const tt = el('div', 't', body);
-      el('span', 'tag', tt, item.tag);
-      el('span', 'title', tt, item.title);
-      el('div', 'text', body, item.text);
-    }
-    el('div', 'foot', brief, text.foot);
-
-    // controls and settings: a side panel on big screens; on smaller ones an overlay opened by its buttons
-    const panel = el('div', 'ds-sidepanel ds-panel ds-brk', side);
-    const close = this.button(panel, 'CLOSE', 'mini closer', () => {
+    // controls and settings open over everything, from the side menu
+    const panel = el('div', 'ds-sidepanel ds-panel ds-brk', root);
+    const closePanel = (): void => {
       panel.classList.remove('floating');
-      side.append(panel);
-    });
+      this.screen?.querySelector<HTMLElement>('.ds-l-item.on')?.focus({ preventScroll: true });
+    };
+    const close = this.button(panel, 'CLOSE', 'mini closer', closePanel);
     close.setAttribute('aria-label', 'Close');
     const show = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
-    showTab = (w) => {
+    const showTab = (w: 'controls' | 'settings'): void => {
       show(w);
-      // hidden in the side column (a smaller screen): float it over the title instead
-      if (!panel.classList.contains('floating') && getComputedStyle(panel).display === 'none') {
-        root.append(panel);
-        panel.classList.add('floating');
-      }
+      panel.classList.add('floating');
+      close.focus({ preventScroll: true });
     };
+    panel.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closePanel();
+      }
+    });
 
-    el('div', 'ds-title-foot', root, `DEAD SIGNAL: EXCLUSION ZONE  //  SINGLE-PLAYER  //  ${this.touch ? 'TOUCH CONTROLS' : 'KEYBOARD AND MOUSE'}`);
+    // ---- the side menu ----
+    const rail = el('nav', 'ds-l-rail', root);
+    rail.setAttribute('aria-label', 'Main menu');
+    const brand = el('div', 'ds-l-brand', rail);
+    el('span', 'l1', brand, 'DEAD SIGNAL');
+    el('span', 'l2', brand, 'EXCLUSION ZONE');
+    const nav = el('div', 'ds-l-nav', rail);
+    const item = (label: string, glyph: NavGlyph, on: boolean, go: () => void): HTMLButtonElement => {
+      const b = this.button(nav, '', on ? 'ds-l-item on' : 'ds-l-item', go);
+      b.appendChild(navIcon(glyph));
+      el('span', '', b, label);
+      // on a phone held upright only the icon shows: the name stays with the button
+      b.setAttribute('aria-label', label);
+      if (on) b.setAttribute('aria-current', 'page');
+      return b;
+    };
+    item('PLAY', 'play', !boards && !coop && !roam, () => this.goPage('play'));
+    item('WITH FRIENDS', 'friends', !boards && coop, () => this.goPage('friends'));
+    item('EXPLORE', 'explore', !boards && roam, () => this.goPage('explore'));
+    item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
+    item('BESTIARY', 'book', false, () => window.open('./bestiary.html', '_blank', 'noopener'));
+    item('CONTROLS', 'keys', false, () => showTab('controls'));
+    item('SETTINGS', 'sliders', false, () => showTab('settings'));
+
+    const foot = el('div', 'ds-l-foot', rail);
+    const bestEl = el('div', 'ds-l-best', foot);
+    if (best) {
+      el('span', 'lbl', bestEl, 'YOUR BEST EXTRACTION');
+      el('span', 'val', bestEl, fmtClock(best.time));
+      el('span', 'sub', bestEl, `${fmtInt(best.kills)} kills · ${fmtInt(best.headshots)} headshots`);
+    } else {
+      el('span', 'lbl', bestEl, 'YOUR BEST EXTRACTION');
+      el('span', 'sub', bestEl, 'None yet - your first one shows here.');
+    }
+    // the graphics preset, in plain sight: one tap opens Settings to change it
+    this.qualityChip = this.button(foot, '', 'quality', () => showTab('settings'));
+    this.qualityChip.title = 'Graphics quality - open Settings to change it';
+    this.syncQualityChip();
+    if (this.account.online && !this.locked) {
+      const acct = el('div', 'ds-l-acct', foot);
+      if (this.account.avatar) {
+        const img = el('img', 'avatar', acct);
+        img.src = this.account.avatar;
+        img.alt = '';
+      } else el('span', 'avatar', acct, (this.account.name ?? '?').slice(0, 1).toUpperCase());
+      const who = el('div', 'who', acct);
+      el('b', '', who, this.account.name ?? '');
+      const tools = el('div', 'tools', who);
+      if (this.account.admin) {
+        const link = el('a', 'lnk', tools, 'Admin');
+        link.href = '/admin';
+      }
+      const out = this.button(tools, 'Sign out', 'lnk', () => this.cb.onLogout());
+      out.classList.remove('ds-btn');
+    }
+
+    // ---- the page ----
+    const main = el('main', 'ds-l-main', root);
+    let first: HTMLElement | null = null;
+    if (boards) this.buildBoards(main);
+    else {
+      const hero = el('section', 'ds-l-hero', main);
+      const kick = el('div', 'kicker', hero);
+      el('span', 'haz', kick);
+      el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'EXPLORE  //  NO MISSION, NO DAMAGE' : text.kicker);
+      el('h1', 'name', hero, text.name);
+      el('p', 'tag', hero, text.tagline);
+      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : PLAY_LEAD);
+
+      const cta = el('div', 'ds-l-cta', hero);
+      if (this.locked) {
+        const b = this.button(cta, '', 'primary big discord', () => window.location.assign(this.account.loginUrl));
+        const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, b);
+        svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
+        el('span', '', b, 'SIGN IN WITH DISCORD TO PLAY');
+        const why = el('div', 'why', cta);
+        el('b', '', why, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE - TRY AGAIN' : 'FREE, RIGHT HERE IN YOUR BROWSER');
+        el('span', '', why, 'One click. Only your Discord name and avatar are read.');
+        first = b;
+      } else {
+        const go = this.button(cta, roam ? 'EXPLORE' : coop ? 'OPEN LOBBY' : 'PLAY', 'primary big', () => this.deploy());
+        go.setAttribute('aria-label', roam ? `Explore ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
+        first = go;
+        if (!roam) {
+          const d = this.info.difficulty;
+          this.picker(cta, 'DIFFICULTY', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
+          const more = this.button(cta, this.moreOpen ? 'FEWER OPTIONS' : 'MORE OPTIONS', 'ghost', () => {
+            this.moreOpen = !this.moreOpen;
+            this.showTitle(this.lastBest);
+            this.screen?.querySelector<HTMLElement>('.ds-l-cta .ghost')?.focus({ preventScroll: true });
+          });
+          more.setAttribute('aria-expanded', this.moreOpen ? 'true' : 'false');
+        }
+      }
+      if (!this.locked && !roam && this.moreOpen) {
+        const d = this.info.difficulty;
+        const opts = el('div', 'ds-l-more', hero);
+        this.picker(opts, 'SQUAD AI', TEAM_SKILLS.map((id) => ({ id, label: TEAM_SKILL[id].label, note: TEAM_SKILL[id].note })), d.team, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
+        if (coop) el('span', 'hint', opts, 'These are the defaults for a lobby you open; its owner can change them there.');
+        else {
+          const hunt = mode === 'cards';
+          const t = this.button(opts, hunt ? 'MAZOKU CARD HUNT  ON' : 'MAZOKU CARD HUNT  OFF', hunt ? 'toggle on' : 'toggle', () => this.cb.onModeChange(hunt ? 'standard' : 'cards'));
+          t.setAttribute('aria-pressed', hunt ? 'true' : 'false');
+          el('span', 'hint', opts, 'Adds five card carriers to put down and collect, on top of the mission.');
+        }
+      }
+      el(
+        'p',
+        'ds-l-note',
+        hero,
+        this.locked ? 'You can look around the menu first: the zones, the leaderboards and the bestiary are open to everyone.' : this.touch ? 'Play goes fullscreen. Tap II at any time to pause.' : 'Press Enter to play. Esc pauses at any time.',
+      );
+
+      // ---- below: the zones, and what you do on this one ----
+      const below = el('div', 'ds-l-below', main);
+      const zones = el('section', 'ds-l-zones', below);
+      el('h2', '', zones, 'ZONES');
+      const list = el('div', 'list', zones);
+      list.setAttribute('role', 'radiogroup');
+      list.setAttribute('aria-label', 'Zone');
+      const locked = this.info.lockedMap ?? null;
+      for (const id of MAP_IDS) {
+        const on = id === this.info.map;
+        const z = this.button(list, '', on ? 'ds-l-zone on' : 'ds-l-zone', () => {
+          if (!on) this.cb.onMapChange(id);
+        });
+        z.dataset.map = id;
+        z.setAttribute('role', 'radio');
+        z.setAttribute('aria-checked', on ? 'true' : 'false');
+        el('span', 'zn', z, MAP_TEXT[id].name);
+        el('span', 'zt', z, MAP_TEXT[id].tagline);
+        if (on) el('span', 'zon', z, 'SELECTED');
+        if (locked && !on) {
+          z.disabled = true;
+          z.title = 'Leave the co-op session to change the map';
+        }
+      }
+      const brief = el('section', 'ds-l-brief', below);
+      el('h2', '', brief, roam ? 'THE MISSION, FOR LATER' : 'WHAT YOU DO HERE');
+      const rows = MAP_TEXT[this.info.map].rows;
+      // the card hunt goes in before the extraction (the last row)
+      const briefRows = mode === 'cards' ? [...rows.slice(0, -1), CARD_BRIEF, rows[rows.length - 1]!] : rows;
+      const ol = el('ol', '', brief);
+      for (const r of briefRows) {
+        const li = el('li', '', ol);
+        el('b', '', li, r.title);
+        el('span', '', li, r.text);
+      }
+    }
 
     this.setScreen('title', root);
-    (signInBtn ?? deployBtn).focus({ preventScroll: true });
+    (first ?? this.screen?.querySelector<HTMLElement>('.ds-l-item.on'))?.focus({ preventScroll: true });
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // leaderboards (a page of the title)
+  // -------------------------------------------------------------------------------------------
+
+  private buildBoards(main: HTMLElement): void {
+    main.replaceChildren();
+    const q = this.board;
+    const page = el('section', 'ds-l-boards', main);
+    el('h1', 'name', page, 'LEADERBOARDS');
+    el('p', 'lead', page, 'The best runs on each zone. Pick a zone, how it was played and what to rank by.');
+    const filters = el('div', 'filters', page);
+    const seg = (label: string, options: readonly { id: string; label: string }[], current: string, pick: (id: string) => void): void => {
+      const g = el('div', 'seg', filters);
+      g.setAttribute('role', 'radiogroup');
+      g.setAttribute('aria-label', label);
+      el('span', 'lbl', g, label);
+      for (const o of options) {
+        const b = this.button(g, o.label, o.id === current ? 'on' : '', () => {
+          if (o.id === current) return;
+          pick(o.id);
+          this.buildBoards(main);
+          main.querySelector<HTMLElement>(`[data-k="${label}:${o.id}"]`)?.focus({ preventScroll: true });
+        });
+        b.dataset.k = `${label}:${o.id}`;
+        b.setAttribute('role', 'radio');
+        b.setAttribute('aria-checked', o.id === current ? 'true' : 'false');
+      }
+    };
+    seg('ZONE', MAP_IDS.map((id) => ({ id, label: MAP_TEXT[id].name.replace(/^THE /, '') })), q.map, (id) => (q.map = id as MapId));
+    seg('PLAYED', BOARD_MODES, q.mode, (id) => (q.mode = id as BoardQuery['mode']));
+    seg('RANK BY', BOARD_METRICS, q.metric, (id) => (q.metric = id as BoardQuery['metric']));
+    const selects = el('div', 'selects', filters);
+    const select = (label: string, options: { id: string; label: string }[], current: string, pick: (v: string) => void): HTMLSelectElement => {
+      const wrap = el('label', 'sel', selects);
+      el('span', 'lbl', wrap, label);
+      const s = el('select', '', wrap);
+      for (const o of options) {
+        const op = el('option', '', s, o.label);
+        op.value = o.id;
+        if (o.id === current) op.selected = true;
+      }
+      s.addEventListener('change', () => {
+        pick(s.value);
+        this.loadBoard(table);
+      });
+      return s;
+    };
+    const versionSel = select('VERSION', [{ id: '', label: 'Every version' }], q.version, (v) => (q.version = v));
+    select('DIFFICULTY', [{ id: '', label: 'Every difficulty' }, ...ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: sentence(ZOMBIE_DIFFICULTY[id].label) }))], q.difficulty, (v) => (q.difficulty = v));
+    const table = el('div', 'table', page);
+    table.dataset.versions = '';
+    this.loadBoard(table, versionSel);
+  }
+
+  /** Fetch the board the filters describe and draw it (a stale answer is dropped). */
+  private loadBoard(table: HTMLElement, versionSel?: HTMLSelectElement): void {
+    const q = this.board;
+    const req = ++this.boardReq;
+    table.replaceChildren();
+    if (!this.account.online) {
+      el('p', 'empty', table, 'Leaderboards need the game server - they show on the live site.');
+      return;
+    }
+    el('p', 'empty', table, 'Loading...');
+    const params = new URLSearchParams({ map: q.map, mode: q.mode, metric: q.metric });
+    if (q.version) params.set('version', q.version);
+    if (q.difficulty) params.set('difficulty', q.difficulty);
+    void fetch(`/api/leaderboards?${params}`, { credentials: 'same-origin' })
+      .then((r) => (r.ok ? (r.json() as Promise<BoardReply>) : null))
+      .catch(() => null)
+      .then((data) => {
+        if (req !== this.boardReq || !table.isConnected) return;
+        table.replaceChildren();
+        if (!data) {
+          el('p', 'empty', table, 'The leaderboards could not be loaded. Try again in a moment.');
+          return;
+        }
+        if (versionSel && versionSel.options.length === 1) {
+          for (const v of data.versions ?? []) {
+            const op = el('option', '', versionSel, `v${v}`);
+            op.value = v;
+            if (v === q.version) op.selected = true;
+          }
+        }
+        if (!data.enabled) {
+          el('p', 'empty', table, data.all === false ? 'The leaderboards are switched off for now.' : 'This board is switched off for now.');
+          return;
+        }
+        if (!data.entries.length) {
+          el('p', 'empty', table, 'No runs on this board yet. Yours could be the first.');
+          return;
+        }
+        const t = el('table', '', table);
+        const head = el('tr', '', el('thead', '', t));
+        for (const h of ['#', 'PLAYER', BOARD_METRICS.find((m) => m.id === q.metric)!.label, 'VERSION', 'DATE']) el('th', '', head, h);
+        const body = el('tbody', '', t);
+        for (const e of data.entries) {
+          const tr = el('tr', e.rank <= 3 ? `top${e.rank}` : '', body);
+          el('td', 'rk', tr, String(e.rank));
+          const who = el('td', 'who', tr);
+          if (e.avatar) {
+            const img = el('img', '', who);
+            img.src = e.avatar;
+            img.alt = '';
+            img.loading = 'lazy';
+          } else el('span', 'av', who, (e.name || '?').slice(0, 1).toUpperCase());
+          el('span', '', who, e.name);
+          el('td', 'val', tr, q.metric === 'fastest' ? fmtClock(e.value) : fmtInt(e.value));
+          el('td', 'ver', tr, e.version ? `v${e.version}` : '-');
+          el('td', 'day', tr, e.day ?? '');
+        }
+      });
   }
 
   // -------------------------------------------------------------------------------------------

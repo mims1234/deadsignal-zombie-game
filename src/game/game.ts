@@ -57,6 +57,7 @@ import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
 import { BarricadeRuntime } from '../asylum/barricadeRuntime';
 import { PowerupRuntime } from './powerupRuntime';
+import { VERSION } from '../version';
 
 export type GameState = 'boot' | 'title' | 'playing' | 'paused' | 'ending' | 'results';
 
@@ -918,7 +919,7 @@ export class Game implements GameCtx {
     this.audio.resume();
     if (fresh) {
       this.closeRun();
-      this.tracker.start(this.mode, this.touchMode, this.mapId);
+      this.tracker.start(this.mode, this.touchMode, this.mapId, VERSION.replace(/^v/, ''), this.runDifficulty.zombies);
     }
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
@@ -1125,6 +1126,7 @@ export class Game implements GameCtx {
     const t1 = performance.now();
     const shadows = QUALITY[this.settings.quality].shadows && (this.state === 'playing' || this.state === 'ending');
     this.renderer.setShadowPass(shadows);
+    this.renderer.showView = this.state !== 'title';
     this.renderer.render(dt, this.time);
     const t2 = performance.now();
     this.perf.sim += (t1 - t0 - this.perf.sim) * 0.05;

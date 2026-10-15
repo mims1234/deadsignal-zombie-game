@@ -99,12 +99,14 @@
         <button data-go="players">Players</button>
         <button data-go="coop">Co-op</button>
         <button data-go="reports">Reports<span class="n" id="openN" hidden></span></button>
+        <button data-go="boards">Leaderboards</button>
         <button data-go="versions">Versions</button>
       </nav>
     </header>
     <main>
       <!-- OVERVIEW: the range at a glance -->
       <section data-tab="overview">
+        <div class="card tablewrap live"><h3>Co-op live now <span class="pill" id="liveN">0</span></h3><div class="sub">Every open session, refreshed every 15 seconds. Open the game with the link to watch unseen.</div><div class="filters"><input id="liveQ" placeholder="Code, owner or player" size="22" /></div><div id="live"></div></div>
         <div class="tiles" id="tiles"></div>
         <div class="grid g2">
           <div class="card"><h3>Site visits per day</h3><div class="sub" id="visitsSub"></div><div class="chart" id="visits"></div><div class="axis" id="visitsAxis"></div></div>
@@ -145,9 +147,23 @@
       <!-- CO-OP -->
       <section data-tab="coop">
         <div class="tiles" id="coopTiles"></div>
-        <div class="grid">
-          <div class="card tablewrap"><h3>Live now</h3><div class="sub">Open the game with the link to watch unseen</div><div class="filters"><input id="liveQ" placeholder="Code, owner or player" size="22" /></div><div id="live"></div></div>
+        <p class="note">The sessions open right now are at the top of <a href="#overview">Overview</a>.</p>
+      </section>
+
+      <!-- LEADERBOARDS: switch all of them, or single boards, off and on -->
+      <section data-tab="boards">
+        <div class="card">
+          <h3>All leaderboards <span class="pill" id="boardsAll"></span></h3>
+          <div class="sub">Players see the boards on the title screen's Leaderboards page. Admins never appear on them; banned players drop off. Switching a board off hides it from everyone (its runs are kept).</div>
+          <button id="boardsAllBtn"></button>
         </div>
+        <div class="filters" style="margin-top: 10px">
+          <label>Map <select id="boardMap"><option value="">All</option><option value="district">District</option><option value="forge">Forge</option><option value="asylum">Asylum</option></select></label>
+          <label>Played <select id="boardMode"><option value="">All</option><option value="standard">Solo</option><option value="cards">Mazoku</option><option value="coop">Co-op</option></select></label>
+          <button id="boardsOffShown">Switch the shown off</button>
+          <button id="boardsOnShown">Switch the shown on</button>
+        </div>
+        <div class="card tablewrap" id="boardTable"></div>
       </section>
 
       <!-- REPORTS -->
@@ -416,6 +432,8 @@
       };
       async function loadCoop() {
         liveRows = (await api('/api/admin/rooms')).rooms;
+        $('liveN').textContent = String(liveRows.length);
+        $('liveN').className = liveRows.length ? 'pill victory' : 'pill';
         liveFilter();
       }
       $('liveQ').addEventListener('input', liveFilter);
@@ -445,6 +463,56 @@
       $('reportStatus').addEventListener('change', () => loadReports().catch(fail));
       $('reportQ').addEventListener('input', reportFilter);
 
+      // ---------------------------------------------------------------- leaderboards
+      const MAPN = { district: 'District', forge: 'Forge', asylum: 'Asylum' };
+      const MODEN = { standard: 'Solo', cards: 'Mazoku', coop: 'Co-op' };
+      const METRICN = { fastest: 'Fastest extraction', kills: 'Most kills', headshots: 'Most headshots' };
+      let boardRows = [];
+      let boardsAll = true;
+      const boardTable = localTable($('boardTable'), [
+        { label: 'Map', cell: (b) => MAPN[b.map], sort: (b) => b.map },
+        { label: 'Played', cell: (b) => MODEN[b.mode], sort: (b) => b.mode },
+        { label: 'Ranked by', cell: (b) => METRICN[b.metric], sort: (b) => b.metric },
+        { label: 'Players on it', num: 1, cell: (b) => String(b.players), sort: (b) => b.players },
+        { label: 'Shown', cell: (b) => h('span', { class: b.on && boardsAll ? 'pill victory' : 'pill defeat' }, b.on ? (boardsAll ? 'on' : 'on (all are off)') : 'off'), sort: (b) => (b.on ? 1 : 0) },
+        { label: '', cell: (b) => h('button', { on: { click: () => setBoard(b.key, !b.on).catch(fail) } }, b.on ? 'Switch off' : 'Switch on') },
+      ], 'No boards.', 30);
+      const shownBoards = () => boardRows.filter((b) => (!$('boardMap').value || b.map === $('boardMap').value) && (!$('boardMode').value || b.mode === $('boardMode').value));
+      function drawBoards() {
+        $('boardsAll').textContent = boardsAll ? 'shown' : 'all off';
+        $('boardsAll').className = boardsAll ? 'pill victory' : 'pill defeat';
+        $('boardsAllBtn').textContent = boardsAll ? 'Switch every leaderboard off' : 'Switch the leaderboards back on';
+        $('boardsAllBtn').className = boardsAll ? 'danger' : '';
+        boardTable.set(shownBoards());
+      }
+      async function loadBoards() {
+        const r = await api('/api/admin/leaderboards');
+        boardRows = r.boards;
+        boardsAll = r.all;
+        drawBoards();
+      }
+      async function setBoard(key, on) {
+        await api('/api/admin/leaderboards', { key, on });
+        await loadBoards();
+      }
+      $('boardsAllBtn').addEventListener('click', async () => {
+        if (boardsAll && !confirm('Hide every leaderboard from players?')) return;
+        await api('/api/admin/leaderboards', { all: !boardsAll }).catch(fail);
+        loadBoards().catch(fail);
+      });
+      for (const [id, on] of [['boardsOffShown', false], ['boardsOnShown', true]]) {
+        $(id).addEventListener('click', async () => {
+          try {
+            for (const b of shownBoards()) if (b.on !== on) await api('/api/admin/leaderboards', { key: b.key, on });
+            await loadBoards();
+          } catch (e) {
+            fail(e);
+          }
+        });
+      }
+      $('boardMap').addEventListener('change', drawBoards);
+      $('boardMode').addEventListener('change', drawBoards);
+
       // ---------------------------------------------------------------- versions
       let versionRows = [];
       function versionFilter() {
@@ -463,8 +531,8 @@
       $('verQ').addEventListener('input', versionFilter);
 
       // ---------------------------------------------------------------- tabs (the open one is kept in the address: #runs)
-      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'versions'];
-      const LOAD = { overview: loadOverview, runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadCoop, reports: loadReports, versions: loadVersions };
+      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'boards', 'versions'];
+      const LOAD = { overview: () => Promise.all([loadOverview(), loadCoop()]), runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadOverview, reports: loadReports, boards: loadBoards, versions: loadVersions };
       const loaded = new Set();
       function show(tab) {
         if (!TABS.includes(tab)) tab = 'overview';
@@ -486,7 +554,7 @@
         $('err').textContent = '';
         const tab = location.hash.slice(1) || 'overview';
         try {
-          await Promise.all([loadOverview(), tab !== 'overview' && LOAD[tab] ? LOAD[tab]() : null]);
+          await Promise.all([loadOverview(), loadCoop(), tab !== 'overview' && LOAD[tab] ? LOAD[tab]() : null]);
         } catch (e) {
           fail(e);
         }
@@ -498,11 +566,13 @@
       loadVersions().catch(fail);
       loaded.add('overview');
       loadOverview().catch(fail);
+      loadCoop().catch(fail);
       show(location.hash.slice(1) || 'overview');
+      setInterval(() => loadOverview().catch(fail), 60000);
+      // the live sessions come and go: keep them fresh while the overview is open
       setInterval(() => {
-        loadOverview().catch(fail);
-        if (location.hash === '#coop') loadCoop().catch(fail);
-      }, 60000);
+        if (!document.hidden && (location.hash || '#overview') === '#overview') loadCoop().catch(fail);
+      }, 15000);
     </script>
   </body>
 </html>

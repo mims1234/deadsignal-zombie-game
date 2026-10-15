@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.108",
+      "date": "2026-10-16",
+      "title": "A simpler title screen, and leaderboards",
+      "notes": [
+        "A new title screen, laid out like a game launcher over the live map: a side menu (Play, With friends, Explore, Leaderboards, Bestiary, Controls, Settings, your account), the zone as the headline with one big button, and the zones and what you do on them below. Squad skill and the Mazoku card hunt sit behind More options. On a phone the side menu becomes a strip along the top.",
+        "Visitors who are not signed in see one clear button - Sign in with Discord to play - and can still look around the zones, the leaderboards and the bestiary first.",
+        "Leaderboards for every zone, for solo, Mazoku and co-op runs: fastest extraction, most kills and most headshots, each player's best run once, filtered by game version and difficulty. Admins never appear on them, and banned players drop off.",
+        "Admin page: the co-op sessions live right now open the Overview tab (refreshed every 15 seconds), and a new Leaderboards tab switches every board, or any of them, off and on.",
+        "The weapon in hand no longer shows behind the title screen."
+      ]
+    },
+    {
       "version": "0.1.107",
       "date": "2026-10-16",
       "title": "The Hearth round the helipad",
