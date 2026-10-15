@@ -5,7 +5,7 @@
  */
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
-import type { Hosting } from '../net/room';
+import { type Hosting, LATE_CHOICES, LATE_NOTE } from '../net/room';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 
@@ -304,6 +304,16 @@ export class CoopUi {
       el('div', 'tag', body, `${ZOMBIE_DIFFICULTY[zd].note} ${TEAM_SKILL[ts].note}`);
     }
 
+    // ---- who may come in once the run is under way ----
+    el('div', 'lbl', body, 'JOINING MID-GAME');
+    if (server) {
+      const late = room.late ?? 'all';
+      const lr = el('div', 'row choice', body);
+      if (isOwner) for (const [id, label] of LATE_CHOICES) this.button(lr, label, late === id ? 'on' : '', () => this.coop.room.manage('late', { value: id }));
+      else el('span', 'name', lr, LATE_CHOICES.find((c) => c[0] === late)?.[1] ?? '');
+      el('div', 'tag', body, `${LATE_NOTE[late]} Anyone invited always can. The code works for as long as the session is open.`);
+    } else el('div', 'tag', body, "Self-hosted: once the run starts nobody new can come in - the session runs on the owner's device. Server hosting lets people join mid-game.");
+
     if (isOwner) {
       el('div', 'lbl', body, 'MANAGE SESSION');
       const manage = el('div', 'row', body);
@@ -392,6 +402,8 @@ export class CoopUi {
       pingTag(table, r.ping);
       el('span', r.status === 'up' || r.status === 'aboard' ? 'up' : 'down', table, r.status.toUpperCase());
     }
+    const room = this.coop.room.room;
+    if (room) el('div', 'spec', b, `CODE ${room.code}  //  ${this.coop.serverHosted ? `JOINING MID-GAME: ${LATE_CHOICES.find((c) => c[0] === (room.late ?? 'all'))?.[1] ?? ''}` : 'SELF HOSTED: CLOSED UNTIL THE NEXT LOBBY'}`);
     if (this.coop.serverHosted) el('div', 'spec', b, 'SERVER HOSTED');
     el('div', 'spec', b, spectators.length > 0 ? `WATCHING:  ${spectators.join(',  ')}` : 'NOBODY IS WATCHING');
     b.hidden = false;

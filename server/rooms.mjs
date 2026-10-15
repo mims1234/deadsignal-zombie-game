@@ -8,6 +8,11 @@
  * Up to MAX_PLAYERS players, up to MAX_SPECTATORS visible spectators, and one extra seat reserved for an admin who
  * watches unseen: a hidden admin is never listed, counted or announced.
  *
+ * The code keeps working once a run is under way, as far as the owner allows (`late`): new arrivals may come in as
+ * players or spectators ('all'), only watch ('watch'), or not at all ('off'); anyone on the invite list always may.
+ * Only a server-hosted session takes people mid-run: a self-hosted one runs on its owner's device, so it is joined
+ * from its lobby only.
+ *
  * Client -> server                                Server -> client
  *   {t:'create', visibility, invites, hosting,      {t:'room', room, you}     full state, on every change
  *            map, kind,  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
@@ -37,6 +42,8 @@ const MAPS = ['district', 'forge', 'asylum'];
 const KINDS = ['mission', 'mazoku', 'roam'];
 const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
 const TEAM_LEVELS = ['rookie', 'regular', 'veteran', 'elite'];
+/** Who may come in once a run is under way (server-hosted sessions only). */
+const LATE = ['all', 'watch', 'off'];
 const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
@@ -90,6 +97,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
       zombies: room.zombies,
       team: room.team,
       visibility: room.visibility,
+      late: room.late,
       state: room.state,
       // the countdown: what is left of it as this view is sent (each client counts down from its own clock)
       startIn: room.state === 'starting' ? Math.max(0, room.startsAt - Date.now()) : undefined,
@@ -222,6 +230,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
           hostId: hosting === 'server' ? SIM_ID : m.id,
           hostName: m.name,
           visibility: msg.visibility === 'private' ? 'private' : 'public',
+          late: LATE.includes(msg.late) ? msg.late : 'all',
           invites: new Set(cleanIds(msg.invites)),
           state: 'lobby',
           members: new Map(),
@@ -252,6 +261,14 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
         if (r.banned.has(m.id)) return send(m.ws, { t: 'error', msg: 'You were removed from this session' });
         if (r.visibility === 'private' && !r.invites.has(m.id) && !m.admin) return send(m.ws, { t: 'error', msg: 'This session is invite-only' });
         const role = msg.as === 'spectator' ? 'spectator' : 'player';
+        // a run under way: only a server-hosted session, and only as far as its owner allows (an invite always does)
+        if (r.state === 'playing') {
+          if (r.hosting !== 'server') return send(m.ws, { t: 'error', msg: "This session is already under way on its owner's device - a self-hosted session can only be joined from its lobby" });
+          if (!r.invites.has(m.id)) {
+            if (r.late === 'off') return send(m.ws, { t: 'error', msg: 'This session is under way and its owner is not letting anyone in right now' });
+            if (r.late === 'watch' && role === 'player') return send(m.ws, { t: 'error', msg: 'This session is under way - its owner lets new arrivals watch only (press WATCH)' });
+          }
+        }
         if (visible(r, role).length >= (role === 'player' ? MAX_PLAYERS : MAX_SPECTATORS)) {
           return send(m.ws, { t: 'error', msg: role === 'player' ? 'The session is full - you can still watch if a spectator seat is free' : 'No spectator seats left' });
         }
@@ -296,6 +313,9 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
           send(m.ws, { t: 'relay', from: 'server', d: { k: 'left', id: target.id } });
         } else if (msg.op === 'visibility') {
           room.visibility = msg.value === 'private' ? 'private' : 'public';
+        } else if (msg.op === 'late') {
+          // who may come in mid-run: changeable at any time
+          if (LATE.includes(msg.value)) room.late = msg.value;
         } else if (msg.op === 'invite') {
           for (const id of cleanIds([msg.id])) {
             room.invites.add(id);
@@ -401,7 +421,7 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
     info(code) {
       const r = rooms.get(String(code || '').toUpperCase());
       if (!r) return null;
-      return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, zombies: r.zombies, team: r.team, visibility: r.visibility, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
+      return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, zombies: r.zombies, team: r.team, visibility: r.visibility, late: r.late, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
     },
     /** Admin view of everything live, hidden watchers included. */
     live() {

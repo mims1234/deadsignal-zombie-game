@@ -1922,6 +1922,42 @@ input.ds-range:focus-visible {
 }
 
 /* ---- pause ---- */
+.ds-pause-coop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5em;
+  padding: 0.8em 1em;
+  border-bottom: 1px solid var(--ds-line);
+}
+.ds-pause-coop .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em;
+}
+.ds-pause-coop .lbl {
+  min-width: 10em;
+  font-size: 0.72em;
+  letter-spacing: 0.22em;
+  color: var(--ds-ink-dim);
+}
+.ds-pause-coop .code {
+  font: 700 1.3em var(--ds-font-num);
+  letter-spacing: 0.18em;
+  color: var(--ds-amber);
+}
+.ds-pause-coop .ds-btn.on {
+  color: #17130a;
+  background: var(--ds-amber);
+  border-color: var(--ds-amber);
+}
+.ds-pause-coop .note {
+  font-size: 0.76em;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ds-ink-dim);
+}
 .ds-pause-panel {
   position: absolute;
   left: 0;
@@ -3414,8 +3450,8 @@ html.ds-lobby-open .ds-l-main {
   padding-right: calc(min(34em, 40vw) + 5vw);
 }
 
-/* narrow or short screens: the side menu is a strip along the top, the page scrolls */
-@media (max-width: 1000px), (max-height: 560px) {
+/* a tablet, or a desktop window snapped narrow: the side menu is a strip along the top, the page scrolls */
+@media (max-width: 1000px) and (min-height: 501px) {
   .ds-launch {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -3434,7 +3470,8 @@ html.ds-lobby-open .ds-l-main {
     font-size: 1.15em;
     white-space: nowrap;
   }
-  .ds-l-brand .l2 {
+  .ds-l-brand .l2,
+  .ds-l-best {
     display: none;
   }
   .ds-l-nav {
@@ -3452,9 +3489,6 @@ html.ds-lobby-open .ds-l-main {
     margin: 0 0 0 auto;
     flex-direction: row;
     align-items: center;
-  }
-  .ds-l-best {
-    display: none;
   }
   .ds-l-acct {
     padding-top: 0;
@@ -3477,16 +3511,177 @@ html.ds-lobby-open .ds-l-main {
     padding-right: 1.4em;
   }
 }
-/* a phone held upright: the side menu shows its icons, and the page's name only */
-@media (max-width: 600px) {
-  .ds-l-item:not(.on) span {
+
+/* ---- phones: everything on one screen, no scrolling. The menu is icons only; the page keeps the zone, one line about
+   it, the big button and the zones as small chips. Held sideways the icons run down the left edge; held upright
+   they are a tab bar along the bottom. ---- */
+@media (max-height: 500px), (max-width: 600px) {
+  .ds-l-main {
+    overflow: hidden;
+    justify-content: center;
+    gap: 0.9em;
+    padding: 0.8em 1.4em;
+  }
+  .ds-l-brand,
+  .ds-l-best,
+  .ds-l-foot .ds-btn.quality,
+  .ds-l-acct .who,
+  .ds-l-item span,
+  .ds-l-hero .lead,
+  .ds-l-note,
+  .ds-l-cta .why span,
+  .ds-l-below h2,
+  .ds-l-brief,
+  .ds-l-zone .zt,
+  .ds-l-zone .zon,
+  .ds-l-boards .lead {
     display: none;
   }
-  .ds-l-foot .ds-btn.quality,
-  .ds-l-acct .who {
-    display: none;
+  .ds-btn.ds-l-item {
+    justify-content: center;
+    width: 2.9em;
+    min-height: 2.9em;
+    padding: 0;
+  }
+  .ds-l-item .ds-ic {
+    width: 1.45em;
+    height: 1.45em;
+  }
+  .ds-l-acct {
+    padding: 0;
+    border: none;
+  }
+  .ds-l-hero {
+    padding-top: 0;
+  }
+  .ds-l-hero .kicker {
+    font-size: 0.66em;
+  }
+  .ds-l-hero .name {
+    font-size: clamp(1.9em, 9vmin, 3.2em);
+  }
+  .ds-l-hero .tag {
+    font-size: 0.95em;
+  }
+  .ds-l-cta {
+    margin-top: 0.9em;
+  }
+  .ds-l-cta .ds-btn.primary.big {
+    font-size: 1.35em;
   }
   .ds-l-cta .ds-btn.discord {
+    font-size: 1em;
     white-space: normal;
+  }
+  .ds-l-more {
+    margin-top: 0.6em;
+  }
+  .ds-l-below {
+    display: block;
+  }
+  .ds-l-zones .list {
+    flex-direction: row;
+    gap: 0.4em;
+  }
+  .ds-btn.ds-l-zone {
+    display: flex;
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 2.9em;
+    padding: 0.5em 0.6em;
+  }
+  .ds-l-zone .zn {
+    font-size: 0.8em;
+    white-space: nowrap;
+  }
+  html.ds-lobby-open .ds-l-below {
+    display: none;
+  }
+  html.ds-lobby-open .ds-l-main {
+    padding-right: 1.4em;
+  }
+  /* the leaderboards: the filters stay put, the table scrolls inside its box */
+  .ds-l-main:has(.ds-l-boards) {
+    justify-content: flex-start;
+  }
+  .ds-l-boards {
+    height: 100%;
+    min-height: 0;
+    gap: 0.5em;
+  }
+  .ds-l-boards .name {
+    font-size: 1.6em;
+  }
+  .ds-l-boards .filters {
+    flex: none;
+    gap: 0.35em;
+    padding: 0.5em 0.6em;
+  }
+  .ds-l-boards .lbl {
+    min-width: 0;
+  }
+  .ds-l-boards .seg .ds-btn {
+    font-size: 0.72em;
+    padding: 0.55em 0.7em;
+  }
+  .ds-l-boards .table {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+  }
+}
+/* held sideways: the icons down the left edge */
+@media (max-height: 500px) {
+  .ds-launch {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+  .ds-l-rail {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3em;
+    padding: 0.5em 0.4em;
+    overflow-y: auto;
+  }
+  .ds-l-nav {
+    flex-direction: column;
+    gap: 0.15em;
+  }
+  .ds-l-foot {
+    margin-top: auto;
+  }
+}
+/* held upright: a tab bar along the bottom */
+@media (max-width: 600px) and (min-height: 501px) {
+  .ds-launch {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  .ds-l-rail {
+    grid-row: 2;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.2em;
+    padding: 0.4em 0.4em max(0.4em, env(safe-area-inset-bottom));
+    border-right: none;
+    border-top: 1px solid var(--ds-line);
+    overflow: hidden;
+  }
+  .ds-l-nav {
+    flex-direction: row;
+    gap: 0.1em;
+  }
+  .ds-l-foot {
+    margin: 0;
+    flex-direction: row;
+  }
+  .ds-l-main {
+    grid-row: 1;
+    justify-content: flex-end;
+    padding-bottom: 1.2em;
+  }
+  .ds-l-hero .name {
+    font-size: clamp(2.2em, 11vw, 3.4em);
   }
 }

@@ -954,8 +954,8 @@ export class Game implements GameCtx {
     this.audio.suspend();
     // Desktop always gets the full menu: Esc does not reliably reach the page while the pointer is locked, and a
     // bare "click to resume" left no way to reach the settings.
-    if (reason === 'menu' || !this.touchMode) this.menus.showPause();
-    else this.menus.showResumePrompt('PAUSED - TAP TO RESUME', true);
+    if (reason === 'menu' || !this.touchMode) this.menus.showPause(this.coop.pauseSession());
+    else this.menus.showResumePrompt('PAUSED - TAP TO RESUME', true, {}, this.coop.pauseSession());
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
 

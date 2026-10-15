@@ -8,7 +8,8 @@ import { DEFAULT_SETTINGS, REGIONS, TEAM_SKILL, TEAM_SKILLS, ZOMBIE_DIFFICULTIES
 import type { BestRun, MissionStats, Settings } from '../types';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
-import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo } from './hudTypes';
+import { LATE_CHOICES, LATE_NOTE } from '../net/room';
+import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
@@ -395,7 +396,7 @@ class Menus implements MenusApi {
     };
     item('PLAY', 'play', !boards && !coop && !roam, () => this.goPage('play'));
     item('WITH FRIENDS', 'friends', !boards && coop, () => this.goPage('friends'));
-    item('EXPLORE', 'explore', !boards && roam, () => this.goPage('explore'));
+    item('FREE ROAM', 'explore', !boards && roam, () => this.goPage('explore'));
     item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
     item('BESTIARY', 'book', false, () => window.open('./bestiary.html', '_blank', 'noopener'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
@@ -441,7 +442,7 @@ class Menus implements MenusApi {
       const hero = el('section', 'ds-l-hero', main);
       const kick = el('div', 'kicker', hero);
       el('span', 'haz', kick);
-      el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'EXPLORE  //  NO MISSION, NO DAMAGE' : text.kicker);
+      el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'FREE ROAM  //  NO MISSION, NO DAMAGE' : text.kicker);
       el('h1', 'name', hero, text.name);
       el('p', 'tag', hero, text.tagline);
       el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : PLAY_LEAD);
@@ -457,8 +458,8 @@ class Menus implements MenusApi {
         el('span', '', why, 'One click. Only your Discord name and avatar are read.');
         first = b;
       } else {
-        const go = this.button(cta, roam ? 'EXPLORE' : coop ? 'OPEN LOBBY' : 'PLAY', 'primary big', () => this.deploy());
-        go.setAttribute('aria-label', roam ? `Explore ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
+        const go = this.button(cta, roam ? 'FREE ROAM' : coop ? 'OPEN LOBBY' : 'PLAY', 'primary big', () => this.deploy());
+        go.setAttribute('aria-label', roam ? `Free roam ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
         first = go;
         if (!roam) {
           const d = this.info.difficulty;
@@ -649,14 +650,40 @@ class Menus implements MenusApi {
   // pause + resume
   // -------------------------------------------------------------------------------------------
 
-  showPause(): void {
+  showPause(session: PauseSession | null = null): void {
     this.clearScreen();
     const root = el('div', '');
     el('div', 'ds-scrim', root);
     const panel = el('div', 'ds-pause-panel ds-panel ds-brk', root);
     const head = el('div', 'ds-panel-head big', panel);
-    el('span', '', head, 'MISSION SUSPENDED');
+    el('span', '', head, session ? 'CO-OP SESSION' : 'MISSION SUSPENDED');
     el('span', 'aux', head, 'PAUSED');
+    if (session) {
+      // the session's code, to bring someone in, and (server-hosted) who may still join
+      const co = el('div', 'ds-pause-coop', panel);
+      const row = el('div', 'row', co);
+      el('span', 'lbl', row, 'CODE');
+      el('b', 'code', row, session.code);
+      const copy = this.button(row, 'COPY INVITE LINK', 'mini', () => {
+        void navigator.clipboard?.writeText(session.link);
+        copy.textContent = 'COPIED';
+      });
+      if (session.serverHosted) {
+        const lr = el('div', 'row', co);
+        el('span', 'lbl', lr, 'JOINING MID-GAME');
+        if (session.owner) {
+          for (const [id, label] of LATE_CHOICES) {
+            const b = this.button(lr, label, session.late === id ? 'mini on' : 'mini', () => {
+              if (id === session.late) return;
+              session.setLate(id);
+              this.showPause({ ...session, late: id });
+            });
+            b.setAttribute('aria-pressed', session.late === id ? 'true' : 'false');
+          }
+        } else el('span', 'val', lr, LATE_CHOICES.find((c) => c[0] === session.late)?.[1] ?? '');
+        el('div', 'note', co, `${LATE_NOTE[session.late]} Anyone invited always can.`);
+      } else el('div', 'note', co, "Self-hosted: nobody new can come in until the run is over and you are back in the lobby.");
+    }
     this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
     const actions = el('div', 'actions', panel);
     const resume = this.button(actions, 'RESUME', 'primary', () => this.cb.onResume());
@@ -666,7 +693,7 @@ class Menus implements MenusApi {
     resume.focus({ preventScroll: true });
   }
 
-  showResumePrompt(reason: string, withMenu = false, text: { title?: string; note?: string } = {}): void {
+  showResumePrompt(reason: string, withMenu = false, text: { title?: string; note?: string } = {}, session: PauseSession | null = null): void {
     this.clearScreen();
     const root = el('div', '');
     el('div', 'ds-scrim light', root);
@@ -674,7 +701,7 @@ class Menus implements MenusApi {
     el('div', 'ttl', box, text.title ?? 'SIGNAL INTERRUPTED');
     el('div', 'why', box, reason);
     const btn = this.button(box, text.title ? (this.touch ? 'TAP TO JOIN' : 'CLICK TO JOIN') : this.touch ? 'TAP TO RESUME' : 'CLICK TO RESUME', 'primary', () => this.cb.onResume());
-    const menu = withMenu ? this.button(box, 'SETTINGS AND OPTIONS', '', () => this.showPause()) : null;
+    const menu = withMenu ? this.button(box, 'SETTINGS AND OPTIONS', '', () => this.showPause(session)) : null;
     el('div', 'note', box, text.note ?? 'The simulation is frozen until you resume.');
     root.addEventListener('click', (e) => {
       if (e.target !== btn && e.target !== menu) this.cb.onResume();

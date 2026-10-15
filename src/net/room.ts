@@ -32,6 +32,11 @@ export interface RoomView {
   zombies?: ZombieDifficulty;
   team?: TeamSkill;
   visibility: 'public' | 'private';
+  /**
+   * Who may come in with the code once the run is under way (server-hosted sessions only): players and spectators,
+   * spectators only, or nobody. Anyone invited always may.
+   */
+  late?: LateJoin;
   /** 'starting': the owner pressed start and the countdown runs; then 'playing'. */
   state: 'lobby' | 'starting' | 'playing';
   /** The countdown left when this view was sent (ms), and when it ends on this machine's clock. */
@@ -46,6 +51,18 @@ export interface RoomView {
 }
 
 export type RoomRole = 'player' | 'spectator';
+export type LateJoin = 'all' | 'watch' | 'off';
+/** The owner's choices for joining mid-game, and what each means. */
+export const LATE_CHOICES: readonly (readonly [LateJoin, string])[] = [
+  ['all', 'PLAY OR WATCH'],
+  ['watch', 'WATCH ONLY'],
+  ['off', 'NOBODY'],
+];
+export const LATE_NOTE: Record<LateJoin, string> = {
+  all: 'Once the run is under way, anyone with the code can still jump in as a player while a seat is free, or watch.',
+  watch: 'Once the run is under way, new arrivals can watch but not play.',
+  off: 'Once the run is under way, nobody new can come in.',
+};
 
 export interface RoomHandlers {
   /** Room membership or settings changed (null: no longer in a room). */
@@ -195,7 +212,7 @@ export class RoomClient {
     void this.command({ t: 'ready', value });
   }
 
-  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config' | 'start' | 'cancel', arg: { id?: string; value?: string; zombies?: ZombieDifficulty; team?: TeamSkill } = {}): void {
+  manage(op: 'kick' | 'end' | 'visibility' | 'invite' | 'uninvite' | 'state' | 'config' | 'start' | 'cancel' | 'late', arg: { id?: string; value?: string; zombies?: ZombieDifficulty; team?: TeamSkill } = {}): void {
     void this.command({ t: 'manage', op, ...arg });
   }
 

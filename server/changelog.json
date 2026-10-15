@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.109",
+      "date": "2026-10-16",
+      "title": "Join a co-op run mid-game, and a phone title that fits",
+      "notes": [
+        "A co-op session's code keeps working once the run is under way: people can come in as players (while a seat is free) or as spectators, as the owner allows - play or watch, watch only, or nobody. Anyone the owner invites always can. The owner changes it in the lobby or, mid-game, in the pause menu, which also shows the code and copies the invite link.",
+        "Only server-hosted sessions take people mid-game: a self-hosted session runs on its owner's device, so it is joined from its lobby only.",
+        "The co-op scoreboard (Tab) shows the session's code and who may join.",
+        "On a phone the title screen fits the screen without scrolling: the menu is icons only (down the left edge held sideways, a tab bar along the bottom held upright), and the page shows the zone, the big button and the zones as small buttons.",
+        "Explore is called Free roam again on the title screen."
+      ]
+    },
+    {
       "version": "0.1.108",
       "date": "2026-10-16",
       "title": "A simpler title screen, and leaderboards",

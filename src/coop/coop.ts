@@ -27,7 +27,7 @@ import { POWERUP_KINDS } from '../logic/powerups';
 import { RoomClient, type RoomRole, type RoomView } from '../net/room';
 import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind, sessionDifficulty } from '../sim/serverHost';
 import type { ZombieType } from '../types';
-import type { HudState, MapDynamic } from '../ui/hudTypes';
+import type { HudState, MapDynamic, PauseSession } from '../ui/hudTypes';
 import { AVATAR_WEAPONS, Avatar } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
@@ -175,6 +175,20 @@ export class CoopSession {
       for (const id of [...this.peers.keys()]) if (!room.players.some((p) => p.id === id)) this.dropPeer(id);
     }
     this.onChange();
+  }
+
+  /** The pause menu's view of the session (null outside a live one): its code, and who may join mid-game. */
+  pauseSession(): PauseSession | null {
+    const r = this.room.room;
+    if (!this.live || !r) return null;
+    return {
+      code: r.code,
+      link: `${location.origin}/?room=${r.code}`,
+      serverHosted: r.hosting === 'server',
+      owner: this.room.isOwner,
+      late: r.late ?? 'all',
+      setLate: (value) => this.room.manage('late', { value }),
+    };
   }
 
   /** Owner: what the session plays (lobby only). */

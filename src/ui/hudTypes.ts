@@ -278,6 +278,16 @@ export interface HudApi {
   dispose(): void;
 }
 
+/** A co-op session as the pause menu shows it: its code and link, and who may join mid-game (the owner changes it). */
+export interface PauseSession {
+  code: string;
+  link: string;
+  serverHosted: boolean;
+  owner: boolean;
+  late: 'all' | 'watch' | 'off';
+  setLate(value: 'all' | 'watch' | 'off'): void;
+}
+
 export interface MenuCallbacks {
   /** Called synchronously from the click handler (a user gesture): the game requests pointer lock / starts audio here. */
   onDeploy(): void;
@@ -302,10 +312,10 @@ export interface MenusApi {
   /** Title screen over the live 3D scene (transparent background with gradient framing). */
   showTitle(best: BestRun | null): void;
   /** Pause menu: resume, settings, restart, quit to title, controls list. */
-  showPause(): void;
+  showPause(session?: PauseSession | null): void;
   /** Small "click to resume" overlay after pointer lock was lost without an explicit pause. */
   /** `title` / `note` replace the default heading and the frozen-simulation note. */
-  showResumePrompt(reason: string, withMenu?: boolean, text?: { title?: string; note?: string }): void;
+  showResumePrompt(reason: string, withMenu?: boolean, text?: { title?: string; note?: string }, session?: PauseSession | null): void;
   /** Victory / defeat results with real mission data. */
   showResults(stats: MissionStats, best: BestRun | null, isNewBest: boolean): void;
   showLoading(fraction: number, text: string): void;
