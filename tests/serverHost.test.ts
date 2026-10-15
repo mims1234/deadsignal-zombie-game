@@ -168,6 +168,26 @@ describe('co-op session simulation: the story operation', () => {
     expect((last('s')!.d.c as unknown[]).length).toBe(5);
   });
 
+  it('Standard Mazoku is the map\'s own operation plus the five carriers, nothing else, on every map', () => {
+    for (const map of ['district', 'forge', 'asylum'] as MapId[]) {
+      const make = (kind: SessionKind): SessionSim => {
+        const s = new SessionSim({ seed: 9, kind, map, send: () => {} });
+        s.players([{ id: 'p1', name: 'One' }]);
+        s.begin();
+        return s;
+      };
+      const a = make('mission');
+      const b = make('mazoku');
+      const others = (s: SessionSim) => s.zombies.zombies.filter((z) => !z.curable).map((z) => `${z.type}@${z.x.toFixed(1)},${z.z.toFixed(1)}`);
+      expect(b.zombies.zombies.filter((z) => z.curable).length).toBe(5);
+      expect(a.zombies.zombies.filter((z) => z.curable).length).toBe(0);
+      expect(others(b)).toEqual(others(a));
+      expect(b.debug.allies.map((x) => x.name)).toEqual(a.debug.allies.map((x) => x.name));
+      expect(JSON.stringify(b.forge?.view ?? null)).toBe(JSON.stringify(a.forge?.view ?? null));
+      expect([b.debug.defense.status, b.debug.hunt.status, b.debug.extraction.phase, !!b.debug.barricades]).toEqual([a.debug.defense.status, a.debug.hunt.status, a.debug.extraction.phase, !!a.debug.barricades]);
+    }
+  });
+
   it('free roam has no infected, only the players', () => {
     const { sim, run, last } = setup('roam');
     run(2);

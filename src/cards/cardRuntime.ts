@@ -1,5 +1,6 @@
 /**
- * Card recovery runtime: places the carriers in the district, floats each one's card over its head, runs the
+ * Card recovery runtime: places the carriers on the map (any map: Standard Mazoku is the map's own operation plus
+ * these five and their side contract, nothing else), floats each one's card over its head, runs the
  * knock-down / purge / pick-up loop, and feeds the HUD (objective, markers, target bar, collection).
  * The rules themselves are in `logic/carriers.ts`; this file is the part that touches the world.
  */
@@ -121,7 +122,7 @@ export class CardRuntime {
   }
 
   /**
-   * Start a run. `enabled` puts the carriers in the district; `passive` (free roam) leaves them standing around
+   * Start a run. `enabled` puts the carriers on the map; `passive` (free roam) leaves them standing around
    * with no side contract attached. Call after the regular population has been (re)built.
    */
   reset(enabled: boolean, passive: boolean): void {
@@ -180,7 +181,7 @@ export class CardRuntime {
     const live = !this.passive && ctx.playerAlive() && !s.ended;
     if (live && this.coopMode === 'off' && s.carriers.length > 0 && s.elapsed > 12 && !s.flags.has('cardBrief')) {
       s.flags.add('cardBrief');
-      ctx.radio('COMMAND', 'One more thing. Five archive cards went missing in the sector, and the signal has grown a body around each of them. Put a carrier down, purge it, and bring the card home.', 8);
+      ctx.radio('COMMAND', 'One more thing. Five archive cards went missing out here, and the signal has grown a body around each of them. Put a carrier down, purge it, and bring the card home.', 8);
     }
     for (const u of this.units) {
       const z = u.zombie;
@@ -426,7 +427,7 @@ export class CardRuntime {
     if (list.length === 0) return;
     const got = recoveredCount(list);
     const f = this.focus();
-    let detail = `Find the carriers - ${list.length - got} signals in the district`;
+    let detail = `Find the carriers - ${list.length - got} signals out there`;
     if (got === list.length) detail = 'Every card recovered';
     else if (f?.state?.phase === 'purged') detail = `Pick up ${f.def.name}'s card`;
     else if (f?.state?.phase === 'downed') detail = `${f.def.name} is down - purge the signal (${Math.ceil(f.state.downLeft)}s)`;

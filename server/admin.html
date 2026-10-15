@@ -11,6 +11,13 @@
       body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
       header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 2; }
       header h1 { margin: 0; font-size: 16px; letter-spacing: 0.08em; }
+      header .ver { color: var(--faint); font-size: 12px; letter-spacing: 0.08em; }
+      .ver-list { display: grid; gap: 10px; }
+      .ver-item h3 { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+      .ver-item h3 .n { font-variant-numeric: tabular-nums; color: var(--bar); }
+      .ver-item h3 .d { color: var(--faint); font-size: 12px; font-weight: 400; }
+      .ver-item ul { margin: 6px 0 0; padding-left: 18px; color: var(--dim); }
+      .ver-item li { margin: 2px 0; }
       header .sp { flex: 1; }
       main { padding: 18px 20px 60px; max-width: 1280px; margin: 0 auto; }
       h2 { margin: 28px 0 10px; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
@@ -53,6 +60,7 @@
   <body>
     <header>
       <h1>DEAD SIGNAL // ADMIN</h1>
+      <span class="ver" id="ver"></span>
       <label>Range <select id="days"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></label>
       <button id="refresh">Refresh</button>
       <span id="err"></span>
@@ -90,6 +98,9 @@
         <input id="search" placeholder="Search by name or Discord ID" size="34" />
         <div id="users"></div>
       </div>
+      <h2>Versions</h2>
+      <div class="sub" style="color: var(--faint); margin: -4px 0 10px">What each update brought, newest first. Players see the version in the bottom-right corner of the game, so a screenshot or a video says which build it is from.</div>
+      <div class="ver-list" id="versions"></div>
     </main>
     <div id="tip"></div>
     <script>
@@ -111,7 +122,7 @@
       const clock = (s) => (s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '--');
       const hours = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round((s || 0) / 60)} min`);
       const when = (t) => (t ? new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--');
-      const MODE = { standard: 'Standard', cards: 'Standard Mazoku', roam: 'Free roam', coop: 'Co-op waves' };
+      const MODE = { standard: 'Standard', cards: 'Standard Mazoku', roam: 'Free roam', coop: 'Co-op' };
 
       async function api(path, body) {
         const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body) } : undefined);
@@ -274,9 +285,22 @@
         ], reports, status === 'open' ? 'No open reports.' : 'Nothing resolved yet.');
       }
 
+      async function loadVersions() {
+        const { versions } = await api('/api/admin/changelog');
+        $('ver').textContent = versions[0] ? `v${versions[0].version}` : '';
+        $('versions').replaceChildren(
+          ...versions.map((v) =>
+            h('div', { class: 'card ver-item' },
+              h('h3', null, h('span', { class: 'n' }, `v${v.version}`), h('span', null, v.title), h('span', { class: 'd' }, v.date)),
+              h('ul', null, (v.notes || []).map((n) => h('li', null, n))),
+            ),
+          ),
+        );
+      }
+
       async function loadAll() {
         $('err').textContent = '';
-        try { await Promise.all([loadOverview(), loadUsers(), loadReports()]); } catch (e) { $('err').textContent = e.message; }
+        try { await Promise.all([loadOverview(), loadUsers(), loadReports(), loadVersions()]); } catch (e) { $('err').textContent = e.message; }
       }
       $('days').addEventListener('change', loadAll);
       $('refresh').addEventListener('click', loadAll);

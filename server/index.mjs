@@ -204,6 +204,8 @@ app.get('/api/health', async (req, reply) => {
 // ---- admin -------------------------------------------------------------------------------------------
 
 app.get('/admin', { preHandler: admin }, async (_req, reply) => reply.type('text/html').send(readFileSync(join(here, 'admin.html'))));
+// what each version brought (newest first): the same file the game takes its version from
+app.get('/api/admin/changelog', { preHandler: admin }, async () => JSON.parse(readFileSync(join(here, 'changelog.json'), 'utf8')));
 app.get('/api/admin/overview', { preHandler: admin }, async (req) => db.overview(Math.max(1, Math.min(90, Number(req.query.days) || 30))));
 app.get('/api/admin/users', { preHandler: admin }, async (req) => ({ users: db.users(String(req.query.q || '')), admins: [...ADMIN_IDS] }));
 app.get('/api/admin/rooms', { preHandler: admin }, async () => ({ rooms: rooms.live() }));

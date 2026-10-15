@@ -21,6 +21,7 @@ import { createZombieFactory } from '../enemies/zombieRig';
 import type { ZombieAnimState, ZombieMode, ZombieRig, ZombieTheme } from '../enemies/zombieRigTypes';
 import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from '../render/stage';
 import type { ZombieType } from '../types';
+import { showVersionTag } from '../version';
 import './bestiary.css';
 
 type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'VULCAN';
@@ -240,7 +241,7 @@ const entries: Entry[] = [
     id: `card-${def.id}`, group: 'MAZOKU CARRIERS', name: def.name, height: def.height, accent: def.accent, card: kits.get(def.id)?.url,
     tagline: def.series,
     lore: `An archive card from the Mazoku collection, carried by the signal that grew a body around it. A carrier cannot be killed: empty its health and it drops; get close and hold E to purge the signal before it gets back up, then take the card. ${def.base === 'runner' ? 'This one moves like a runner.' : 'This one walks like a shambler but takes a lot more to drop.'}`,
-    where: 'Standard Mazoku (and Mazoku co-op waves 2, 4, 6, 8, 9)',
+    where: 'Standard Mazoku, on every map (solo and co-op)',
     stats: [['Health', `${def.hp} (cannot die)`], ['Chase speed', `${def.speedChase.toFixed(1)} m/s`], ['Hits for', `${def.damage}`], ['Body armour', pct(def.bodyMul)], ['Reward', 'the card + $350']],
     modes: ZOMBIE_MODES,
     build: () => {
@@ -590,3 +591,5 @@ requestAnimationFrame(frame);
     controls.update();
   },
 };
+
+showVersionTag();

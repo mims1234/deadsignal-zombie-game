@@ -1,0 +1,48 @@
+{
+  "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
+  "versions": [
+    {
+      "version": "0.1.100",
+      "date": "2026-10-15",
+      "title": "Standard Mazoku made plain, and version numbers",
+      "notes": [
+        "Standard Mazoku is each map's own Standard operation plus the five card carriers and their side contract - nothing else (a test now checks it on every map).",
+        "Card texts no longer assume the District; the start banner matches Standard's.",
+        "The version shows faintly in the bottom-right corner of every screen, so screenshots and videos say which build they came from.",
+        "This changelog on the admin page."
+      ]
+    },
+    {
+      "version": "0.1.99",
+      "date": "2026-10-15",
+      "title": "The Forge: the last of it",
+      "notes": [
+        "The run starts in the Hearth: an open safe zone with a sentry gun that cuts down infected coming through the gate.",
+        "Seven of sixteen cold furnaces are drawn each run, one per ember (currency): stoke one, hold its circle for 30 seconds.",
+        "The last stand: once the bird is called, the infected come for the Hearth in waves.",
+        "The carrier convulses and glows before the turn; the infected pulse as the fire is drawn out of them.",
+        "The reborn has its own look: phoenix wings of flame and a crown of fire.",
+        "PROMETHEUS is a Vulcan orb that explains everything over the Forge, says it will be back, and leaves the sky.",
+        "Lore rewritten around the embers; new title menu objectives."
+      ]
+    },
+    {
+      "version": "0.1.98",
+      "date": "2026-10-15",
+      "title": "Anime co-leaders",
+      "notes": [
+        "riry and Athy drawn anime-style; Anya's long braids so she reads as a woman at a distance."
+      ]
+    },
+    {
+      "version": "0.1.97",
+      "date": "2026-10-15",
+      "title": "The Forge, rekindled",
+      "notes": [
+        "The Forge grew to 190 x 150 m with the Vulcan story: holdouts barricaded in safe rooms, co-leaders in the squad, tomoe in the vault.",
+        "Ledger pages, riry's Rumble Pit, a hidden-bite finale, the burnout at dawn and the closing cutscene.",
+        "Flow fields spread over frames for the bigger map."
+      ]
+    }
+  ]
+}

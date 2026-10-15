@@ -19,7 +19,7 @@ type ScreenKind = 'title' | 'pause' | 'resume' | 'results' | 'error';
 const CARD_BRIEF = {
   tag: 'SIDE CONTRACT',
   title: 'MAZOKU CARRIERS',
-  text: 'Five card carriers walk the district. They cannot be killed: put one down, purge the signal, take the card.',
+  text: 'Five card carriers walk the map. They cannot be killed: put one down, purge the signal, take the card.',
 };
 
 const MODES: { id: GameMode; label: string; note: string }[] = [
