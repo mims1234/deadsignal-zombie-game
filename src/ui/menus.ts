@@ -48,6 +48,8 @@ interface BoardEntry {
 interface BoardReply {
   enabled: boolean;
   all?: boolean;
+  /** How many players the board ranks at each difficulty. */
+  perDifficulty?: Record<string, number>;
   entries: BoardEntry[];
 }
 const BOARD_MODES = [
@@ -352,7 +354,6 @@ class Menus implements MenusApi {
     this.lastBest = best;
     if (!this.boardMapSet) {
       this.board.map = this.info.map;
-      this.board.difficulty = this.info.difficulty.zombies;
       this.boardMapSet = true;
     }
     const mode = this.info.mode;
@@ -549,6 +550,7 @@ class Menus implements MenusApi {
     const page = el('section', 'ds-l-boards', main);
     el('h1', 'name', page, 'LEADERBOARDS');
     el('p', 'lead', page, 'Each player\'s best run on a zone, at one difficulty. Point at a row (tap on a phone) to see the run.');
+    if (this.account.admin) el('p', 'lead admin', page, 'You are an admin, so your own runs are not on the boards.');
     const filters = el('div', 'filters', page);
     const seg = (label: string, options: readonly { id: string; label: string }[], current: string, pick: (id: string) => void): void => {
       const g = el('div', 'seg', filters);
@@ -633,7 +635,23 @@ class Menus implements MenusApi {
         if (req !== this.boardReq || !list.isConnected) return;
         if (!data) return say('The leaderboards could not be loaded. Try again in a moment.');
         if (!data.enabled) return say(data.all === false ? 'The leaderboards are switched off for now.' : 'This board is switched off for now.');
-        if (!data.entries.length) return say('No runs on this board yet. Yours could be the first.');
+        // how many players each difficulty has, on its button
+        const per = data.perDifficulty ?? {};
+        for (const d of ZOMBIE_DIFFICULTIES) {
+          const b = list.closest('.ds-l-boards')?.querySelector<HTMLElement>(`[data-k="Difficulty:${d}"]`);
+          if (!b) continue;
+          b.replaceChildren(ZOMBIE_DIFFICULTY[d].label);
+          if (per[d]) el('span', 'cnt', b, String(per[d]));
+        }
+        if (!data.entries.length) {
+          // empty here, but not everywhere: say where the runs are
+          const elsewhere = ZOMBIE_DIFFICULTIES.filter((d) => (per[d] ?? 0) > 0);
+          return say(
+            elsewhere.length
+              ? `No runs at ${sentence(ZOMBIE_DIFFICULTY[q.difficulty].label)} yet. ${elsewhere.map((d) => `${sentence(ZOMBIE_DIFFICULTY[d].label)} has ${per[d]}`).join(', ')} - pick it above.`
+              : 'No runs on this board yet. Yours could be the first.',
+          );
+        }
         list.replaceChildren();
         for (const e of data.entries) {
           // one line each: the rank, the player, the result; the rest of the run is on the card

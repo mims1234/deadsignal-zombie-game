@@ -3347,6 +3347,20 @@ html.ds-rm .ds-menus {
   background: var(--ds-amber);
   border-color: var(--ds-amber);
 }
+.ds-l-boards .seg .cnt {
+  margin-left: 0.5em;
+  padding: 0 0.4em;
+  border-radius: 0.7em;
+  font: 700 0.85em var(--ds-font-num);
+  letter-spacing: 0;
+  background: rgba(196, 210, 184, 0.18);
+}
+.ds-l-boards .seg .on .cnt {
+  background: rgba(23, 19, 10, 0.2);
+}
+.ds-l-boards .lead.admin {
+  color: var(--ds-amber);
+}
 .ds-l-boards .only {
   display: flex;
   align-items: center;

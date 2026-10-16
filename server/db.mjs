@@ -25,6 +25,31 @@ const BOARD_RUN_MODES = { solo: ['standard', 'cards'], coop: ['coop'] };
 /** Runs from before the difficulty was recorded count as Normal (the default). */
 const DIFF_SQL = "COALESCE(r.difficulty, 'normal')";
 
+/** What a board counts: finished runs of its map and modes by unbanned non-admins, ranked by `pick`. */
+function boardWhere({ map, mode, metric, version, difficulty, exclude }) {
+  const runModes = BOARD_RUN_MODES[mode] ?? [];
+  const where = ["COALESCE(r.map, 'district') = ?", `r.mode IN (${runModes.map(() => '?').join(', ')})`, 'u.banned = 0', 'r.ended_at IS NOT NULL'];
+  const args = [map, ...runModes];
+  if (exclude.length) {
+    where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
+    args.push(...exclude);
+  }
+  if (version) {
+    where.push('r.version = ?');
+    args.push(version);
+  }
+  if (difficulty) {
+    where.push(`${DIFF_SQL} = ?`);
+    args.push(difficulty);
+  }
+  if (metric === 'fastest') {
+    where.push("r.outcome = 'victory'", 'r.duration > 0');
+    return { where, args, pick: 'MIN(r.duration)', order: 'value ASC' };
+  }
+  where.push("r.outcome IN ('victory', 'defeat')", 'r.kills > 0');
+  return { where, args, pick: 'MAX(r.kills)', order: 'value DESC' };
+}
+
 export function openDb(file) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
   const db = new Database(file);
@@ -193,32 +218,7 @@ export function openDb(file) {
      * extraction ranks victories by time; the others rank any finished run by its count.
      */
     leaderboard({ map, mode, metric, version = '', difficulty = '', exclude = [], limit = 25 }) {
-      const runModes = BOARD_RUN_MODES[mode] ?? [];
-      const where = ["COALESCE(r.map, 'district') = ?", `r.mode IN (${runModes.map(() => '?').join(', ')})`, 'u.banned = 0', 'r.ended_at IS NOT NULL'];
-      const args = [map, ...runModes];
-      if (exclude.length) {
-        where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
-        args.push(...exclude);
-      }
-      if (version) {
-        where.push('r.version = ?');
-        args.push(version);
-      }
-      if (difficulty) {
-        where.push(`${DIFF_SQL} = ?`);
-        args.push(difficulty);
-      }
-      let pick;
-      let order;
-      if (metric === 'fastest') {
-        where.push("r.outcome = 'victory'", 'r.duration > 0');
-        pick = 'MIN(r.duration)';
-        order = 'value ASC';
-      } else {
-        where.push("r.outcome IN ('victory', 'defeat')", 'r.kills > 0');
-        pick = 'MAX(r.kills)';
-        order = 'value DESC';
-      }
+      const { where, args, pick, order } = boardWhere({ map, mode, metric, version, difficulty, exclude });
       // SQLite: with one MIN / MAX, the row's other columns come from the row that holds it
       const rows = db
         .prepare(
@@ -247,6 +247,15 @@ export function openDb(file) {
           day: r.day,
         },
       }));
+    },
+    /** How many players a board ranks at each difficulty (the page shows it on the difficulty buttons). */
+    boardDifficulties({ map, mode, metric, version = '', exclude = [] }) {
+      const { where, args } = boardWhere({ map, mode, metric, version, difficulty: '', exclude });
+      const out = Object.fromEntries(DIFFICULTIES.map((d) => [d, 0]));
+      for (const r of db.prepare(`SELECT ${DIFF_SQL} d, COUNT(DISTINCT r.user_id) n FROM runs r JOIN users u ON u.id = r.user_id WHERE ${where.join(' AND ')} GROUP BY 1`).all(...args)) {
+        if (r.d in out) out[r.d] = r.n;
+      }
+      return out;
     },
     /** The builds that have finished runs on a map and mode (newest first): the leaderboards' version filter. */
     boardVersions(map, mode) {

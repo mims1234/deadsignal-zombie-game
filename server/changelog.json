@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.112",
+      "date": "2026-10-16",
+      "title": "Leaderboards that show their history",
+      "notes": [
+        "The leaderboards open at Normal, where every run from before difficulties were recorded is counted, and each difficulty button shows how many players it ranks.",
+        "An empty board says which difficulties do have runs.",
+        "Admins see a line saying their own runs are not on the boards."
+      ]
+    },
+    {
       "version": "0.1.111",
       "date": "2026-10-16",
       "title": "Simpler leaderboards",

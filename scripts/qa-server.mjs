@@ -81,6 +81,7 @@ await finish(adm, { version: '0.1.108', difficulty: 'normal' }, { outcome: 'vict
 await finish(p2, { version: '0.1.107', difficulty: 'normal' }, { outcome: 'defeat', stats: { timeSurvived: 1, kills: 12, headshots: 7 } });
 const board = (q) => anon.get(`/api/leaderboards?map=forge&mode=solo&${q}`);
 r = await board('metric=kills'); check('leaderboard: anyone can read it, best run per player, no admin', r.status === 200 && r.body.enabled === true && r.body.entries.map((e) => `${e.name}:${e.value}`).join(',') === 'Player One:30,Bob:12', JSON.stringify(r.body.entries));
+check('leaderboard: how many players each difficulty has', r.body.perDifficulty.hard === 1 && r.body.perDifficulty.normal === 1 && r.body.perDifficulty.easy === 0, JSON.stringify(r.body.perDifficulty));
 check('leaderboard: the builds it has runs from, newest first', JSON.stringify(r.body.versions) === '["0.1.108","0.1.107"]', JSON.stringify(r.body.versions));
 r = await board('metric=fastest'); check('leaderboard: fastest extraction counts only extractions', r.body.entries.length === 1 && r.body.entries[0].name === 'Player One' && r.body.entries[0].rank === 1);
 r = await board('metric=kills&version=0.1.107'); check('leaderboard: filtered by build', r.body.entries.length === 1 && r.body.entries[0].name === 'Bob' && r.body.entries[0].value === 12);

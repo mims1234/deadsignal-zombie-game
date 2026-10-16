@@ -216,7 +216,8 @@ app.get('/api/leaderboards', async (req, reply) => {
   if (!sw.all) return { enabled: false, all: false, versions, entries: [] };
   if (sw.off.includes(boardKey(map, mode, metric))) return { enabled: false, all: true, versions, entries: [] };
   reply.header('cache-control', 'public, max-age=20');
-  return { enabled: true, all: true, versions, entries: db.leaderboard({ map, mode, metric, version, difficulty, exclude: [...ADMIN_IDS] }) };
+  const exclude = [...ADMIN_IDS];
+  return { enabled: true, all: true, versions, perDifficulty: db.boardDifficulties({ map, mode, metric, version, exclude }), entries: db.leaderboard({ map, mode, metric, version, difficulty, exclude }) };
 });
 
 app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code) ?? reply.code(404).send({ error: 'no such session' }));
