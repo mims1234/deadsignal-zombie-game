@@ -68,6 +68,15 @@ export const SOUND_IDS = [
   'zombie_claw_hit', // hit landing on the player
   'zombie_hurt',
   'zombie_death',
+  // the Sakura District's infected are women (`synth/creaturesFemale.ts`): their voices stand in for the ones above
+  'fzombie_moan', // moan, or a sob that breaks into whimpering catches (for zombie_groan)
+  'fzombie_giggle', // a creepy breathy giggle when she notices you (zombie_alert)
+  'fzombie_hiss', // a hiss through bared teeth on the chase (zombie_snarl)
+  'fzombie_scream', // a runner's piercing scream (zombie_screech)
+  'fzombie_growl', // the armored ones' torn growl (zombie_bellow)
+  'fzombie_attack', // the lunge: a sharp "hah!" (zombie_attack)
+  'fzombie_whimper', // hit: a yelp falling into a whimper (zombie_hurt)
+  'fzombie_gasp', // dying: a gasp in, a falling sigh and a rattle (zombie_death)
   // ---- world / interaction ----
   'pickup_ammo',
   'pickup_cash',

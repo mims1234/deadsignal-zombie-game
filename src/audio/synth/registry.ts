@@ -39,6 +39,7 @@ import {
   zombieScreech,
   zombieSnarl,
 } from './creatures';
+import { fzombieAttack, fzombieGasp, fzombieGiggle, fzombieGrowl, fzombieHiss, fzombieMoan, fzombieScream, fzombieWhimper } from './creaturesFemale';
 import { keysJingle, matronShriek } from './matron';
 import {
   boarding,
@@ -226,6 +227,14 @@ export const SOUND_SPECS: Record<SoundId, SoundSpec> = {
   zombie_claw_hit: S(3, 'lo', 3, 'sfx', 0.05, 0.08, 0.1, true, zombieClawHit),
   zombie_hurt: S(4, 'lo', 1, 'sfx', 0.07, 0.1, 0.2, true, zombieHurt),
   zombie_death: S(3, 'lo', 1, 'sfx', 0.06, 0.1, 0.25, true, zombieDeath),
+  fzombie_moan: S(5, 'mid', 1, 'sfx', 0.07, 0.12, 0.3, false, fzombieMoan),
+  fzombie_giggle: S(3, 'mid', 2, 'sfx', 0.05, 0.1, 0.32, false, fzombieGiggle),
+  fzombie_hiss: S(4, 'mid', 1, 'sfx', 0.06, 0.1, 0.25, false, fzombieHiss),
+  fzombie_scream: S(3, 'mid', 2, 'sfx', 0.05, 0.08, 0.34, false, fzombieScream),
+  fzombie_growl: S(3, 'lo', 2, 'sfx', 0.05, 0.08, 0.3, false, fzombieGrowl),
+  fzombie_attack: S(3, 'mid', 2, 'sfx', 0.06, 0.1, 0.2, false, fzombieAttack),
+  fzombie_whimper: S(4, 'mid', 1, 'sfx', 0.07, 0.1, 0.2, false, fzombieWhimper),
+  fzombie_gasp: S(3, 'mid', 1, 'sfx', 0.06, 0.1, 0.25, false, fzombieGasp),
   // ---- world / interaction ----
   pickup_ammo: S(2, 'mid', 2, 'sfx', 0.04, 0.06, 0.05, true, pickupAmmo),
   pickup_cash: S(2, 'mid', 2, 'sfx', 0.04, 0.06, 0.05, true, pickupCash),
@@ -284,6 +293,12 @@ const ROLLOFF: Partial<Record<SoundId, number>> = {
   zombie_screech: 0.58,
   zombie_bellow: 0.58,
   zombie_attack: 0.8,
+  fzombie_moan: 0.62,
+  fzombie_giggle: 0.62,
+  fzombie_hiss: 0.62,
+  fzombie_scream: 0.58,
+  fzombie_growl: 0.58,
+  fzombie_attack: 0.8,
   warden_roar: 0.35,
   warden_slam: 0.4,
   matron_shriek: 0.35,

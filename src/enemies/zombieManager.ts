@@ -233,6 +233,8 @@ export class ZombieManager {
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
     const zz = new Zombie(this.nextId++, type, rig);
     zz.ownsRig = !opts.rig;
+    // the Sakura District's infected are women: they moan, giggle, hiss and scream in a woman's voice
+    zz.voiceKind = this.theme === 'sakura' ? 'female' : null;
     const t = this.tuning;
     zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, { ...opts, hpScale: (opts.hpScale ?? 1) * t.hp });
     zz.speedScale *= t.speed;

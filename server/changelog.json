@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.116",
+      "date": "2026-10-17",
+      "title": "The Sakura District's infected have women's voices",
+      "notes": [
+        "The infected on the Sakura District no longer growl like the regular horde: they moan, sometimes breaking into sobs; giggle when they notice you; hiss on the chase; the runners scream; the armored ones growl in a torn woman's voice.",
+        "They yelp and whimper when hit, and die with a gasp and a rattle. Their boss, the Crimson Empress, roars with a shriek.",
+        "Like every sound in the game, the voices are synthesised: no recordings."
+      ]
+    },
+    {
       "version": "0.1.115",
       "date": "2026-10-17",
       "title": "A stand-in anime model for the Sakura District",

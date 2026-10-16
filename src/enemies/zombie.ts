@@ -11,6 +11,19 @@ import type { CollisionWorld } from '../world/collision';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
 
+/** A woman's voice for each of the horde's noises; the boss gets the Matron's shriek for her roar. */
+const FEMALE_VOICE: Partial<Record<SoundId, SoundId>> = {
+  zombie_groan: 'fzombie_moan',
+  zombie_alert: 'fzombie_giggle',
+  zombie_snarl: 'fzombie_hiss',
+  zombie_screech: 'fzombie_scream',
+  zombie_bellow: 'fzombie_growl',
+  zombie_attack: 'fzombie_attack',
+  zombie_hurt: 'fzombie_whimper',
+  zombie_death: 'fzombie_gasp',
+  warden_roar: 'matron_shriek',
+};
+
 /** `downed`: a curable carrier at zero health, lying helpless until it is purged or gets back up. */
 export type ZombieState = 'idle' | 'alert' | 'chase' | 'attack' | 'stagger' | 'downed' | 'dead';
 export type AttackKind = 'melee' | 'slam' | 'charge';
@@ -119,6 +132,8 @@ export class Zombie {
   targetIdx = 0;
   /** A name this infected carries (the Forge: one of Vulcan's fallen), shown over its head and in the kill feed. */
   tag: string | null = null;
+  /** Whose voice it has: the Sakura District's infected are women (`audio/synth/creaturesFemale.ts`). */
+  voiceKind: 'female' | null = null;
   private netX = 0;
   private netZ = 0;
   private netYaw = 0;
@@ -372,21 +387,21 @@ export class Zombie {
     const s = this.netSounds;
     this.netSounds = 0;
     const boss = this.type === 'warden';
-    if (s & 1) env.audio.play('zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
-    if (s & 2) env.audio.play(boss ? this.roarId : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
-    if (s & 4) env.audio.play('warden_slam', { pos, volume: 1.2, priority: 3 });
-    if (s & 8) env.audio.play('zombie_hurt', { pos, volume: 0.8, priority: 1 });
-    if (s & 16) env.audio.play('zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
+    if (s & 1) this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+    if (s & 2) this.say(env, boss ? this.roarId : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
+    if (s & 4) this.say(env, 'warden_slam', { pos, volume: 1.2, priority: 3 });
+    if (s & 8) this.say(env, 'zombie_hurt', { pos, volume: 0.8, priority: 1 });
+    if (s & 16) this.say(env, 'zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
     if (this.state === 'dead' || this.state === 'downed') return;
     const p = env.player;
     this.voiceTimer -= dt;
     if (this.voiceTimer > 0 || Math.hypot(p.x - this.x, p.z - this.z) > 38) return;
     if (this.netMode === 'idle') {
-      env.audio.play('zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
+      this.say(env, 'zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
       this.voiceTimer = 6 + env.rng.f() * 8;
     } else {
       const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : boss ? this.roarId : 'zombie_groan';
-      env.audio.play(id, { pos, volume: boss ? 0.9 : 0.8, priority: boss ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
+      this.say(env, id, { pos, volume: boss ? 0.9 : 0.8, priority: boss ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
       this.voiceTimer = boss ? 8 + env.rng.f() * 4 : 3.5 + env.rng.f() * 5;
     }
   }
@@ -580,7 +595,12 @@ export class Zombie {
     this.enterState('alert');
     this.alertTimer = seconds;
     this.vx = this.vz = 0;
-    env.audio.play(this.roarId, { pos: { x: this.x, y: 2, z: this.z }, volume: 1.3, priority: 3 });
+    this.say(env, this.roarId, { pos: { x: this.x, y: 2, z: this.z }, volume: 1.3, priority: 3 });
+  }
+
+  /** Every noise this infected makes, in its own voice (a woman's on the Sakura District). */
+  private say(env: ZombieEnv, id: SoundId, opts: Parameters<AudioEngineApi['play']>[1]): void {
+    env.audio.play(this.voiceKind === 'female' ? (FEMALE_VOICE[id] ?? id) : id, opts);
   }
 
   /** A boss's roar (the Warden's, unless its stats bring another voice). */
@@ -618,7 +638,7 @@ export class Zombie {
     }
     if (this.isBoss && !this.enraged && this.hp / this.maxHp < WARDEN.rageAt) {
       this.enraged = true;
-      env.audio.play(this.roarId, { pos: { x: this.x, y: 1.5, z: this.z }, volume: 1.2, priority: 3 });
+      this.say(env, this.roarId, { pos: { x: this.x, y: 1.5, z: this.z }, volume: 1.2, priority: 3 });
     }
     // poise: enough damage in a short window staggers (the Warden is poise-immune except when charging into a wall)
     this.poise += amount * impulse;
@@ -636,7 +656,7 @@ export class Zombie {
     this.staggerDur = duration;
     this.vx = this.vz = 0;
     this.chargeLock = false;
-    env.audio.play('zombie_hurt', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.8, priority: 1 });
+    this.say(env, 'zombie_hurt', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.8, priority: 1 });
   }
 
   private fallStyle(env: ZombieEnv, hitDirYaw: number): void {
@@ -653,7 +673,7 @@ export class Zombie {
     this.headshotDeath = head;
     this.vx = this.vz = 0;
     this.fallStyle(env, hitDirYaw);
-    env.audio.play('zombie_death', { pos: { x: this.x, y: 1.2, z: this.z }, volume: this.isBoss ? 1.3 : 1, priority: 2 });
+    this.say(env, 'zombie_death', { pos: { x: this.x, y: 1.2, z: this.z }, volume: this.isBoss ? 1.3 : 1, priority: 2 });
   }
 
   private knockDown(env: ZombieEnv, hitDirYaw: number): void {
@@ -663,7 +683,7 @@ export class Zombie {
     this.headshotDeath = false;
     this.vx = this.vz = 0;
     this.fallStyle(env, hitDirYaw);
-    env.audio.play('zombie_hurt', { pos: { x: this.x, y: 1.2, z: this.z }, volume: 1, priority: 2 });
+    this.say(env, 'zombie_hurt', { pos: { x: this.x, y: 1.2, z: this.z }, volume: 1, priority: 2 });
   }
 
   /** A downed carrier gets back up with part of its health. */
@@ -681,7 +701,7 @@ export class Zombie {
     this.lastKnownX = env.player.x;
     this.lastKnownZ = env.player.z;
     this.memory = 0;
-    env.audio.play('zombie_alert', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 1, priority: 2 });
+    this.say(env, 'zombie_alert', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 1, priority: 2 });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -822,7 +842,7 @@ export class Zombie {
         this.chargeBlocked = 0;
         env.shake(0.5);
         env.fx.dust({ x: this.x, y: 1, z: this.z }, 1);
-        env.audio.play('warden_slam', { pos: { x: this.x, y: 1, z: this.z }, volume: 1, priority: 3 });
+        this.say(env, 'warden_slam', { pos: { x: this.x, y: 1, z: this.z }, volume: 1, priority: 3 });
         this.stagger(1.3, env);
       }
     }
@@ -886,10 +906,10 @@ export class Zombie {
     const pos = { x: this.x, y: 1.5, z: this.z };
     if (this.state === 'chase' || this.state === 'attack') {
       const id = this.type === 'runner' ? 'zombie_snarl' : this.type === 'armored' ? 'zombie_bellow' : this.type === 'warden' ? this.roarId : 'zombie_groan';
-      env.audio.play(id, { pos, volume: this.type === 'warden' ? 0.9 : 0.8, priority: this.type === 'warden' ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
+      this.say(env, id, { pos, volume: this.type === 'warden' ? 0.9 : 0.8, priority: this.type === 'warden' ? 3 : 1, rate: 0.92 + env.rng.f() * 0.16 });
       this.voiceTimer = this.type === 'warden' ? 8 + env.rng.f() * 4 : 3.5 + env.rng.f() * 5;
     } else if (this.state === 'idle') {
-      env.audio.play('zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
+      this.say(env, 'zombie_groan', { pos, volume: 0.55, priority: 0, rate: 0.85 + env.rng.f() * 0.2 });
       this.voiceTimer = 6 + env.rng.f() * 8;
     } else {
       this.voiceTimer = 2;
@@ -945,7 +965,7 @@ export class Zombie {
     this.alertTimer = (this.type === 'runner' ? 0.45 : this.type === 'warden' ? 1.5 : 0.8) + env.rng.f() * 0.4;
     this.vx = this.vz = 0;
     const pos = { x: this.x, y: 1.5, z: this.z };
-    env.audio.play(this.type === 'runner' ? 'zombie_screech' : this.type === 'warden' ? this.roarId : 'zombie_alert', {
+    this.say(env, this.type === 'runner' ? 'zombie_screech' : this.type === 'warden' ? this.roarId : 'zombie_alert', {
       pos,
       volume: this.type === 'warden' ? 1.2 : 0.9,
       priority: this.type === 'warden' ? 3 : 2,
@@ -1067,9 +1087,9 @@ export class Zombie {
     this.attackDir = this.yaw;
     const pos = { x: this.x, y: 1.4, z: this.z };
     if (kind === 'melee') {
-      env.audio.play('zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+      this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
     } else {
-      env.audio.play(this.roarId, { pos, volume: 1.2, priority: 3 });
+      this.say(env, this.roarId, { pos, volume: 1.2, priority: 3 });
     }
   }
 
@@ -1160,7 +1180,7 @@ export class Zombie {
     if (!p.alive) return;
     if (this.attackKind === 'slam') {
       const pos = { x: this.x - Math.sin(this.yaw) * 1.6, y: 0.1, z: this.z - Math.cos(this.yaw) * 1.6 };
-      env.audio.play('warden_slam', { pos, volume: 1.2, priority: 3 });
+      this.say(env, 'warden_slam', { pos, volume: 1.2, priority: 3 });
       env.fx.dust(pos, 1);
       env.fx.explosion({ x: pos.x, y: 0.2, z: pos.z }, 1.5);
       env.shake(0.9);
