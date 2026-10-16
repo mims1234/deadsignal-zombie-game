@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.114",
+      "date": "2026-10-17",
+      "title": "Admin stats without the admins",
+      "notes": [
+        "A Hide admins switch at the top of the admin page leaves the admins' own visits, runs, cards and co-op sessions out of the Overview, the Runs list and the Players list, to see how the game looks without them playing.",
+        "The switch is remembered on that browser."
+      ]
+    },
+    {
       "version": "0.1.113",
       "date": "2026-10-17",
       "title": "Sakura District, admin-only for now",

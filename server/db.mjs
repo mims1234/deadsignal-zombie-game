@@ -337,25 +337,30 @@ export function openDb(file) {
     },
 
     // ---------------------------------------------------------------- admin analytics
-    overview(days) {
+    /** The range at a glance. `exclude`: user ids left out of every number (the admins, to see the game without them). */
+    overview(days, exclude = []) {
       const since = day(now() - (days - 1) * 86400);
+      // each statement ends with its exclusion: `${x('col')}` in the SQL, then `...ex` after its other arguments
+      const ex = exclude.map(String);
+      const x = (col) => (ex.length ? ` AND ${col} NOT IN (${ex.map(() => '?').join(', ')})` : '');
+      const xv = ex.length ? ` AND (user_id IS NULL OR user_id NOT IN (${ex.map(() => '?').join(', ')}))` : '';
       const one = (sql, ...a) => db.prepare(sql).get(...a);
       const all = (sql, ...a) => db.prepare(sql).all(...a);
       const totals = {
-        users: one('SELECT COUNT(*) n FROM users').n,
-        banned: one('SELECT COUNT(*) n FROM users WHERE banned = 1').n,
-        online: one('SELECT COUNT(*) n FROM users WHERE last_seen > ?', now() - 300).n,
-        newUsers: one('SELECT COUNT(*) n FROM users WHERE created_at >= ?', now() - days * 86400).n,
-        activeUsers: one('SELECT COUNT(DISTINCT user_id) n FROM runs WHERE day >= ?', since).n,
-        visits: one('SELECT COUNT(*) n FROM visits WHERE day >= ?', since).n,
-        visitors: one('SELECT COUNT(DISTINCT visitor) n FROM visits WHERE day >= ?', since).n,
-        runs: one('SELECT COUNT(*) n FROM runs WHERE day >= ?', since).n,
-        wins: one("SELECT COUNT(*) n FROM runs WHERE day >= ? AND outcome = 'victory'", since).n,
-        playSeconds: one('SELECT COALESCE(SUM(duration), 0) n FROM runs WHERE day >= ?', since).n,
+        users: one(`SELECT COUNT(*) n FROM users WHERE 1${x('id')}`, ...ex).n,
+        banned: one(`SELECT COUNT(*) n FROM users WHERE banned = 1${x('id')}`, ...ex).n,
+        online: one(`SELECT COUNT(*) n FROM users WHERE last_seen > ?${x('id')}`, now() - 300, ...ex).n,
+        newUsers: one(`SELECT COUNT(*) n FROM users WHERE created_at >= ?${x('id')}`, now() - days * 86400, ...ex).n,
+        activeUsers: one(`SELECT COUNT(DISTINCT user_id) n FROM runs WHERE day >= ?${x('user_id')}`, since, ...ex).n,
+        visits: one(`SELECT COUNT(*) n FROM visits WHERE day >= ?${xv}`, since, ...ex).n,
+        visitors: one(`SELECT COUNT(DISTINCT visitor) n FROM visits WHERE day >= ?${xv}`, since, ...ex).n,
+        runs: one(`SELECT COUNT(*) n FROM runs WHERE day >= ?${x('user_id')}`, since, ...ex).n,
+        wins: one(`SELECT COUNT(*) n FROM runs WHERE day >= ? AND outcome = 'victory'${x('user_id')}`, since, ...ex).n,
+        playSeconds: one(`SELECT COALESCE(SUM(duration), 0) n FROM runs WHERE day >= ?${x('user_id')}`, since, ...ex).n,
         openReports: one("SELECT COUNT(*) n FROM reports WHERE status = 'open'").n,
       };
-      const visitDays = new Map(all('SELECT day, COUNT(*) visits, COUNT(DISTINCT visitor) visitors FROM visits WHERE day >= ? GROUP BY day', since).map((r) => [r.day, r]));
-      const runDays = new Map(all('SELECT day, COUNT(*) runs, COUNT(DISTINCT user_id) players FROM runs WHERE day >= ? GROUP BY day', since).map((r) => [r.day, r]));
+      const visitDays = new Map(all(`SELECT day, COUNT(*) visits, COUNT(DISTINCT visitor) visitors FROM visits WHERE day >= ?${xv} GROUP BY day`, since, ...ex).map((r) => [r.day, r]));
+      const runDays = new Map(all(`SELECT day, COUNT(*) runs, COUNT(DISTINCT user_id) players FROM runs WHERE day >= ?${x('user_id')} GROUP BY day`, since, ...ex).map((r) => [r.day, r]));
       const daily = [];
       for (let i = days - 1; i >= 0; i--) {
         const d = day(now() - i * 86400);
@@ -365,36 +370,44 @@ export function openDb(file) {
         `SELECT mode, COUNT(*) runs, COUNT(DISTINCT user_id) players,
            SUM(outcome = 'victory') wins, SUM(outcome = 'defeat') defeats, SUM(outcome = 'abandoned') abandoned, SUM(outcome IS NULL) unfinished,
            AVG(duration) avgDuration, AVG(kills) avgKills, SUM(cards) cards, SUM(touch) touch
-         FROM runs WHERE day >= ? GROUP BY mode`,
+         FROM runs WHERE day >= ?${x('user_id')} GROUP BY mode`,
         since,
+        ...ex,
       );
-      const failReasons = all("SELECT reason, COUNT(*) n FROM runs WHERE day >= ? AND outcome = 'defeat' AND reason IS NOT NULL GROUP BY reason ORDER BY n DESC LIMIT 8", since);
+      const failReasons = all(`SELECT reason, COUNT(*) n FROM runs WHERE day >= ? AND outcome = 'defeat' AND reason IS NOT NULL${x('user_id')} GROUP BY reason ORDER BY n DESC LIMIT 8`, since, ...ex);
       const topPlayers = all(
         `SELECT u.id, u.display_name name, COUNT(*) runs, SUM(r.outcome = 'victory') wins, COALESCE(SUM(r.kills), 0) kills, COALESCE(SUM(r.duration), 0) seconds
-         FROM runs r JOIN users u ON u.id = r.user_id WHERE r.day >= ? GROUP BY u.id ORDER BY seconds DESC LIMIT 15`,
+         FROM runs r JOIN users u ON u.id = r.user_id WHERE r.day >= ?${x('r.user_id')} GROUP BY u.id ORDER BY seconds DESC LIMIT 15`,
         since,
+        ...ex,
       );
-      const cardTotals = all('SELECT card_id, SUM(count) n, COUNT(*) owners FROM cards GROUP BY card_id ORDER BY n DESC');
+      const cardTotals = all(`SELECT card_id, SUM(count) n, COUNT(*) owners FROM cards WHERE 1${x('user_id')} GROUP BY card_id ORDER BY n DESC`, ...ex);
       const recentRuns = all(
         `SELECT r.id, r.started_at, r.mode, r.map, r.touch, r.outcome, r.reason, r.duration, r.kills, r.cards, u.display_name name, u.id user_id
-         FROM runs r JOIN users u ON u.id = r.user_id ORDER BY r.id DESC LIMIT 40`,
+         FROM runs r JOIN users u ON u.id = r.user_id WHERE 1${x('r.user_id')} ORDER BY r.id DESC LIMIT 40`,
+        ...ex,
       );
       const coop = one(
         `SELECT COUNT(*) sessions, COALESCE(AVG(peak_players), 0) avgPlayers, COALESCE(AVG(ended_at - created_at), 0) avgSeconds,
            COALESCE(SUM(kicks), 0) kicks, COALESCE(SUM(visibility = 'private'), 0) private
-         FROM coop_rooms WHERE day >= ?`,
+         FROM coop_rooms WHERE day >= ?${x('host_id')}`,
         since,
+        ...ex,
       );
-      const maps = all("SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ? GROUP BY 1", since);
+      const maps = all(`SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ?${x('user_id')} GROUP BY 1`, since, ...ex);
       return { days, totals, daily, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
     },
     /**
      * Runs, a page at a time, newest first, with filters (the admin page's Runs tab). `days` 0 = all time. Returns the page
      * and how many match in all.
      */
-    runPage({ page = 0, size = 25, days = 0, mode = '', map = '', outcome = '', device = '', q = '' } = {}) {
+    runPage({ page = 0, size = 25, days = 0, mode = '', map = '', outcome = '', device = '', q = '', exclude = [] } = {}) {
       const where = [];
       const args = [];
+      if (exclude.length) {
+        where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
+        args.push(...exclude.map(String));
+      }
       if (days > 0) {
         where.push('r.day >= ?');
         args.push(day(now() - (days - 1) * 86400));
@@ -430,10 +443,12 @@ export function openDb(file) {
       return { rows, total };
     },
     /** Players, a page at a time, most recently seen first: by name / id, and optionally only the banned. */
-    userPage({ page = 0, size = 25, q = '', status = '' } = {}) {
+    userPage({ page = 0, size = 25, q = '', status = '', exclude = [] } = {}) {
       const like = `%${String(q ?? '').replace(/[%_]/g, '')}%`;
       const ban = status === 'banned' ? 'AND u.banned = 1' : status === 'active' ? 'AND u.banned = 0' : '';
-      const w = `WHERE (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ${ban}`;
+      // ids are digits only (Discord), checked by the caller
+      const skip = exclude.length ? `AND u.id NOT IN (${exclude.map((id) => `'${String(id).replace(/\D/g, '')}'`).join(', ')})` : '';
+      const w = `WHERE (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ${ban} ${skip}`;
       const total = db.prepare(`SELECT COUNT(*) n FROM users u ${w}`).get(like, like, like).n;
       const rows = db
         .prepare(

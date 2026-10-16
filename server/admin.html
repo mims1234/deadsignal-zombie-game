@@ -88,6 +88,7 @@
         <h1>DEAD SIGNAL // ADMIN</h1>
         <span class="ver" id="ver"></span>
         <label>Range <select id="days"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></label>
+        <label title="Leave the admins' own visits, runs and sessions out of every number, to see the game without them playing"><input type="checkbox" id="noAdmins" /> Hide admins</label>
         <button id="refresh">Refresh</button>
         <span id="err"></span>
         <span class="sp"></span>
@@ -340,8 +341,26 @@
         { label: 'Played', num: 1, cell: (r) => hours(r.seconds), sort: (r) => r.seconds },
       ], 'Nobody has played in this range.', 6);
 
+      // ---------------------------------------------------------------- hide admins: the stats without the admins' own play (remembered)
+      try {
+        $('noAdmins').checked = localStorage.getItem('ds-admin-noadmins') === '1';
+      } catch {
+        /* storage off: starts unticked */
+      }
+      const hideAdmins = () => ($('noAdmins').checked ? '&noAdmins=1' : '');
+      $('noAdmins').addEventListener('change', () => {
+        try {
+          localStorage.setItem('ds-admin-noadmins', $('noAdmins').checked ? '1' : '0');
+        } catch {
+          /* not remembered */
+        }
+        loadOverview().catch(fail);
+        if (loaded.has('runs')) runTable.reload().catch(fail);
+        if (loaded.has('players')) userTable.reload().catch(fail);
+      });
+
       async function loadOverview() {
-        const o = await api(`/api/admin/overview?days=${$('days').value}`);
+        const o = await api(`/api/admin/overview?days=${$('days').value}${hideAdmins()}`);
         const t = o.totals;
         const tile = (v, l, s) => h('div', { class: 'tile' }, h('div', { class: 'v' }, v), h('div', { class: 'l' }, l), s ? h('div', { class: 's' }, s) : null);
         $('tiles').replaceChildren(
@@ -387,7 +406,7 @@
         { label: 'Device', cell: (r) => (r.touch ? 'Touch' : 'Desktop') },
       ], 'No runs match.', (page, size) => {
         const p = new URLSearchParams({ page, size, q: $('runQ').value, mode: $('runMode').value, map: $('runMap').value, outcome: $('runOutcome').value, device: $('runDevice').value, days: $('runDays').value });
-        return api(`/api/admin/runs?${p}`);
+        return api(`/api/admin/runs?${p}${hideAdmins()}`);
       });
       const runsAgain = () => runTable.reload().catch(fail);
       for (const id of ['runMode', 'runMap', 'runOutcome', 'runDevice', 'runDays']) $(id).addEventListener('change', runsAgain);
@@ -415,7 +434,7 @@
           ? h('button', { on: { click: async () => { await api(`/api/admin/users/${u.id}/unban`, {}); userTable.reload(false).catch(fail); } } }, 'Unban')
           : h('button', { class: 'danger', on: { click: () => ban(u.id, u.display_name).catch(fail) } }, 'Ban')) },
       ], 'No players match.', async (page, size) => {
-        const r = await api(`/api/admin/players?${new URLSearchParams({ page, size, q: $('userQ').value, status: $('userStatus').value })}`);
+        const r = await api(`/api/admin/players?${new URLSearchParams({ page, size, q: $('userQ').value, status: $('userStatus').value })}${hideAdmins()}`);
         admins = r.admins || [];
         return r;
       });
