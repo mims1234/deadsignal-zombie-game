@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.117",
+      "date": "2026-10-17",
+      "title": "02 Cyberpunk joins the Sakura District",
+      "notes": [
+        "Hana, the squad's rifle girl, now wears the first of the cast's own VRoid models: 02 Cyberpunk, a pink-haired girl with red horns in black techwear.",
+        "Until their own models are added, Yuzu and the three trapped girls (Aoi, Mei and Koharu) wear her too.",
+        "The infected and the Crimson Empress keep the stand-in model for now."
+      ]
+    },
+    {
       "version": "0.1.116",
       "date": "2026-10-17",
       "title": "The Sakura District's infected have women's voices",
