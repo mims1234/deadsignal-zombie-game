@@ -3309,43 +3309,37 @@ html.ds-rm .ds-menus {
   color: var(--ds-ink-dim);
 }
 
-/* the leaderboards page */
+/* the leaderboards page: four short rows of choices, one line per player, the run on a card beside the list */
 .ds-l-main:has(.ds-l-boards) {
   justify-content: flex-start;
 }
 .ds-l-boards {
-  max-width: 72em;
+  max-width: 64em;
   display: flex;
   flex-direction: column;
-  gap: 1em;
+  gap: 0.9em;
+  min-height: 0;
 }
 .ds-l-boards .lead {
   margin: 0;
 }
 .ds-l-boards .filters {
   display: flex;
-  flex-direction: column;
-  gap: 0.6em;
-  padding: 0.9em 1em;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 1em;
+  padding: 0.7em 0.9em;
   background: rgba(6, 9, 8, 0.86);
   border: 1px solid var(--ds-line);
 }
 .ds-l-boards .seg {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4em;
-}
-.ds-l-boards .lbl {
-  min-width: 7em;
-  font-size: 0.72em;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  color: var(--ds-ink-dim);
+  gap: 0.25em;
 }
 .ds-l-boards .seg .ds-btn {
-  font-size: 0.8em;
-  padding: 0.7em 1em 0.65em;
+  font-size: 0.78em;
+  padding: 0.7em 0.9em 0.65em;
   letter-spacing: 0.14em;
 }
 .ds-l-boards .seg .ds-btn.on {
@@ -3353,93 +3347,141 @@ html.ds-rm .ds-menus {
   background: var(--ds-amber);
   border-color: var(--ds-amber);
 }
-.ds-l-boards .selects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.6em 1.4em;
-}
-.ds-l-boards .sel {
+.ds-l-boards .only {
   display: flex;
   align-items: center;
-  gap: 0.6em;
+  gap: 0.5em;
+  min-height: 2.6em;
+  font-size: 0.8em;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ds-ink-dim);
+  cursor: pointer;
 }
-.ds-l-boards select {
-  min-height: 2.7em;
-  padding: 0.4em 0.7em;
-  font: 600 0.9em var(--ds-font-label);
-  color: var(--ds-ink);
-  background: #0f141a;
-  border: 1px solid var(--ds-line-strong);
+.ds-l-boards .only input {
+  width: 1.2em;
+  height: 1.2em;
+  margin: 0;
+  accent-color: var(--ds-amber);
 }
-.ds-l-boards .table {
-  overflow-x: auto;
+.ds-l-boards .results {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17em;
+  gap: 1em;
+  min-height: 0;
+}
+.ds-l-boards .list {
+  margin: 0;
+  padding: 0.3em;
+  list-style: none;
+  max-height: 52vh;
+  overflow-y: auto;
   background: rgba(6, 9, 8, 0.86);
   border: 1px solid var(--ds-line);
 }
-.ds-l-boards table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9em;
+.ds-l-boards .row {
+  display: grid;
+  grid-template-columns: 2.2em 1.9em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7em;
+  padding: 0.45em 0.7em;
+  outline: none;
+  cursor: default;
 }
-.ds-l-boards th {
-  padding: 0.8em 1em;
-  text-align: left;
-  font-size: 0.72em;
-  letter-spacing: 0.22em;
-  color: var(--ds-ink-faint);
-  border-bottom: 1px solid var(--ds-line);
+.ds-l-boards .row:hover,
+.ds-l-boards .row.sel {
+  background: rgba(226, 176, 74, 0.12);
 }
-.ds-l-boards td {
-  padding: 0.6em 1em;
-  text-transform: none;
-  border-bottom: 1px solid rgba(196, 210, 184, 0.08);
+.ds-l-boards .row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ds-cyan);
 }
-.ds-l-boards td.rk {
-  width: 3em;
+.ds-l-boards .rk {
   font: 700 1em var(--ds-font-num);
   color: var(--ds-ink-dim);
 }
-.ds-l-boards tr.top1 td.rk {
+.ds-l-boards .top1 .rk {
   color: var(--ds-amber);
 }
-.ds-l-boards tr.top2 td.rk {
+.ds-l-boards .top2 .rk {
   color: #dfe5ea;
 }
-.ds-l-boards tr.top3 td.rk {
+.ds-l-boards .top3 .rk {
   color: #d39a6a;
 }
-.ds-l-boards td.who {
-  display: flex;
-  align-items: center;
-  gap: 0.6em;
-  font-weight: 600;
-}
-.ds-l-boards td.who img,
-.ds-l-boards td.who .av {
-  flex: none;
-  width: 1.8em;
-  height: 1.8em;
+.ds-l-boards .av {
+  width: 1.9em;
+  height: 1.9em;
   border-radius: 50%;
   object-fit: cover;
   background: #2b3540;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-weight: 700;
 }
-.ds-l-boards td.val {
-  font: 700 1em var(--ds-font-num);
+.ds-l-boards .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  text-transform: none;
 }
-.ds-l-boards td.ver,
-.ds-l-boards td.day {
-  font: 0.85em var(--ds-font-num);
-  color: var(--ds-ink-dim);
+.ds-l-boards .val {
+  font: 700 1.05em var(--ds-font-num);
 }
 .ds-l-boards .empty {
-  margin: 0;
-  padding: 1.4em 1em;
-  text-transform: none;
+  padding: 1.2em 0.8em;
   letter-spacing: 0.02em;
+  text-transform: none;
   color: var(--ds-ink-dim);
+}
+.ds-l-boards .card {
+  align-self: start;
+  min-height: 9em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45em;
+  padding: 1em 1.1em;
+  background: rgba(6, 9, 8, 0.86);
+  border: 1px solid var(--ds-line);
+}
+.ds-l-boards .card .hint {
+  margin: 0;
+  font-size: 0.85em;
+  text-transform: none;
+  color: var(--ds-ink-dim);
+}
+.ds-l-boards .card .who {
+  font-size: 1.15em;
+  text-transform: none;
+}
+.ds-l-boards .card .what {
+  font-size: 0.9em;
+  letter-spacing: 0.06em;
+  color: var(--ds-amber);
+}
+.ds-l-boards .card dl {
+  margin: 0.3em 0 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.3em 0.9em;
+  font-size: 0.82em;
+}
+.ds-l-boards .card dt {
+  letter-spacing: 0.14em;
+  color: var(--ds-ink-faint);
+}
+.ds-l-boards .card dd {
+  margin: 0;
+  text-transform: none;
+}
+@media (max-width: 1000px) and (min-height: 501px) {
+  .ds-l-boards .results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ds-l-boards .card {
+    min-height: 0;
+  }
 }
 
 /* the co-op lobby takes the right of the page */
@@ -3600,13 +3642,12 @@ html.ds-lobby-open .ds-l-main {
   html.ds-lobby-open .ds-l-main {
     padding-right: 1.4em;
   }
-  /* the leaderboards: the filters stay put, the table scrolls inside its box */
+  /* the leaderboards: the choices stay put, the list scrolls inside its box, the run's card beside it */
   .ds-l-main:has(.ds-l-boards) {
     justify-content: flex-start;
   }
   .ds-l-boards {
     height: 100%;
-    min-height: 0;
     gap: 0.5em;
   }
   .ds-l-boards .name {
@@ -3614,20 +3655,26 @@ html.ds-lobby-open .ds-l-main {
   }
   .ds-l-boards .filters {
     flex: none;
-    gap: 0.35em;
+    gap: 0.35em 0.6em;
     padding: 0.5em 0.6em;
   }
-  .ds-l-boards .lbl {
-    min-width: 0;
-  }
   .ds-l-boards .seg .ds-btn {
-    font-size: 0.72em;
-    padding: 0.55em 0.7em;
+    font-size: 0.7em;
+    padding: 0.55em 0.65em;
   }
-  .ds-l-boards .table {
+  .ds-l-boards .results {
     flex: 1 1 auto;
+    grid-template-columns: minmax(0, 1fr) 12.5em;
+    gap: 0.5em;
+  }
+  .ds-l-boards .list {
+    max-height: none;
+    height: 100%;
+  }
+  .ds-l-boards .card {
     min-height: 0;
-    overflow: auto;
+    padding: 0.6em 0.7em;
+    font-size: 0.9em;
   }
 }
 /* held sideways: the icons down the left edge */
@@ -3683,5 +3730,12 @@ html.ds-lobby-open .ds-l-main {
   }
   .ds-l-hero .name {
     font-size: clamp(2.2em, 11vw, 3.4em);
+  }
+  .ds-l-main:has(.ds-l-boards) {
+    padding-bottom: 0.6em;
+  }
+  .ds-l-boards .results {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 }

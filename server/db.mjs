@@ -12,13 +12,18 @@ export const OUTCOMES = ['victory', 'defeat', 'abandoned'];
 export const DIFFICULTIES = ['easy', 'normal', 'hard', 'nightmare'];
 
 /**
- * The leaderboards: one per map, per way of playing (free roam has none), per thing ranked. Each player's best run
- * counts once. `key` is what an admin switches off.
+ * The leaderboards: one per map, per way of playing (solo - Standard and Standard Mazoku together - or co-op; free
+ * roam has none), per thing ranked, each read at one difficulty. Each player's best run counts once. `key` is what
+ * an admin switches off (all difficulties of it at once).
  */
 export const BOARD_MAPS = ['district', 'forge', 'asylum'];
-export const BOARD_MODES = ['standard', 'cards', 'coop'];
-export const BOARD_METRICS = ['fastest', 'kills', 'headshots'];
+export const BOARD_MODES = ['solo', 'coop'];
+export const BOARD_METRICS = ['fastest', 'kills'];
 export const boardKey = (map, mode, metric) => `${map}:${mode}:${metric}`;
+/** The run modes a board counts. */
+const BOARD_RUN_MODES = { solo: ['standard', 'cards'], coop: ['coop'] };
+/** Runs from before the difficulty was recorded count as Normal (the default). */
+const DIFF_SQL = "COALESCE(r.difficulty, 'normal')";
 
 export function openDb(file) {
   if (file !== ':memory:') mkdirSync(dirname(file), { recursive: true });
@@ -188,8 +193,9 @@ export function openDb(file) {
      * extraction ranks victories by time; the others rank any finished run by its count.
      */
     leaderboard({ map, mode, metric, version = '', difficulty = '', exclude = [], limit = 25 }) {
-      const where = ["COALESCE(r.map, 'district') = ?", 'r.mode = ?', 'u.banned = 0', 'r.ended_at IS NOT NULL'];
-      const args = [map, mode];
+      const runModes = BOARD_RUN_MODES[mode] ?? [];
+      const where = ["COALESCE(r.map, 'district') = ?", `r.mode IN (${runModes.map(() => '?').join(', ')})`, 'u.banned = 0', 'r.ended_at IS NOT NULL'];
+      const args = [map, ...runModes];
       if (exclude.length) {
         where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
         args.push(...exclude);
@@ -199,7 +205,7 @@ export function openDb(file) {
         args.push(version);
       }
       if (difficulty) {
-        where.push('r.difficulty = ?');
+        where.push(`${DIFF_SQL} = ?`);
         args.push(difficulty);
       }
       let pick;
@@ -209,15 +215,15 @@ export function openDb(file) {
         pick = 'MIN(r.duration)';
         order = 'value ASC';
       } else {
-        const col = metric === 'headshots' ? 'r.headshots' : 'r.kills';
-        where.push("r.outcome IN ('victory', 'defeat')", `${col} > 0`);
-        pick = `MAX(${col})`;
+        where.push("r.outcome IN ('victory', 'defeat')", 'r.kills > 0');
+        pick = 'MAX(r.kills)';
         order = 'value DESC';
       }
       // SQLite: with one MIN / MAX, the row's other columns come from the row that holds it
       const rows = db
         .prepare(
-          `SELECT u.id, u.display_name name, u.avatar, ${pick} value, r.version, r.day, r.difficulty
+          `SELECT u.id, u.display_name name, u.avatar, ${pick} value, r.version, r.day, ${DIFF_SQL} difficulty, r.mode, r.outcome,
+             r.duration, r.kills, r.headshots, r.contracts, r.touch
            FROM runs r JOIN users u ON u.id = r.user_id WHERE ${where.join(' AND ')}
            GROUP BY r.user_id ORDER BY ${order}, r.ended_at ASC LIMIT ?`,
         )
@@ -227,16 +233,27 @@ export function openDb(file) {
         name: r.name,
         avatar: r.avatar ? `https://cdn.discordapp.com/avatars/${r.id}/${r.avatar}.png?size=64` : null,
         value: metric === 'fastest' ? Math.round(r.value * 10) / 10 : r.value,
-        version: r.version,
-        day: r.day,
-        difficulty: r.difficulty,
+        // the run behind the entry, for the details
+        run: {
+          mode: r.mode,
+          outcome: r.outcome,
+          seconds: Math.round((r.duration ?? 0) * 10) / 10,
+          kills: r.kills ?? 0,
+          headshots: r.headshots ?? 0,
+          contracts: r.contracts ?? 0,
+          touch: r.touch === 1,
+          difficulty: r.difficulty,
+          version: r.version,
+          day: r.day,
+        },
       }));
     },
     /** The builds that have finished runs on a map and mode (newest first): the leaderboards' version filter. */
     boardVersions(map, mode) {
+      const runModes = BOARD_RUN_MODES[mode] ?? [];
       return db
-        .prepare("SELECT DISTINCT version FROM runs WHERE COALESCE(map, 'district') = ? AND mode = ? AND version IS NOT NULL AND ended_at IS NOT NULL")
-        .all(map, mode)
+        .prepare(`SELECT DISTINCT version FROM runs WHERE COALESCE(map, 'district') = ? AND mode IN (${runModes.map(() => '?').join(', ')}) AND version IS NOT NULL AND ended_at IS NOT NULL`)
+        .all(map, ...runModes)
         .map((r) => r.version)
         .sort((a, b) => {
           const x = a.split('.').map(Number);
@@ -249,10 +266,10 @@ export function openDb(file) {
       const ex = exclude.length ? `AND r.user_id NOT IN (${exclude.map(() => '?').join(', ')})` : '';
       return db
         .prepare(
-          `SELECT COALESCE(r.map, 'district') map, r.mode, COUNT(DISTINCT CASE WHEN r.outcome = 'victory' THEN r.user_id END) winners,
+          `SELECT COALESCE(r.map, 'district') map, CASE WHEN r.mode = 'coop' THEN 'coop' ELSE 'solo' END mode, COUNT(DISTINCT CASE WHEN r.outcome = 'victory' THEN r.user_id END) winners,
              COUNT(DISTINCT r.user_id) players
            FROM runs r JOIN users u ON u.id = r.user_id
-           WHERE r.ended_at IS NOT NULL AND r.outcome IN ('victory', 'defeat') AND u.banned = 0 ${ex}
+           WHERE r.ended_at IS NOT NULL AND r.outcome IN ('victory', 'defeat') AND r.mode IN ('standard', 'cards', 'coop') AND u.banned = 0 ${ex}
            GROUP BY 1, 2`,
         )
         .all(...exclude);

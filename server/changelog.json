@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.111",
+      "date": "2026-10-16",
+      "title": "Simpler leaderboards",
+      "notes": [
+        "Every leaderboard is read at one difficulty, so an Easy run and a Nightmare run are never ranked together; the page opens at the zone and difficulty you play.",
+        "Fewer choices: zone, difficulty, solo or co-op (solo now counts Standard Mazoku runs too), fastest escape or most kills, and a 'this version only' box. Most headshots and the version list are gone.",
+        "Each row is one line - rank, player, result. Point at it (tap on a phone) and a card shows the run: escaped or fell and the time, kills, headshots, contracts, mode, difficulty, device, version and date.",
+        "Runs from before the difficulty was recorded count as Normal. The admin page lists the 12 boards (switching one off hides it at every difficulty)."
+      ]
+    },
+    {
       "version": "0.1.110",
       "date": "2026-10-16",
       "title": "tomoe's rounded hair",

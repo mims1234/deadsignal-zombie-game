@@ -9,6 +9,7 @@ import type { BestRun, MissionStats, Settings } from '../types';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import { LATE_CHOICES, LATE_NOTE } from '../net/room';
+import { VERSION } from '../version';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
@@ -30,27 +31,32 @@ const COOP_LEAD = 'Play this zone with up to two friends: open a lobby, share th
 /** The leaderboards page: which board it shows. */
 interface BoardQuery {
   map: MapId;
-  mode: 'standard' | 'cards' | 'coop';
-  metric: 'fastest' | 'kills' | 'headshots';
-  version: string;
-  difficulty: string;
+  mode: 'solo' | 'coop';
+  metric: 'fastest' | 'kills';
+  difficulty: 'easy' | 'normal' | 'hard' | 'nightmare';
+  thisVersion: boolean;
+}
+/** An entry, and the run behind it. */
+interface BoardEntry {
+  rank: number;
+  name: string;
+  avatar: string | null;
+  value: number;
+  run: { mode: string; outcome: string; seconds: number; kills: number; headshots: number; contracts: number; touch: boolean; difficulty: string; version: string | null; day: string | null };
 }
 /** `/api/leaderboards`: `all` false when every board is switched off. */
 interface BoardReply {
   enabled: boolean;
   all?: boolean;
-  versions?: string[];
-  entries: { rank: number; name: string; avatar: string | null; value: number; version: string | null; day: string | null }[];
+  entries: BoardEntry[];
 }
 const BOARD_MODES = [
-  { id: 'standard', label: 'SOLO' },
-  { id: 'cards', label: 'MAZOKU' },
+  { id: 'solo', label: 'SOLO' },
   { id: 'coop', label: 'CO-OP' },
 ] as const;
 const BOARD_METRICS = [
-  { id: 'fastest', label: 'FASTEST EXTRACTION' },
+  { id: 'fastest', label: 'FASTEST ESCAPE' },
   { id: 'kills', label: 'MOST KILLS' },
-  { id: 'headshots', label: 'MOST HEADSHOTS' },
 ] as const;
 
 const sentence = (t: string): string => t.charAt(0) + t.slice(1).toLowerCase();
@@ -319,7 +325,7 @@ class Menus implements MenusApi {
   /** The title's extra options (squad skill, the card hunt) stay open across redraws once opened. */
   private moreOpen = false;
   /** What the leaderboards page shows. */
-  private board: BoardQuery = { map: 'district', mode: 'standard', metric: 'fastest', version: '', difficulty: '' };
+  private board: BoardQuery = { map: 'district', mode: 'solo', metric: 'fastest', difficulty: 'normal', thisVersion: false };
   private boardMapSet = false;
   private boardReq = 0;
 
@@ -346,6 +352,7 @@ class Menus implements MenusApi {
     this.lastBest = best;
     if (!this.boardMapSet) {
       this.board.map = this.info.map;
+      this.board.difficulty = this.info.difficulty.zombies;
       this.boardMapSet = true;
     }
     const mode = this.info.mode;
@@ -541,13 +548,12 @@ class Menus implements MenusApi {
     const q = this.board;
     const page = el('section', 'ds-l-boards', main);
     el('h1', 'name', page, 'LEADERBOARDS');
-    el('p', 'lead', page, 'The best runs on each zone. Pick a zone, how it was played and what to rank by.');
+    el('p', 'lead', page, 'Each player\'s best run on a zone, at one difficulty. Point at a row (tap on a phone) to see the run.');
     const filters = el('div', 'filters', page);
     const seg = (label: string, options: readonly { id: string; label: string }[], current: string, pick: (id: string) => void): void => {
       const g = el('div', 'seg', filters);
       g.setAttribute('role', 'radiogroup');
       g.setAttribute('aria-label', label);
-      el('span', 'lbl', g, label);
       for (const o of options) {
         const b = this.button(g, o.label, o.id === current ? 'on' : '', () => {
           if (o.id === current) return;
@@ -560,88 +566,96 @@ class Menus implements MenusApi {
         b.setAttribute('aria-checked', o.id === current ? 'true' : 'false');
       }
     };
-    seg('ZONE', MAP_IDS.map((id) => ({ id, label: MAP_TEXT[id].name.replace(/^THE /, '') })), q.map, (id) => (q.map = id as MapId));
-    seg('PLAYED', BOARD_MODES, q.mode, (id) => (q.mode = id as BoardQuery['mode']));
-    seg('RANK BY', BOARD_METRICS, q.metric, (id) => (q.metric = id as BoardQuery['metric']));
-    const selects = el('div', 'selects', filters);
-    const select = (label: string, options: { id: string; label: string }[], current: string, pick: (v: string) => void): HTMLSelectElement => {
-      const wrap = el('label', 'sel', selects);
-      el('span', 'lbl', wrap, label);
-      const s = el('select', '', wrap);
-      for (const o of options) {
-        const op = el('option', '', s, o.label);
-        op.value = o.id;
-        if (o.id === current) op.selected = true;
-      }
-      s.addEventListener('change', () => {
-        pick(s.value);
-        this.loadBoard(table);
-      });
-      return s;
+    seg('Zone', MAP_IDS.map((id) => ({ id, label: MAP_TEXT[id].name.replace(/^THE /, '') })), q.map, (id) => (q.map = id as MapId));
+    seg('Difficulty', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label })), q.difficulty, (id) => (q.difficulty = id as BoardQuery['difficulty']));
+    seg('Played', BOARD_MODES, q.mode, (id) => (q.mode = id as BoardQuery['mode']));
+    seg('Rank by', BOARD_METRICS, q.metric, (id) => (q.metric = id as BoardQuery['metric']));
+    const only = el('label', 'only', filters);
+    const box = el('input', '', only);
+    box.type = 'checkbox';
+    box.checked = q.thisVersion;
+    el('span', '', only, `This version only (${VERSION})`);
+    box.addEventListener('change', () => {
+      q.thisVersion = box.checked;
+      this.loadBoard(list, card);
+    });
+    const results = el('div', 'results', page);
+    const list = el('ol', 'list', results);
+    list.setAttribute('aria-label', 'Leaderboard');
+    const card = el('aside', 'card', results);
+    card.setAttribute('aria-live', 'polite');
+    this.loadBoard(list, card);
+  }
+
+  /** The details card: the run behind an entry (or a word on how to see one). */
+  private boardCard(card: HTMLElement, e: BoardEntry | null): void {
+    card.replaceChildren();
+    if (!e) {
+      el('p', 'hint', card, this.touch ? 'Tap a player to see their run.' : 'Point at a player to see their run.');
+      return;
+    }
+    const r = e.run;
+    el('b', 'who', card, e.name);
+    el('span', 'what', card, r.outcome === 'victory' ? `Extracted in ${fmtClock(r.seconds)}` : `Fell after ${fmtClock(r.seconds)}`);
+    const dl = el('dl', '', card);
+    const row = (k: string, v: string): void => {
+      el('dt', '', dl, k);
+      el('dd', '', dl, v);
     };
-    const versionSel = select('VERSION', [{ id: '', label: 'Every version' }], q.version, (v) => (q.version = v));
-    select('DIFFICULTY', [{ id: '', label: 'Every difficulty' }, ...ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: sentence(ZOMBIE_DIFFICULTY[id].label) }))], q.difficulty, (v) => (q.difficulty = v));
-    const table = el('div', 'table', page);
-    table.dataset.versions = '';
-    this.loadBoard(table, versionSel);
+    row('Kills', fmtInt(r.kills));
+    row('Headshots', fmtInt(r.headshots));
+    row('Contracts', String(r.contracts));
+    row('Played', r.mode === 'coop' ? 'Co-op' : r.mode === 'cards' ? 'Standard Mazoku' : 'Standard');
+    row('Difficulty', sentence(ZOMBIE_DIFFICULTY[r.difficulty as keyof typeof ZOMBIE_DIFFICULTY]?.label ?? 'NORMAL'));
+    row('On', r.touch ? 'A phone or tablet' : 'A computer');
+    row('Version', r.version ? `v${r.version}` : 'Before v0.1.108');
+    row('Date', r.day ?? '');
   }
 
   /** Fetch the board the filters describe and draw it (a stale answer is dropped). */
-  private loadBoard(table: HTMLElement, versionSel?: HTMLSelectElement): void {
+  private loadBoard(list: HTMLElement, card: HTMLElement): void {
     const q = this.board;
     const req = ++this.boardReq;
-    table.replaceChildren();
-    if (!this.account.online) {
-      el('p', 'empty', table, 'Leaderboards need the game server - they show on the live site.');
-      return;
-    }
-    el('p', 'empty', table, 'Loading...');
-    const params = new URLSearchParams({ map: q.map, mode: q.mode, metric: q.metric });
-    if (q.version) params.set('version', q.version);
-    if (q.difficulty) params.set('difficulty', q.difficulty);
+    list.replaceChildren();
+    this.boardCard(card, null);
+    const say = (text: string): void => {
+      list.replaceChildren();
+      el('li', 'empty', list, text);
+    };
+    if (!this.account.online) return say('Leaderboards need the game server - they show on the live site.');
+    say('Loading...');
+    const params = new URLSearchParams({ map: q.map, mode: q.mode, metric: q.metric, difficulty: q.difficulty });
+    if (q.thisVersion) params.set('version', VERSION.replace(/^v/, ''));
     void fetch(`/api/leaderboards?${params}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? (r.json() as Promise<BoardReply>) : null))
       .catch(() => null)
       .then((data) => {
-        if (req !== this.boardReq || !table.isConnected) return;
-        table.replaceChildren();
-        if (!data) {
-          el('p', 'empty', table, 'The leaderboards could not be loaded. Try again in a moment.');
-          return;
-        }
-        if (versionSel && versionSel.options.length === 1) {
-          for (const v of data.versions ?? []) {
-            const op = el('option', '', versionSel, `v${v}`);
-            op.value = v;
-            if (v === q.version) op.selected = true;
-          }
-        }
-        if (!data.enabled) {
-          el('p', 'empty', table, data.all === false ? 'The leaderboards are switched off for now.' : 'This board is switched off for now.');
-          return;
-        }
-        if (!data.entries.length) {
-          el('p', 'empty', table, 'No runs on this board yet. Yours could be the first.');
-          return;
-        }
-        const t = el('table', '', table);
-        const head = el('tr', '', el('thead', '', t));
-        for (const h of ['#', 'PLAYER', BOARD_METRICS.find((m) => m.id === q.metric)!.label, 'VERSION', 'DATE']) el('th', '', head, h);
-        const body = el('tbody', '', t);
+        if (req !== this.boardReq || !list.isConnected) return;
+        if (!data) return say('The leaderboards could not be loaded. Try again in a moment.');
+        if (!data.enabled) return say(data.all === false ? 'The leaderboards are switched off for now.' : 'This board is switched off for now.');
+        if (!data.entries.length) return say('No runs on this board yet. Yours could be the first.');
+        list.replaceChildren();
         for (const e of data.entries) {
-          const tr = el('tr', e.rank <= 3 ? `top${e.rank}` : '', body);
-          el('td', 'rk', tr, String(e.rank));
-          const who = el('td', 'who', tr);
+          // one line each: the rank, the player, the result; the rest of the run is on the card
+          const li = el('li', e.rank <= 3 ? `row top${e.rank}` : 'row', list);
+          li.tabIndex = 0;
+          el('span', 'rk', li, String(e.rank));
           if (e.avatar) {
-            const img = el('img', '', who);
+            const img = el('img', 'av', li);
             img.src = e.avatar;
             img.alt = '';
             img.loading = 'lazy';
-          } else el('span', 'av', who, (e.name || '?').slice(0, 1).toUpperCase());
-          el('span', '', who, e.name);
-          el('td', 'val', tr, q.metric === 'fastest' ? fmtClock(e.value) : fmtInt(e.value));
-          el('td', 'ver', tr, e.version ? `v${e.version}` : '-');
-          el('td', 'day', tr, e.day ?? '');
+          } else el('span', 'av', li, (e.name || '?').slice(0, 1).toUpperCase());
+          el('span', 'nm', li, e.name);
+          el('span', 'val', li, q.metric === 'fastest' ? fmtClock(e.value) : fmtInt(e.value));
+          const show = (): void => {
+            for (const x of list.querySelectorAll('.row.sel')) x.classList.remove('sel');
+            li.classList.add('sel');
+            this.boardCard(card, e);
+          };
+          li.addEventListener('pointerenter', show);
+          li.addEventListener('focus', show);
+          li.addEventListener('click', show);
         }
       });
   }

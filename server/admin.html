@@ -154,12 +154,12 @@
       <section data-tab="boards">
         <div class="card">
           <h3>All leaderboards <span class="pill" id="boardsAll"></span></h3>
-          <div class="sub">Players see the boards on the title screen's Leaderboards page. Admins never appear on them; banned players drop off. Switching a board off hides it from everyone (its runs are kept).</div>
+          <div class="sub">Players see the boards on the title screen's Leaderboards page. Each board is read at one difficulty at a time (switching it off hides every difficulty of it). Admins never appear on them; banned players drop off. Switching a board off hides it from everyone (its runs are kept).</div>
           <button id="boardsAllBtn"></button>
         </div>
         <div class="filters" style="margin-top: 10px">
           <label>Map <select id="boardMap"><option value="">All</option><option value="district">District</option><option value="forge">Forge</option><option value="asylum">Asylum</option></select></label>
-          <label>Played <select id="boardMode"><option value="">All</option><option value="standard">Solo</option><option value="cards">Mazoku</option><option value="coop">Co-op</option></select></label>
+          <label>Played <select id="boardMode"><option value="">All</option><option value="solo">Solo</option><option value="coop">Co-op</option></select></label>
           <button id="boardsOffShown">Switch the shown off</button>
           <button id="boardsOnShown">Switch the shown on</button>
         </div>
@@ -465,8 +465,8 @@
 
       // ---------------------------------------------------------------- leaderboards
       const MAPN = { district: 'District', forge: 'Forge', asylum: 'Asylum' };
-      const MODEN = { standard: 'Solo', cards: 'Mazoku', coop: 'Co-op' };
-      const METRICN = { fastest: 'Fastest extraction', kills: 'Most kills', headshots: 'Most headshots' };
+      const MODEN = { solo: 'Solo (Standard and Mazoku)', coop: 'Co-op' };
+      const METRICN = { fastest: 'Fastest escape', kills: 'Most kills' };
       let boardRows = [];
       let boardsAll = true;
       const boardTable = localTable($('boardTable'), [
