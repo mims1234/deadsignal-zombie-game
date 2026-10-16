@@ -5,3 +5,4 @@ dist
 .env
 data/
 server/sim/
+public/anime/test/

@@ -337,12 +337,14 @@ class Menus implements MenusApi {
     const maps = el('div', 'maps', setup);
     maps.setAttribute('role', 'radiogroup');
     maps.setAttribute('aria-label', 'Map');
-    for (const id of MAP_IDS) {
+    for (const { id, badge, badgeTone } of this.info.maps ?? MAP_IDS.map((m) => ({ id: m, badge: undefined, badgeTone: undefined }))) {
       const on = id === this.info.map;
       const tile = this.button(maps, '', on ? 'maptile on' : 'maptile', () => {
         if (!on) this.cb.onMapChange(id);
       });
       el('span', 'mt-name', tile, MAP_TEXT[id].name);
+      // a gated map, as an admin sees it: whether everyone else can play it yet
+      if (badge) el('span', `mt-badge ${badgeTone ?? ''}`, tile, badge);
       el('span', 'mt-sub', tile, MAP_TEXT[id].tagline);
       tile.setAttribute('role', 'radio');
       tile.setAttribute('aria-checked', on ? 'true' : 'false');

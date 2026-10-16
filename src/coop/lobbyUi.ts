@@ -9,7 +9,7 @@ import type { Hosting } from '../net/room';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 
-const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM' };
+const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM' };
 const KIND_NOTE: Record<'mission' | 'mazoku' | 'roam', string> = {
   mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',

@@ -8,6 +8,7 @@ import type { ZombieType } from '../types';
 import { createDetailTexture, createZombieMaterial } from './zombie/material';
 import { disposeShapeCache } from './zombie/mesh';
 import { type TypeAssets, ZombieRigImpl, makeTypeAssets, variantGeometry } from './zombie/rig';
+import { AnimeZombieRig, hordeModel } from '../anime/cast';
 import { MatronRig } from './matronRig';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
 
@@ -38,7 +39,10 @@ export function createZombieFactory(): ZombieFactoryExt {
     material,
     create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig {
       const def = ZOMBIES[type];
-      const rig = new ZombieRigImpl(get(type, type === 'warden' ? undefined : theme), material, { radius: def.radius, height: def.height, headRadius: def.headRadius }, seed);
+      const dims = { radius: def.radius, height: def.height, headRadius: def.headRadius };
+      const anime = theme === 'sakura' ? hordeModel(type, seed) : null;
+      const stock = theme === 'sakura' ? undefined : theme;
+      const rig: ZombieRig = anime ? new AnimeZombieRig(type, anime, dims, seed) : new ZombieRigImpl(get(type, type === 'warden' ? undefined : stock), material, dims, seed);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {
@@ -59,6 +63,8 @@ export function createZombieFactory(): ZombieFactoryExt {
       return rig;
     },
     prewarm(theme?: ZombieTheme): void {
+      // the Sakura District's stand-ins are the standard looks
+      if (theme === 'sakura') theme = undefined;
       for (const type of (theme ? ['shambler', 'runner', 'armored'] : ['shambler', 'runner', 'armored', 'warden']) as ZombieType[]) {
         const a = get(type, theme);
         for (let i = 0; i < a.variants.length; i++) variantGeometry(a, i);

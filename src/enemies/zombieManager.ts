@@ -2,6 +2,7 @@
  * Owns every infected: rig pooling, ambient population, the spawn director, LOD (dormant far zombies), spatial hash for
  * separation, noise / alert propagation, hit detection (head sphere + body cylinder), explosions and corpse cleanup.
  */
+import { animeHordeCap } from '../anime/cap';
 import * as THREE from 'three';
 import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type ZombieDef, type ZombieTuning } from '../config';
 import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
@@ -176,7 +177,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : undefined;
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'sakura' ? 'sakura' : undefined;
     const b = level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -729,6 +730,7 @@ export class ZombieManager {
       let cap = Math.min(SPAWN.hardCap, Math.max(3, Math.round(activeCap(ctx.region, ctx.phase, ctx.quality) * this.tuning.count)));
       if (ctx.defenseActive) cap = Math.max(cap, MISSION.defense.activeCap);
       if (ctx.extractionElapsed !== null) cap = Math.min(cap, MISSION.extraction.activeCap);
+      if (this.theme === 'sakura') cap = Math.min(cap, animeHordeCap());
       if (active < cap && nearAlerted < SPAWN.nearbyLimit * this.tuning.count) {
         const type = pickSpawnType(ctx.region, ctx.phase, rng);
         this.spawnFrom(type, ctx.defenseActive ? 'defense' : 'general', ctx, env, rng, ctx.phase);

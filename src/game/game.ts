@@ -4,7 +4,8 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import { MAP_TEXT, type MapId } from '../world/layout/data';
+import { loadAnimeCast } from '../anime/cast';
+import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
 import { createAudioEngine } from '../audio/engine';
@@ -23,7 +24,7 @@ import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { Rng } from '../logic/rng';
-import { type Account, RunTracker, loadAccount, logout, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
+import { type Account, RunTracker, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -133,7 +134,7 @@ export class Game implements GameCtx {
   roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
-  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
+  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [] };
   private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
@@ -260,6 +261,12 @@ export class Game implements GameCtx {
       loginUrl: this.account.loginUrl,
       loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',
     });
+    // a map that is not open to this player (a gated map the admins have not made public): back to the District.
+    // An invite to a co-op session on it still gets in - the session's owner chose the map.
+    if (mapAccess(this.account, this.mapId) === 'locked' && !new URLSearchParams(window.location.search).get('room')) {
+      this.mapId = 'district';
+      saveMap('district');
+    }
     if (this.account.banned) {
       this.menus.showError('ACCOUNT BANNED', 'This Discord account has been banned from DEAD SIGNAL.', this.account.banReason || undefined);
       return false;
@@ -293,6 +300,13 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.color.set(0x9a6a52);
       this.renderer.light.hemi.groundColor.set(0x4a1c08);
       this.renderer.light.fill.color.set(0xff7a2a);
+    } else if (this.mapId === 'sakura') {
+      // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x3a2638);
+      this.renderer.light.hemi.color.set(0xe6b4d2);
+      this.renderer.light.hemi.groundColor.set(0x2a1a2a);
+      this.renderer.light.fill.color.set(0xffb4d4);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -311,10 +325,15 @@ export class Game implements GameCtx {
     this.audio = createAudioEngine();
     this.audio.setMasterVolume(this.settings.masterVolume);
 
+    if (this.mapId === 'sakura') {
+      // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
+      this.menus.showLoading(0.66, 'DRESSING THE CAST');
+      await loadAnimeCast();
+    }
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : undefined); // the Asylum's infected have their own looks
+    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'sakura' ? 'sakura' : undefined); // the Asylum's infected have their own looks
     this.viewmodels = createViewmodels();
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
@@ -626,7 +645,14 @@ export class Game implements GameCtx {
 
   /** What the title screen shows as picked. */
   private modeInfo(): ModeInfo {
-    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase };
+    const maps = MAP_IDS.flatMap((id) => {
+      const a = mapAccess(this.account, id);
+      if (a === 'locked' && id !== this.mapId) return [];
+      // the badge is for admins (and dev builds): players just see the map once it is public
+      const b = a === 'admin-only' ? (['ADMIN ONLY', 'warn'] as const) : a === 'dev-only' ? (['DEV ONLY', 'warn'] as const) : a === 'public' && this.account.admin ? (['PUBLIC', 'good'] as const) : null;
+      return [{ id, badge: b?.[0], badgeTone: b?.[1] }];
+    });
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps };
   }
 
   /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */

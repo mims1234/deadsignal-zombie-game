@@ -1,7 +1,12 @@
+import { rmSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   base: './',
+  // three-vrm imports three too: one copy for everyone
+  resolve: { dedupe: ['three'] },
+  // the local stand-in VRoid model (public/anime/test, git-ignored) is for development only: never ship it
+  plugins: [{ name: 'drop-anime-test', apply: 'build', closeBundle: () => rmSync('dist/anime/test', { recursive: true, force: true }) }],
   // Separate dependency-optimiser caches let several dev servers run side by side (VITE_CACHE_DIR=node_modules/.vite-name).
   cacheDir: process.env.VITE_CACHE_DIR || 'node_modules/.vite',
   build: {

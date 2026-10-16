@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
+import { AnimeBody, type AnimeTemplate, type PoseSource } from '../anime/vrm';
 import type { AvatarLook } from '../config';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
 
@@ -27,6 +28,8 @@ export interface AvatarStyle {
   /** Second line under the name, e.g. a rank. */
   tag?: string;
   tagColor?: string;
+  /** A VRoid model to wear (the Sakura District): it follows this figure's skeleton, which is then not drawn. */
+  anime?: AnimeTemplate | null;
 }
 
 function nameTag(name: string, sub: string | undefined, color: string): THREE.Sprite {
@@ -267,6 +270,10 @@ export class Avatar {
   private fvy = 0;
   private fvz = 0;
   private fallDir = 1;
+  // ---- a worn VRoid model ----
+  private anime: AnimeBody | null = null;
+  private animeSrc: PoseSource | null = null;
+  private blinkT = 2;
 
   constructor(name: string, index: number, style: AvatarStyle = {}) {
     parts ??= makeParts();
@@ -356,7 +363,62 @@ export class Avatar {
     this.tilt.add(this.body);
     this.root.add(this.tilt, this.tag);
     this.root.visible = false;
+    if (style.anime) this.wear(style.anime);
     this.pose(0, 0, 1);
+  }
+
+  /**
+   * Put on a VRoid model: scaled so its legs match this figure's (hip joint 0.93 m up, ankles 0.04 m), turned to face
+   * -Z, and driven from these joints each frame. The jointed figure stays as the skeleton it follows, unseen; the
+   * weapon and the name tag stay.
+   */
+  private wear(t: AnimeTemplate): void {
+    // hide the figure's own meshes (not the weapon, which lives in the gun holder)
+    const hide = (o: THREE.Object3D): void => {
+      if (o === this.gunHolder) return;
+      if ((o as THREE.Mesh).isMesh) o.visible = false;
+      for (const c of o.children) hide(c);
+    };
+    hide(this.body);
+    const m = t.measure;
+    const hip = 0.93;
+    const ankle = hip - THIGH - SHIN;
+    const scale = (hip - ankle) / Math.max(0.1, m.legTop - m.ankle);
+    const body = new AnimeBody(t, { scale, offset: new THREE.Vector3(0, hip - m.legTop * scale, 0), tint: null, grip: 1, shadows: true });
+    this.body.add(body.root);
+    this.anime = body;
+    const [R, L] = this.arms as [Limb, Limb];
+    const [legL, legR] = this.legs as [Limb, Limb];
+    this.animeSrc = {
+      frame: this.body,
+      pelvis: this.body,
+      chest: this.chest,
+      head: this.head,
+      arms: [
+        { upper: R.root, fore: R.joint, len: FORE },
+        { upper: L.root, fore: L.joint, len: FORE },
+      ],
+      legs: [
+        { thigh: legR.root, shin: legR.joint, len: SHIN },
+        { thigh: legL.root, shin: legL.joint, len: SHIN },
+      ],
+    };
+  }
+
+  /** The worn model follows the posed skeleton; she blinks, looks worried while caged, and closes her eyes when down. */
+  private followAnime(dt: number): void {
+    const a = this.anime;
+    if (!a || !this.animeSrc) return;
+    a.root.matrixWorldAutoUpdate = false;
+    this.root.updateMatrixWorld(true);
+    a.root.matrixWorldAutoUpdate = true;
+    a.follow(this.animeSrc);
+    this.blinkT -= dt;
+    if (this.blinkT < -0.12) this.blinkT = 2 + Math.random() * 3.5;
+    a.setExpression('blink', this.down ? 1 : this.blinkT < 0 ? 1 : 0);
+    a.setExpression('sad', this.cowering && !this.down ? 0.7 : 0);
+    a.setExpression('relaxed', !this.cowering && !this.down && this.aimT <= 0 ? 0.35 : 0);
+    a.setExpression('angry', this.aimT > 0 && !this.down ? 0.4 : 0);
   }
 
   /**
@@ -547,6 +609,7 @@ export class Avatar {
       const t = Math.min(1, this.fallT / 0.55);
       this.tilt.rotation.x = this.fallDir * (Math.PI / 2 - 0.08) * t * t;
       this.pose(dt, 0, 0);
+      this.followAnime(dt);
       return;
     }
     const k = Math.min(1, dt * 12);
@@ -561,6 +624,7 @@ export class Avatar {
     const walking = moved > 0.02;
     this.phase += walking ? dt * 9 : 0;
     this.pose(dt, walking ? 1 : 0, 0);
+    this.followAnime(dt);
   }
 
   /** Legs, lean, weapon and the arms that hold it. `snap` 1 sets the pose at once. */
@@ -622,6 +686,9 @@ export class Avatar {
 
   dispose(): void {
     this.root.removeFromParent();
+    // a worn model's geometry and materials are shared with every other clone of it
+    this.anime?.dispose();
+    this.anime = null;
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
       // shared parts stay for the next figure

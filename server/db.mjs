@@ -91,6 +91,12 @@ export function openDb(file) {
     CREATE TABLE IF NOT EXISTS audit (
       id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, admin_id TEXT NOT NULL, action TEXT NOT NULL, target TEXT, detail TEXT
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,             -- e.g. map.sakura.public
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL,
+      updated_by TEXT
+    );
   `);
 
   // added after the first release: older databases get the column here
@@ -122,6 +128,8 @@ export function openDb(file) {
     setBan: db.prepare('UPDATE users SET banned = ?, ban_reason = ?, banned_at = ? WHERE id = ?'),
     resolveReport: db.prepare("UPDATE reports SET status = 'resolved', resolved_by = ?, resolved_at = ?, resolution = ? WHERE id = ? AND status = 'open'"),
     audit: db.prepare('INSERT INTO audit (ts, admin_id, action, target, detail) VALUES (?, ?, ?, ?, ?)'),
+    setting: db.prepare('SELECT value FROM settings WHERE key = ?'),
+    setSetting: db.prepare('INSERT INTO settings (key, value, updated_at, updated_by) VALUES (?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, updated_by = excluded.updated_by'),
   };
 
   const day = (t = now()) => new Date(t * 1000).toISOString().slice(0, 10);
@@ -136,6 +144,13 @@ export function openDb(file) {
       return q.user.get(u.id);
     },
     user: (id) => q.user.get(id),
+    /** A stored setting, or null. */
+    setting: (key) => q.setting.get(key)?.value ?? null,
+    /** Store a setting an admin changed (and say so in the audit log). */
+    setSetting(adminId, key, value) {
+      q.setSetting.run(key, String(value), now(), adminId);
+      q.audit.run(now(), adminId, 'setting', key, String(value));
+    },
     createSession(token, userId, ttl) {
       q.purgeSessions.run(now());
       q.addSession.run(token, userId, now(), now() + ttl);
@@ -147,7 +162,7 @@ export function openDb(file) {
     },
     dropSession: (token) => q.dropSession.run(token),
     visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
-    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), ['forge', 'asylum'].includes(map) ? map : 'district').lastInsertRowid),
+    startRun: (userId, mode, touch, map) => Number(q.startRun.run(userId, mode, touch ? 1 : 0, now(), day(), ['sakura', 'forge', 'asylum'].includes(map) ? map : 'district').lastInsertRowid),
     /** Close a run with the client's numbers. They are for analytics only: nothing is granted from them. */
     endRun(userId, id, body) {
       const run = q.run.get(id);

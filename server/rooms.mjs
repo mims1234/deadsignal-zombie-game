@@ -33,7 +33,7 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export const SIM_ID = 'sim';
 /** The countdown between the owner pressing start and everyone being brought in. */
 const START_COUNTDOWN_MS = 5000;
-const MAPS = ['district', 'forge', 'asylum'];
+const MAPS = ['district', 'sakura', 'forge', 'asylum'];
 const KINDS = ['mission', 'mazoku', 'roam'];
 const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
 const TEAM_LEVELS = ['rookie', 'regular', 'veteran', 'elite'];
@@ -41,7 +41,7 @@ const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
 
-export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }) {
+export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent = () => {}, dev = false }) {
   /** @type {Map<string, any>} */
   const rooms = new Map();
   /** user id -> member (a user is in at most one room, on one connection) */
@@ -207,6 +207,8 @@ export function createRooms({ userOf, isAdmin, onEvent = () => {}, dev = false }
       case 'create': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
         m.device = msg.device === 'phone' ? 'phone' : 'pc'; // a phone or a computer, shown beside the name
+        // a gated map the admins have not opened yet: only an admin can start a session on it (anyone they invite joins)
+        if (MAPS.includes(msg.map) && !mapOpenTo({ id: m.id }, msg.map)) return send(m.ws, { t: 'error', msg: 'That map is not open yet' });
         let hosting = msg.hosting === 'self' ? 'self' : 'server';
         if (hosting === 'server' && (!existsSync(SIM_FILE) || simRooms() >= SIM_MAX)) {
           return send(m.ws, { t: 'error', msg: 'Server hosting is busy right now - choose SELF HOST to start a session on your own device' });

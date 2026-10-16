@@ -34,6 +34,14 @@ await app.register(cookie);
 const token = () => randomBytes(32).toString('base64url');
 const cookieOpts = (maxAge) => ({ path: '/', httpOnly: true, sameSite: 'lax', secure: SECURE, maxAge });
 const isAdmin = (u) => !!u && ADMIN_IDS.has(u.id);
+
+// Maps the admins open to everyone from the dashboard (the game's GATED_MAPS). Until then only admins can play them.
+const GATED_MAPS = { sakura: 'Sakura District' };
+const mapPublic = (id) => db.setting(`map.${id}.public`) === '1';
+/** Gated maps not open to everyone yet. */
+const lockedMaps = () => Object.keys(GATED_MAPS).filter((id) => !mapPublic(id));
+/** Can this player start a run or a session on the map? */
+const mapOpenTo = (u, map) => !(map in GATED_MAPS) || mapPublic(map) || isAdmin(u);
 const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
 
 /** The signed-in user for this request, or null. */
@@ -49,6 +57,7 @@ const rooms = createRooms({
     return m ? db.sessionUser(decodeURIComponent(m[1])) : null;
   },
   isAdmin: (u) => isAdmin(u),
+  mapOpenTo: (u, map) => mapOpenTo(u, map),
   // local development only: the sessions accept the co-op QA script's set-ups (scripts/qa-coop.mjs)
   dev: DEV_LOGIN,
   onEvent(kind, { room, reason, message }) {
@@ -148,9 +157,9 @@ app.post('/auth/logout', async (req, reply) => {
 
 app.get('/api/me', async (req) => {
   const u = userOf(req);
-  if (!u) return { user: null, devLogin: DEV_LOGIN };
-  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '' };
-  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id) };
+  if (!u) return { user: null, devLogin: DEV_LOGIN, lockedMaps: lockedMaps() };
+  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '', lockedMaps: lockedMaps() };
+  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id), lockedMaps: lockedMaps() };
 });
 
 app.post('/api/visit', async (req, reply) => {
@@ -170,6 +179,7 @@ app.post('/api/ping', { preHandler: player }, async () => ({ ok: true }));
 app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
+  if (!mapOpenTo(req.user, req.body?.map)) return reply.code(403).send({ error: 'that map is not open yet' });
   return { id: db.startRun(req.user.id, mode, !!req.body?.touch, req.body?.map) };
 });
 
@@ -208,6 +218,15 @@ app.get('/api/admin/overview', { preHandler: admin }, async (req) => db.overview
 app.get('/api/admin/users', { preHandler: admin }, async (req) => ({ users: db.users(String(req.query.q || '')), admins: [...ADMIN_IDS] }));
 app.get('/api/admin/rooms', { preHandler: admin }, async () => ({ rooms: rooms.live() }));
 app.get('/api/admin/reports', { preHandler: admin }, async (req) => ({ reports: db.reports(String(req.query.status || 'open')) }));
+app.get('/api/admin/maps', { preHandler: admin }, async () => ({ maps: Object.entries(GATED_MAPS).map(([id, name]) => ({ id, name, public: mapPublic(id) })) }));
+
+/** Open a gated map to everyone, or take it back to admins only. */
+app.post('/api/admin/maps/:id', { preHandler: admin }, async (req, reply) => {
+  const id = String(req.params.id);
+  if (!(id in GATED_MAPS)) return reply.code(404).send({ error: 'no such map' });
+  db.setSetting(req.user.id, `map.${id}.public`, req.body?.public === true ? '1' : '0');
+  return { id, public: mapPublic(id) };
+});
 
 app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {
   const id = String(req.params.id);

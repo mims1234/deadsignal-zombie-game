@@ -8,7 +8,9 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { RENDER, SQUADS, SURVIVORS, ZOMBIES } from '../config';
+import { AnimeZombieRig, loadAnimeCast, modelStats, personModel } from '../anime/cast';
+import { animeModel, animeSlotState, loadAnime } from '../anime/vrm';
+import { ANIME_CAST, RENDER, SQUADS, SURVIVORS, ZOMBIES } from '../config';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import { MATRON, MATRON_DEF } from '../enemies/matron';
 import { createDetailTexture, createZombieMaterial } from '../enemies/zombie/material';
@@ -17,9 +19,10 @@ import { createZombieFactory } from '../enemies/zombieRig';
 import type { ZombieAnimState, ZombieMode, ZombieRig, ZombieTheme } from '../enemies/zombieRigTypes';
 import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from '../render/stage';
 import type { ZombieType } from '../types';
+import { STYLE_SAMPLES } from './styleLab';
 import './bestiary.css';
 
-type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU';
+type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'SAKURA DISTRICT' | 'STYLE LAB';
 
 interface Entry {
   id: string;
@@ -42,6 +45,10 @@ interface Entry {
   card?: string;
   accent?: number;
   height: number;
+  /** Button labels for the animation modes, where they differ (style lab soldiers: attack is FIRE). */
+  modeLabels?: Partial<Record<ZombieMode, string>>;
+  /** Draw the view at this fraction of the screen's resolution, with hard pixels (the PS1 sample). */
+  pixel?: number;
 }
 
 const ZOMBIE_MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death'];
@@ -128,6 +135,15 @@ resize();
 const factory = createZombieFactory();
 const carrierMaterial = createZombieMaterial(createDetailTexture());
 const kits = await loadCardKits(CARRIERS).catch(() => new Map());
+/** A male VRoid model, shown here only (not in the game yet): a squad soldier and an infected. */
+const GUY = 'guy-1.vrm';
+await Promise.all([loadAnimeCast(), loadAnime(GUY)]).catch(() => undefined);
+
+/** Which file a Sakura District slot wants, and what is showing. */
+const slotNote = (file: string): [string, string] => {
+  const st = animeSlotState(file);
+  return ['Model file', `anime/${file}${st === 'own' ? '' : st === 'stand-in' ? ' (missing: stand-in shown)' : ' (missing: stock figure shown)'}`];
+};
 
 const zombie = (type: ZombieType, seed: number, theme?: ZombieTheme) => (): THREE.Object3D => {
   const r = factory.create(type, seed, theme);
@@ -288,6 +304,107 @@ const entries: Entry[] = [
       return a.root;
     },
   },
+  // the Sakura District's cast: VRoid models (anime/cast.ts, public/anime/)
+  {
+    id: 'sakura-squad', group: 'SAKURA DISTRICT', name: 'Hana & Yuzu', height: 1.85,
+    tagline: 'The Hanabi unit, deployed with you.',
+    lore: 'Two girls of the Hanabi unit who go into the Sakura District with you. Hana carries the rifle, Yuzu the shotgun. They follow you, pick their targets and fight, and they can fall for good - bring them home for the bonus.',
+    where: 'Sakura District', stats: [], modes: 'avatar',
+    cast: ['HANA', 'YUZU'],
+    avatarModes: ['HANA', 'YUZU', 'IDLE', 'WALK', 'FIRE', 'FALL'],
+    build: () => {
+      const d = SQUADS.sakura!;
+      const i = Math.max(0, castIndex);
+      const t = personModel(d.models?.[i]);
+      const a = new Avatar(d.names[i]!, i, { tag: d.tag, tagColor: d.tagColor, weapon: d.weapons[i], helmet: false, look: d.looks?.[i], anime: t });
+      current!.stats = [['Health', '160'], ['Weapon', d.weapons[i]!], slotNote(d.models![i]!), ...(t ? modelStats(t) : [])];
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'sakura-survivors', group: 'SAKURA DISTRICT', name: 'Blossom quarter survivors', height: 1.85,
+    tagline: 'Aoi, Mei and Koharu, holed up and waiting.',
+    lore: `Three girls trapped in cages around the Sakura District: ${SURVIVORS.sakura.map((s) => `${s.name} (${s.tag.toLowerCase()})`).join(', ')}. Break the lock and they pick up a pistol and fight beside you.`,
+    where: 'Sakura District', stats: [], modes: 'avatar',
+    cast: SURVIVORS.sakura.map((s) => s.name.split(' ')[0]!.toUpperCase()),
+    avatarModes: [...SURVIVORS.sakura.map((s) => s.name.split(' ')[0]!.toUpperCase()), 'TRAPPED', 'WALK', 'FIRE'],
+    build: () => {
+      const i = Math.max(0, castIndex);
+      const who = SURVIVORS.sakura[i]!;
+      const t = personModel(who.model);
+      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#ff9ec8', anime: t });
+      a.arm();
+      current!.stats = [['Health', `${SURVIVORS.hp}`], ['Freed', `+$${SURVIVORS.rescueCash}`], slotNote(who.model), ...(t ? modelStats(t) : [])];
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  // a guy in the same style, for later: bestiary only
+  {
+    id: 'sakura-guy', group: 'SAKURA DISTRICT', name: 'Ren (bestiary only)', height: 1.85,
+    tagline: 'A Hanabi soldier - not in the game yet.',
+    lore: 'A male member of the Hanabi unit in the same anime style, kept here for later. Put a VRoid Studio model with a male body in anime/guy-1.vrm and he wears it; nothing in the game uses him yet.',
+    where: 'Bestiary only (for a future squad or survivor)', stats: [], modes: 'avatar',
+    avatarModes: ['RIFLE', 'SHOTGUN', 'PISTOL', 'IDLE', 'WALK', 'FALL'],
+    build: () => {
+      const t = animeModel(GUY);
+      const a = new Avatar('Ren', 0, { tag: 'HANABI', tagColor: '#9fd0ff', weapon: 'rifle', helmet: false, anime: t });
+      current!.stats = [['Health', '160'], slotNote(GUY), ...(t ? modelStats(t) : [])];
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'sakura-guy-infected', group: 'SAKURA DISTRICT', name: 'Turned guy (bestiary only)', height: ZOMBIES.shambler.height,
+    tagline: 'The same model, turned - not in the game yet.',
+    lore: 'The male model as an infected: grey skin, red eyes, the snarl. Kept here for a future horde with more variety; nothing in the game spawns him yet.',
+    where: 'Bestiary only (for a future horde)', stats: [], modes: ZOMBIE_MODES,
+    build: () => {
+      const t = animeModel(GUY);
+      const def = ZOMBIES.shambler;
+      const r = t ? new AnimeZombieRig('shambler', t, { radius: def.radius, height: def.height, headRadius: def.headRadius }, 31) : factory.create('shambler', 31);
+      current!.rig = r;
+      current!.stats = [...zombieStats('shambler'), slotNote(GUY), ...(t ? modelStats(t) : [])];
+      return r.root;
+    },
+  },
+  ...(['shambler', 'runner', 'armored', 'warden'] as const).map((type, i): Entry => ({
+    id: `sakura-${type}`, group: 'SAKURA DISTRICT', height: ZOMBIES[type].height,
+    name: ['Turned girls', 'Fast turned', 'Turned in uniform', 'The Crimson Empress'][i]!,
+    tagline: ['Grey skin, red eyes, still in their own clothes.', 'Pale, quick, eyes like neon.', 'Darker, tougher, harder to drop.', 'The boss: she kept her colours.'][i]!,
+    lore: [
+      'Everyone the district under the cherry trees could not get out. They wear the clothes they turned in, their skin gone grey and their eyes burning red, and they move like shamblers.',
+      'The freshest of the turned, still quick. They play as runners: fast, fragile, first to arrive.',
+      'They play as armored infected: half of every body shot turned away, and they hit twice as hard.',
+      "The district's boss in the Warden's part: over two metres tall, she slams, she charges, and below half health she rages. Aim for the head.",
+    ][i]!,
+    where: 'Sakura District', stats: [], modes: type === 'warden' ? BOSS_MODES : ZOMBIE_MODES, enraged: false,
+    build: () => {
+      const r = factory.create(type, 11 + i, 'sakura');
+      current!.rig = r;
+      const file = type === 'warden' ? ANIME_CAST.boss : ANIME_CAST.horde[0];
+      current!.stats = [...zombieStats(type), slotNote(file), ...(r instanceof AnimeZombieRig ? modelStats(r.body.template) : [])];
+      return r.root;
+    },
+  })),
+  // art-style experiments, not in the game (styleLab.ts)
+  ...STYLE_SAMPLES.map((sm): Entry => {
+    const e: Entry = {
+      id: sm.id, group: 'STYLE LAB', name: sm.name, height: sm.height, tagline: sm.tagline, pixel: sm.style.pixel,
+      lore: `${sm.lore} A test of a look only - not in the game.`,
+      where: 'Nowhere yet: a style test', stats: [],
+      modes: sm.form === 'squad' ? ['idle', 'walk', 'run', 'attack', 'stagger', 'death'] : ZOMBIE_MODES,
+      modeLabels: sm.form === 'squad' ? { attack: 'FIRE', death: 'FALL' } : undefined,
+      build: () => {
+        const fig = sm.build(Math.floor(Math.random() * 1e6));
+        current!.rig = fig;
+        e.stats = [['Style', sm.style.name], ['Form', sm.form === 'squad' ? 'squad soldier' : 'infected'], ['Parts drawn', `${fig.drawCalls()} per figure`], ['Built with', sm.style.notes]];
+        return fig.root;
+      },
+    };
+    return e;
+  }),
 ];
 
 /** Which character a people entry with a cast shows. */
@@ -337,7 +454,7 @@ function renderList(): void {
 function renderModes(): void {
   modesEl.replaceChildren();
   if (!current) return;
-  const labels = current.modes === 'avatar' ? (current.avatarModes ?? AVATAR_MODES) : current.modes.map((m) => MODE_LABEL[m]!);
+  const labels = current.modes === 'avatar' ? (current.avatarModes ?? AVATAR_MODES) : current.modes.map((m) => current!.modeLabels?.[m] ?? MODE_LABEL[m]!);
   labels.forEach((label, i) => {
     const on = current!.modes === 'avatar' ? avatarMode === label : mode === (current!.modes as ZombieMode[])[i];
     const b = el('button', on ? 'on' : '', modesEl, label);
@@ -415,7 +532,7 @@ function select(e: Entry, keepCast = false): void {
   model = e.build();
   model.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (m.isMesh) {
+    if (m.isMesh && m.userData.noShadow !== true) {
       m.castShadow = true;
       m.receiveShadow = true;
     }
@@ -423,6 +540,10 @@ function select(e: Entry, keepCast = false): void {
   // models face -Z; turn them to the camera
   if (e.rig) model.rotation.y = Math.PI;
   scene.add(model);
+  // the PS1 sample draws the whole view at a fraction of the resolution
+  renderer.setPixelRatio(e.pixel ?? Math.min(window.devicePixelRatio, 2));
+  canvas.style.imageRendering = e.pixel ? 'pixelated' : '';
+  resize();
   const built = e.avatar as Avatar | undefined; // set by build()
   if (built) {
     built.set(0, 0, 0, Math.PI, true);
@@ -501,7 +622,7 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 // dev / QA hook
-(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), select: (id: string) => select(entries.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
+(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), get current() { return current; }, select: (id: string) => select(entries.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
   /** Re-roll the shown infected's look (as NEW LOOK does) with a given seed. */
   look: (seed: number) => current?.rig?.reset(seed),
   /** Look from `yaw` (0 = in front) at `dist` metres, the camera at `height`. */

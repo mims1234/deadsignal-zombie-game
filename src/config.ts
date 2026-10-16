@@ -963,6 +963,8 @@ export interface SquadDef {
   helmets: readonly boolean[];
   colors?: readonly number[];
   looks?: readonly AvatarLook[];
+  /** VRoid models they wear (the Sakura District, `ANIME_CAST`). */
+  models?: readonly string[];
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   forge: { names: FORGE_SQUAD.allies, tag: 'SQUAD', tagColor: '#8fd18a', weapons: ['rifle', 'rifle'], helmets: [true, true] },
@@ -979,7 +981,38 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
       { female: true, outfit: 'coat', hair: 'puff', hairColor: 0x1b120d, skin: 0x8a5634, eyes: 0x24160e, accent: 0x5f8fa8 },
     ],
   },
+  // the Sakura District: two girls of the Hanabi unit deploy with you
+  sakura: {
+    names: ['Hana', 'Yuzu'],
+    tag: 'HANABI',
+    tagColor: '#ff9ec8',
+    weapons: ['rifle', 'shotgun'],
+    helmets: [false, false],
+    looks: [
+      { female: true, outfit: 'tactical', hair: 'twintails', hairColor: 0xf2a6c8, skin: 0xf6dccb, eyes: 0x8a3a6a, accent: 0x3a2a3a },
+      { female: true, outfit: 'tactical', hair: 'ponytail', hairColor: 0x2a2236, skin: 0xf3d6c2, eyes: 0x3a4a8a, accent: 0x2a2e3a },
+    ],
+    models: ['squad-1.vrm', 'squad-2.vrm'],
+  },
 };
+
+/**
+ * The Sakura District's cast: VRoid Studio models (.vrm) in `public/anime/` (see the README there). Any missing file
+ * falls back to another loaded model of its kind, then to the game's own figures.
+ */
+export const ANIME_CAST = {
+  /** Worn by `SQUADS.sakura`, in order. */
+  squad: ['squad-1.vrm', 'squad-2.vrm'],
+  /** Worn by `SURVIVORS.sakura`, in order. */
+  survivors: ['survivor-1.vrm', 'survivor-2.vrm', 'survivor-3.vrm'],
+  /** The horde: every shambler, runner and armored infected wears one of these (tinted by kind). */
+  horde: ['infected-1.vrm', 'infected-2.vrm', 'infected-3.vrm'],
+  /** The boss (the Warden's part). */
+  boss: 'boss.vrm',
+  /** Live infected at once on this map: each one draws far more than a stock zombie. Phones get fewer. */
+  hardCap: 24,
+  hardCapTouch: 12,
+} as const;
 
 /**
  * Trapped survivors (Standard, Standard Mazoku and the Forge): caged in around the map, freed with a hold of E, then
@@ -991,6 +1024,12 @@ export const SURVIVORS = {
     { name: 'Dr. Lena Ortiz', tag: 'FIELD MEDIC', color: 0xb8c4c8 },
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
     { name: 'Mika Reyes', tag: 'COURIER', color: 0x7a4a6a },
+  ],
+  // the Sakura District: three girls holed up in the blossom quarter, each wearing her own VRoid model (`ANIME_CAST`)
+  sakura: [
+    { name: 'Aoi Kisaragi', tag: 'SHRINE KEEPER', color: 0xe8e4f0, model: 'survivor-1.vrm', look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0x1a1a2a, skin: 0xf6e0d2, eyes: 0x6a2a3a, accent: 0xc83a4a } },
+    { name: 'Mei Hoshino', tag: 'IDOL', color: 0xffc4dc, model: 'survivor-2.vrm', look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0x9ad8f0, skin: 0xf7dfcc, eyes: 0x2a6a9a, accent: 0xff7ab0 } },
+    { name: 'Koharu Tachibana', tag: 'CAFE OWNER', color: 0xf0d8b0, model: 'survivor-3.vrm', look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0xc88a4a, skin: 0xf2d8c0, eyes: 0x5a3a1a, accent: 0xd8a070 } },
   ],
   // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`)
   asylum: [

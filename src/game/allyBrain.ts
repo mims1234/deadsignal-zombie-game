@@ -191,7 +191,7 @@ export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
 }
 
 /** Who waits in the cages on a map. */
-export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number; look?: AvatarLook }[] {
+export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number; look?: AvatarLook; model?: string }[] {
   return SURVIVORS[map];
 }
 

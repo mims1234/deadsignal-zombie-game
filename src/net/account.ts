@@ -3,7 +3,7 @@
  * Every call is best-effort. When there is no server behind the page (a plain static host, or the Vite dev server
  * on its own) `online` is false and the game runs as a local, signed-out build that reports nothing.
  */
-import { asMapId, type MapId } from '../world/layout/data';
+import { GATED_MAPS, MAP_IDS, asMapId, type MapId } from '../world/layout/data';
 import type { GameMode, MissionStats } from '../types';
 
 export interface AccountUser {
@@ -24,9 +24,26 @@ export interface Account {
   cards: Record<string, number>;
   /** Where the sign-in button goes. */
   loginUrl: string;
+  /** Gated maps (`GATED_MAPS`) the admins have not opened to everyone yet. */
+  lockedMaps: MapId[];
 }
 
-const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '' };
+const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS] };
+
+/**
+ * What a map is to this player. `open`: an ordinary map. `public`: gated, and opened to everyone. `admin-only`: gated
+ * and not open yet, but this player is an admin. `dev-only`: a local dev build with no server. `locked`: not available.
+ */
+export type MapAccess = 'open' | 'public' | 'admin-only' | 'dev-only' | 'locked';
+
+export function mapAccess(a: Account, map: MapId): MapAccess {
+  if (!GATED_MAPS.includes(map)) return 'open';
+  if (!a.online) return import.meta.env.DEV ? 'dev-only' : 'locked';
+  if (!a.lockedMaps.includes(map)) return 'public';
+  return a.admin ? 'admin-only' : 'locked';
+}
+
+const lockedFrom = (v: unknown): MapId[] => (Array.isArray(v) ? MAP_IDS.filter((m) => v.includes(m)) : [...GATED_MAPS]);
 
 async function post<T>(path: string, body: unknown, keepalive = false): Promise<T | null> {
   try {
@@ -41,8 +58,8 @@ export async function loadAccount(): Promise<Account> {
   try {
     const r = await fetch('/api/me', { headers: { accept: 'application/json' } });
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ...OFFLINE };
-    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean };
-    return { online: true, user: d.user, admin: !!d.admin, banned: !!d.banned, banReason: d.banReason ?? '', cards: d.cards ?? {}, loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord' };
+    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; lockedMaps?: unknown };
+    return { online: true, user: d.user, admin: !!d.admin, banned: !!d.banned, banReason: d.banReason ?? '', cards: d.cards ?? {}, loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord', lockedMaps: lockedFrom(d.lockedMaps) };
   } catch {
     return { ...OFFLINE };
   }

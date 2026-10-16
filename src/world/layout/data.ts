@@ -39,8 +39,14 @@ export interface AmbientZombieDef {
   region: Region;
 }
 
-export type MapId = 'district' | 'forge' | 'asylum';
-export const MAP_IDS: readonly MapId[] = ['district', 'forge', 'asylum'];
+/** `sakura` is the District's streets with an anime cast (VRoid models, `anime/`). */
+export type MapId = 'district' | 'sakura' | 'forge' | 'asylum';
+export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum'];
+/**
+ * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
+ * them (a local dev build shows them too); everyone else does not see them at all.
+ */
+export const GATED_MAPS: readonly MapId[] = ['sakura'];
 
 /** A valid map id from anything (storage, a URL, a message); unknown means the District. */
 export function asMapId(v: unknown): MapId {
@@ -111,6 +117,36 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'CONTRACT ALPHA', title: 'RESTORE THE RELAY', text: 'Activate the depot transmitter and hold the marked area while the uplink completes.' },
       { tag: 'CONTRACT BRAVO', title: 'ELIMINATE THE WARDEN', text: 'Locate and kill the elite infected inside the research compound.' },
       { tag: 'EXTRACT', title: 'LZ ECHO', text: 'Radio the helicopter, survive the final horde and board before the district seals.' },
+    ],
+  },
+  sakura: {
+    name: 'SAKURA DISTRICT',
+    tagline: 'The same streets at blossom dusk, an anime cast',
+    defenseTitle: 'RESTORE THE RELAY',
+    defenseSite: 'RELAY',
+    defensePrompt: 'ACTIVATE TRANSMITTER',
+    defenseStart: 'UPLINK ACTIVE',
+    defenseDone: 'RELAY RESTORED',
+    huntTitle: 'DEFEAT THE CRIMSON EMPRESS',
+    boss: 'THE CRIMSON EMPRESS',
+    huntSite: 'the research compound',
+    extractTitle: 'EXTRACT AT LZ ECHO',
+    lz: 'LZ ECHO',
+    surge: 'CONTAMINATION SURGE',
+    hazardSite: 'SPIRE',
+    sealed: 'DISTRICT SEALED IN',
+    bossSighted: 'she has turned. Aim for the head.',
+    bossRadio: { from: 'HANA', text: "That's her - the Empress. She hits like a truck. Head shots, and don't let her close." },
+    regions: { low: 'Blossom streets', medium: 'Industrial depot - armored infected sighted', high: 'Contaminated research compound' },
+    brief: "Hanabi unit, we're in. Restore the depot relay and put the Crimson Empress down. Aoi, Mei and Koharu are holed up somewhere out there - get them out and they'll fight with us. Then we call the bird at LZ Echo.",
+    kicker: 'SECTOR 7  //  BLOSSOM DUSK  //  HANABI UNIT',
+    signal: 'NO CARRIER  -  LAST KNOWN POSITION: RESEARCH COMPOUND',
+    premise: 'The district under the cherry trees has been sealed for nine days. Deploy with Hana and Yuzu, clear two contracts, free the girls trapped in the blossom quarter and get out before the surge takes the landing zone.',
+    foot: 'Two Hanabi girls deploy with you and can fall. Three survivors wait to be freed. Fewer infected than the District, and every one of them was someone.',
+    rows: [
+      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE RELAY', text: 'Activate the depot transmitter and hold the marked area while the uplink completes.' },
+      { tag: 'CONTRACT BRAVO', title: 'DEFEAT THE EMPRESS', text: 'Find and put down the Crimson Empress inside the research compound.' },
+      { tag: 'EXTRACT', title: 'LZ ECHO', text: 'Radio the helicopter, survive the final horde and board with your squad.' },
     ],
   },
   forge: {

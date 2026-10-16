@@ -45,6 +45,8 @@
       .pill.victory { color: var(--good); border-color: var(--good); }
       .pill.defeat, .pill.banned { color: var(--bad); border-color: var(--bad); }
       .pill.abandoned { color: var(--warn); border-color: var(--warn); }
+      .pill.public { color: var(--good); border-color: var(--good); }
+      .pill.adminonly { color: var(--warn); border-color: var(--warn); }
       .empty { color: var(--faint); padding: 14px 0; }
       #tip { position: fixed; pointer-events: none; background: #000; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-size: 12px; display: none; z-index: 5; white-space: nowrap; }
       #err { color: var(--bad); }
@@ -61,6 +63,8 @@
     </header>
     <main>
       <div class="tiles" id="tiles"></div>
+      <h2>Map access</h2>
+      <div class="card tablewrap"><h3>Maps in testing</h3><div class="sub">Admin only: only admins see and play the map (it shows ADMIN ONLY to you). Public: everyone can pick it.</div><div id="access"></div></div>
       <h2>Traffic</h2>
       <div class="grid2">
         <div class="card"><h3>Site visits per day</h3><div class="sub" id="visitsSub"></div><div class="chart" id="visits"></div><div class="axis" id="visitsAxis"></div></div>
@@ -112,6 +116,8 @@
       const hours = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round((s || 0) / 60)} min`);
       const when = (t) => (t ? new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--');
       const MODE = { standard: 'Standard', cards: 'Standard Mazoku', roam: 'Free roam', coop: 'Co-op waves' };
+      const MAP = { district: 'The District', sakura: 'Sakura District', forge: 'The Forge', asylum: 'The Asylum' };
+      const mapName = (m) => MAP[m] || MAP.district;
 
       async function api(path, body) {
         const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body) } : undefined);
@@ -183,7 +189,7 @@
           { label: 'On touch', num: 1, cell: (m) => pct(m.touch, m.runs) },
         ], o.modes, 'No runs in this range yet.');
         table($('maps'), [
-          { label: 'Map', cell: (m) => (m.map === 'forge' ? 'The Forge' : m.map === 'asylum' ? 'The Asylum' : 'The District') },
+          { label: 'Map', cell: (m) => mapName(m.map) },
           { label: 'Runs', num: 1, cell: (m) => num(m.runs) },
           { label: 'Players', num: 1, cell: (m) => num(m.players) },
           { label: 'Extracted', num: 1, cell: (m) => pct(m.wins, m.runs) },
@@ -203,7 +209,7 @@
           { label: 'Code', cell: (r) => r.code },
           { label: 'Owner', cell: (r) => r.host },
           { label: 'Hosting', cell: (r) => (r.hosting === 'server' ? `Server${r.simMs !== null && r.simMs !== undefined ? `  ${r.simMs} ms/tick, ${r.infected} infected` : ''}` : 'Self') },
-          { label: 'Plays', cell: (r) => `${r.kind === 'mazoku' ? 'Standard Mazoku' : r.kind === 'roam' ? 'Free roam' : 'Standard'} - ${r.map === 'forge' ? 'The Forge' : r.map === 'asylum' ? 'The Asylum' : 'The District'}${r.kind !== 'roam' && r.zombies ? ` (${r.zombies} / ${r.team})` : ''}` },
+          { label: 'Plays', cell: (r) => `${r.kind === 'mazoku' ? 'Standard Mazoku' : r.kind === 'roam' ? 'Free roam' : 'Standard'} - ${mapName(r.map)}${r.kind !== 'roam' && r.zombies ? ` (${r.zombies} / ${r.team})` : ''}` },
           { label: 'Access', cell: (r) => (r.visibility === 'private' ? 'Invite-only' : 'Public') },
           { label: 'State', cell: (r) => r.state },
           { label: 'Open for', num: 1, cell: (r) => clock(r.ageSeconds) },
@@ -223,7 +229,7 @@
           { label: 'Started', cell: (r) => when(r.started_at) },
           { label: 'Player', cell: (r) => r.name },
           { label: 'Mode', cell: (r) => MODE[r.mode] || r.mode },
-          { label: 'Map', cell: (r) => (r.map === 'forge' ? 'Forge' : r.map === 'asylum' ? 'Asylum' : 'District') },
+          { label: 'Map', cell: (r) => mapName(r.map) },
           { label: 'Result', cell: (r) => h('span', { class: `pill ${r.outcome || ''}` }, r.outcome || (Date.now() / 1000 - r.started_at > 3600 ? 'no result' : 'in progress')) },
           { label: 'Detail', cell: (r) => r.reason || '' },
           { label: 'Length', num: 1, cell: (r) => clock(r.duration) },
@@ -274,9 +280,23 @@
         ], reports, status === 'open' ? 'No open reports.' : 'Nothing resolved yet.');
       }
 
+      async function loadAccess() {
+        const { maps } = await api('/api/admin/maps');
+        table($('access'), [
+          { label: 'Map', cell: (m) => m.name },
+          { label: 'Access', cell: (m) => h('span', { class: `pill ${m.public ? 'public' : 'adminonly'}` }, m.public ? 'Public' : 'Admin only') },
+          { label: '', cell: (m) => h('button', { class: m.public ? 'danger' : '', on: { click: async () => {
+            const ok = confirm(m.public ? `Take ${m.name} back to admins only? Players stop seeing it on their next page load.` : `Open ${m.name} to everyone?`);
+            if (!ok) return;
+            await api(`/api/admin/maps/${m.id}`, { public: !m.public });
+            loadAccess();
+          } } }, m.public ? 'Make admin only' : 'Make public') },
+        ], maps, 'No maps in testing.');
+      }
+
       async function loadAll() {
         $('err').textContent = '';
-        try { await Promise.all([loadOverview(), loadUsers(), loadReports()]); } catch (e) { $('err').textContent = e.message; }
+        try { await Promise.all([loadAccess(), loadOverview(), loadUsers(), loadReports()]); } catch (e) { $('err').textContent = e.message; }
       }
       $('days').addEventListener('change', loadAll);
       $('refresh').addEventListener('click', loadAll);
