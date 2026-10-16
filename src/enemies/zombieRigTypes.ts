@@ -54,14 +54,18 @@ export interface ZombieRig {
   /** Animated position of the striking hand in world space. */
   getHandWorld(out: THREE.Vector3): THREE.Vector3;
   setVisible(visible: boolean): void;
+  /** Something worn on the head (the Forge's named infected: their signature item), centred on the head. */
+  headAttach?(obj: THREE.Object3D): void;
+  /** Take off whatever `headAttach` put on (a pooled rig goes to someone else next). */
+  clearAttach?(): void;
   dispose(): void;
 }
 
 /**
- * A map's own look for its infected (the Asylum: `zombie/asylum.ts`; the Sakura District: VRoid models, `anime/cast.ts`,
- * the standard variants when none are loaded); none means the standard variants.
+ * A map's own look for its infected (the Asylum: `zombie/asylum.ts`, the Forge: `zombie/forge.ts`; the Sakura District:
+ * VRoid models, `anime/cast.ts`, the standard variants when none are loaded); none means the standard variants.
  */
-export type ZombieTheme = 'asylum' | 'sakura';
+export type ZombieTheme = 'asylum' | 'forge' | 'sakura';
 
 export interface ZombieFactory {
   create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig;

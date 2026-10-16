@@ -1,26 +1,33 @@
 /**
  * Everyone who fights beside the player in a solo run, and the Forge's extras:
- *  - the map's squad (Ash and Cinder on the Forge, Vance and Okafor in the Asylum): helpers who deploy with you; side contract, keep them alive;
- *  - trapped survivors (Standard, Standard Mazoku, the Forge): caged in around the map, freed with a hold of E,
- *    then they follow you and shoot; side contract, get them out alive. On the Forge they are Vulcan's leaders;
- *  - the Trials of Ignis (the Forge only): burning embers hidden around the map.
+ *  - the map's squad (two of Vulcan's three co-leaders on the Forge, drawn each run; Vance and Okafor in the Asylum):
+ *    helpers who deploy with you; side contract, keep them alive;
+ *  - trapped survivors (Standard, Standard Mazoku, the Asylum): caged in around the map, freed with a hold of E,
+ *    then they follow you and shoot; side contract, get them out alive. (The Forge's people are holed up in rooms
+ *    instead: `forge/runtime.ts`.)
  * The infected treat every ally who is fighting exactly like a player (the co-op targeting path); a cage's occupant
  * is left alone until freed. How allies move and shoot lives in `allyBrain.ts`, shared with the co-op simulation.
  *
- * In co-op (`follow`) the session simulation runs all of this; here the squad, the cages and the embers are only drawn
- * from its reports, and freeing someone or touching an ember is a request to it.
+ * In co-op (`follow`) the session simulation runs all of this; here the squad and the cages are only drawn from its
+ * reports, and freeing someone is a request to it. (The Forge's furnaces and their embers: `forge/story.ts`.)
  */
 import { personModel } from '../anime/cast';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { FORGE_SQUAD, PLAYER, QUALITY, SQUADS, SURVIVORS, type TeamSkill } from '../config';
+import { FORGE_SQUAD, QUALITY, SQUADS, SURVIVORS, type TeamSkill } from '../config';
+import { FORGE_LINES } from '../forge/lore';
+import { vulcanLook } from '../forge/looks';
 import { Avatar } from '../coop/avatar';
 import type { ZombieEnv } from '../enemies/zombie';
 import { addCash } from '../logic/economy';
 import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, emberSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
+import { GAMEPLAY_FIELD_RANGE } from '../world/nav';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
 import type { Game } from './game';
+
+/** Milliseconds a frame may spend on one ally's flow field. */
+const ALLY_FIELD_SLICE_MS = 0.5;
 
 interface Ally extends AllyBody {
   avatar: Avatar;
@@ -29,14 +36,6 @@ interface Ally extends AllyBody {
 
 /** What the co-op simulation reports for one ally: [index, x, z, yaw, state (0 dead, 1 fighting, 2 caged), hp]. */
 export type AllyRow = [number, number, number, number, number, number];
-
-interface Ember {
-  x: number;
-  z: number;
-  taken: boolean;
-  obj: THREE.Group;
-  core: THREE.Mesh;
-}
 
 interface Cage {
   root: THREE.Group;
@@ -108,33 +107,17 @@ function makeCage(): Cage {
 
 export class SquadRuntime {
   private readonly allies: Ally[] = [];
-  private readonly embers: Ember[] = [];
-  /** The Trials of Ignis are on (the Forge's squad runs). */
-  private trials = false;
   private soldiers = false;
   private survivors = false;
   private time = 0;
   /** True while an ally's shot is being applied (the kill is theirs, not the player's). */
   allyShooting = false;
-  /** Co-op: the session simulation runs the squad; these ask it to free someone / take an ember. */
+  /** Co-op: the session simulation runs the squad; this asks it to free someone. */
   follow = false;
   requestRescue: ((name: string) => void) | null = null;
-  requestEmber: ((index: number) => void) | null = null;
-  private askedAt = -9;
   private readonly world: AllyWorld;
 
   constructor(private readonly g: Game) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x401204, emissive: 0xff6a10, emissiveIntensity: 2.2, roughness: 0.4 });
-    const geo = new THREE.OctahedronGeometry(0.32, 0);
-    for (const [x, z] of FORGE_SQUAD.embers) {
-      const obj = new THREE.Group();
-      const core = new THREE.Mesh(geo, mat);
-      core.position.y = 1;
-      obj.add(core, createObjectiveBeam(0xff7a1a));
-      obj.visible = false;
-      g.worldRoot.add(obj);
-      this.embers.push({ x, z, taken: false, obj, core });
-    }
     this.world = {
       get level() {
         return g.level;
@@ -154,14 +137,16 @@ export class SquadRuntime {
   }
 
   /**
-   * Start of a run. `squad`: the map's helpers (the Forge also has the Trials). `survivors`: cages around the map.
+   * Start of a run. `squad`: the map's helpers. `survivors`: cages around the map.
    * `follow` (co-op): the squad is listed in the simulation's order and placed by its reports; nothing here decides.
    */
   reset(squad: boolean, survivors: boolean, follow = false, skill: TeamSkill = 'regular'): void {
+    const forgeMap = this.g.mapId === 'forge';
     this.soldiers = squad && squadRoster(this.g.mapId).length > 0;
-    this.trials = this.soldiers && this.g.mapId === 'forge';
-    const forge = this.trials;
-    this.survivors = survivors;
+    this.skill = skill;
+    // the Forge's people are holed up in rooms, not cages (`forge/runtime.ts`)
+    this.survivors = survivors && !forgeMap;
+    survivors = this.survivors;
     this.follow = follow;
     this.time = 0;
     for (const a of this.allies) {
@@ -170,16 +155,9 @@ export class SquadRuntime {
     }
     this.allies.length = 0;
     const g = this.g;
-    const spots = emberSpots(g.level);
-    this.embers.forEach((e, i) => {
-      e.x = spots[i]!.x;
-      e.z = spots[i]!.z;
-      e.taken = false;
-      e.obj.position.set(e.x, 0, e.z);
-      e.obj.visible = forge;
-    });
     const st = g.level.data.playerStart;
-    if (this.soldiers) {
+    // the Forge's co-leaders come from the run's roster (`deployForge`)
+    if (this.soldiers && !forgeMap) {
       const def = SQUADS[g.mapId];
       const names = squadRoster(g.mapId);
       const at = soldierSpots(g.level, g.rng, names.length);
@@ -205,6 +183,43 @@ export class SquadRuntime {
       if (c) this.placeCage(a, c.x, c.z);
       else a.avatar.root.visible = false;
     });
+  }
+
+  private skill: TeamSkill = 'regular';
+
+  /**
+   * The Forge: the two co-leaders this run (solo: the roster just drawn; co-op: the simulation's, placed by its
+   * reports), in the simulation's order.
+   */
+  deployForge(names: readonly string[]): void {
+    if (!this.soldiers || this.g.mapId !== 'forge') return;
+    for (const a of this.allies) {
+      a.avatar.dispose();
+      a.cage?.root.removeFromParent();
+    }
+    this.allies.length = 0;
+    const g = this.g;
+    const def = SQUADS.forge!;
+    const st = g.level.data.playerStart;
+    const at = this.follow ? names.map(() => null) : soldierSpots(g.level, g.rng, names.length);
+    names.forEach((name, i) => {
+      const { look, color } = vulcanLook(name);
+      const spot = at[i];
+      const a = this.addAlly(
+        makeAllyBody(g.level, name, 'soldier', spot?.x ?? st.x, spot?.z ?? st.z, st.yaw, spot?.slot ?? { x: i === 0 ? -2.2 : 2.2, z: 2.6 }, false, this.allies.length, this.skill),
+        new Avatar(name, i, { tag: def.tag, tagColor: def.tagColor, weapon: def.weapons[i] ?? 'rifle', helmet: false, color, look }),
+      );
+      if (!spot) a.avatar.root.visible = false;
+    });
+  }
+
+  /** The squad's members still standing, and those who fell. */
+  aliveNames(): string[] {
+    return this.allies.filter((a) => a.kind === 'soldier' && a.ref.alive).map((a) => a.name);
+  }
+
+  fallenNames(): string[] {
+    return this.allies.filter((a) => a.kind === 'soldier' && !a.ref.alive).map((a) => a.name);
   }
 
   private addAlly(body: AllyBody, avatar: Avatar): Ally {
@@ -259,7 +274,8 @@ export class SquadRuntime {
     g.feed(`${a.name.toUpperCase()} KIA`, 'danger');
     if (a.kind === 'soldier') {
       g.banner(`${a.name.toUpperCase()} IS DOWN`, 'Killed in action', 'danger', 4);
-      g.radio('COMMAND', `We lost ${a.name}. Keep the other one breathing.`, 5);
+      const other = this.allies.find((q) => q.kind === 'soldier' && q !== a && q.ref.alive);
+      g.radio('COMMAND', g.mapId === 'forge' ? FORGE_LINES.squadLost(a.name, other?.name ?? null) : `We lost ${a.name}. Keep the other one breathing.`, 5);
     } else {
       g.banner(`${a.name.toUpperCase()} DIDN'T MAKE IT`, 'A survivor was killed', 'danger', 4);
     }
@@ -317,12 +333,18 @@ export class SquadRuntime {
   // ---------------------------------------------------------------------------------------------
 
   /** The squad as the simulation sees it; `shots` are the allies' shots since the last report ([index, x, y, z, hit]). */
-  applyRemote(rows: readonly AllyRow[], embersTaken: number, shots: readonly number[][]): void {
+  applyRemote(rows: readonly AllyRow[], shots: readonly number[][]): void {
     if (!this.follow) return;
     const g = this.g;
     for (const [i, x, z, yaw, state, hp] of rows) {
       const a = this.allies[i];
       if (!a) continue;
+      if (!a.cage && a.kind === 'soldier' && !a.avatar.root.visible && !a.avatar.fallen && state !== 0) {
+        // the Forge's co-leaders: the first report places them
+        a.ref.x = x;
+        a.ref.z = z;
+        a.avatar.set(x, 0, z, yaw, true);
+      }
       if (state === 2 && !a.cage) {
         // first report: where the cage stands
         a.ref.x = x;
@@ -341,6 +363,7 @@ export class SquadRuntime {
       }
       a.ref.x = x;
       a.ref.z = z;
+      a.ref.y = g.level.world.floorHeight(x, z, 0.2); // the host sends no height: a deck's is the same here
       a.yaw = yaw;
       a.hp = hp;
     }
@@ -348,18 +371,12 @@ export class SquadRuntime {
       const a = this.allies[i!];
       if (!a || !a.ref.alive) continue;
       const to = { x: tx!, y: ty!, z: tz! };
-      a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+      a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       const from = a.avatar.fire(to);
       g.fx.tracer(from, to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
       g.audio.play(a.avatar.shotSound, { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
       void hit;
     }
-    this.embers.forEach((e, i) => {
-      const taken = (embersTaken & (1 << i)) !== 0;
-      if (taken && !e.taken) g.fx.sparkle({ x: e.x, y: 1, z: e.z }, 0xff7a1a, 20);
-      e.taken = taken;
-      e.obj.visible = this.trials && !taken;
-    });
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -392,20 +409,22 @@ export class SquadRuntime {
         continue;
       }
       if (this.follow) {
-        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
         a.avatar.update(dt);
         continue;
       }
       allyRecover(a, dt);
+      // the infected's field toward this ally, spread over frames like the player's (the first one at once)
       a.fieldT -= dt;
-      if (a.fieldT <= 0) {
-        a.field.compute(a.ref.x, a.ref.z);
+      if (a.field.busy) a.field.advance(ALLY_FIELD_SLICE_MS);
+      else if (a.fieldT <= 0) {
+        if (a.field.begin(a.ref.x, a.ref.z, GAMEPLAY_FIELD_RANGE)) a.field.advance(a.field.goalIndex < 0 ? Infinity : ALLY_FIELD_SLICE_MS);
         a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
       if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw);
       const shot = allyFight(a, this.world, dt);
       if (shot) {
-        a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+        a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
         const muzzle = a.avatar.fire(shot.to);
         g.fx.tracer(muzzle, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
         g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
@@ -416,41 +435,8 @@ export class SquadRuntime {
         }
         if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
       }
-      a.avatar.set(a.ref.x, 0, a.ref.z, a.yaw, true);
+      a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
-    }
-
-    // embers
-    for (const e of this.embers) {
-      if (e.taken || !this.trials) continue;
-      e.core.rotation.y += dt * 1.6;
-      e.core.position.y = 1 + Math.sin(this.time * 2 + e.x) * 0.12;
-      if (alive && Math.hypot(e.x - p.x, e.z - p.z) < FORGE_SQUAD.emberRadius) {
-        if (!this.follow) this.takeEmber(e);
-        else if (this.time - this.askedAt > 0.5) {
-          this.askedAt = this.time;
-          this.requestEmber?.(this.embers.indexOf(e));
-        }
-      }
-    }
-  }
-
-  private takeEmber(e: Ember): void {
-    const g = this.g;
-    e.taken = true;
-    e.obj.visible = false;
-    const got = this.embers.filter((q) => q.taken).length;
-    addCash(g.session.inv, FORGE_SQUAD.emberCash);
-    g.hudEvent({ type: 'cash', amount: FORGE_SQUAD.emberCash });
-    g.fx.sparkle({ x: e.x, y: 1, z: e.z }, 0xff7a1a, 20);
-    g.audio.play('pickup_cash', { priority: 2 });
-    g.feed(`IGNIS EMBER ${got}/${this.embers.length}  +$${FORGE_SQUAD.emberCash}`, 'good');
-    if (got === this.embers.length) {
-      addCash(g.session.inv, FORGE_SQUAD.trialsBonus);
-      g.session.inv.plates = Math.min(PLAYER.maxPlates, g.session.inv.plates + 2);
-      g.hudEvent({ type: 'cash', amount: FORGE_SQUAD.trialsBonus });
-      g.banner('TRIALS OF IGNIS COMPLETE', `+$${FORGE_SQUAD.trialsBonus}   +2 ARMOR PLATES`, 'good', 5);
-      g.audio.play('contract_complete', { priority: 3 });
     }
   }
 
@@ -465,6 +451,13 @@ export class SquadRuntime {
       addCash(g.session.inv, cash);
       g.feed(`SQUAD EXTRACTED ${savedS}/${soldiers.length}  +$${cash}`, 'good');
     }
+    // the Forge: everyone waiting at the Hearth boards with you
+    const hearth = g.forge?.ending().saved.filter((p) => !soldiers.some((a) => a.name === p.name)).length ?? 0;
+    if (hearth > 0) {
+      const cash = hearth * SURVIVORS.extractBonus;
+      addCash(g.session.inv, cash);
+      g.feed(`THE HEARTH EXTRACTED ${hearth}  +$${cash}`, 'good');
+    }
     const survivors = this.allies.filter((a) => a.kind === 'survivor');
     const savedV = survivors.filter((a) => a.ref.alive && !a.trapped).length;
     if (savedV > 0) {
@@ -477,19 +470,6 @@ export class SquadRuntime {
   objectives(out: HudObjective[]): void {
     if (!this.active) return;
     const p = this.g.player;
-    if (this.trials) {
-      const got = this.embers.filter((e) => e.taken).length;
-      const next = this.nearestEmber();
-      out.push({
-        id: 'ignis',
-        title: `TRIALS OF IGNIS  ${got}/${this.embers.length}`,
-        detail: got === this.embers.length ? 'Every ember claimed' : 'Claim the burning embers around the Forge',
-        state: got === this.embers.length ? 'complete' : 'active',
-        progress: got / this.embers.length,
-        tracked: false,
-        distance: next ? Math.hypot(next.x - p.x, next.z - p.z) : -1,
-      });
-    }
     if (this.soldiers) {
       const soldiers = this.allies.filter((a) => a.kind === 'soldier');
       const up = soldiers.filter((a) => a.ref.alive);
@@ -520,20 +500,6 @@ export class SquadRuntime {
     }
   }
 
-  private nearestEmber(): Ember | null {
-    let best: Ember | null = null;
-    let bd = Infinity;
-    for (const e of this.embers) {
-      if (e.taken) continue;
-      const d = Math.hypot(e.x - this.g.player.x, e.z - this.g.player.z);
-      if (d < bd) {
-        bd = d;
-        best = e;
-      }
-    }
-    return best;
-  }
-
   private nearestCage(): Ally | null {
     let best: Ally | null = null;
     let bd = Infinity;
@@ -561,10 +527,5 @@ export class SquadRuntime {
       if (a.trapped) out.push({ id: `cage:${a.name}`, kind: 'objective', x: a.ref.x, z: a.ref.z, label: 'SURVIVOR', color: '#9fd0ff', visible: true, compass: a === cage });
       else out.push({ id: `ally:${a.name}`, kind: 'objective', x: a.ref.x, z: a.ref.z, label: a.name.toUpperCase(), color: '#8fd18a', visible: true, compass: false });
     }
-    if (!this.trials) return;
-    const next = this.nearestEmber();
-    this.embers.forEach((e, i) => {
-      if (!e.taken) out.push({ id: `ember:${i}`, kind: 'objective', x: e.x, z: e.z, label: 'EMBER', color: '#ff8a2a', visible: true, compass: e === next });
-    });
   }
 }

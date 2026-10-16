@@ -137,8 +137,11 @@ function banner(c: Ctx, x: number, z: number, rot: number, y = 3.4): void {
   addBox(b, 'steelDark', x, y + 1.72, z, 2.5, 0.08, 0.08, rot, { cast: false });
 }
 
-/** Vulcan HQ (the forge hall on the plaza) and the clan's banners around the Forge. */
-export function vulcanForge(c: Ctx, hq: { x: number; z: number; frontZ: number; height: number }): void {
+/**
+ * Vulcan HQ (the forge hall on the plaza) and the clan's banners around the Forge (on the inside of the perimeter
+ * wall of `bounds`). Returns the rooftop billboard, which the reveal tears away (`forge/reveal.ts`).
+ */
+export function vulcanForge(c: Ctx, hq: { x: number; z: number; frontZ: number; height: number }, bounds: { minX: number; maxX: number; minZ: number; maxZ: number }): THREE.Object3D {
   const { b } = c;
   // rooftop billboard: the phoenix over VULCAN HQ, facing the street
   const W = 512;
@@ -155,12 +158,18 @@ export function vulcanForge(c: Ctx, hq: { x: number; z: number; frontZ: number; 
     },
     (g, img) => drawLogo(g, img, '#ff9a3a', 40, 30, W - 80, H - 60, 22),
   );
-  const board = new THREE.Mesh(new THREE.PlaneGeometry(7, 5.5), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.1, roughness: 0.8 }));
+  // the board and its frame move together (the reveal tears them off the roof), so they are not baked in
+  const sign = new THREE.Group();
   const by = hq.height + 4.4;
-  board.position.set(hq.x, by, hq.frontZ + 0.55);
+  sign.position.set(hq.x, by, hq.frontZ + 0.6);
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(7, 5.5), new THREE.MeshStandardMaterial({ map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 1.1, roughness: 0.8 }));
+  board.position.z = -0.05;
   board.rotation.y = Math.PI; // the hall's street front faces -Z
-  b.add(board);
-  addBox(b, 'steelDark', hq.x, by, hq.frontZ + 0.68, 7.4, 5.9, 0.2, 0, { cast: true });
+  const frame = new THREE.Mesh(new THREE.BoxGeometry(7.4, 5.9, 0.2), b.mats.get('steelDark'));
+  frame.position.z = 0.08;
+  frame.castShadow = true;
+  sign.add(board, frame);
+  b.addDynamic(sign);
   for (const s of [-1, 1]) addBox(b, 'steelDark', hq.x + s * 2.6, hq.height + 0.8, hq.frontZ + 0.9, 0.25, 1.6, 0.25);
   b.light({ x: hq.x, y: by, z: hq.frontZ - 2.5, color: 0xff8a2a, intensity: 120, distance: 18 });
   // the HQ fell: quarantine signs beside the door
@@ -170,13 +179,14 @@ export function vulcanForge(c: Ctx, hq: { x: number; z: number; frontZ: number; 
   banner(c, hq.x - 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
   banner(c, hq.x + 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
 
-  // clan banners on the inside of the perimeter wall
-  const N = -48.65;
-  const S = 48.65;
-  const E = 60.65;
-  const Wx = -60.65;
-  for (const x of [-40, -8, 30, 46]) banner(c, x, N, 0);
-  for (const x of [-44, -20, 20, 36]) banner(c, x, S, Math.PI);
-  for (const z of [-36, 16]) banner(c, E, z, -HALF_PI);
-  for (const z of [-30, 18]) banner(c, Wx, z, HALF_PI);
+  // clan banners on the inside of the perimeter wall (clear of the buildings along it)
+  const N = bounds.minZ + 1.35;
+  const S = bounds.maxZ - 1.35;
+  const E = bounds.maxX - 1.35;
+  const Wx = bounds.minX + 1.35;
+  for (const x of [-66, -10, 24, 58]) banner(c, x, N, 0);
+  for (const x of [-66, -26, 30, 74]) banner(c, x, S, Math.PI);
+  for (const z of [-30, 0, 46]) banner(c, E, z, -HALF_PI);
+  for (const z of [-53, 53]) banner(c, Wx, z, HALF_PI);
+  return sign;
 }

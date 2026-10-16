@@ -11,6 +11,7 @@ import { combineTuning, IDENTITY_TUNING, type PhaseTuning } from '../logic/timeO
 import type { QualityLevel, Region, ZombieType } from '../types';
 import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
+import { headAccessory } from '../forge/looks';
 import { MATRON_DEF, MatronBrain, createMatronRig, isMatronMap } from './matron';
 import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
@@ -159,6 +160,9 @@ export class ZombieManager {
   private readonly tagMats = new Map<string, THREE.SpriteMaterial>();
   /** Co-op guest: the model and stats for card carrier `i` (0-based), which the card runtime owns. */
   carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
+  /** The Forge's reborn has a look of its own (`forge/rebornRig.ts`; client only): a one-off rig, disposed with it. */
+  rebornRig: ((name: string) => ZombieRig | null) | null = null;
+  private readonly oneOff = new Set<ZombieRig>();
   /**
    * Map scripts may place a director spawn themselves (the Asylum: in through a boarded window). Return the infected
    * it spawned, or null to let the director use its spawn points as usual. `phase` is the escalation phase.
@@ -177,7 +181,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'sakura' ? 'sakura' : undefined;
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' ? 'sakura' : undefined;
     const b = level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -198,7 +202,8 @@ export class ZombieManager {
   private releaseZombie(z: Zombie): void {
     z.rig.setVisible(false);
     this.untag(z);
-    if (z.ownsRig) {
+    if (this.oneOff.delete(z.rig)) z.rig.dispose();
+    else if (z.ownsRig) {
       let pool = this.pools.get(z.type);
       if (!pool) {
         pool = [];
@@ -220,8 +225,9 @@ export class ZombieManager {
     x: number,
     z: number,
     rng: Rng,
-    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean } = {},
+    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean } = {},
   ): Zombie {
+    if (opts.rig && opts.oneOff) this.oneOff.add(opts.rig);
     if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron
     const rig = opts.rig ?? this.acquireRig(type);
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
@@ -241,9 +247,13 @@ export class ZombieManager {
     return zz;
   }
 
-  /** A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. */
-  tagZombie(z: Zombie, name: string): void {
-    let mat = this.tagMats.get(name);
+  /**
+   * A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. `reborn` (the Forge's last
+   * carrier, `forge/story.ts`): the name in red, REBORN beneath, a bigger plate.
+   */
+  tagZombie(z: Zombie, name: string, reborn = false): void {
+    const key = reborn ? `${name}|reborn` : name;
+    let mat = this.tagMats.get(key);
     if (!mat) {
       const c = document.createElement('canvas');
       c.width = 256;
@@ -255,27 +265,34 @@ export class ZombieManager {
       g.strokeStyle = 'rgba(0,0,0,0.9)';
       g.font = '700 26px system-ui, sans-serif';
       g.strokeText(name, 128, 24, 248);
-      g.fillStyle = '#ffd9c0';
+      g.fillStyle = reborn ? '#ff5a3a' : '#ffd9c0';
       g.fillText(name, 128, 24, 248);
       g.font = '800 15px system-ui, sans-serif';
       g.lineWidth = 4;
-      g.strokeText('VULCAN  //  INFECTED', 128, 54, 248);
-      g.fillStyle = '#ff6a3a';
-      g.fillText('VULCAN  //  INFECTED', 128, 54, 248);
+      const sub = reborn ? 'REBORN' : 'VULCAN  //  INFECTED';
+      g.strokeText(sub, 128, 54, 248);
+      g.fillStyle = reborn ? '#ffd27a' : '#ff6a3a';
+      g.fillText(sub, 128, 54, 248);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
-      this.tagMats.set(name, mat);
+      this.tagMats.set(key, mat);
     }
     const s = new THREE.Sprite(mat);
-    s.scale.set(1.4, 0.39, 1);
-    s.position.y = z.def.height + 0.45;
+    s.scale.set(reborn ? 2.1 : 1.4, reborn ? 0.585 : 0.39, 1);
+    s.position.y = z.def.height + (reborn ? 0.75 : 0.45);
     z.rig.root.add(s);
     z.tag = name;
     this.tagSprites.set(z, s);
+    // the Forge: a member's signature item, still on them
+    if (this.theme === 'forge' && z.rig.headAttach) {
+      const worn = headAccessory(name);
+      if (worn) z.rig.headAttach(worn);
+    }
   }
 
   private untag(z: Zombie): void {
+    z.rig.clearAttach?.();
     const s = this.tagSprites.get(z);
     if (s) {
       s.removeFromParent();
@@ -469,18 +486,21 @@ export class ZombieManager {
       let z = this.byNet.get(n.id);
       if (!z) {
         const carrier = n.carrier > 0 ? (this.carrierRig?.(n.carrier - 1) ?? null) : null;
+        const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
+        // a named Warden is the Forge's reborn, in its own look
+        const reborn = tag && n.type === 'warden' ? (this.rebornRig?.(tag) ?? null) : null;
         // a puppet carries the host's name for it, never one of its own
         const namer = this.namer;
         this.namer = null;
-        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : { yaw: n.yaw, boss: n.type === 'warden' });
+        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : reborn ? { yaw: n.yaw, boss: true, rig: reborn, oneOff: true } : { yaw: n.yaw, boss: n.type === 'warden' });
         this.namer = namer;
         z.carrierIdx = n.carrier;
         z.puppet = true;
         z.netId = n.id;
-        const tag = n.tag !== undefined && n.tag >= 0 && tagOf ? tagOf(n.tag) : null;
-        if (tag) this.tagZombie(z, tag);
+        // a named Warden is the Forge's reborn (`forge/story.ts`), never the hunt's boss
+        if (tag) this.tagZombie(z, tag, n.type === 'warden');
         this.byNet.set(n.id, z);
-        if (z.isBoss) this.boss = z;
+        if (z.isBoss && !tag) this.boss = z;
       }
       z.applyNet(n);
     }
@@ -511,12 +531,12 @@ export class ZombieManager {
   }
 
   /** Mutual push between the player and nearby zombies (player yields less). Returns the displacement to apply to the player. */
-  pushPlayer(px: number, pz: number, out: { x: number; z: number }): void {
+  pushPlayer(px: number, pz: number, out: { x: number; z: number }, py = 0): void {
     out.x = 0;
     out.z = 0;
     this.grid.query(px, pz, this.nearby);
     for (const z of this.nearby) {
-      if (!z.active) continue;
+      if (!z.active || Math.abs(z.y - py) > 1.2) continue;
       const dx = px - z.x;
       const dz = pz - z.z;
       const d = Math.hypot(dx, dz);
@@ -584,7 +604,7 @@ export class ZombieManager {
       z.rig.getHeadWorld(this.tmpHead);
       const headT = raySphere(ox, oy, oz, dx, dy, dz, this.tmpHead.x, this.tmpHead.y, this.tmpHead.z, z.def.headRadius * 1.08);
       const bodyTop = Math.max(0.6, z.def.height - z.def.headRadius * 1.6);
-      const bodyT = rayCylinder(ox, oy, oz, dx, dy, dz, z.x, z.z, z.def.radius * 0.88, 0.05, bodyTop);
+      const bodyT = rayCylinder(ox, oy, oz, dx, dy, dz, z.x, z.z, z.def.radius * 0.88, z.y + 0.05, z.y + bodyTop);
       let t = -1;
       let head = false;
       if (headT >= 0 && (bodyT < 0 || headT <= bodyT + 0.03)) {
@@ -608,9 +628,10 @@ export class ZombieManager {
       if (!z.active || z.dormant) continue;
       const dx = z.x - cx;
       const dz = z.z - cz;
-      const d = Math.hypot(dx, dz);
+      // up on a deck or down below it: only the height beyond a body's own counts
+      const d = Math.hypot(dx, dz, Math.max(0, Math.abs(z.y + 0.9 - cy) - 0.9));
       if (d > radius + z.def.radius) continue;
-      const covered = env.world.segmentBlocked(cx, cy + 0.3, cz, z.x, 1.0, z.z, 'shots');
+      const covered = env.world.segmentBlocked(cx, cy + 0.3, cz, z.x, z.y + 1.0, z.z, 'shots');
       if (covered && coverMul <= 0) continue;
       let dmg = centerDamage + (edgeDamage - centerDamage) * Math.min(1, d / radius);
       if (covered) dmg *= coverMul;

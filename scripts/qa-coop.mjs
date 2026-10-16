@@ -198,17 +198,28 @@ try {
   for (const p of [owner, guest, admin]) await p.context().close();
 
   // ---------------------------------------------------------------------------------------------
-  // the Forge: the squad, cages and embers in co-op
+  // the Forge: the co-leaders, the holdouts in their rooms, talking one out, in co-op
   // ---------------------------------------------------------------------------------------------
   const f = await session('6100000003', '6100000004', 'forge', 'mission');
   check('a District player following a Forge invite lands on the Forge', (await f.guest.evaluate(() => window.__dead.game.mapId)) === 'forge');
   await deployBoth(f.owner, f.guest);
-  check('the Forge squad and cages appear for the guest', await until(f.guest, () => { const s = window.__dead.squad(); return s.filter((a) => a.kind === 'soldier').length === 2 && s.filter((a) => a.kind === 'survivor' && a.trapped).length === 4 && s.some((a) => a.trapped && a.x !== 0); }, null, 30000));
-  const cage = await f.guest.evaluate(() => window.__dead.squad().find((a) => a.trapped && a.x !== 0));
-  await f.guest.evaluate((c) => { window.__dead.game.player.teleport(c.x, c.z - 2.2); window.__dead.setHealth(1e6, 100); }, cage);
-  await sleep(500);
-  await f.guest.evaluate((c) => window.__dead.game.squad.rescue(c.name), cage);
-  check('freeing a survivor frees them for both', (await until(f.owner, (n) => window.__dead.squad().some((a) => a.name === n && !a.trapped), cage.name)) && (await until(f.guest, (n) => window.__dead.squad().some((a) => a.name === n && !a.trapped), cage.name)));
+  check('the co-leaders and the holdouts appear for the guest', await until(f.guest, () => { const g = window.__dead.game; const v = g.forge.view; return window.__dead.squad().filter((a) => a.kind === 'soldier').length === 2 && !!v && v.holdouts.length === 7 && v.squad.length === 2; }, null, 30000));
+  // the guest clears a door and calls whoever is inside out (the vault stays shut: no beacon yet)
+  const room = await f.guest.evaluate(() => {
+    const g = window.__dead.game;
+    const rooms = g.level.data.forge.rooms;
+    const i = g.forge.view.holdouts.findIndex((h) => !rooms[h.room].vault);
+    const r = rooms[g.forge.view.holdouts[i].room];
+    return { i, x: r.doorX, z: r.doorZ, name: g.forge.view.holdouts[i].name };
+  });
+  await f.guest.evaluate((r) => { window.__dead.game.player.teleport(r.x, r.z); window.__dead.setHealth(1e6, 100); }, room);
+  for (let k = 0; k < 10; k++) {
+    await f.guest.evaluate((r) => { for (const z of window.__dead.game.zombies.zombies) if (z.active && Math.hypot(z.x - r.x, z.z - r.z) < 8) window.__dead.damageZombie(z.id, 9999, true); window.__dead.setHealth(1e6, 100); }, room);
+    await sleep(300);
+  }
+  await f.guest.evaluate((r) => window.__dead.game.forge.requestHold(r.i), room);
+  const atHearth = (r) => window.__dead.game.forge.view?.holdouts[r.i]?.phase === 'hearth';
+  check('a holdout called out reaches the Hearth for both', (await until(f.owner, atHearth, room)) && (await until(f.guest, atHearth, room)), room.name);
   const tagged = await until(f.guest, () => window.__dead.game.zombies.zombies.some((z) => z.tag), null, 30000);
   check('Vulcan\'s named infected carry their names to the guest', tagged);
   for (const p of [f.owner, f.guest]) await p.context().close();

@@ -1,11 +1,12 @@
 /** Mission clock, escalation phases and the contamination front (pure). */
 import { ASYLUM_CLOCK } from '../asylum/nightConfig';
-import { MISSION } from '../config';
+import { FORGE_STORY, MISSION } from '../config';
 import type { MapId } from '../world/layout/data';
 
 /**
  * The timings a run is held to. Every map uses `MISSION`'s except the Asylum, whose night needs longer
- * (`asylum/nightConfig.ts`). Each function below takes one and defaults to `MISSION`.
+ * (`asylum/nightConfig.ts`), and the Forge, which is twice the size with a story to get through (`FORGE_STORY`).
+ * Each function below takes one and defaults to `MISSION`.
  */
 export interface MissionClock {
   deadline: number;
@@ -14,7 +15,7 @@ export interface MissionClock {
 }
 
 export function missionClock(map: MapId): MissionClock {
-  return map === 'asylum' ? ASYLUM_CLOCK : MISSION;
+  return map === 'asylum' ? ASYLUM_CLOCK : map === 'forge' ? FORGE_STORY.clock : MISSION;
 }
 
 /** 0 before the first escalation threshold, then 1..3. */

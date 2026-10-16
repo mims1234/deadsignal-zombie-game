@@ -212,7 +212,7 @@ async function session(map) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The Forge: Vulcan HQ, named infected, the clan's leaders in cages
+// The Forge: Vulcan HQ, named infected, two co-leaders in the squad, the clan holed up in rooms
 // ---------------------------------------------------------------------------------------------
 {
   const { browser, page, logs, call, shot } = await session('forge');
@@ -220,9 +220,11 @@ async function session(map) {
     await call('start');
     await call('freeze', true);
     const sq = await call('squad');
-    const names = sq.filter((s) => s.kind === 'survivor').map((s) => s.name);
-    check('the Forge cages Vulcan leadership', ['tomoe', 'Anya', 'Marv03K', 'piryriry', 'Athy'].every((n) => names.includes(n)), names.join(', '));
-    check('Ash and Cinder still deploy', sq.filter((s) => s.kind === 'soldier').length === 2);
+    const leads = sq.filter((s) => s.kind === 'soldier').map((s) => s.name);
+    check('two of the co-leaders deploy', leads.length === 2 && leads.every((n) => ['Athy', 'Marv03K', 'piryriry'].includes(n)), leads.join(', '));
+    check('nobody is caged on the Forge', sq.every((s) => s.kind !== 'survivor'));
+    const holdouts = await page.evaluate(() => window.__dead.game.forge.story.view.holdouts.map((h) => h.name));
+    check('tomoe, Anya, two of the four and four members are holed up', holdouts.includes('tomoe') && holdouts.includes('Anya') && holdouts.length === 8, holdouts.join(', '));
     const tags = (await call('zombieInfo')).filter((z) => z.tag).map((z) => z.tag);
     check('some infected carry Vulcan names', tags.length >= 3, `${tags.length}: ${tags.slice(0, 6).join(', ')}`);
     check('names are not repeated', new Set(tags).size === tags.length);

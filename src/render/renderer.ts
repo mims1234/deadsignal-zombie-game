@@ -61,6 +61,8 @@ export class GameRenderer {
   private composer: EffectComposer | null = null;
   private worldPass: RenderPass | null = null;
   private viewPass: RenderPass | null = null;
+  /** The weapon in hand (the view scene) is drawn: never behind the title screen, where only the zone shows. */
+  showView = true;
   private bloomPass: UnrealBloomPass | null = null;
   private outputPass: OutputPass | null = null;
   private width = 1;
@@ -120,6 +122,7 @@ export class GameRenderer {
   /** Tell the renderer whether the camera is inside a roofed building (blends sky lighting down). */
   setIndoor(indoor: boolean): void {
     this.indoorTarget = indoor ? 1 : 0;
+    this.lightPool.setFocusIndoor(indoor);
   }
 
   /**
@@ -281,12 +284,15 @@ export class GameRenderer {
     this.lightPool.update(dt, time, this.tmpV);
     this.camera.updateMatrixWorld();
     if (this.composer) {
+      if (this.viewPass) this.viewPass.enabled = this.showView;
       this.composer.render(dt);
     } else {
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
-      this.renderer.clearDepth();
-      this.renderer.render(this.viewScene, this.viewCamera);
+      if (this.showView) {
+        this.renderer.clearDepth();
+        this.renderer.render(this.viewScene, this.viewCamera);
+      }
     }
   }
 

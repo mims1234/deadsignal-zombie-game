@@ -1,6 +1,6 @@
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
-import { FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILL, ZOMBIE_DIFFICULTY, ZOMBIES } from '../src/config';
+import { FORGE_SQUAD, MISSION, SURVIVORS, TEAM_SKILL, VULCAN_LEADERSHIP, ZOMBIE_DIFFICULTY, ZOMBIES } from '../src/config';
 import { LIFE, SessionSim, type SessionKind, sessionDifficulty } from '../src/sim/serverHost';
 import type { MapId } from '../src/world/layout/data';
 
@@ -134,24 +134,27 @@ describe('co-op session simulation: the story operation', () => {
     expect(out.some((m) => m.d.k === 'revived')).toBe(false);
   });
 
-  it('on the Forge: the squad fights, cages open on request and embers pay everyone', () => {
+  it('on the Forge: two co-leaders deploy, the people are holed up in rooms (no cages), and the flames pay everyone', () => {
     const { sim, out, run, where } = setup('mission', 'forge');
     run(1);
     const allies = sim.debug.allies;
-    expect(allies.filter((a) => a.kind === 'soldier').length).toBe(2);
-    expect(allies.filter((a) => a.kind === 'survivor').map((a) => a.name)).toEqual(SURVIVORS.forge.map((s) => s.name));
-    const cage = allies.find((a) => a.trapped)!;
-    where.p1 = { x: cage.ref.x, z: cage.ref.z - 2.2, st: LIFE.up };
+    const squad = allies.filter((a) => a.kind === 'soldier').map((a) => a.name);
+    expect(squad.length).toBe(2);
+    expect(new Set(squad).size).toBe(2);
+    for (const n of squad) expect(VULCAN_LEADERSHIP.coLeads as readonly string[]).toContain(n);
+    expect(allies.some((a) => a.kind === 'survivor')).toBe(false);
+    expect(sim.forge!.view.squad).toEqual(squad);
+    // the roster and the story's state go out in the snapshots
+    const snap = [...out].reverse().find((m) => m.d.k === 's' && m.d.fg)!.d as { fg: unknown; fr?: unknown };
+    expect(snap.fg).toBeDefined();
+    expect(out.some((m) => m.d.k === 's' && m.d.fr)).toBe(true);
+    void SURVIVORS;
+    // a furnace is stoked on request, from in front of it
+    const front = sim.forge!.furnaceFront(0)!;
+    where.p2 = { x: front.x, z: front.z, st: LIFE.up };
     run(0.5);
-    sim.message('p1', { k: 'rescue', id: cage.name }, false);
-    expect(cage.trapped).toBe(false);
-    expect(out.some((m) => m.d.k === 'cash' && m.to === 'all' && m.d.c === SURVIVORS.rescueCash)).toBe(true);
-    const ember = sim.debug.embers[0]!;
-    where.p2 = { x: ember.x, z: ember.z, st: LIFE.up };
-    run(0.5);
-    sim.message('p2', { k: 'ember', i: 0 }, false);
-    expect(ember.taken).toBe(true);
-    expect(out.some((m) => m.d.k === 'cash' && m.d.c === FORGE_SQUAD.emberCash)).toBe(true);
+    sim.message('p2', { k: 'stoke', i: 0 }, false);
+    expect(sim.forge!.view.furnaces[0]!.phase).toBe('burning');
     // named infected travel in the snapshot with their tag
     const s = [...out].reverse().find((m) => m.d.k === 's')!.d as { z: number[][] };
     expect(sim.zombies.zombies.some((z) => z.tag)).toBe(true);
@@ -164,6 +167,26 @@ describe('co-op session simulation: the story operation', () => {
     expect(sim.zombies.zombies.filter((z) => z.carrierIdx > 0).length).toBe(5);
     expect((last('s')!.d.c as unknown[]).length).toBe(5);
   });
+
+  it('Standard Mazoku is the map\'s own operation plus the five carriers, nothing else, on every map', () => {
+    for (const map of ['district', 'forge', 'asylum'] as MapId[]) {
+      const make = (kind: SessionKind): SessionSim => {
+        const s = new SessionSim({ seed: 9, kind, map, send: () => {} });
+        s.players([{ id: 'p1', name: 'One' }]);
+        s.begin();
+        return s;
+      };
+      const a = make('mission');
+      const b = make('mazoku');
+      const others = (s: SessionSim) => s.zombies.zombies.filter((z) => !z.curable).map((z) => `${z.type}@${z.x.toFixed(1)},${z.z.toFixed(1)}`);
+      expect(b.zombies.zombies.filter((z) => z.curable).length).toBe(5);
+      expect(a.zombies.zombies.filter((z) => z.curable).length).toBe(0);
+      expect(others(b)).toEqual(others(a));
+      expect(b.debug.allies.map((x) => x.name)).toEqual(a.debug.allies.map((x) => x.name));
+      expect(JSON.stringify(b.forge?.view ?? null)).toBe(JSON.stringify(a.forge?.view ?? null));
+      expect([b.debug.defense.status, b.debug.hunt.status, b.debug.extraction.phase, !!b.debug.barricades]).toEqual([a.debug.defense.status, a.debug.hunt.status, a.debug.extraction.phase, !!a.debug.barricades]);
+    }
+  }, 30000);
 
   it('free roam has no infected, only the players', () => {
     const { sim, run, last } = setup('roam');
@@ -197,9 +220,9 @@ describe('co-op session simulation: difficulty', () => {
     const shambler = sim.zombies.zombies.find((z) => z.type === 'shambler')!;
     expect(shambler.maxHp).toBeCloseTo(ZOMBIES.shambler.hp * ZOMBIE_DIFFICULTY.nightmare.hp, 5);
     expect(shambler.dmgScale).toBe(ZOMBIE_DIFFICULTY.nightmare.damage);
-    const ash = sim.debug.allies.find((a) => a.name === 'Ash')!;
-    expect(ash.hp).toBe(Math.round(FORGE_SQUAD.allyHp * TEAM_SKILL.elite.hp));
-    expect(ash.stats.fireInterval).toBeCloseTo(FORGE_SQUAD.fireInterval / TEAM_SKILL.elite.fireRate, 5);
+    const lead = sim.debug.allies.find((a) => a.kind === 'soldier')!;
+    expect(lead.hp).toBe(Math.round(FORGE_SQUAD.allyHp * TEAM_SKILL.elite.hp));
+    expect(lead.stats.fireInterval).toBeCloseTo(FORGE_SQUAD.fireInterval / TEAM_SKILL.elite.fireRate, 5);
   });
 
   it('applies a change from the lobby on the next run, and ignores nonsense', () => {

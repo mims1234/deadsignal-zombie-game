@@ -12,7 +12,8 @@ import { CollisionWorld } from './collision';
 import type { GlowField } from './glow';
 import type { SpireHandle, TransmitterHandle } from './landmarks';
 import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, type MapId } from './layout/data';
-import { buildForge, FORGE, FORGE_BOUNDS } from './layout/forge';
+import { buildForge, FORGE, FORGE_BOUNDS, type ForgeHandles } from './layout/forge';
+import type { ForgeSites } from '../forge/sites';
 import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
@@ -44,6 +45,8 @@ export interface Level {
   spire: SpireHandle;
   /** The Asylum's buyable doors (built open; the purchasable loop shuts them for a run). null on other maps. */
   doors: DoorWorld | null;
+  /** The Forge: what its story animates (doors, the seven forges, the Hearth's gate, the furnace, the billboard). */
+  forgeFx: ForgeHandles | null;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -72,6 +75,8 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   let transmitter: TransmitterHandle;
   let spireHandle: SpireHandle;
   let site: Sites;
+  let forgeSites: ForgeSites | undefined;
+  let forgeFx: ForgeHandles | null = null;
   if (asylum) {
     const r = buildAsylum(c);
     transmitter = r.transmitter;
@@ -87,8 +92,10 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     const r = buildForge(c);
     transmitter = r.transmitter;
     spireHandle = r.spire;
+    forgeSites = r.sites;
+    forgeFx = r.handles;
     site = {
-      start: { x: FORGE.start.x, z: FORGE.start.z, yaw: yawFacing(0.7, -0.7) },
+      start: { x: FORGE.start.x, z: FORGE.start.z, yaw: yawFacing(0, 1) }, // in the Hearth, facing its gate
       lz: { ...FORGE.lz, terminalYaw: yawFacing(-0.8, -0.6) },
       defense: { ...FORGE.beacon },
       hunt: { wardenX: FORGE.infernus.x, wardenZ: FORGE.infernus.z, searchX: FORGE.crucible.x, searchZ: FORGE.crucible.z, searchRadius: 22 },
@@ -304,6 +311,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     hazardCenter: site.hazard,
     regionRects: d.regionRects,
     map,
+    forge: forgeSites,
   };
 
   world.groundSurface = (x: number, z: number): SurfaceKind => {
@@ -323,6 +331,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     transmitter,
     spire: spireHandle,
     doors,
+    forgeFx,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

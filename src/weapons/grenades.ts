@@ -42,6 +42,11 @@ export interface GrenadeHost {
   hurtPlayerExplosion(amount: number, x: number, z: number, closeness: number): void;
   onExplosion(x: number, y: number, z: number): void;
   playerVelocity(): { x: number; z: number };
+  /**
+   * The glow of a rocket in flight (null: none flying). Lent by an existing light: adding a light to the scene at runtime
+   * would recompile every material in it (the first-shot stutter).
+   */
+  rocketGlow?(at: { x: number; y: number; z: number } | null): void;
 }
 
 const MAX_LIVE = 4;
@@ -68,10 +73,12 @@ function makeRocket(): THREE.Object3D {
   const fin2 = new THREE.Mesh(fin, body);
   fin2.rotation.z = Math.PI / 2;
   g.add(new THREE.Mesh(tube, body), new THREE.Mesh(head, body), new THREE.Mesh(fin, body), fin2, new THREE.Mesh(flame, glow));
-  const light = new THREE.PointLight(0xff9a40, 30, 8, 2);
-  light.position.z = -0.4;
-  g.add(light);
   return g;
+}
+
+/** A rocket to compile the shaders with while the level loads (the first shot then has nothing left to build). */
+export function rocketForPrewarm(): THREE.Object3D {
+  return makeRocket();
 }
 
 export class GrenadeSystem {
@@ -179,6 +186,8 @@ export class GrenadeSystem {
         host.fx.muzzleSmoke(r.pos, this.tmpV.copy(d).negate(), false);
       }
     }
+    const lead = this.rockets[0];
+    host.rocketGlow?.(lead ? { x: lead.pos.x, y: lead.pos.y, z: lead.pos.z } : null);
   }
 
   private rocketBlast(r: Rocket, index: number): void {

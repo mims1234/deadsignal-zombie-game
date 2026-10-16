@@ -920,9 +920,18 @@ export const TEAM_SKILL: Record<TeamSkill, TeamTuning> = {
   elite: { label: 'ELITE', note: 'Special forces: hard to kill, rarely miss, often go for the head.', hp: 1.6, damageTaken: 0.7, accuracy: 1.22, fireRate: 1.4, damage: 1.4, range: 1.2, headshots: 2 },
 };
 
-/** The Forge map: the two soldiers who deploy with you, and the Trials of Ignis. */
+/**
+ * Vulcan's leadership (vulcan.genxmims.org). On the Forge two of the three co-leaders deploy with you (picked each run),
+ * the third is holed up somewhere in the Forge with Anya and four of the clan's members, and tomoe is in the HQ vault.
+ */
+export const VULCAN_LEADERSHIP = {
+  leader: 'tomoe',
+  coLeads: ['Athy', 'Marv03K', 'piryriry', '.maidlover.'],
+  officers: ['Anya'],
+} as const;
+
+/** The Forge map: the co-leaders who deploy with you, and the Seven Flames. */
 export const FORGE_SQUAD = {
-  allies: ['Ash', 'Cinder'],
   allyHp: 160,
   /** Share of an infected's hit a soldier actually takes (body armour). */
   allyDamageTaken: 0.75,
@@ -933,12 +942,80 @@ export const FORGE_SQUAD = {
   headDamage: 44,
   /** A soldier farther than this from the player regroups next to them. */
   regroupDistance: 45,
-  /** Cash per soldier who is still alive at extraction. */
+  /** Cash per co-leader who is still alive at extraction. */
   saveBonus: 500,
-  embers: [[-20, 46], [-58, 10], [-36, -46], [58, 46], [59, -4], [30, -40]] as [number, number][],
-  emberRadius: 1.6,
-  emberCash: 150,
-  trialsBonus: 600,
+  /**
+   * The seven embers - the Forge's seven currencies, one furnace each (`FORGE_STORY.furnaces`): Vulcan's own Ignis and
+   * the six allied flames. All seven relight the forges on Seven Flames Row.
+   */
+  flames: [
+    { name: 'IGNIS', color: 0xff7a1a },
+    { name: 'AMETHYST FLAME', color: 0xb26bff },
+    { name: 'KIZUNA SPARK', color: 0xffc84a },
+    { name: 'SAKURA SPARK', color: 0xff8ac8 },
+    { name: 'MOSSFIRE', color: 0x7ee05a },
+    { name: 'VOID EMBER', color: 0x8a6bff },
+    { name: 'FROSTFIRE', color: 0x7fd8ff },
+  ],
+} as const;
+
+/**
+ * The Forge's story operation (`src/forge/`): the holdouts barricaded into rooms, the infected at their doors, the
+ * Hearth, the ledger, the vault, the Rumble Pit, and the last carrier.
+ */
+export const FORGE_STORY = {
+  /** A bigger map, a longer night: the deadline, the firestorm and the escalation (see `logic/mission.ts`). */
+  clock: { deadline: 1080, surgeStart: 760, phases: [150, 420, 760] as readonly number[] },
+  /** Ordinary members holed up each run (besides the left-over co-leader and Anya; tomoe is in the vault). */
+  members: 4,
+  /** No infected on its feet within this of a door, and the people inside open up. */
+  doorClear: 6,
+  /** Reach of the hold at a door. */
+  doorReach: 2.4,
+  /** Hold time at a door, and cash for each person who makes it to the Hearth. */
+  rescueHold: 1.6,
+  rescueCash: 250,
+  /** The infected at the doors: how many each, how often one more comes, and when they let go. */
+  siege: { min: 3, max: 5, refillEvery: 24, releaseRange: 11, spawnAway: 26 },
+  ledger: { pickupRadius: 1.9, cashEach: 250, bonus: 900 },
+  rumble: { waves: [6, 9, 13] as readonly number[], gap: 7, cash: 1100, plates: 2, radius: 10 },
+  /**
+   * The seven foundries, one per ember (`FORGE_SQUAD.flames`), spread over the map: stoke the forge inside one (a hold of
+   * E within `reach`), then hold the hall for `hold` seconds while a horde comes for it (`draw` more every `drawEvery`
+   * seconds, from `drawAway` metres out, plus `drawPerPlayer` each for every extra player) until it catches. Each ember
+   * pays `cash`; all seven pay `bonus` and plates.
+   */
+  furnaces: { count: 7, hold: 30, reach: 2.8, stoke: 0.8, cash: 150, bonus: 700, plates: 2, drawEvery: 6, draw: [3, 5] as readonly number[], drawPerPlayer: 1, drawAway: [18, 30] as readonly number[] },
+  /**
+   * The Hearth's sentry gun: it covers the courtyard and the apron outside its gate, and never fires on a boss (its
+   * friend-or-foe still reads the Infernus and the reborn as clan).
+   */
+  sentry: { range: 34, turn: 7, fireEvery: 0.28, damage: 32, headDamage: 80, headChance: 0.22 },
+  /**
+   * The people you bring to the Hearth pick up a gun there: a weak shotgun each, at the infected in the yard or at its
+   * gates near them (never a boss). Damage falls off with distance; their kills pay nothing, like the sentry's.
+   */
+  guards: { range: 11, fireEvery: 1.5, damage: 20, headDamage: 38, headChance: 0.12 },
+  /**
+   * The last stand: from the extraction call until the virus burns out, the infected come for the Hearth in waves -
+   * more than the sentry can hold. One that stands over someone at the Hearth for `strike` seconds kills them (no more
+   * than one every `takeEvery` seconds, and never the last `finale.keep`).
+   */
+  assault: { waveEvery: 7, wave: 7, perPlayer: 0.45, maxAlive: 30, spawnAway: [26, 44] as readonly number[], strike: 2.4, takeEvery: 8, releaseRange: 5 },
+  finale: {
+    /** Seconds after the extraction is called before the carrier turns (random between): the siege comes first. */
+    delayMin: 30,
+    delayMax: 45,
+    /** The carrier convulses and glows for this long (the radio cuts in) before the reborn appears. */
+    warnLead: 6,
+    /** One more person at the Hearth falls every this many seconds while the reborn lives. */
+    killEvery: 8,
+    /** At least this many are always left at the Hearth. */
+    keep: 1,
+    hp: 3000,
+    /** Extra health for each player after the first (co-op). */
+    hpPerPlayer: 0.55,
+  },
 } as const;
 
 /** How a teammate or survivor looks (read by `coop/avatarLook.ts`); without one they are the stock figure. */
@@ -952,11 +1029,38 @@ export interface AvatarLook {
   glasses?: boolean;
   /** Trim: a nurse's cross and collar, ribbons, scrubs under a coat. */
   accent?: number;
+  /**
+   * The Forge's people (`coop/heroLook.ts`, `forge/looks.ts`): the handsome hero figure instead of the stock one, its
+   * build (a man's, a woman's, or a lean in-between), hair, outfit, signature items and a shadow of stubble.
+   */
+  hero?: boolean;
+  build?: 'm' | 'f' | 'lean';
+  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong' | 'animeSpiky' | 'animeBob' | 'animeRound';
+  heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress' | 'uniform' | 'tunic' | 'school';
+  /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`); tights under a dress. */
+  pants?: number;
+  accessories?: readonly ('foxEars' | 'catEars' | 'bunnyEars' | 'horns' | 'crown' | 'flameCrown' | 'mask' | 'sharkHood' | 'scarf' | 'goggles' | 'headphones' | 'glasses' | 'shades' | 'moonPin' | 'stars' | 'headset' | 'phoenixPin' | 'sash' | 'sunHat' | 'bow' | 'oniHorns' | 'headband' | 'tie' | 'skateboard' | 'starClip')[];
+  stubble?: boolean;
+  /**
+   * An anime-style figure (two of the co-leaders): a bigger head, large shining eyes, a small nose, and the mouth -
+   * 'soft' is round-cheeked with a blush and a cat smile, 'cool' is calm with a fine line of a mouth.
+   */
+  anime?: 'soft' | 'cool';
+  /** A dress's skirt: to mid-thigh, or long and flared below the knee (fading to the accent at the hem). */
+  skirt?: 'short' | 'long';
+  /** The colour long hair fades to at its ends. */
+  hairTip?: number;
+  /** Shoes (default dark leather). */
+  shoes?: number;
+  /** What they carry in their hands when they have no gun out (held like one). */
+  instrument?: 'bass';
 }
 
 /** The helpers who deploy with you, by map (the District has none). They use the Forge soldiers' numbers. */
 export interface SquadDef {
+  /** Who deploys; with `pick`, the pool `pick` of them are drawn from each run. */
   names: readonly string[];
+  pick?: number;
   tag: string;
   tagColor: string;
   weapons: readonly ('rifle' | 'shotgun' | 'pistol')[];
@@ -967,7 +1071,8 @@ export interface SquadDef {
   models?: readonly string[];
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
-  forge: { names: FORGE_SQUAD.allies, tag: 'SQUAD', tagColor: '#8fd18a', weapons: ['rifle', 'rifle'], helmets: [true, true] },
+  // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
+  forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
   // Lantern team: Rin Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
   asylum: {
     names: ['Vance', 'Okafor'],
@@ -1015,11 +1120,12 @@ export const ANIME_CAST = {
 } as const;
 
 /**
- * Trapped survivors (Standard, Standard Mazoku and the Forge): caged in around the map, freed with a hold of E, then
- * they fight alongside you. Side contract: get them out alive.
+ * Trapped survivors (Standard, Standard Mazoku and the Asylum): caged in around the map, freed with a hold of E, then
+ * they fight alongside you. Side contract: get them out alive. The Forge is different (`src/forge/`): its people
+ * barricaded themselves into rooms, and once their door is clear they slip away to the Hearth instead of fighting.
  */
 export const SURVIVORS = {
-  /** Who is waiting on each map. On the Forge they are the Vulcan clan's own leadership. */
+  /** Who is waiting on each map. The Forge's list is Vulcan's leadership (its holdouts are drawn each run). */
   district: [
     { name: 'Dr. Lena Ortiz', tag: 'FIELD MEDIC', color: 0xb8c4c8 },
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
@@ -1040,11 +1146,12 @@ export const SURVIVORS = {
     { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
   ],
   forge: [
-    { name: 'tomoe', tag: 'VULCAN LEADER', color: 0xb5501a },
-    { name: 'Anya', tag: 'VULCAN OFFICER', color: 0x9a3d1c },
-    { name: 'Marv03K', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'piryriry', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
-    { name: 'Athy', tag: 'VULCAN CO-LEADER', color: 0x8a4a22 },
+    { name: 'tomoe', tag: 'VULCAN', color: 0xb5501a },
+    { name: 'Athy', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: 'piryriry', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: '.maidlover.', tag: 'VULCAN', color: 0xb8202a },
+    { name: 'Anya', tag: 'VULCAN', color: 0x9a3d1c },
   ],
   hp: 110,
   damageTaken: 0.85,
@@ -1079,7 +1186,7 @@ export const VULCAN = {
     'Peaches_MLG', 'ReNoin', 'Saku', 'senchou', 'Shua', 'SniperKing12341', 'Spidey', 'Wind', 'Abhay', 'Aesc',
     'AnimeFreak', 'Arsam', 'Beru', 'dattoh', 'Downhill', 'Eeriie', 'Fallen', 'Gouda', 'H0LL0W', 'hiro', 'Kazu',
     'Lenkun', 'Nex Venrick', 'Quintino', 'Salagast', 'Serenity', 'SJ', 'ToastiestOrb', 'Xarosa', 'Yuichiro', 'Zaraki',
-    '_itz_diablo_', '!sikao', '.piesek.', 'Maidlover', 'jnkyu', 'Vorn', 'AndriD', 'hemantt', '$hivam', 'abi', 'Adisty',
+    '_itz_diablo_', '!sikao', '.piesek.', 'jnkyu', 'Vorn', 'AndriD', 'hemantt', '$hivam', 'abi', 'Adisty',
     'Akansha', 'Aoi', 'Bai Momints', 'BikRaM69', 'BROKE', 'bron', 'Claw', 'Danish.', 'DEMON', 'Dev', 'e1sh3ths',
     'Ezer', 'Fear', 'FonduKing', 'hsyil', 'IDK', 'Jackette', 'Jum', 'J18F.5R', 'King', 'Kitsune', 'Lab',
     'Lord Autismo', 'Lost', 'March', 'moon', 'Phlangor Mutupil', 'Qifrey', 'Regen', 'Rhea', 'Sen', 'Sloth broth',

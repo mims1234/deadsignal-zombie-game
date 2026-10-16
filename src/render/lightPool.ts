@@ -58,6 +58,11 @@ export class LightPool {
   lampGain: Float32Array | null = null;
   /** Extra per-lamp dimming 0..1 on top of its mode (the Asylum: lamps fail near the Matron, `matron.ts`). */
   dim: ((lamp: LampSpec) => number) | null = null;
+  /**
+   * The camera is under a roof. The room's own lamps then come first: they are all that lights it (the sky is turned
+   * down indoors), and a bright lamp outside would only shine through the walls (pooled lights cast no shadows).
+   */
+  private focusIndoor = false;
 
   constructor(parent: THREE.Object3D, maxCount: number, active = maxCount) {
     this.active = Math.min(active, maxCount);
@@ -77,6 +82,12 @@ export class LightPool {
     this.assigned.fill(-1);
     this.fade.fill(0);
     this.timer = 0;
+  }
+
+  setFocusIndoor(indoor: boolean): void {
+    if (indoor === this.focusIndoor) return;
+    this.focusIndoor = indoor;
+    this.timer = 0; // choose again now
   }
 
   /** Number of lights allowed to be active (quality preset); the rest fade out. */
@@ -127,7 +138,8 @@ export class LightPool {
       if (d2 > reach * reach) continue;
       const gain = this.lampGain ? this.lampGain[i]! : 1;
       if (gain < 0.01) continue; // switched off
-      scores.push({ i, s: ((l.weight ?? 1) * l.intensity * gain) / (d2 + 30) });
+      const room = this.focusIndoor ? (l.indoor ? 4 : 0.12) : l.indoor ? 0.6 : 1;
+      scores.push({ i, s: ((l.weight ?? 1) * l.intensity * gain * room) / (d2 + 30) });
     }
     scores.sort((a, b) => b.s - a.s);
     const wanted = new Set<number>();

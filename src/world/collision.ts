@@ -30,6 +30,11 @@ export interface ColliderSpec {
   /** How the collider is drawn on the tactical map ('none' = hidden). */
   mapKind?: MapKind;
   tag?: string;
+  /**
+   * A raised floor or a stair step you walk on (a foundry's deck): its top is ground for the infected too
+   * (`floorHeight`) and the nav grid treats it as open floor, not an obstacle. Its open edges need rims of their own.
+   */
+  floor?: boolean;
 }
 
 export interface BoxCollider {
@@ -52,6 +57,7 @@ export interface BoxCollider {
   surface: SurfaceKind;
   mapKind: MapKind;
   tag: string;
+  floor: boolean;
 }
 
 export type RayFilter = 'shots' | 'move';
@@ -91,6 +97,8 @@ export class CollisionWorld {
   private readonly grid: number[][];
   private stamp: number[] = [];
   private stampCounter = 1;
+  /** 1 where a grid cell holds a raised floor (`ColliderSpec.floor`): everywhere else `floorHeight` is 0 at once. */
+  private readonly floorCells: Uint8Array;
   /** Surface material of the ground plane at a location (defaults to concrete). */
   groundSurface: (x: number, z: number) => SurfaceKind = () => 'concrete';
 
@@ -100,6 +108,7 @@ export class CollisionWorld {
     this.cols = Math.ceil((this.bounds.maxX - this.bounds.minX) / this.cell);
     this.rows = Math.ceil((this.bounds.maxZ - this.bounds.minZ) / this.cell);
     this.grid = Array.from({ length: this.cols * this.rows }, () => []);
+    this.floorCells = new Uint8Array(this.cols * this.rows);
   }
 
   add(spec: ColliderSpec): BoxCollider {
@@ -128,6 +137,7 @@ export class CollisionWorld {
       surface: spec.surface ?? 'concrete',
       mapKind: spec.mapKind ?? 'prop',
       tag: spec.tag ?? '',
+      floor: spec.floor ?? false,
     };
     this.colliders.push(c);
     this.stamp.push(0);
@@ -136,6 +146,7 @@ export class CollisionWorld {
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
         this.grid[j * this.cols + i]!.push(c.id);
+        if (c.floor) this.floorCells[j * this.cols + i] = 1;
       }
     }
     return c;
@@ -200,6 +211,22 @@ export class CollisionWorld {
     this.forEachNear(x, z, r, (c) => {
       if (!c.blocksMove) return;
       if (c.y1 > maxTop || c.y1 <= h) return;
+      if (circleOverlapsBox(c, x, z, r)) h = c.y1;
+    });
+    return h;
+  }
+
+  /**
+   * The floor an infected stands on at (x, z): the highest top of the raised floors (`ColliderSpec.floor`) under a
+   * footprint of radius `r`, else 0 (the ground). Floors never stack, so it depends on (x, z) alone: the co-op host
+   * and its guests work it out the same way and it never needs sending.
+   */
+  floorHeight(x: number, z: number, r: number): number {
+    const [i, j] = this.cellOf(x, z);
+    if (this.floorCells[j * this.cols + i] === 0) return 0;
+    let h = 0;
+    this.forEachNear(x, z, r, (c) => {
+      if (!c.floor || c.y1 <= h) return;
       if (circleOverlapsBox(c, x, z, r)) h = c.y1;
     });
     return h;

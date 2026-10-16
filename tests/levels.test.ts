@@ -108,11 +108,25 @@ describe('the Asylum is built clean', () => {
   });
 });
 
+/**
+ * The Forge's rooms are sealed on purpose: the safe rooms (people barricaded themselves in; nobody walks through the
+ * front) and the Hearth (the courtyard you see into through its gate). Pockets inside those are expected.
+ */
+let forgeSites: NonNullable<Level['data']['forge']> | null = null;
+function intended(map: MapId, p: { x: number; z: number }): boolean {
+  if (map !== 'forge') return false;
+  forgeSites ??= new SessionSim({ map, send: () => {} }).level.data.forge!;
+  const sites = forgeSites;
+  const h = sites.hearth;
+  if (p.x > h.x0 && p.x < h.x1 && p.z > h.z0 && p.z < h.z1) return true;
+  return sites.rooms.some((r) => Math.hypot(p.x - r.inX, p.z - r.inZ) < 5 || Math.hypot(p.x - r.backX, p.z - r.backZ) < 4);
+}
+
 describe('every map', () => {
   for (const map of MAP_IDS) {
     it(`${map}: no sealed pockets bigger than a gap behind a prop`, () => {
       const { at } = pockets(map);
-      expect(at.filter((p) => p.cells > 6)).toEqual([]);
+      expect(at.filter((p) => p.cells > 6 && !intended(map, p))).toEqual([]);
     });
   }
 });

@@ -74,6 +74,8 @@ export class MissionRuntime implements MissionApi {
   private heliDoor = 0;
   private departT = -1;
   private hazardR = 0;
+  /** 0..1: the firestorm dying down after the Forge's burnout. */
+  private calmT = 0;
   private hazardWasInside = false;
   private coughTimer = 0;
   private wasInsideDefense = true;
@@ -101,6 +103,10 @@ export class MissionRuntime implements MissionApi {
   readonly night: AsylumNight | null;
   /** The defense contract completed: on the Asylum the boiler house power is back (wire to the power switch here). */
   onPowerRestored: (() => void) | null = null;
+  /** The Forge: the helicopter holds off (its countdown stops) while the reborn is loose. */
+  holdExtraction: () => boolean = () => false;
+  /** The Forge after the burnout: the firestorm dies down and stops hurting. */
+  calm: () => boolean = () => false;
 
   constructor(
     private readonly ctx: GameCtx,
@@ -293,6 +299,7 @@ export class MissionRuntime implements MissionApi {
     ctx.level.transmitter.setProgress(0);
     ctx.level.spire.setSurge(false);
     this.hazardR = 0;
+    this.calmT = 0;
     this.hazardWasInside = false;
     this.coughTimer = 0;
     this.wasInsideDefense = true;
@@ -386,7 +393,7 @@ export class MissionRuntime implements MissionApi {
 
     // ---- extraction sequence ----
     if (extractionInProgress(ex)) {
-      if (!this.follow) for (const ev of updateExtraction(ex, dt)) this.onExtractionEvent(ev);
+      if (!this.follow) for (const ev of updateExtraction(ex, this.holdExtraction() ? 0 : dt)) this.onExtractionEvent(ev);
       this.animateHelicopter(dt, time, camera);
     } else if (ex.phase === 'extracted' || ex.phase === 'failed') {
       this.animateHelicopter(dt, time, camera);
@@ -706,10 +713,18 @@ export class MissionRuntime implements MissionApi {
       this.sirenLoop = ctx.audio.startLoop('siren', { volume: 0.3 });
       ctx.level.spire.setSurge(true);
     }
-    const r = active ? hazardRadius(s.elapsed, calledAt, extractionInProgress(ex), this.toLzDist, this.clock) : 0;
+    const calm = this.calm();
+    if (calm && this.calmT < 1) this.calmT = Math.min(1, this.calmT + dt / 6);
+    else if (!calm) this.calmT = 0;
+    const r = active && this.calmT < 1 ? hazardRadius(s.elapsed, calledAt, extractionInProgress(ex), this.toLzDist, this.clock) * (1 - this.calmT) : 0;
     this.hazardR = r;
     this.wall.setRadius(r);
-    this.wall.setIntensity(active ? clamp01((s.elapsed - start) / 5) : 0);
+    this.wall.setIntensity(active ? clamp01((s.elapsed - start) / 5) * (1 - this.calmT) : 0);
+    if (calm && this.sirenLoop) {
+      this.sirenLoop.stop(2);
+      this.sirenLoop = null;
+      ctx.level.spire.setSurge(false);
+    }
     this.wall.update(dt, time, camera);
     const inside = alive && isInsideHazard(p.x, p.z, data.hazardCenter.x, data.hazardCenter.z, r);
     if (inside) {

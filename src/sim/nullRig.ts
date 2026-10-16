@@ -27,15 +27,15 @@ class NullRig implements ZombieRig {
   dispose(): void {}
 
   getHeadWorld(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.root.position.x, this.height - this.headRadius, this.root.position.z);
+    return out.set(this.root.position.x, this.root.position.y + this.height - this.headRadius, this.root.position.z);
   }
 
   getChestWorld(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.root.position.x, this.height * 0.68, this.root.position.z);
+    return out.set(this.root.position.x, this.root.position.y + this.height * 0.68, this.root.position.z);
   }
 
   getHandWorld(out: THREE.Vector3): THREE.Vector3 {
-    return out.set(this.root.position.x, this.height * 0.6, this.root.position.z);
+    return out.set(this.root.position.x, this.root.position.y + this.height * 0.6, this.root.position.z);
   }
 }
 

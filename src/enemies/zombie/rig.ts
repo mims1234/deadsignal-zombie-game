@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import type { ZombieType } from '../../types';
 import type { ZombieAnimState, ZombieRig, ZombieTheme } from '../zombieRigTypes';
 import { ASYLUM_VARIANT_COUNT, asylumDims, buildAsylumVariant } from './asylum';
+import { FORGE_VARIANT_COUNT, buildForgeVariant } from './forge';
 import { PO, type RigAnimState, evalPose, makeRigAnimState } from './anim';
 import { B, BONE_NAMES, BONE_PARENT, type Dims, NB, restPositions } from './dims';
 import { type ProbeSets, computeProbes } from './probes';
@@ -28,7 +29,7 @@ export interface TypeAssets {
 
 export function makeTypeAssets(type: ZombieType, theme?: ZombieTheme): TypeAssets {
   const D = theme === 'asylum' ? asylumDims(type) : dimsFor(type);
-  const count = theme === 'asylum' ? ASYLUM_VARIANT_COUNT[type] : VARIANT_COUNT[type];
+  const count = theme === 'asylum' ? ASYLUM_VARIANT_COUNT[type] : theme === 'forge' ? FORGE_VARIANT_COUNT[type] : VARIANT_COUNT[type];
   return {
     type,
     theme,
@@ -46,7 +47,7 @@ export function variantGeometry(a: TypeAssets, index: number): THREE.BufferGeome
   const i = index % a.variants.length;
   let g = a.variants[i];
   if (!g) {
-    g = a.theme === 'asylum' ? buildAsylumVariant(a.type, i) : buildVariant(a.type, i);
+    g = a.theme === 'asylum' ? buildAsylumVariant(a.type, i) : a.theme === 'forge' ? buildForgeVariant(a.type, i) : buildVariant(a.type, i);
     a.variants[i] = g;
     a.probes[i] = computeProbes(g, a.rest);
   }
@@ -256,6 +257,29 @@ export class ZombieRigImpl implements ZombieRig {
 
   setVisible(visible: boolean): void {
     this.root.visible = visible;
+  }
+
+  /** A group on the head bone, at the head's centre (things worn on the head ride it through every animation). */
+  private worn: THREE.Group | null = null;
+
+  headAttach(obj: THREE.Object3D): void {
+    if (!this.worn) {
+      const D = this.assets.D;
+      this.worn = new THREE.Group();
+      this.worn.position.set(0, D.headCenterUp, -0.004 * D.k * D.headS);
+      this.worn.scale.setScalar(0.82 * D.k * D.headS);
+      this.bones[B.head]!.add(this.worn);
+    }
+    this.worn.add(obj);
+  }
+
+  clearAttach(): void {
+    const w = this.worn;
+    if (!w) return;
+    for (const c of [...w.children]) {
+      w.remove(c);
+      c.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
+    }
   }
 
   /** Debug access (harness). */

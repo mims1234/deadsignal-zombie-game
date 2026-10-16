@@ -1,5 +1,6 @@
 /** Entry point: capability check, game construction, development test hooks. */
 import { Game } from './game/game';
+import { showVersionTag } from './version';
 
 function showFatal(title: string, message: string): void {
   const root = document.getElementById('ui-root');
@@ -18,6 +19,7 @@ function showFatal(title: string, message: string): void {
 }
 
 async function main(): Promise<void> {
+  showVersionTag();
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   const uiRoot = document.getElementById('ui-root');
   if (!canvas || !uiRoot) {
