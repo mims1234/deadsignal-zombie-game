@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.110",
+      "date": "2026-10-16",
+      "title": "tomoe's rounded hair",
+      "notes": [
+        "tomoe's spiky hair is now soft and rounded: a full white dome with a rounded fringe over the brow."
+      ]
+    },
+    {
       "version": "0.1.109",
       "date": "2026-10-16",
       "title": "Join a co-op run mid-game, and a phone title that fits",

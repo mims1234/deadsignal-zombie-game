@@ -480,6 +480,23 @@ export function addHeroHair(head: THREE.Object3D, look: AvatarLook): void {
       for (const s of [-1, 1]) put(head, new THREE.ConeGeometry(0.024, 0.09, 5), hair, s * 0.105, 0.0, -0.02, [0, 0, s * -2.4]);
       break;
     }
+    case 'animeRound': {
+      // soft and rounded: a full, fluffy dome of hair, a rounded fringe over the brow (clear of the eyes), soft tufts
+      // over the ears and at the nape, a sheen on the crown
+      base(1.08, 0.55);
+      blob(0, 0.075, 0.012, 0.13, 1.06, 0.7, 1.1);
+      blob(0, 0.0, 0.05, 0.118, 1.02, 0.8, 0.9);
+      for (let i = 0; i < 5; i++) {
+        const x = -0.064 + i * 0.032;
+        blob(x, 0.058 - Math.abs(x) * 0.15, -0.098 + Math.abs(x) * 0.18, 0.034, 1.15, 0.85, 0.6, i % 2 ? hi : hair);
+      }
+      for (const s of [-1, 1]) {
+        blob(s * 0.104, 0.005, -0.012, 0.042, 0.62, 1.05, 0.95);
+        blob(s * 0.06, -0.06, 0.09, 0.045, 1, 0.8, 0.9);
+      }
+      blob(0.03, 0.14, -0.02, 0.05, 1.3, 0.55, 1.1, hi);
+      break;
+    }
     case 'animeLong': {
       // long and straight to the waist, fading to `hairTip` at the ends: fine bangs, long locks framing the face and
       // falling down the front, and a curtain down the back

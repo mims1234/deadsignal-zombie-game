@@ -1035,7 +1035,7 @@ export interface AvatarLook {
    */
   hero?: boolean;
   build?: 'm' | 'f' | 'lean';
-  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong' | 'animeSpiky' | 'animeBob';
+  heroHair?: 'undercut' | 'swept' | 'wolf' | 'waves' | 'highPony' | 'braids' | 'spiky' | 'buzz' | 'bob' | 'lowPony' | 'curls' | 'animeBun' | 'animeLong' | 'animeSpiky' | 'animeBob' | 'animeRound';
   heroOutfit?: 'apron' | 'jacket' | 'hoodie' | 'workwear' | 'coat' | 'dress' | 'uniform' | 'tunic' | 'school';
   /** Shirt / trousers colours under the outfit (the outfit's own colour is the figure's `color`); tights under a dress. */
   pants?: number;

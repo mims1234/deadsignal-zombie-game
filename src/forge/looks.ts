@@ -12,9 +12,9 @@ type Look = Omit<AvatarLook, 'hero'>;
 
 /** tomoe, the co-leaders and Anya: hero versions with their own hair, outfit and signature item. */
 const LEADERSHIP: Record<string, Look & { color: number }> = {
-  // drawn anime-style: a shock of spiky white hair, sharp blue eyes, a loose white tunic over a navy turtleneck, blue
+  // drawn anime-style: soft, rounded white hair, sharp blue eyes, a loose white tunic over a navy turtleneck, blue
   // shorts, purple sneakers, a yellow skateboard slung across the back
-  tomoe: { build: 'lean', anime: 'cool', heroHair: 'animeSpiky', hairColor: 0xeeeef4, skin: 0xf6e0cc, eyes: 0x3a6ed8, heroOutfit: 'tunic', color: 0xe4e2f2, accent: 0x1c2a6a, pants: 0x2a4aa8, shoes: 0x5a3a9a, accessories: ['skateboard'] },
+  tomoe: { build: 'lean', anime: 'cool', heroHair: 'animeRound', hairColor: 0xeeeef4, skin: 0xf6e0cc, eyes: 0x3a6ed8, heroOutfit: 'tunic', color: 0xe4e2f2, accent: 0x1c2a6a, pants: 0x2a4aa8, shoes: 0x5a3a9a, accessories: ['skateboard'] },
   // co-leader, drawn anime-style: calm, very long pale-blue hair fading to deep blue at the ends, a white wide-brimmed
   // hat with a glowing butterfly on the brim, a long white dress fading to blue at the hem
   Athy: { build: 'f', female: true, anime: 'cool', heroHair: 'animeLong', hairColor: 0xdde8f6, hairTip: 0x3f6fd0, skin: 0xf6e2d6, eyes: 0x4aa6d8, heroOutfit: 'dress', skirt: 'long', color: 0xc2d6f4, accent: 0x2a4fb0, pants: 0xeef2f8, accessories: ['sunHat'] },
