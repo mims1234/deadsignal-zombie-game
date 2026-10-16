@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.115",
+      "date": "2026-10-17",
+      "title": "A stand-in anime model for the Sakura District",
+      "notes": [
+        "Until the cast's own VRoid models are added, every Sakura District character wears one stand-in anime model (pixiv's sample, whose licence allows it) instead of the old blocky stand-in figures: Hana, Yuzu, the survivors, the boss, and the infected tinted grey with red eyes.",
+        "Each character switches to their own model as soon as its file is added to public/anime/ (see the README there)."
+      ]
+    },
+    {
       "version": "0.1.114",
       "date": "2026-10-17",
       "title": "Admin stats without the admins",

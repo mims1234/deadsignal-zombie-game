@@ -36,4 +36,7 @@ Hair and skirt physics (spring bones) are not simulated in the game: they hold t
 Only use models you made yourself or whose licence allows use in a game you distribute (check each VRoid Hub /
 Booth model's terms). Never use models extracted from other games.
 
-`test/` is a local, git-ignored stand-in for development (`test/sample.vrm`, pixiv's sample model).
+## Stand-in
+
+`stand-in.vrm`, when present, stands in for every missing model (put any VRM there whose licence allows you to
+ship it). `test/sample.vrm` is the same for local development only: git-ignored and removed from builds.

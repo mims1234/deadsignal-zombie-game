@@ -16,8 +16,12 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { type VRM, VRMAimConstraint, VRMLoaderPlugin, type VRMHumanBoneName, VRMNodeConstraintManager, VRMRollConstraint, VRMRotationConstraint, VRMUtils } from '@pixiv/three-vrm';
 
-/** A local stand-in used for any missing model while developing (git-ignored, never shipped). */
-const STAND_IN = 'test/sample.vrm';
+/**
+ * Stand-ins for any missing model, first found wins: `stand-in.vrm` ships with the game as a placeholder until the
+ * cast's own models are added; `test/sample.vrm` is a local, git-ignored one for development.
+ */
+const STAND_INS = ['stand-in.vrm', 'test/sample.vrm'];
+const standIn = (): AnimeTemplate | null => STAND_INS.map((f) => templates.get(f)).find((t) => !!t) ?? null;
 
 const BONES = [
   'hips', 'spine', 'chest', 'upperChest', 'neck', 'head',
@@ -117,23 +121,23 @@ export function loadAnime(file: string): Promise<AnimeTemplate | null> {
  * else nothing (the caller uses the game's stock figure).
  */
 export function animeModel(file: string | undefined, fallbacks: readonly string[] = []): AnimeTemplate | null {
-  for (const f of [file, ...fallbacks, STAND_IN]) {
+  for (const f of [file, ...fallbacks]) {
     if (!f) continue;
     const t = templates.get(f);
     if (t) return t;
   }
-  return null;
+  return standIn();
 }
 
 /** Whether a slot shows its own file, a stand-in, or nothing. */
 export function animeSlotState(file: string): 'own' | 'stand-in' | 'none' {
   if (templates.get(file)) return 'own';
-  return templates.get(STAND_IN) ? 'stand-in' : 'none';
+  return standIn() ? 'stand-in' : 'none';
 }
 
 /** Load every listed file (and the stand-in), in parallel. */
 export async function loadAnimeFiles(files: readonly string[]): Promise<void> {
-  await Promise.all([...new Set([...files, STAND_IN])].map((f) => loadAnime(f)));
+  await Promise.all([...new Set([...files, ...STAND_INS])].map((f) => loadAnime(f)));
 }
 
 function makeTemplate(file: string, vrm: VRM): AnimeTemplate {
