@@ -51,6 +51,8 @@ export class AnimeZombieRig implements ZombieRig {
   private readonly fig: StyleFigure;
   readonly body: AnimeBody;
   private readonly src: PoseSource;
+  private d2 = 0;
+  private skip = 0;
 
   constructor(type: ZombieType, template: AnimeTemplate, def: { radius: number; height: number; headRadius: number }, seed: number) {
     this.type = type;
@@ -102,7 +104,15 @@ export class AnimeZombieRig implements ZombieRig {
     this.fig.reset(seed);
   }
 
+  setDistance2(d2: number): void {
+    this.d2 = d2;
+  }
+
   update(s: ZombieAnimState, dt: number): void {
+    // a model is ~13 skinned meshes, so a crowd of them is the Sakura District's frame cost: far ones are re-posed only every
+    // 2nd or 3rd frame (the pose is a pure function of time, so it just steps), the dying and the struck always are
+    const every = this.d2 > 55 * 55 ? 3 : this.d2 > 30 * 30 ? 2 : 1;
+    if (every > 1 && s.mode !== 'death' && s.hitKick <= 0 && this.skip++ % every !== 0) return;
     this.fig.update(s, dt);
     // bring the stand-in's joints up to date without walking the model's whole skeleton twice
     this.body.root.matrixWorldAutoUpdate = false;

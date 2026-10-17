@@ -1105,7 +1105,7 @@ export class Game implements GameCtx {
 
   /**
    * Dynamic resolution: if a large share of frames miss ~50 fps over a two-second window the render scale steps down
-   * (never below 0.6); after a long clean stretch it steps back up. Only active while playing and never on the dev hooks.
+   * (never below 0.75: lower looked like a pixelated mess mid-fight); after a long clean stretch it steps back up. Only active while playing and never on the dev hooks.
    */
   private adaptResolution(dt: number): void {
     if (this.state !== 'playing' || this.devFrozen) return;
@@ -1116,7 +1116,7 @@ export class Game implements GameCtx {
     const slowShare = this.adaptSlow / Math.max(1, this.adaptFrames);
     this.adaptCooldown -= this.adaptWindow;
     if (this.adaptCooldown <= 0) {
-      if (slowShare > 0.25 && this.renderer.renderScale > 0.61) {
+      if (slowShare > 0.25 && this.renderer.renderScale > 0.76) {
         this.renderer.setRenderScale(this.renderer.renderScale - 0.1);
         this.adaptCooldown = 3;
       } else if (slowShare === 0 && this.renderer.renderScale < 0.99) {

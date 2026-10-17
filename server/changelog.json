@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.118",
+      "date": "2026-10-17",
+      "title": "Fights on the Sakura District stay sharp",
+      "notes": [
+        "Fighting on the Sakura District no longer drops the picture to a blurry, pixelated mess: the game's automatic resolution drop now stops at 75% instead of 60%.",
+        "The anime-model infected cost far more to draw than the stock ones, which is what slowed fights down; the ones far from you now move at a lower rate, so the game stays smooth and the resolution holds up."
+      ]
+    },
+    {
       "version": "0.1.117",
       "date": "2026-10-17",
       "title": "02 Cyberpunk joins the Sakura District",

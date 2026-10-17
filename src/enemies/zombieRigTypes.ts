@@ -45,6 +45,8 @@ export interface ZombieRig {
   readonly headRadius: number;
   /** Re-randomise appearance / gait phase for pooled reuse. Must not allocate large objects. */
   reset(seed: number): void;
+  /** Squared distance to the nearest player, set before each `update`: a costly rig may animate less often when far. */
+  setDistance2?(d2: number): void;
   /** Pose the rig. Call once per frame per visible zombie. */
   update(state: ZombieAnimState, dt: number): void;
   /** Animated centre of the head sphere in world space (used for headshot detection). */
