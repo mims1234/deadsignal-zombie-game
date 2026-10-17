@@ -587,7 +587,8 @@ export class SessionSim {
         if (d.a === 'charm') q.takeCharm(i, p.ref.x, p.ref.y, p.ref.z);
         else if (d.a === 'tie') q.tie(p.ref.x, p.ref.z);
         else if (d.a === 'light') q.light(i, p.ref.x, p.ref.z);
-        else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z, this.defense.status === 'active');
+        // KAIKA: a relay already finished still carries the bell (the helicopter waits for the bloom, so it must stay possible)
+        else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z, this.defense.status === 'active' || (this.campaign && this.defense.status === 'complete'));
         this.sakuraEvents();
         return;
       }
@@ -1083,7 +1084,7 @@ export class SessionSim {
         out.rc = bits(this.records.found); // the patient files taken
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
       }
-      if (this.sakura) out.sq = encodeQuest(this.sakura.view); // the Thousand Lanterns
+      if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
       if (this.forge) {
         // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
         out.fg = encodeState(this.forge.view);

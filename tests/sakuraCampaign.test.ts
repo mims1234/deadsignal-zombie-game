@@ -7,7 +7,7 @@ import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { CHAPTERS, CHECKPOINT, FIELD, MARK, PLACE_RADIO, chapterIndex, placeAt } from '../src/sakura/campaign';
 import { STORIES, storiesOpen } from '../src/sakura/missions';
-import { SakuraQuest, type QuestView } from '../src/sakura/quest';
+import { SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
 import { VARIANTS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 
@@ -75,5 +75,33 @@ describe('KAIKA', { timeout: 30000 }, () => {
     q.view.phase = 'bloom';
     sim.tick(1 / 30);
     expect(d.extraction.phase).toBe('available');
+  });
+
+  it('reports the quest on its own key, beside the squad rows (a client reads `sq` as the squad)', () => {
+    let snap: Record<string, unknown> | null = null;
+    const sim = new SessionSim({ seed: 7, kind: 'kaika', map: 'sakura', send: (_to, d) => { if (d.k === 's') snap = d; } });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const st = sim.level.data.playerStart;
+    sim.message('p1', { k: 'p', x: st.x, y: 0, z: st.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
+    for (let i = 0; i < 30; i++) sim.tick(1 / 30);
+    const s = snap as unknown as { sq: unknown[]; lq: unknown };
+    expect(s.sq.every((r) => Array.isArray(r))).toBe(true);
+    expect(decodeQuest(s.lq)?.phase).toBe('charms');
+  });
+
+  it('still blooms when the relay was finished before the lanterns (no locked helicopter)', () => {
+    const sim = new SessionSim({ seed: 6, kind: 'kaika', map: 'sakura', send() {} });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const q = (sim as unknown as { sakura: SakuraQuest }).sakura;
+    const b = q.spots.bell;
+    sim.message('p1', { k: 'p', x: b.x, y: 0, z: b.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
+    sim.tick(1 / 30);
+    sim.debug.defense.status = 'complete';
+    q.view.phase = 'bell';
+    q.view.lit = 5;
+    sim.message('p1', { k: 'sq', a: 'ring', i: 0 }, false);
+    expect(q.view.phase).toBe('bloom');
   });
 });

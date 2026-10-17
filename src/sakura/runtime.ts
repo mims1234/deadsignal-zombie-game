@@ -706,7 +706,7 @@ export class SakuraRuntime {
     if (a === 'charm') q.takeCharm(i, p.x, p.y, p.z);
     else if (a === 'tie') q.tie(p.x, p.z);
     else if (a === 'light') q.light(i, p.x, p.z);
-    else q.ring(p.x, p.z, g.session.defense.status === 'active');
+    else q.ring(p.x, p.z, g.session.defense.status === 'active' || (this.campaign && g.session.defense.status === 'complete')); // KAIKA: a finished relay still carries it
     this.consumeLocal();
     this.present(false);
   }

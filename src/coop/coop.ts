@@ -494,7 +494,7 @@ export class CoopSession {
       });
       // the Forge's story first: its roster deploys the co-leaders the squad rows below are about
       if (g.forge && d.fg !== undefined) g.forge.applyWire(d.fr, d.fg);
-      if (g.sakura && d.sq !== undefined) g.sakura.applyWire(d.sq);
+      if (g.sakura && d.lq !== undefined) g.sakura.applyWire(d.lq);
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
