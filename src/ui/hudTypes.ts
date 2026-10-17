@@ -312,7 +312,15 @@ export interface MenuCallbacks {
   onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }
 
+/** An extra page in the pause menu's tabs (a map's own: the Sakura District's journal). */
+export interface PauseTab {
+  label: string;
+  build(): HTMLElement;
+}
+
 export interface MenusApi {
+  /** A map's own page in the pause menu, asked for each time the menu opens. */
+  pauseTab: (() => PauseTab | null) | null;
   mount(root: HTMLElement): void;
   /** Title screen over the live 3D scene (transparent background with gradient framing). */
   showTitle(best: BestRun | null): void;

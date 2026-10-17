@@ -319,6 +319,10 @@ export class CoopSession {
       g.forge.requestBell = () => this.toHost({ k: 'bell' });
       g.forge.requestStoke = (i) => this.toHost({ k: 'stoke', i });
     }
+    // the Sakura District's Thousand Lanterns: the charms, the tree, the lanterns and the bell are the simulation's
+    if (g.sakura) {
+      g.sakura.request = (a, i) => this.toHost({ k: 'sq', a, i });
+    }
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
     this.life = LIFE.up;
@@ -489,6 +493,7 @@ export class CoopSession {
       });
       // the Forge's story first: its roster deploys the co-leaders the squad rows below are about
       if (g.forge && d.fg !== undefined) g.forge.applyWire(d.fr, d.fg);
+      if (g.sakura && d.sq !== undefined) g.sakura.applyWire(d.sq);
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows

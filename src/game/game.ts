@@ -320,13 +320,8 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.groundColor.set(0x4a1c08);
       this.renderer.light.fill.color.set(0xff7a2a);
     } else if (this.mapId === 'sakura') {
-      // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill
-      setSkyColors(this.renderer.sky, { zenith: 0x1e1434, mid: 0x5a3466, horizon: 0xd8869e, glow: 0xff9670, haze: 0x6a4058, stars: 0.35 });
-      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
-      fog?.color.set(0x4a2c44);
-      this.renderer.light.hemi.color.set(0xe6b4d2);
-      this.renderer.light.hemi.groundColor.set(0x2a1a2a);
-      this.renderer.light.fill.color.set(0xffb4d4);
+      // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill (the bloom turns it to a blood moon)
+      SakuraRuntime.applyDusk(this.renderer);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -1065,7 +1060,7 @@ export class Game implements GameCtx {
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
-    this.sakura?.reset();
+    this.sakura?.reset(this.mode === 'coop');
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
@@ -1297,7 +1292,7 @@ export class Game implements GameCtx {
 
     // ---- health regeneration ----
     s.sinceDamage += dt;
-    if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt, this.asylum?.maxHealth); // Asylum loop: perks raise the max
+    if (alive && !this.mission.insideHazard) s.vitals.health = regenHealth(s.vitals.health, s.sinceDamage, dt, this.asylum?.maxHealth ?? this.sakura?.maxHealth); // Asylum loop / the Sakura District's altar: perks raise the max
 
     // ---- mission ----
     // co-op free roam has no mission; a co-op story run shows the simulation's (the clock comes in its reports)
@@ -2073,6 +2068,7 @@ export class Game implements GameCtx {
     }
     this.forge?.decorateHud(st, md);
     this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps
+    this.sakura?.decorateHud(st, md); // the Sakura District: the Thousand Lanterns, the ghost train, the altar's blessing
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

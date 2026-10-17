@@ -8,13 +8,13 @@ import { NOTES, type SakuraNote, ZONE_NAMES } from './lore';
 export const STAMP_URL =
   'data:image/svg+xml;utf8,' +
   encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-50 -50 100 100"><rect x="-46" y="-46" width="92" height="92" rx="10" fill="none" stroke="#c8243a" stroke-width="6"/>${[0, 72, 144, 216, 288]
+    `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="-50 -50 100 100"><rect x="-46" y="-46" width="92" height="92" rx="10" fill="none" stroke="#c8243a" stroke-width="6"/>${[0, 72, 144, 216, 288]
       .map((a) => `<ellipse cx="0" cy="-18" rx="11" ry="17" fill="#e83a5a" transform="rotate(${a})"/>`)
       .join('')}<circle r="7" fill="#ffd0d8"/></svg>`,
   );
 
 const CSS = `
-.ds-snote{position:absolute;left:24px;top:22%;max-width:400px;padding:14px 16px 10px;background:linear-gradient(180deg,rgba(40,20,32,.95),rgba(22,12,20,.95));border:1px solid rgba(255,150,190,.45);color:#f4e2ea;font-family:'Courier New',ui-monospace,monospace;font-size:13px;line-height:1.45;box-shadow:0 10px 32px rgba(0,0,0,.6),0 0 24px rgba(255,120,170,.1) inset;transform:translateX(-12px);opacity:0;transition:opacity .5s,transform .5s;pointer-events:none;z-index:4}
+.ds-snote{position:absolute;left:24px;top:22%;max-width:400px;text-transform:none;letter-spacing:0;padding:14px 16px 10px;background:linear-gradient(180deg,rgba(40,20,32,.95),rgba(22,12,20,.95));border:1px solid rgba(255,150,190,.45);color:#f4e2ea;font-family:'Courier New',ui-monospace,monospace;font-size:13px;line-height:1.45;box-shadow:0 10px 32px rgba(0,0,0,.6),0 0 24px rgba(255,120,170,.1) inset;transform:translateX(-12px);opacity:0;transition:opacity .5s,transform .5s;pointer-events:none;z-index:4}
 .ds-snote[data-show="1"]{opacity:1;transform:none}
 .ds-snote h4{margin:0 0 3px;font-family:var(--ds-font-label);font-weight:700;font-size:14px;letter-spacing:.12em;color:#ff9ec8}
 .ds-snote .tag{font-family:var(--ds-font-label);font-weight:700;font-size:10px;letter-spacing:.16em;color:#ff6a9a;margin-bottom:4px}
@@ -25,7 +25,7 @@ const CSS = `
 .ds-snote .clue i{flex:0 0 26px;height:26px;background-size:contain;background-repeat:no-repeat}
 @media (max-width:820px),(max-height:480px){.ds-snote{left:50%;width:min(360px,64vw);max-width:none;top:18%;font-size:11px;line-height:1.35;padding:8px 10px 4px;transform:translate(-50%,-8px)}.ds-snote[data-show="1"]{transform:translate(-50%,0)}.ds-snote p{margin:0 0 4px}}
 @media (max-height:480px){.ds-snote{top:14%;max-height:68%;overflow:hidden}}
-.ds-journal{display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow:auto;padding-right:4px;text-align:left}
+.ds-journal{text-transform:none;letter-spacing:0;display:flex;flex-direction:column;gap:10px;max-height:52vh;overflow:auto;padding-right:4px;text-align:left}
 .ds-journal .jhead{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--ds-font-label);letter-spacing:.12em;font-size:12px;color:#ff9ec8}
 .ds-journal .jzone{font-family:var(--ds-font-label);font-size:11px;letter-spacing:.16em;color:#c99aae;margin-top:6px}
 .ds-journal details{border:1px solid rgba(255,150,190,.22);background:rgba(40,20,32,.5);padding:6px 9px}

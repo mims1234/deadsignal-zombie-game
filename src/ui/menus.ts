@@ -10,18 +10,13 @@ import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import { LATE_CHOICES, LATE_NOTE } from '../net/room';
 import { VERSION } from '../version';
-import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession } from './hudTypes';
+import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession, PauseTab } from './hudTypes';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
 
 type ScreenKind = 'title' | 'pause' | 'resume' | 'results' | 'error';
 
-/** An extra page in the pause menu's tabs. */
-export interface PauseTab {
-  label: string;
-  build(): HTMLElement;
-}
 
 
 const CARD_BRIEF = {

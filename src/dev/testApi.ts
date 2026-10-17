@@ -155,8 +155,14 @@ export function installTestApi(game: Game): void {
       p.pitch = Math.atan2(y - p.eyeY(), Math.hypot(dx, dz));
     },
     // ---- scenario helpers (explicitly not gameplay) ----
-    teleport(x: number, z: number, yaw?: number): void {
+    /** `y`: onto a raised floor (a storey, a deck) at that height. */
+    teleport(x: number, z: number, yaw?: number, y = 0): void {
       game.player.teleport(x, z, yaw);
+      game.player.y = y;
+    },
+    /** The Sakura District's runtime (its quest's view, the notes found). */
+    sakura() {
+      return game.sakura;
     },
     setElapsed(seconds: number): void {
       game.session.elapsed = seconds;

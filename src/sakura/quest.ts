@@ -93,6 +93,11 @@ export class SakuraQuest {
     return order.map((i, k) => `${['First', 'Then', 'Then', 'Then', 'Last'][k]}, ${LANTERN_SIGNS[i]!.line}.`);
   }
 
+  /** Charms picked up and not yet tied (in any view). */
+  static held(v: QuestView): number {
+    return bits(v.found & ~v.tied);
+  }
+
   get charmsHeld(): number {
     return bits(this.view.found & ~this.view.tied);
   }
