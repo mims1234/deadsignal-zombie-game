@@ -155,10 +155,10 @@ describe('co-op session simulation: the story operation', () => {
     run(0.5);
     sim.message('p2', { k: 'stoke', i: 0 }, false);
     expect(sim.forge!.view.furnaces[0]!.phase).toBe('burning');
-    // named infected travel in the snapshot with their tag
+    // named infected travel in the snapshot with their tag (then the floor they stand on and their kind)
     const s = [...out].reverse().find((m) => m.d.k === 's')!.d as { z: number[][] };
     expect(sim.zombies.zombies.some((z) => z.tag)).toBe(true);
-    expect(s.z.some((r) => r.length === 16)).toBe(true);
+    expect(s.z.some((r) => r.length === 18 && r[15]! >= 0)).toBe(true);
   });
 
   it('Standard Mazoku places the five carriers', () => {

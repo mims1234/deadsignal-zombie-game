@@ -26,6 +26,7 @@ import { buildJournal, type NoteText, SakuraHud, STAMP_URL } from './hud';
 import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
 import { CHARM_PLACES, decodeQuest, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
+import { populateSakura, Stalker } from './director';
 import { questSpots } from './spots';
 
 /** Blossom dusk (every run starts here) and the blood moon (the bloom). */
@@ -76,6 +77,11 @@ export class SakuraRuntime {
   private bloomed = false;
   private time = 0;
   private bellCd = 0;
+  /** Solo: the stalker who comes once a run (co-op: the simulation's). */
+  private readonly stalker = new Stalker();
+  /** Movement while an idol's song is in your ears (1 = free). */
+  moveMul = 1;
+  private idolWarned = false;
 
   constructor(private readonly g: Game) {
     this.h = g.level.sakura!;
@@ -298,6 +304,11 @@ export class SakuraRuntime {
     const g = this.g;
     this.follow = coop;
     this.local.reset(() => g.rng.f());
+    // solo: the Court's sentries on the decks and at their fires (co-op: the simulation places its own)
+    if (!coop) populateSakura(g.zombies, g.level, g.rng);
+    this.stalker.reset();
+    this.moveMul = 1;
+    this.idolWarned = false;
     this.view = this.local.view;
     this.shown = { ...this.view, found: 0, tied: 0, lit: 0, phase: 'charms' };
     this.relicTaken.fill(false);
@@ -328,12 +339,29 @@ export class SakuraRuntime {
     const g = this.g;
     this.time += dt;
     this.bellCd = Math.max(0, this.bellCd - dt);
+    for (let i = this.timers.length - 1; i >= 0; i--) {
+      if (this.timers[i]!.t > this.time) continue;
+      this.timers.splice(i, 1)[0]!.fn();
+    }
     this.hud.update(dt);
     if (!this.follow) {
       this.local.tick(dt);
       this.view = this.local.view;
       this.consumeLocal();
       this.present(false);
+      if (this.stalker.update(dt, g.zombies, g.level, [{ x: g.player.x, z: g.player.z, alive: g.playerAlive() }], g.rng)) this.stalkerCame();
+    } else if (!this.stalker.spawned && g.zombies.zombies.some((z) => z.variant === 'kuchisake' && z.alive)) {
+      this.stalker.spawned = true;
+      this.stalkerCame();
+    }
+    // an idol's song: slower while one sings within reach
+    let near = Infinity;
+    for (const z of g.zombies.zombies) if (z.variant === 'idol' && z.alive && !z.dormant) near = Math.min(near, Math.hypot(z.x - g.player.x, z.z - g.player.z));
+    const want = near < 18 ? 0.72 + (near / 18) * 0.2 : 1;
+    this.moveMul += (want - this.moveMul) * Math.min(1, dt * 3);
+    if (near < 18 && !this.idolWarned) {
+      this.idolWarned = true;
+      g.radio('HANA', 'That voice - it\'s Mei Hoshino, the idol from the posters. Don\'t listen to her. Don\'t walk toward it.', 7);
     }
     // the charms bob and turn; the flames flicker; the relics turn over their plinths
     for (const c of this.charms) {
@@ -350,6 +378,19 @@ export class SakuraRuntime {
     if (v.health > maxH) v.health = maxH;
     g.weapons.perkReloadMul = this.perks.has('step') ? 0.7 : 1;
     g.weapons.perkFireIntervalMul = this.perks.has('step') ? 0.85 : 1;
+  }
+
+  /** She is out there now. */
+  private stalkerCame(): void {
+    const g = this.g;
+    g.audio.play('fzombie_giggle', { priority: 3, volume: 0.8 });
+    g.radio('YUZU', 'Something is following us. A woman with a mask. When I look at her, she stops.', 7);
+    this.later(9, () => g.radio('HANA', 'Then keep looking at her. She only moves when nobody does.', 6));
+  }
+
+  private readonly timers: { t: number; fn: () => void }[] = [];
+  private later(s: number, fn: () => void): void {
+    this.timers.push({ t: this.time + s, fn });
   }
 
   /** Max health with SAKURA SPIRIT (regeneration and the HUD read it). */

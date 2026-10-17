@@ -13,6 +13,7 @@ import type { Level } from '../world/level';
 import type { SpawnGroup } from '../world/layout/data';
 import { headAccessory } from '../forge/looks';
 import { MATRON_DEF, MatronBrain, createMatronRig, isMatronMap } from './matron';
+import { VARIANT_INFO, VARIANTS, variantDef, type ZombieVariant } from './variants';
 import { type NetZombie, Zombie, type ZombieEnv, type ZombieState } from './zombie';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
 
@@ -162,6 +163,12 @@ export class ZombieManager {
   carrierRig: ((i: number) => { rig: ZombieRig; def: ZombieDef } | null) | null = null;
   /** The Forge's reborn has a look of its own (`forge/rebornRig.ts`; client only): a one-off rig, disposed with it. */
   rebornRig: ((name: string) => ZombieRig | null) | null = null;
+  /**
+   * The Sakura District: what kind each infected spawned there becomes (`variants.ts`; set by whoever owns the level),
+   * and the Kurenai Court's figures (living people, not infected rigs; the game sets it, the simulation does not draw).
+   */
+  pickVariant: ((type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant) | null = null;
+  courtRig: ((seed: number) => ZombieRig) | null = null;
   private readonly oneOff = new Set<ZombieRig>();
   /**
    * Map scripts may place a director spawn themselves (the Asylum: in through a boarded window). Return the infected
@@ -225,14 +232,22 @@ export class ZombieManager {
     x: number,
     z: number,
     rng: Rng,
-    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean; y?: number; area?: number } = {},
+    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean; y?: number; area?: number; variant?: ZombieVariant } = {},
   ): Zombie {
+    // the Sakura District's kinds: chosen here (or given: a co-op guest's puppet, a miko's summons)
+    const variant: ZombieVariant = opts.variant ?? (this.pickVariant && !opts.rig && !opts.curable ? this.pickVariant(type, x, z, opts.y ?? 0, rng) : '');
+    if (variant) {
+      opts = { ...opts, def: variantDef(opts.def ?? ZOMBIES[type], variant) };
+      if (variant === 'court' && this.courtRig && !opts.rig) opts = { ...opts, rig: this.courtRig(this.nextId * 7919), oneOff: true };
+    }
     if (opts.rig && opts.oneOff) this.oneOff.add(opts.rig);
     if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron
     const rig = opts.rig ?? this.acquireRig(type);
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
+    rig.root.scale.setScalar(variant ? VARIANT_INFO[variant].scale : 1);
     const zz = new Zombie(this.nextId++, type, rig);
     zz.ownsRig = !opts.rig;
+    zz.variant = variant;
     // the Sakura District's infected are women: they moan, giggle, hiss and scream in a woman's voice
     zz.voiceKind = this.theme === 'sakura' ? 'female' : null;
     const t = this.tuning;
@@ -373,6 +388,11 @@ export class ZombieManager {
   }
 
   /** Active (awake, alive) enemy count used against the director cap. */
+  /** How many may be up at once before a call (a miko's, the Empress's) brings no more. */
+  private get summonCap(): number {
+    return this.theme === 'sakura' ? animeHordeCap() + 4 : 60;
+  }
+
   get activeCount(): number {
     let n = 0;
     for (const z of this.zombies) if (z.alive && !z.dormant && !z.isBoss && !z.curable) n++;
@@ -439,6 +459,15 @@ export class ZombieManager {
       else this.nearby.length = 0;
       z.update(dt, envs ? this.envFor(z, envs) : env, this.nearby);
     }
+    // the ones called up (a miko's scream, the Empress's bloomed), while there is room
+    for (let i = 0; i < this.zombies.length; i++) {
+      const z = this.zombies[i]!;
+      if (z.summons.length === 0) continue;
+      for (const s of z.summons.splice(0)) {
+        if (this.activeCount >= this.summonCap) break;
+        this.spawn(s.type, s.x, s.z, env.rng, { state: 'chase', variant: s.variant, y: z.y, area: z.area });
+      }
+    }
 
     // name tags: only on the living, and only near enough to read
     for (const [z, s] of this.tagSprites) {
@@ -495,7 +524,8 @@ export class ZombieManager {
         // a puppet carries the host's name for it, never one of its own
         const namer = this.namer;
         this.namer = null;
-        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : reborn ? { yaw: n.yaw, boss: true, rig: reborn, oneOff: true } : { yaw: n.yaw, boss: n.type === 'warden' });
+        const variant = VARIANTS[n.v ?? 0] ?? '';
+        z = this.spawn(n.type, n.x, n.z, rng, carrier ? { yaw: n.yaw, rig: carrier.rig, def: carrier.def, curable: true } : reborn ? { yaw: n.yaw, boss: true, rig: reborn, oneOff: true } : { yaw: n.yaw, boss: n.type === 'warden', variant, y: n.y ?? 0 });
         this.namer = namer;
         z.carrierIdx = n.carrier;
         z.puppet = true;

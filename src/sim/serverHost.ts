@@ -54,7 +54,9 @@ import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { encodeRoster, encodeState } from '../forge/net';
 import { ForgeStory, type StoryTick } from '../forge/story';
 import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
+import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
+import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
@@ -209,6 +211,8 @@ export class SessionSim {
   private rosterSentAt = -99;
   /** The Sakura District's Easter egg, the Thousand Lanterns (`sakura/quest.ts`): shared by everyone in the run. */
   readonly sakura: SakuraQuest | null = null;
+  /** The Sakura District's stalker, who comes once a run (`sakura/director.ts`). */
+  private readonly stalker = new Stalker();
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -225,6 +229,7 @@ export class SessionSim {
       this.level.root.clear();
     }
     this.zombies = new ZombieManager(createNullRigFactory(), this.level);
+    if (this.map === 'sakura') this.zombies.pickVariant = sakuraVariantPicker(this.level);
     this.zombies.onKill = (z, head) => this.onKill(z, head);
     // insta-kill: any hit kills (not bosses, not carriers)
     this.zombies.damageFilter = (z, amount) => filterDamage(this.powerups, amount, z);
@@ -384,6 +389,10 @@ export class SessionSim {
       };
     }
     this.zombies.populate(rng);
+    if (this.map === 'sakura') {
+      populateSakura(this.zombies, this.level, rng);
+      this.stalker.reset();
+    }
     const st = level.data.playerStart;
     const squad = roster ? roster.squad : squadRoster(this.map, Math.max(1, this.seated.size));
     const at = soldierSpots(level, rng, squad.length);
@@ -445,6 +454,7 @@ export class SessionSim {
         p.ref.z = Number(d.z) || 0;
         p.ref.eyeY = p.ref.y + 1.6;
         p.yaw = Number(d.yaw) || 0;
+        p.ref.yaw = p.yaw;
         p.hp = Number(d.hp) || 0;
         p.gear = [Math.max(0, Math.min(4, Math.floor(Number(d.w) || 0))), Math.max(-1.6, Math.min(1.6, Number(d.pi) || 0)), Math.floor(Number(d.f) || 0) % 4096];
         p.info = [Math.max(0, Math.min(999, Math.round(Number(d.ar) || 0))), Math.max(0, Math.min(9999999, Math.round(Number(d.cs) || 0))), d.dv === 1 ? 1 : 0];
@@ -787,6 +797,7 @@ export class SessionSim {
     if (this.sakura) {
       this.sakura.tick(dt);
       this.sakuraEvents();
+      if (this.story) this.stalker.update(dt, this.zombies, this.level, [...this.peers.values()].map((q) => ({ x: q.ref.x, z: q.ref.z, alive: q.ref.alive })), this.rng);
     }
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
@@ -1005,8 +1016,12 @@ export class SessionSim {
       const n = q.toNet();
       const row = [n.id, TYPES.indexOf(n.type), r1(n.x), r1(n.z), r2(n.yaw), MODES.indexOf(n.mode), r2(n.actionT), r2(n.staggerT), r1(n.speed), r2(n.hp), n.flags, n.carrier];
       const tag = q.tag ? (VULCAN.infected as readonly string[]).indexOf(q.tag) : -1;
-      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0 || tag >= 0) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
-      if (tag >= 0) row.push(tag);
+      // the floor it stands on and its kind (the Sakura District's storeys and variants) ride after the name
+      const y = r1(n.y ?? 0);
+      const v = VARIANTS.indexOf(q.variant);
+      const more = tag >= 0 || y !== 0 || v > 0;
+      if (n.fy !== 0 || n.fp !== 0 || n.fr !== 0 || more) row.push(r2(n.fy), r2(n.fp), r2(n.fr));
+      if (more) row.push(tag, y, v);
       z.push(row);
     }
     const p: unknown[][] = [];

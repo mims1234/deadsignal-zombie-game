@@ -11,6 +11,7 @@ import { CARRIERS } from '../cards/roster';
 import { AnimeZombieRig, loadAnimeCast, modelStats, personModel } from '../anime/cast';
 import { animeModel, animeSlotState, loadAnime } from '../anime/vrm';
 import { ANIME_CAST, FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
+import { VARIANT_BASE, VARIANT_INFO, variantDef, type ZombieVariant } from '../enemies/variants';
 import { vulcanLook } from '../forge/looks';
 import { createRebornRig } from '../forge/rebornRig';
 import { rankOf, rankTag } from '../forge/roster';
@@ -162,6 +163,18 @@ const kits = await loadCardKits(CARRIERS).catch(() => new Map());
 /** A male VRoid model, shown here only (not in the game yet): a squad soldier and an infected. */
 const GUY = 'guy-1.vrm';
 await Promise.all([loadAnimeCast(), loadAnime(GUY)]).catch(() => undefined);
+
+/** The Sakura District's kinds in the bestiary: tagline and what they do. */
+const SAKURA_KINDS: readonly [Exclude<ZombieVariant, '' | 'court' | 'empress'>, string, string][] = [
+  ['commuter', 'Still on their way to work.', 'They keep the routine they died in: pacing the platform, queueing for a train that will not come. Half blind - walk past slowly and they never look up. Sprint, or shoot, and they remember what you are.'],
+  ['bloomed', 'Full of blossom.', 'The sickness flowered in them. Kill one and it bursts into a cloud of petals that burns the lungs of anyone standing in it for a few seconds. Shoot them from a distance.'],
+  ['rooted', 'Under the petals.', 'They lie in the drifts of blossom in the park and on the school field, looking like the long dead - until someone comes within a few steps. Then they come up running.'],
+  ['kuchisake', 'Am I pretty?', 'The stalker. After a while in the district she finds you, and follows you everywhere. While you look at her she cannot move. When you look away she comes closer. Up close she does terrible damage, and she takes a lot of killing.'],
+  ['jorogumo', 'On the ceiling.', 'Underground, in the metro and the lab, they hunt upside down from the tunnel roof, and drop on whoever passes beneath. Look up.'],
+  ['miko', 'She calls them.', 'A shrine maiden still in her red and white. When she sees you she screams, and every infected near her comes - with more behind them. Kill her first.'],
+  ['idol', 'Do not follow the voice.', 'Mei Hoshino, the idol from the posters, still singing. While her song is in your ears your legs are heavy. Find her and stop the song.'],
+  ['oni', 'Huge, slow, terrible.', 'Something that was a big man once, grown bigger. Three times the health of the armored, slower, and every blow hits like a car.'],
+];
 
 /** Which file a Sakura District slot wants, and what is showing. */
 const slotNote = (file: string): [string, string] => {
@@ -450,6 +463,22 @@ const entries: Entry[] = [
       return r.root;
     },
   })),
+  // the Sakura District's own kinds (`enemies/variants.ts`), each on a stock body
+  ...SAKURA_KINDS.map(([v, tagline, lore], i): Entry => {
+    const base = VARIANT_BASE[v];
+    const def = variantDef(ZOMBIES[base], v);
+    return {
+      id: `sakura-kind-${v}`, group: 'SAKURA DISTRICT', height: def.height, name: def.name, tagline, lore,
+      where: 'Sakura District', stats: [], modes: ZOMBIE_MODES, enraged: false,
+      build: () => {
+        const r = factory.create(base, 31 + i, 'sakura');
+        r.root.scale.setScalar(VARIANT_INFO[v].scale);
+        current!.rig = r;
+        current!.stats = [['Health', `${Math.round(def.hp)}`], ['Damage', `${Math.round(def.damage)}`], ['Speed', `${def.speedChase.toFixed(1)} m/s`], ['Body', base]];
+        return r.root;
+      },
+    };
+  }),
   // art-style experiments, not in the game (styleLab.ts)
   ...STYLE_SAMPLES.map((sm): Entry => {
     const e: Entry = {

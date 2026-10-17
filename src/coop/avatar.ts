@@ -444,6 +444,7 @@ export class Avatar {
     this.setWeapon(style.weapon ?? (geared ? 'rifle' : 'none'));
     this.tag = nameTag(name, style.tag, style.tagColor ?? '#ffb060');
     this.displayName = name;
+    this.tag.visible = name !== ''; // a nameless figure (the Kurenai Court) wears no tag
     if (hero) {
       mergeStatic(this.chest);
       mergeStatic(this.body);

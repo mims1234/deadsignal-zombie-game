@@ -474,7 +474,7 @@ export class CoopSession {
     const g = this.g;
     const gen = Number(d.g) || 0;
     if (gen !== this.gen) this.gen = gen; // a fresh run on the simulation
-    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0, fy: q[12] ?? 0, fp: q[13] ?? 0, fr: q[14] ?? 0, tag: q[15] ?? -1 }));
+    const list: NetZombie[] = (d.z as number[][]).map((q) => ({ id: q[0]!, type: TYPES[q[1]!] ?? 'shambler', x: q[2]!, z: q[3]!, yaw: q[4]!, mode: MODES[q[5]!] ?? 'idle', actionT: q[6]!, staggerT: q[7]!, speed: q[8]!, hp: q[9]!, flags: q[10]!, carrier: q[11] ?? 0, fy: q[12] ?? 0, fp: q[13] ?? 0, fr: q[14] ?? 0, tag: q[15] ?? -1, y: q[16] ?? 0, v: q[17] ?? 0 }));
     g.zombies.syncPuppets(list, g.rng, (i) => VULCAN.infected[i] ?? null);
     g.cards.coopApply((d.c as number[][] | undefined) ?? [], (carrier) => g.zombies.zombies.find((z) => z.carrierIdx === carrier) ?? null);
     const rl = d.rl as number[] | undefined;

@@ -52,6 +52,8 @@ import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
+import { CourtRig } from '../sakura/courtRig';
+import { sakuraVariantPicker } from '../sakura/director';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput } from './interaction';
@@ -378,6 +380,11 @@ export class Game implements GameCtx {
     this.zenv.fx = this.fx;
 
     this.zombies = new ZombieManager(this.zombieFactory, this.level);
+    if (this.mapId === 'sakura') {
+      // the Sakura District's kinds of infected, and the Kurenai Court's people (`sakura/director.ts`)
+      this.zombies.pickVariant = sakuraVariantPicker(this.level);
+      this.zombies.courtRig = (seed) => new CourtRig(seed);
+    }
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
@@ -1253,7 +1260,7 @@ export class Game implements GameCtx {
       jumpPressed: edges.jump,
       crouchPressed: edges.crouch,
       ads: this.weapons.adsAmount,
-      weaponMoveMul: this.weapons.def?.moveMul ?? 1,
+      weaponMoveMul: (this.weapons.def?.moveMul ?? 1) * (this.sakura?.moveMul ?? 1), // the Sakura District: an idol's song drags at you
       noSprint: this.weapons.blocksSprint,
       frozen: !alive,
     };
@@ -1504,6 +1511,7 @@ export class Game implements GameCtx {
     z.player.eyeY = p.eyeY();
     z.player.alive = alive;
     z.player.sprinting = p.sprinting;
+    z.player.yaw = p.yaw;
 
     // flow field toward the player: refreshed when the player has moved or periodically, spread over a few frames so a
     // big map never stalls one (the infected follow the previous field until the new one is in). Co-op: the

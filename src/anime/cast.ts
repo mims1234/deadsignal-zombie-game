@@ -27,6 +27,11 @@ export function operatorModel(seat: number): AnimeTemplate | null {
   return animeModel(ANIME_CAST.operators[seat % ANIME_CAST.operators.length], PEOPLE);
 }
 
+/** The model a Kurenai Court member wears: their own file, else the stand-in (never the squad's faces). */
+export function courtModel(i: number): AnimeTemplate | null {
+  return animeModel(ANIME_CAST.survivors[i % ANIME_CAST.survivors.length]);
+}
+
 /** The model an infected wears: the boss file for the Warden, one of the horde files (by seed) for the rest. */
 export function hordeModel(type: ZombieType, seed: number): AnimeTemplate | null {
   const own = ANIME_CAST.horde.filter((f) => animeSlotState(f) === 'own');

@@ -11,6 +11,7 @@ import type { CollisionWorld } from '../world/collision';
 import type { FloorLink, Floors } from '../world/floors';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
+import type { ZombieVariant } from './variants';
 
 /** A woman's voice for each of the horde's noises; the boss gets the Matron's shriek for her roar. */
 const FEMALE_VOICE: Partial<Record<SoundId, SoundId>> = {
@@ -54,6 +55,8 @@ export interface NetZombie {
   fr: number;
   /** Index of the name it carries (Vulcan's infected on the Forge), -1 for none. */
   tag?: number;
+  /** Its kind on the Sakura District (index into `VARIANTS`), 0 for none. */
+  v?: number;
 }
 
 export interface PlayerRef {
@@ -63,6 +66,8 @@ export interface PlayerRef {
   eyeY: number;
   alive: boolean;
   sprinting: boolean;
+  /** Where they look (the Sakura District's stalker freezes while she is watched). */
+  yaw?: number;
 }
 
 export interface ZombieEnv {
@@ -139,6 +144,18 @@ export class Zombie {
   tag: string | null = null;
   /** Whose voice it has: the Sakura District's infected are women (`audio/synth/creaturesFemale.ts`). */
   voiceKind: 'female' | null = null;
+  /** The Sakura District's kinds (`variants.ts`): how this one behaves on top of its type. */
+  variant: ZombieVariant = '';
+  /** Rooted: lying in wait under the petals until someone comes close. */
+  buried = false;
+  /** Jorogumo: up on the ceiling (drawn there; drops when close). */
+  ceiling = false;
+  /** Infected it calls up (the miko, the Empress): the manager spawns them after the update. */
+  readonly summons: { type: ZombieType; x: number; z: number; variant: ZombieVariant }[] = [];
+  /** A variant's own clock (a call's cooldown, the next whisper, a cloud's next sting). */
+  private varT = 0;
+  /** Co-op guest: the Court's last action progress (a shot is drawn when it passes the strike). */
+  private shotPrevT = 0;
   /** Which walkable area it is in (`floors.ts`): 0 the street, else a storey, a roof or an underground space. */
   area = 0;
   /** Crossing stairs or a stairwell toward whoever it hunts (`floors.ts`). */
@@ -266,6 +283,11 @@ export class Zombie {
     this.isBoss = opts.boss ?? false;
     this.isAmbient = opts.ambient ?? false;
     this.enraged = false;
+    this.buried = this.variant === 'rooted' && (opts.state ?? 'idle') === 'idle';
+    this.ceiling = false;
+    this.varT = this.variant === 'empress' ? 12 : 0;
+    this.shotPrevT = 0;
+    this.summons.length = 0;
     this.speedScale = 1 + (rng.f() * 2 - 1) * this.def.speedVariance;
     this.seesPlayer = false;
     this.memory = 99;
@@ -340,7 +362,7 @@ export class Zombie {
       staggerT: a.staggerT,
       speed: a.speed,
       hp: Math.max(0, this.hp / this.maxHp),
-      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0),
+      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0) | (this.buried ? 64 : 0) | (this.ceiling ? 128 : 0),
       carrier: this.carrierIdx,
       y: this.y,
       fy: this.flingY + this.scriptPose.lift,
@@ -376,6 +398,8 @@ export class Zombie {
     this.hp = n.hp * this.maxHp;
     this.enraged = (n.flags & 8) !== 0;
     this.shrieking = (n.flags & 32) !== 0;
+    this.buried = (n.flags & 64) !== 0;
+    this.ceiling = (n.flags & 128) !== 0;
     if (n.flags & 16) {
       if (this.state !== 'downed') {
         this.state = 'downed';
@@ -402,12 +426,13 @@ export class Zombie {
     const s = this.netSounds;
     this.netSounds = 0;
     const boss = this.type === 'warden';
-    if (s & 1) this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+    const court = this.variant === 'court';
+    if (s & 1 && !court) this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
     if (s & 2) this.say(env, boss ? this.roarId : this.type === 'runner' ? 'zombie_screech' : 'zombie_alert', { pos, volume: boss ? 1.2 : 0.9, priority: boss ? 3 : 2 });
     if (s & 4) this.say(env, 'warden_slam', { pos, volume: 1.2, priority: 3 });
     if (s & 8) this.say(env, 'zombie_hurt', { pos, volume: 0.8, priority: 1 });
     if (s & 16) this.say(env, 'zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
-    if (this.state === 'dead' || this.state === 'downed') return;
+    if (this.state === 'dead' || this.state === 'downed' || court || this.buried) return;
     const p = env.player;
     this.voiceTimer -= dt;
     if (this.voiceTimer > 0 || Math.hypot(p.x - this.x, p.z - this.z) > 38) return;
@@ -424,6 +449,13 @@ export class Zombie {
   /** Co-op guest: glide toward the last report and pose. */
   puppetStep(dt: number, env: ZombieEnv): void {
     this.puppetVoice(dt, env);
+    // the Court's rifle: a shot each time the host's attack passes its strike
+    if (this.variant === 'court') {
+      const t = this.netMode === 'attack' ? this.netActionT : 0;
+      if (this.shotPrevT < 0.55 && t >= 0.55) this.shotFx(env, env.rng.f() < 0.4);
+      this.shotPrevT = t;
+    }
+    if (this.state === 'dead' && this.variant === 'bloomed') this.bloomCloud(dt, env);
     const k = Math.min(1, dt * 12);
     this.x += (this.netX - this.x) * k;
     this.z += (this.netZ - this.z) * k;
@@ -439,6 +471,166 @@ export class Zombie {
     this.hitKick = Math.max(0, this.hitKick - dt * 5);
     if (this.state === 'dead' || this.state === 'downed') this.deathT += dt;
     this.pose(env, this.netSpeed);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // the Sakura District's kinds (`variants.ts`)
+  // ---------------------------------------------------------------------------------------------
+
+  /** A variant's own behaviour this frame: a ground speed when it has handled the frame, -1 to run the usual AI. */
+  private variantStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
+    const p = env.player;
+    const pos = { x: this.x, y: 1.4, z: this.z };
+    switch (this.variant) {
+      case 'rooted': {
+        if (!this.buried) return -1;
+        this.vx = this.vz = 0;
+        // up out of the petals at whoever comes close (or whoever shoots it)
+        if ((p.alive && dist < 6 && Math.abs(p.y - this.y) < 2) || this.hp < this.maxHp) {
+          this.buried = false;
+          this.memory = 0;
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+          this.say(env, 'zombie_screech', { pos, volume: 1, priority: 2 });
+          env.fx.dust({ x: this.x, y: 0.3, z: this.z }, 0.7);
+        }
+        return 0;
+      }
+      case 'kuchisake':
+        return this.stalk(dt, env, dist, dx, dz);
+      case 'jorogumo': {
+        const under = env.floors?.areas[this.area]?.kind === 'under';
+        this.ceiling = under && this.state !== 'attack' && this.state !== 'stagger' && dist > 5;
+        return -1;
+      }
+      case 'miko': {
+        this.varT -= dt;
+        if (this.state === 'chase' && this.seesPlayer && this.varT <= 0) {
+          // she screams the dead to her, and more come
+          this.varT = 22;
+          this.say(env, 'zombie_screech', { pos, volume: 1.2, priority: 3, rate: 1.15 });
+          env.alertNear(this.x, this.z, 35, this.id);
+          for (let i = 0; i < 3; i++) {
+            const a = env.rng.f() * Math.PI * 2;
+            this.summons.push({ type: 'shambler', x: this.x + Math.cos(a) * 5, z: this.z + Math.sin(a) * 5, variant: '' });
+          }
+        }
+        return -1;
+      }
+      case 'idol': {
+        // she sings while anyone is near
+        this.varT -= dt;
+        if (this.varT <= 0 && dist < 32) {
+          this.varT = 3.2 + env.rng.f() * 1.5;
+          this.say(env, 'zombie_groan', { pos, volume: 0.9, priority: 1, rate: 1.45 + env.rng.f() * 0.15 });
+        }
+        return -1;
+      }
+      case 'court':
+        return this.courtStep(dt, env, dist, dx, dz);
+      case 'empress': {
+        // the Empress calls her bloomed to her; enraged, twice as many
+        this.varT -= dt;
+        if (this.state === 'chase' && this.varT <= 0) {
+          this.varT = this.enraged ? 14 : 22;
+          const n = this.enraged ? 4 : 2;
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2 + env.rng.f();
+            this.summons.push({ type: 'shambler', x: this.x + Math.cos(a) * 4, z: this.z + Math.sin(a) * 4, variant: 'bloomed' });
+          }
+          env.fx.sparkle({ x: this.x, y: 2, z: this.z }, 0xff2a4a, 40);
+        }
+        return -1;
+      }
+      default:
+        return -1;
+    }
+  }
+
+  /** Is the player looking at it (within about 25 degrees, nothing between)? */
+  private watched(env: ZombieEnv, dist: number): boolean {
+    const p = env.player;
+    if (p.yaw === undefined || dist > 45) return false;
+    const fx = -Math.sin(p.yaw);
+    const fz = -Math.cos(p.yaw);
+    const tx = (this.x - p.x) / Math.max(dist, 1e-3);
+    const tz = (this.z - p.z) / Math.max(dist, 1e-3);
+    if (fx * tx + fz * tz < 0.9) return false;
+    return !env.world.segmentBlocked(p.x, p.eyeY, p.z, this.x, this.y + 1.5, this.z, 'shots');
+  }
+
+  /** The stalker: knows where you are; still while you look at her, coming on while you do not. */
+  private stalk(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
+    const p = env.player;
+    if (!p.alive || this.state === 'attack' || this.state === 'stagger') return -1;
+    this.memory = 0;
+    this.lastKnownX = p.x;
+    this.lastKnownZ = p.z;
+    if (this.state !== 'chase') this.enterState('chase');
+    this.varT -= dt;
+    if (this.watched(env, dist) && dist > this.def.attackRange) {
+      // frozen while watched: only her head follows you
+      this.vx *= Math.max(0, 1 - 12 * dt);
+      this.vz *= Math.max(0, 1 - 12 * dt);
+      this.turnToward(Math.atan2(-dx, -dz), 3, dt);
+      if (this.varT <= 0 && dist < 16) {
+        this.varT = 5 + env.rng.f() * 3;
+        this.say(env, 'zombie_alert', { pos: { x: this.x, y: 1.5, z: this.z }, volume: 0.7, priority: 2, rate: 1.2 });
+      }
+      return 0;
+    }
+    return -1;
+  }
+
+  /** The Court: within range and in sight, stand and shoot; else close the distance. */
+  private courtStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
+    const p = env.player;
+    if (this.state !== 'chase' || !p.alive || Math.abs(p.y - this.y) > 6) return -1;
+    if (dist > this.def.attackRange || env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.1, p.z, 'shots')) return -1;
+    this.vx *= Math.max(0, 1 - 8 * dt);
+    this.vz *= Math.max(0, 1 - 8 * dt);
+    this.turnToward(Math.atan2(-dx, -dz), 6, dt);
+    if (this.cooldown <= 0) this.beginAttack('melee', env);
+    return 0;
+  }
+
+  /** A Court rifle round: a tracer, the shot, and a hit by the odds (worse far off, worse at a sprinting target). */
+  private courtShot(env: ZombieEnv, dist: number): void {
+    const p = env.player;
+    if (!p.alive) return;
+    const blocked = env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.1, p.z, 'shots');
+    const chance = blocked ? 0 : Math.max(0.15, 0.62 - dist / 40) * (p.sprinting ? 0.65 : 1);
+    const hit = env.rng.f() < chance;
+    this.shotFx(env, hit);
+    if (hit) env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', 0.6);
+  }
+
+  /** The shot as seen and heard (the host's and every guest's own). */
+  private shotFx(env: ZombieEnv, hit: boolean): void {
+    const p = env.player;
+    const from = { x: this.x - Math.sin(this.yaw) * 0.6, y: this.drawY + 1.45, z: this.z - Math.cos(this.yaw) * 0.6 };
+    const miss = hit ? 0 : 1.6;
+    const to = { x: p.x + (env.rng.f() - 0.5) * miss * 2, y: p.eyeY - 0.3 + (env.rng.f() - 0.5) * miss, z: p.z + (env.rng.f() - 0.5) * miss * 2 };
+    env.audio.play('rifle_shot', { pos: from, volume: 0.85, priority: 2, rate: 0.95 + env.rng.f() * 0.1 });
+    env.fx.tracer(from, to, 0xffd890);
+  }
+
+  /** A bloomed one's death: a cloud of petals that stings anyone in it for a few seconds. */
+  private bloomCloud(dt: number, env: ZombieEnv): void {
+    if (this.deathT > 4.5) return;
+    const at = { x: this.x, y: this.drawY + 1, z: this.z };
+    if (this.deathT <= dt * 1.5) {
+      env.fx.sparkle(at, 0xff7aa8, 40);
+      this.say(env, 'fzombie_hiss', { pos: at, volume: 0.9, priority: 1 });
+      this.varT = 0;
+    }
+    this.varT -= dt;
+    if (this.varT > 0) return;
+    this.varT = 0.45;
+    env.fx.sparkle(at, 0xff9ec8, 8);
+    const p = env.player;
+    if (!this.puppet && p.alive && Math.hypot(p.x - this.x, p.z - this.z) < 3.2 && Math.abs(p.y - this.y) < 2) env.hurtPlayer(4 * this.dmgScale, this.x, this.z, 'melee', 0);
   }
 
   /** Put it at a point (crossing stairs, coming out of a stairwell): drawn there at once. */
@@ -479,6 +671,12 @@ export class Zombie {
 
   private syncRoot(): void {
     const r = this.rig.root;
+    if (this.ceiling) {
+      // the jorogumo, upside down on the tunnel roof
+      r.position.set(this.x, this.drawY + 4.1, this.z);
+      r.rotation.set(Math.PI, -this.yaw, 0, 'YXZ');
+      return;
+    }
     if (this.flingY === 0 && this.tumbleP === 0 && this.tumbleR === 0) {
       r.position.set(this.x, this.drawY + this.scriptPose.lift, this.z);
       r.rotation.set(0, this.yaw, 0, 'YXZ');
@@ -751,6 +949,7 @@ export class Zombie {
     if (this.state === 'dead' || this.state === 'downed') {
       if (this.script) this.dropScript();
       this.deathT += dt;
+      if (this.variant === 'bloomed') this.bloomCloud(dt, env);
       this.stepFling(dt, env);
       this.pose(env, 0);
       return;
@@ -795,7 +994,9 @@ export class Zombie {
     this.voice(dt, env, dist);
 
     let moveSpeed = 0;
-    switch (this.state) {
+    const vs = this.variant ? this.variantStep(dt, env, dist, dx, dz) : -1;
+    if (vs >= 0) moveSpeed = vs;
+    else switch (this.state) {
       case 'idle':
         moveSpeed = this.updateIdle(dt, env, dist);
         break;
@@ -930,6 +1131,8 @@ export class Zombie {
     if (p.alive) {
       let range = this.def.sightRange * this.sightScale;
       if (this.state !== 'idle') range *= 1.8;
+      // the commuters keep their routine: walk past quietly and they never look up
+      if (this.variant === 'commuter' && !p.sprinting) range *= 0.3;
       if (p.sprinting) range = Math.max(range, ZOMBIE_AI.sprintHearing);
       if (dist < range) {
         // idle zombies have a limited field of view; awake ones see all around
@@ -941,7 +1144,7 @@ export class Zombie {
         if (inView && !env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.15, p.z, 'shots')) sees = true;
       }
       // very close: they smell/hear you regardless
-      if (dist < ZOMBIE_AI.footstepHearing * 0.5 && this.state === 'idle') sees = true;
+      if (dist < ZOMBIE_AI.footstepHearing * (this.variant === 'commuter' ? 0.12 : 0.5) && this.state === 'idle') sees = true;
     }
     this.seesPlayer = sees;
     if (sees) {
@@ -954,6 +1157,7 @@ export class Zombie {
   }
 
   private voice(dt: number, env: ZombieEnv, dist: number): void {
+    if (this.variant === 'court' || this.buried) return; // living people, and the ones lying in wait, keep quiet
     this.voiceTimer -= dt;
     if (this.voiceTimer > 0 || dist > 38) return;
     const pos = { x: this.x, y: 1.5, z: this.z };
@@ -1173,7 +1377,7 @@ export class Zombie {
     this.attackDir = this.yaw;
     const pos = { x: this.x, y: 1.4, z: this.z };
     if (kind === 'melee') {
-      this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+      if (this.variant !== 'court') this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
     } else {
       this.say(env, this.roarId, { pos, volume: 1.2, priority: 3 });
     }
@@ -1234,7 +1438,7 @@ export class Zombie {
     // melee / slam: face the target through the windup
     if (this.attackTime < t.windup) {
       this.turnToward(faceTarget, this.attackKind === 'slam' ? 2 : this.def.turnRate * 0.8, dt);
-      const creep = this.type === 'runner' ? 0.9 : this.type === 'shambler' ? 0.35 : 0;
+      const creep = this.variant === 'court' ? 0 : this.type === 'runner' ? 0.9 : this.type === 'shambler' ? 0.35 : 0;
       this.vx = -Math.sin(this.yaw) * creep;
       this.vz = -Math.cos(this.yaw) * creep;
     } else if (this.attackTime < t.windup + t.strike) {
@@ -1242,7 +1446,7 @@ export class Zombie {
         this.attackDidHit = true;
         this.resolveStrike(env, dist);
       }
-      const lunge = this.type === 'runner' ? 3.4 : 0.8;
+      const lunge = this.variant === 'court' ? 0 : this.type === 'runner' ? 3.4 : 0.8;
       this.vx = -Math.sin(this.yaw) * lunge;
       this.vz = -Math.cos(this.yaw) * lunge;
     } else {
@@ -1255,7 +1459,7 @@ export class Zombie {
 
   private finishAttack(env: ZombieEnv): void {
     this.enterState(env.player.alive ? 'chase' : 'idle');
-    this.cooldown = this.attackKind === 'melee' ? 0.15 : 0.9;
+    this.cooldown = this.variant === 'court' ? 0.6 + env.rng.f() * 0.7 : this.attackKind === 'melee' ? 0.15 : 0.9;
     if (this.attackKind === 'slam') this.slamCd = WARDEN.slamCooldown;
     if (this.attackKind === 'charge') this.chargeCd = WARDEN.chargeCooldown;
     this.chargeLock = false;
@@ -1275,6 +1479,10 @@ export class Zombie {
         const fall = 1 - 0.6 * (d / WARDEN.slamRadius);
         env.hurtPlayer(WARDEN.slamDamage * fall * this.dmgScale, pos.x, pos.z, 'slam', 10);
       }
+      return;
+    }
+    if (this.variant === 'court') {
+      this.courtShot(env, dist);
       return;
     }
     // melee: distance, cone, vertical reach and a wall check
@@ -1354,6 +1562,12 @@ export class Zombie {
       a.actionT = this.netActionT;
       a.staggerT = this.netStaggerT;
       a.aggro = 1;
+    }
+    if (this.buried) {
+      // lying under the petals, as if dead
+      a.mode = 'death';
+      a.deathT = 6;
+      a.deathStyle = 1;
     }
     this.syncRoot();
     this.rig.update(a, 1 / 60);
