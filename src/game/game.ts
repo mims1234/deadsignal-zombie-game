@@ -25,7 +25,7 @@ import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
-import { type Account, type RunPerf, RunTracker, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
+import { type Account, type RunPerf, RunTracker, firstOpenMap, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -304,11 +304,11 @@ export class Game implements GameCtx {
       loginUrl: this.account.loginUrl,
       loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',
     });
-    // a map that is not open to this player (a gated map the admins have not made public): back to the District.
+    // a map that is not open to this player (switched to admins only): the first one that is.
     // An invite to a co-op session on it still gets in - the session's owner chose the map.
     if (mapAccess(this.account, this.mapId) === 'locked' && !new URLSearchParams(window.location.search).get('room')) {
-      this.mapId = 'district';
-      saveMap('district');
+      this.mapId = firstOpenMap(this.account);
+      saveMap(this.mapId);
     }
     if (this.account.banned) {
       this.menus.showError('ACCOUNT BANNED', 'This Discord account has been banned from DEAD SIGNAL.', this.account.banReason || undefined);

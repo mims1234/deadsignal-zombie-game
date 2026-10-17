@@ -35,13 +35,22 @@ const token = () => randomBytes(32).toString('base64url');
 const cookieOpts = (maxAge) => ({ path: '/', httpOnly: true, sameSite: 'lax', secure: SECURE, maxAge });
 const isAdmin = (u) => !!u && ADMIN_IDS.has(u.id);
 
-// Maps the admins open to everyone from the dashboard (the game's GATED_MAPS). Until then only admins can play them.
-const GATED_MAPS = { sakura: 'Sakura District' };
-const mapPublic = (id) => db.setting(`map.${id}.public`) === '1';
-/** Gated maps not open to everyone yet. */
-const lockedMaps = () => Object.keys(GATED_MAPS).filter((id) => !mapPublic(id));
+// Every map is live (every player can pick it) or admin only, switched from the dashboard; at least one is always live.
+// `live`: where a map starts before an admin has switched it (the game's GATED_MAPS start admin only).
+const MAPS = {
+  district: { name: 'The District', live: true },
+  sakura: { name: 'Sakura District', live: false },
+  forge: { name: 'The Forge', live: true },
+  asylum: { name: 'The Asylum', live: true },
+};
+const mapPublic = (id) => {
+  const v = db.setting(`map.${id}.public`);
+  return v === null ? !!MAPS[id]?.live : v === '1';
+};
+/** Maps only admins can play right now. */
+const lockedMaps = () => Object.keys(MAPS).filter((id) => !mapPublic(id));
 /** Can this player start a run or a session on the map? */
-const mapOpenTo = (u, map) => !(map in GATED_MAPS) || mapPublic(map) || isAdmin(u);
+const mapOpenTo = (u, map) => mapPublic(map in MAPS ? map : 'district') || isAdmin(u); // no map named: the District, as the game reads it
 const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
 
 /** The signed-in user for this request, or null. */
@@ -300,13 +309,14 @@ app.post('/api/admin/leaderboards', { preHandler: admin }, async (req, reply) =>
   return { ok: true, ...boardSwitches() };
 });
 app.get('/api/admin/reports', { preHandler: admin }, async (req) => ({ reports: db.reports(String(req.query.status || 'open')) }));
-app.get('/api/admin/maps', { preHandler: admin }, async () => ({ maps: Object.entries(GATED_MAPS).map(([id, name]) => ({ id, name, public: mapPublic(id) })) }));
+app.get('/api/admin/maps', { preHandler: admin }, async () => ({ maps: Object.entries(MAPS).map(([id, m]) => ({ id, name: m.name, public: mapPublic(id) })) }));
 
-/** Open a gated map to everyone, or take it back to admins only. */
+/** Put a map live for everyone, or take it back to admins only (never the last live one). */
 app.post('/api/admin/maps/:id', { preHandler: admin }, async (req, reply) => {
   const id = String(req.params.id);
-  if (!(id in GATED_MAPS)) return reply.code(404).send({ error: 'no such map' });
+  if (!(id in MAPS)) return reply.code(404).send({ error: 'no such map' });
   const open = req.body?.public === true;
+  if (!open && mapPublic(id) && Object.keys(MAPS).filter((m) => mapPublic(m)).length <= 1) return reply.code(409).send({ error: 'At least one map must stay live.' });
   db.setSetting(`map.${id}.public`, open ? '1' : '0');
   db.audit(req.user.id, open ? 'map-public' : 'map-admin-only', id, '');
   return { id, public: mapPublic(id) };

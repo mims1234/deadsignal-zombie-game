@@ -168,11 +168,11 @@
         <div class="card tablewrap" id="boardTable"></div>
       </section>
 
-      <!-- MAPS: maps in testing, admin-only until opened to everyone -->
+      <!-- MAPS: every map live for everyone or admin only; at least one stays live -->
       <section data-tab="maps">
         <div class="card tablewrap">
           <h3>Map access</h3>
-          <div class="sub">Admin only: only admins see and play the map (the game shows it to you marked ADMIN ONLY). Public: every player can pick it. Players see a change on their next page load.</div>
+          <div class="sub">Live: every player can pick the map. Admin only: only admins see and play it (the game shows it to you marked ADMIN ONLY); players on it are moved to the first live map. At least one map always stays live. Players see a change on their next page load.</div>
           <div id="access"></div>
         </div>
       </section>
@@ -218,7 +218,7 @@
 
       async function api(path, body) {
         const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body) } : undefined);
-        if (!r.ok) throw new Error(`${path}: ${r.status}`);
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error || `${path}: ${r.status}`);
         return r.json();
       }
       const debounce = (fn, ms = 250) => { let t = 0; return () => { clearTimeout(t); t = setTimeout(fn, ms); }; };
@@ -542,17 +542,28 @@
       $('boardMap').addEventListener('change', drawBoards);
       $('boardMode').addEventListener('change', drawBoards);
 
-      // ---------------------------------------------------------------- maps in testing
+      // ---------------------------------------------------------------- map access (at least one stays live)
+      let liveMaps = 0;
       const accessTable = localTable($('access'), [
         { label: 'Map', cell: (m) => m.name, sort: (m) => m.name },
-        { label: 'Access', cell: (m) => h('span', { class: m.public ? 'pill victory' : 'pill abandoned' }, m.public ? 'Public' : 'Admin only'), sort: (m) => (m.public ? 1 : 0) },
-        { label: '', cell: (m) => h('button', { class: m.public ? 'danger' : '', on: { click: () => setAccess(m).catch(fail) } }, m.public ? 'Make admin only' : 'Make public') },
-      ], 'No maps in testing.', 10);
+        { label: 'Access', cell: (m) => h('span', { class: m.public ? 'pill victory' : 'pill abandoned' }, m.public ? 'Live' : 'Admin only'), sort: (m) => (m.public ? 1 : 0) },
+        {
+          label: '',
+          cell: (m) => {
+            const last = m.public && liveMaps <= 1;
+            const b = h('button', { class: m.public ? 'danger' : '', title: last ? 'At least one map must stay live' : '', on: { click: () => setAccess(m).catch(fail) } }, last ? 'Last live map' : m.public ? 'Make admin only' : 'Make live');
+            b.disabled = last;
+            return b;
+          },
+        },
+      ], 'No maps.', 10);
       async function loadAccess() {
-        accessTable.set((await api('/api/admin/maps')).maps);
+        const maps = (await api('/api/admin/maps')).maps;
+        liveMaps = maps.filter((m) => m.public).length;
+        accessTable.set(maps);
       }
       async function setAccess(m) {
-        if (!confirm(m.public ? `Take ${m.name} back to admins only? Players stop seeing it on their next page load.` : `Open ${m.name} to every player?`)) return;
+        if (!confirm(m.public ? `Take ${m.name} off for players (admins only)? Players stop seeing it on their next page load.` : `Make ${m.name} live for every player?`)) return;
         await api(`/api/admin/maps/${m.id}`, { public: !m.public });
         await loadAccess();
       }

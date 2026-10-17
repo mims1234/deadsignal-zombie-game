@@ -25,23 +25,28 @@ export interface Account {
   cards: Record<string, number>;
   /** Where the sign-in button goes. */
   loginUrl: string;
-  /** Gated maps (`GATED_MAPS`) the admins have not opened to everyone yet. */
+  /** Maps only admins can play right now (any map can be switched; `GATED_MAPS` start that way). */
   lockedMaps: MapId[];
 }
 
 const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS] };
 
 /**
- * What a map is to this player. `open`: an ordinary map. `public`: gated, and opened to everyone. `admin-only`: gated
- * and not open yet, but this player is an admin. `dev-only`: a local dev build with no server. `locked`: not available.
+ * What a map is to this player. `open`: live for everyone (always so). `public`: one of `GATED_MAPS`, opened to
+ * everyone. `admin-only`: switched off for players, but this player is an admin. `dev-only`: a gated map in a local dev
+ * build with no server. `locked`: not available.
  */
 export type MapAccess = 'open' | 'public' | 'admin-only' | 'dev-only' | 'locked';
 
 export function mapAccess(a: Account, map: MapId): MapAccess {
-  if (!GATED_MAPS.includes(map)) return 'open';
-  if (!a.online) return import.meta.env.DEV ? 'dev-only' : 'locked';
-  if (!a.lockedMaps.includes(map)) return 'public';
+  if (!a.online) return !GATED_MAPS.includes(map) ? 'open' : import.meta.env.DEV ? 'dev-only' : 'locked';
+  if (!a.lockedMaps.includes(map)) return GATED_MAPS.includes(map) ? 'public' : 'open';
   return a.admin ? 'admin-only' : 'locked';
+}
+
+/** The first map this player may pick (the admins keep at least one live). */
+export function firstOpenMap(a: Account): MapId {
+  return MAP_IDS.find((m) => mapAccess(a, m) !== 'locked') ?? 'district';
 }
 
 const lockedFrom = (v: unknown): MapId[] => (Array.isArray(v) ? MAP_IDS.filter((m) => v.includes(m)) : [...GATED_MAPS]);

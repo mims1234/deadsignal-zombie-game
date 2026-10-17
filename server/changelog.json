@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.3.2",
+      "date": "2026-10-17",
+      "title": "Admins can switch any map off",
+      "notes": [
+        "Admin page, Maps: every map can now be Live (every player can pick it) or Admin only - not just the Sakura District. At least one map always stays live.",
+        "A player whose map was switched off lands on the first live map next time they load the game."
+      ]
+    },
+    {
       "version": "0.3.1",
       "date": "2026-10-17",
       "title": "Sakura District co-op fixes",
