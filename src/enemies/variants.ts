@@ -45,8 +45,8 @@ export const VARIANT_INFO: Record<Exclude<ZombieVariant, ''>, VariantInfo> = {
     speed: 1.3,
     damage: 1,
     scale: 1,
-    // a rifle: it fights from range (`Zombie.courtShot`), a round every second or so
-    def: { damage: 9, attackRange: 22, attackWindup: 0.45, attackStrike: 0.08, attackRecovery: 0.35, sightRange: 34, reward: 160, headshotBonus: 60 },
+    // a rifle: it fights from range (`Zombie.courtShot`), a round every second and a half or so
+    def: { damage: 7, attackRange: 22, attackWindup: 0.45, attackStrike: 0.08, attackRecovery: 0.35, sightRange: 34, reward: 160, headshotBonus: 60 },
   },
   empress: { name: 'The Crimson Empress', hp: 1.2, speed: 1, damage: 1, scale: 1 },
 };

@@ -40,7 +40,7 @@ describe('the Sakura District enemies', { timeout: 30000 }, () => {
       if (d.k === 'hurt') hurt += Number(d.a);
     });
     stand(sim, -100, 30);
-    const z = sim.zombies.spawn('shambler', -100, 48, new Rng(3), { state: 'chase', variant: 'court' });
+    const z = sim.zombies.spawn('shambler', -100, 42, new Rng(3), { state: 'chase', variant: 'court' });
     z.hp = z.maxHp = 1e9;
     let closest = Infinity;
     for (let f = 0; f < 30 * 20; f++) {

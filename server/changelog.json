@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.2.0",
+      "date": "2026-10-17",
+      "title": "0.2: smoother on every device, and a new way to bring in models",
+      "notes": [
+        "Auto graphics: the game picks a quality for your device (new Lite for older phones, new High+ for strong PCs), checks how it runs in the first seconds, and steps the resolution and then the quality up or down as you play - never in the middle of a defense, a horde or the extraction. Picking a quality in Settings turns it off.",
+        "Fewer draw calls on every map: plain-coloured surfaces now share materials, so the GPU has far less to do each frame.",
+        "The Sakura District runs much better: distant infected are drawn as one simple crowd instead of full anime models (the busiest view went from about 2.2 million triangles to under 400,000), far Kurenai Court members drop their models, and the district's signs and graffiti now share a few textures.",
+        "Co-op: the other players and the infected update 10 times a second as intended (it was about 7), so movement looks smoother.",
+        "New in Settings: NEW 3D MODELS (BETA) swaps in an animated infected and street props from a free art pack (Quaternius, CC0) on the District, the Forge and the Asylum. It is a first look at the new model system - try it and tell us whether to keep going.",
+        "The Kurenai Court's riflemen shoot a little less often and less accurately.",
+        "Story missions on the Sakura District are recorded in your stats but kept off the leaderboards (they start with a contract already done)."
+      ]
+    },
+    {
       "version": "0.1.119",
       "date": "2026-10-17",
       "title": "The Sakura District, rebuilt: seven springs after the fall",

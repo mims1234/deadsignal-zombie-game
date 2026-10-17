@@ -134,10 +134,12 @@ export class ModelZombieRig implements ZombieRig {
       a.time = Math.min(len * 0.999, s.deathT * 1.2);
       this.mixer.update(0);
     }
+    // the bones where they are now: shots this frame test the head and the chest where they are drawn
+    this.root.updateMatrixWorld(true);
   }
 
   getHeadWorld(out: THREE.Vector3): THREE.Vector3 {
-    return this.head ? this.head.getWorldPosition(out).add(new THREE.Vector3(0, this.headRadius * 0.6, 0)) : out.copy(this.root.position).setY(this.root.position.y + this.height - this.headRadius);
+    return this.head ? this.head.getWorldPosition(out).add(new THREE.Vector3(0, this.headRadius * 1.4, 0)) : out.copy(this.root.position).setY(this.root.position.y + this.height - this.headRadius);
   }
 
   getChestWorld(out: THREE.Vector3): THREE.Vector3 {

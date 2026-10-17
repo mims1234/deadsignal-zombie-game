@@ -600,7 +600,7 @@ export class Zombie {
     const p = env.player;
     if (!p.alive) return;
     const blocked = env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.1, p.z, 'shots');
-    const chance = blocked ? 0 : Math.max(0.15, 0.62 - dist / 40) * (p.sprinting ? 0.65 : 1);
+    const chance = blocked ? 0 : Math.max(0.12, 0.5 - dist / 45) * (p.sprinting ? 0.65 : 1);
     const hit = env.rng.f() < chance;
     this.shotFx(env, hit);
     if (hit) env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', 0.6);
@@ -1459,7 +1459,7 @@ export class Zombie {
 
   private finishAttack(env: ZombieEnv): void {
     this.enterState(env.player.alive ? 'chase' : 'idle');
-    this.cooldown = this.variant === 'court' ? 0.6 + env.rng.f() * 0.7 : this.attackKind === 'melee' ? 0.15 : 0.9;
+    this.cooldown = this.variant === 'court' ? 1.1 + env.rng.f() * 0.8 : this.attackKind === 'melee' ? 0.15 : 0.9;
     if (this.attackKind === 'slam') this.slamCd = WARDEN.slamCooldown;
     if (this.attackKind === 'charge') this.chargeCd = WARDEN.chargeCooldown;
     this.chargeLock = false;
