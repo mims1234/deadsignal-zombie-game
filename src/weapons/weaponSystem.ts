@@ -587,18 +587,20 @@ export class WeaponSystem {
     let hit = false;
     let kill = false;
     const fl = Math.hypot(this.fwd.x, this.fwd.z) || 1;
-    // the shockwave
-    for (const z of zs.zombies) {
-      if (!z.alive || !z.active || Math.abs(z.y - host.player.y) > 3) continue;
-      const dx = z.x - o.x;
-      const dz = z.z - o.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > R.waveRange || dist < 0.01) continue;
-      if (Math.acos(Math.max(-1, Math.min(1, (dx * this.fwd.x + dz * this.fwd.z) / (dist * fl)))) > R.waveCone) continue;
-      const k = 1 - (dist / R.waveRange) * 0.5;
-      if (zs.damage(z, s.damage * R.waveShare * k, false, zenv, Math.atan2(-dx, -dz) + Math.PI, R.wavePush * k, R.waveLift * k)) kill = true;
-      hit = true;
-    }
+    // the shockwave, after the bolt (so the bolt has bodies to leap through): everything left in the cone is thrown back
+    const wave = (): void => {
+      for (const z of zs.zombies) {
+        if (!z.alive || !z.active || Math.abs(z.y - host.player.y) > 3) continue;
+        const dx = z.x - o.x;
+        const dz = z.z - o.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist > R.waveRange || dist < 0.01) continue;
+        if (Math.acos(Math.max(-1, Math.min(1, (dx * this.fwd.x + dz * this.fwd.z) / (dist * fl)))) > R.waveCone) continue;
+        const k = 1 - (dist / R.waveRange) * 0.5;
+        if (zs.damage(z, s.damage * R.waveShare * k, false, zenv, Math.atan2(-dx, -dz) + Math.PI, R.wavePush * k, R.waveLift * k)) kill = true;
+        hit = true;
+      }
+    };
     // the bolt: the first infected along the sight (walls stop it), then leap after leap
     const wall = host.world.raycast(o.x, o.y, o.z, this.fwd.x, this.fwd.y, this.fwd.z, WEAPONS.raijin.maxRange, 'shots', this.rayHit);
     const first = zs.raycast(o.x, o.y, o.z, this.fwd.x, this.fwd.y, this.fwd.z, wall ? wall.t : WEAPONS.raijin.maxRange);
@@ -606,6 +608,7 @@ export class WeaponSystem {
     if (!first) {
       const end = wall ? { x: wall.x, y: wall.y, z: wall.z } : { x: o.x + this.fwd.x * 40, y: o.y + this.fwd.y * 40, z: o.z + this.fwd.z * 40 };
       this.bolt(from, end, color);
+      wave();
       return { hit, kill };
     }
     const struck = new Set<object>();
@@ -639,6 +642,7 @@ export class WeaponSystem {
       }
       target = best;
     }
+    wave();
     return { hit, kill };
   }
 
