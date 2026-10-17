@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.2.1",
+      "date": "2026-10-17",
+      "title": "The new infected fall when they die, and a brighter FPS counter",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on, killed infected now fall and lie on the ground instead of freezing upright where they died.",
+        "Their attacks and stagger reactions now play their animations too (they were stuck in the pose they had before).",
+        "The FPS counter (Settings: SHOW FPS COUNTER) is bigger and bright on a dark backing, in its own spot above the objectives: green at 50 fps and above, yellow from 30, red below."
+      ]
+    },
+    {
       "version": "0.2.0",
       "date": "2026-10-17",
       "title": "0.2: smoother on every device, and a new way to bring in models",

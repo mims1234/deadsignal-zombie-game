@@ -85,7 +85,7 @@ class Hud implements HudApi {
 
     // ---- right column: objectives + station panel ----
     const right = el('div', 'ds-right', hud);
-    this.fpsEl = el('div', 'ds-fps', hud);
+    this.fpsEl = el('div', 'ds-fps', right); // a badge at the top of the column, over the objectives
     this.fpsEl.hidden = true;
     this.fpsText = new TextCell(this.fpsEl);
     this.objectives = new ObjectivesView(right);
@@ -170,6 +170,8 @@ class Hud implements HudApi {
     } else {
       setHidden(this.fpsEl, false);
       this.fpsText.set(`${Math.round(s.fps)} FPS`);
+      const level = s.fps >= 50 ? 'ok' : s.fps >= 30 ? 'mid' : 'low';
+      if (this.fpsEl.dataset.level !== level) this.fpsEl.dataset.level = level;
     }
 
     this.banner.update(dt);

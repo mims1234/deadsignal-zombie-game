@@ -685,12 +685,21 @@
   gap: 0.8em;
 }
 .ds-fps {
-  position: absolute;
-  top: 0.35em;
-  right: 0.7em;
-  font: 600 max(9px, 0.7em)/1 var(--ds-font-num);
-  color: var(--ds-ink-faint);
+  align-self: flex-end;
+  /* bright and on a dark backing, so it reads over any scene; coloured by how it is running */
+  font: 800 max(12px, 0.95em)/1 var(--ds-font-num);
+  color: #3dff7a;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0.25em 0.45em;
+  border-radius: 4px;
+  text-shadow: 0 0 6px currentColor;
   letter-spacing: 0.08em;
+}
+.ds-fps[data-level='mid'] {
+  color: #ffd93d;
+}
+.ds-fps[data-level='low'] {
+  color: #ff4d4d;
 }
 
 .ds-obj .list {

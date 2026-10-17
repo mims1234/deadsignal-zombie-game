@@ -111,7 +111,8 @@ export class ModelZombieRig implements ZombieRig {
 
   update(s: ZombieAnimState, dt: number): void {
     const want = s.mode === 'run' ? { name: this.look.run, mode: 'loop' as const } : CLIP[s.mode];
-    const a = this.play(want.name, s.mode === 'death' ? 0.1 : 0.18);
+    // death cuts in at once (a blend would hold the body up for its first moments); the rest blend
+    const a = this.play(want.name, s.mode === 'death' ? 0 : 0.18);
     if (!a) return;
     const len = a.getClip().duration;
     if (want.mode === 'loop') {
@@ -126,13 +127,14 @@ export class ModelZombieRig implements ZombieRig {
       a.clampWhenFinished = true;
       a.paused = true;
       a.time = THREE.MathUtils.clamp(s.mode === 'stagger' ? s.staggerT : s.actionT, 0, 0.999) * len;
-      this.mixer.update(0);
+      // a paused action keeps the time it is given; the mixer still has to run for a blend into it to finish
+      this.mixer.update(dt);
     } else {
       a.setLoop(THREE.LoopOnce, 1);
       a.clampWhenFinished = true;
       a.paused = true;
       a.time = Math.min(len * 0.999, s.deathT * 1.2);
-      this.mixer.update(0);
+      this.mixer.update(dt);
     }
     // the bones where they are now: shots this frame test the head and the chest where they are drawn
     this.root.updateMatrixWorld(true);
