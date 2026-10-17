@@ -1,6 +1,6 @@
 /** Local persistence for settings and the best successful run. Every access is guarded: storage failure never blocks play. */
 import { asMapId, type MapId } from './world/layout/data';
-import { DEFAULT_SETTINGS, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, type TeamSkill, type ZombieDifficulty } from './config';
+import { DEFAULT_SETTINGS, QUALITY_TIERS, TEAM_SKILLS, ZOMBIE_DIFFICULTIES, type TeamSkill, type ZombieDifficulty } from './config';
 import type { BestRun, GameMode, QualityLevel, Settings } from './types';
 
 const KEY_SETTINGS = 'deadsignal.settings.v1';
@@ -14,15 +14,18 @@ const clamp = (v: unknown, lo: number, hi: number, fallback: number): number => 
   return Math.min(hi, Math.max(lo, n));
 };
 
+const asQuality = (v: unknown): QualityLevel | null => ((QUALITY_TIERS as readonly unknown[]).includes(v) ? (v as QualityLevel) : null);
+
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const q = r.quality;
-  const quality: QualityLevel = q === 'low' || q === 'medium' || q === 'high' ? q : DEFAULT_SETTINGS.quality;
+  const quality = asQuality(r.quality) ?? DEFAULT_SETTINGS.quality;
   return {
     sensitivity: clamp(r.sensitivity, 0.1, 4, DEFAULT_SETTINGS.sensitivity),
     fov: clamp(r.fov, 70, 110, DEFAULT_SETTINGS.fov),
     masterVolume: clamp(r.masterVolume, 0, 1, DEFAULT_SETTINGS.masterVolume),
     quality,
+    // settings saved before the tiers: anything but the old default (Low) was picked by hand
+    qualityAuto: typeof r.qualityAuto === 'boolean' ? r.qualityAuto : quality === DEFAULT_SETTINGS.quality,
     reducedMotion: typeof r.reducedMotion === 'boolean' ? r.reducedMotion : DEFAULT_SETTINGS.reducedMotion,
     invertY: typeof r.invertY === 'boolean' ? r.invertY : DEFAULT_SETTINGS.invertY,
     showFps: typeof r.showFps === 'boolean' ? r.showFps : DEFAULT_SETTINGS.showFps,
@@ -217,6 +220,25 @@ export function loadSakura(): SakuraProgress {
 export function saveSakura(p: SakuraProgress): void {
   try {
     window.localStorage.setItem(KEY_SAKURA, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
+}
+
+const KEY_TIER = 'deadsignal.tier.v1';
+
+/** The tier the governor last settled on for this device: where Auto starts next time (null: none saved yet). */
+export function loadTier(): QualityLevel | null {
+  try {
+    return asQuality(window.localStorage.getItem(KEY_TIER));
+  } catch {
+    return null;
+  }
+}
+
+export function saveTier(tier: QualityLevel): void {
+  try {
+    window.localStorage.setItem(KEY_TIER, tier);
   } catch {
     /* ignore */
   }

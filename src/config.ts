@@ -1469,11 +1469,33 @@ export interface QualityPreset {
   detailDistance: number;
   /** Paint every texture at half size: a quarter of the texture memory (phones, weak laptops). */
   halfTextures: boolean;
+  /** Halve them once more (a quarter of the size, a sixteenth of the memory): budget phones. Needs `halfTextures`. */
+  quarterTextures: boolean;
   /** Seconds between an ally's path-field refreshes. */
   allyPathEvery: number;
+  /** The 95th-percentile frame time (ms) this preset should hold: what the tier governor measures against. */
+  frameBudgetMs: number;
 }
 
 export const QUALITY: Record<QualityLevel, QualityPreset> = {
+  // T1, budget phones: fewer infected alive at once (each a little tougher, see `liteOffset`), a short view
+  lite: {
+    pixelRatioCap: 1,
+    shadows: false,
+    shadowMapSize: 1024,
+    bloom: false,
+    msaaSamples: 0,
+    lightPool: 2,
+    particleScale: 0.4,
+    maxEnemies: 16,
+    decalScale: 0.4,
+    viewDistance: 120,
+    detailDistance: 35,
+    halfTextures: true,
+    quarterTextures: true,
+    allyPathEvery: 1.6,
+    frameBudgetMs: 1000 / 30,
+  },
   low: {
     pixelRatioCap: 1,
     shadows: false,
@@ -1487,7 +1509,9 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     viewDistance: 190,
     detailDistance: 55,
     halfTextures: true,
+    quarterTextures: false,
     allyPathEvery: 1.2,
+    frameBudgetMs: 1000 / 30,
   },
   // Default. The shadow pass was redrawing the whole district and was the frame-time cost,
   // so medium keeps the enemy cap and skips shadows, bloom and MSAA.
@@ -1504,7 +1528,9 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     viewDistance: 420,
     detailDistance: 90,
     halfTextures: false,
+    quarterTextures: false,
     allyPathEvery: 0.6,
+    frameBudgetMs: 20,
   },
   high: {
     pixelRatioCap: 1.25,
@@ -1519,16 +1545,68 @@ export const QUALITY: Record<QualityLevel, QualityPreset> = {
     viewDistance: 420,
     detailDistance: Infinity,
     halfTextures: false,
+    quarterTextures: false,
     allyPathEvery: 0.6,
+    frameBudgetMs: 20,
+  },
+  // T5: High with MSAA and bloom and a bigger crowd, for a GPU with headroom left (the governor reaches it after a
+  // long clean stretch on High)
+  'high+': {
+    pixelRatioCap: 1.5,
+    shadows: true,
+    shadowMapSize: 1024,
+    bloom: true,
+    msaaSamples: 4,
+    lightPool: 5,
+    particleScale: 1,
+    maxEnemies: 60,
+    decalScale: 1,
+    viewDistance: 420,
+    detailDistance: Infinity,
+    halfTextures: false,
+    quarterTextures: false,
+    allyPathEvery: 0.6,
+    frameBudgetMs: 20,
   },
 };
+
+/** The presets from lightest to heaviest: the device tiers T1-T5 the governor steps between. */
+export const QUALITY_TIERS: readonly QualityLevel[] = ['lite', 'low', 'medium', 'high', 'high+'];
+
+/**
+ * The tier governor (`logic/governor.ts`): frames are judged in windows of `window` seconds. Resolution steps come
+ * first; the tier steps down after `downAfter` seconds over budget (with the render scale already at its floor) and up
+ * only after `upAfter` seconds with room to spare under the next tier's budget. Never during a defense hold, a horde
+ * or an extraction.
+ */
+export const GOVERNOR = {
+  window: 2,
+  /** The first seconds of play, judged as one: the calibration. */
+  calibrate: 20,
+  downAfter: 10,
+  upAfter: 120,
+  /** Up only while the p95 frame time is under this share of the next tier's budget. */
+  upHeadroom: 0.9,
+  /** A frame this much over budget counts as slow (the resolution steps). */
+  slowFactor: 1.1,
+  /** Share of slow frames in a window that steps the resolution down. */
+  slowShare: 0.25,
+  /** Never below 75% (lower looked like a pixelated mess mid-fight). */
+  minScale: 0.75,
+  /** A step down within this many seconds of a step up makes the tier above the session's ceiling. */
+  regret: 60,
+  /** Phones and tablets stop at this tier unless picked by hand (memory kills an iOS tab without slowing it first). */
+  touchCeiling: 'low' as QualityLevel,
+} as const;
 
 export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1,
   fov: 90,
   masterVolume: 0.7,
-  // everyone starts on the lightest preset (smooth on any device); Settings raises it, and that choice is kept
+  // with qualityAuto the game picks the tier for the device (`logic/governor.ts`) and this is only the fallback;
+  // picking one in Settings keeps it
   quality: 'low',
+  qualityAuto: true,
   reducedMotion: false,
   invertY: false,
   showFps: false,

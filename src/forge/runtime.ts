@@ -769,6 +769,11 @@ export class ForgeRuntime {
     return f === 'warning' || f === 'reborn';
   }
 
+  /** The last stand at the Hearth is on (the graphics tier holds still through it). */
+  get assaultOn(): boolean {
+    return this.view?.assault === 'on';
+  }
+
   /** The virus is over: no more spawns, the firestorm dies down, dawn. */
   get burnedOut(): boolean {
     return this.view?.finale.phase === 'burnout';

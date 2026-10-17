@@ -7,7 +7,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { QUALITY, RENDER } from '../config';
+import { GOVERNOR, QUALITY, RENDER } from '../config';
 import type { QualityLevel } from '../types';
 import { LightPool } from './lightPool';
 import { type BlueHourRig, createEnvironment, createRenderer, createSkyDome, setupBlueHour, type SkyDome } from './stage';
@@ -94,7 +94,7 @@ export class GameRenderer {
     this.scene.environmentIntensity = 0.5;
     // 22 m keeps contact shadows on nearby walls and zombies. The old 46 m box redrew most of the district every frame.
     this.light = setupBlueHour(this.scene, 22);
-    this.lightPool = new LightPool(this.scene, QUALITY.high.lightPool, QUALITY.medium.lightPool);
+    this.lightPool = new LightPool(this.scene, Math.max(...Object.values(QUALITY).map((q) => q.lightPool)), QUALITY.medium.lightPool);
     this.scene.add(this.camera);
 
     this.flashLight = new THREE.PointLight(0xffc27a, 0, 16, 2);
@@ -243,7 +243,7 @@ export class GameRenderer {
 
   /** Change the dynamic-resolution scale and resize the render targets. */
   setRenderScale(scale: number): void {
-    const v = Math.max(0.6, Math.min(1, scale));
+    const v = Math.max(GOVERNOR.minScale, Math.min(1, scale));
     if (Math.abs(v - this.renderScale) < 0.001) return;
     this.renderScale = v;
     this.resize();

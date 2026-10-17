@@ -11,6 +11,17 @@ export function activeCap(region: Region, phase: number, quality: QualityLevel):
   return Math.max(4, Math.min(Math.round(base), QUALITY[quality].maxEnemies, SPAWN.hardCap));
 }
 
+/**
+ * Lite keeps the same threat with fewer infected alive at once: where its cap cuts below Low's, each ambient infected
+ * gets some extra health and the gaps refill sooner. `hp` multiplies their health, `interval` the ambient spawn
+ * interval; both are 1 wherever the cap does not bite (and on every other preset).
+ */
+export function liteOffset(region: Region, phase: number, quality: QualityLevel): { hp: number; interval: number } {
+  const cut = activeCap(region, phase, 'low') / activeCap(region, phase, quality);
+  if (cut <= 1) return { hp: 1, interval: 1 };
+  return { hp: 1 + (cut - 1) * 0.5, interval: 1 / Math.sqrt(cut) };
+}
+
 export function spawnInterval(region: Region, phase: number): number {
   return REGIONS[region].spawnInterval * Math.pow(SPAWN.phaseIntervalMul, phase);
 }

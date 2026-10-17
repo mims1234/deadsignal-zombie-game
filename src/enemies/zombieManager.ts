@@ -5,7 +5,7 @@
 import { animeHordeCap } from '../anime/cap';
 import * as THREE from 'three';
 import { MISSION, RAGDOLL, SPAWN, ZOMBIES, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type ZombieDef, type ZombieTuning } from '../config';
-import { activeCap, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
+import { activeCap, liteOffset, pickSpawnType, spawnInterval, type SpawnType } from '../logic/director';
 import type { Rng } from '../logic/rng';
 import { combineTuning, IDENTITY_TUNING, type PhaseTuning } from '../logic/timeOfDay';
 import type { QualityLevel, Region, ZombieType } from '../types';
@@ -782,7 +782,8 @@ export class ZombieManager {
     // ---- continuous ambient pressure by region ----
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      let interval = spawnInterval(ctx.region, ctx.phase) / this.tuning.count;
+      const lite = liteOffset(ctx.region, ctx.phase, ctx.quality);
+      let interval = (spawnInterval(ctx.region, ctx.phase) * lite.interval) / this.tuning.count;
       if (ctx.defenseActive) interval = Math.min(interval, MISSION.defense.spawnInterval);
       this.spawnTimer = interval * (0.8 + rng.f() * 0.4);
       let cap = Math.min(SPAWN.hardCap, Math.max(3, Math.round(activeCap(ctx.region, ctx.phase, ctx.quality) * this.tuning.count)));
@@ -791,14 +792,21 @@ export class ZombieManager {
       if (this.theme === 'sakura') cap = Math.min(cap, animeHordeCap());
       if (active < cap && nearAlerted < SPAWN.nearbyLimit * this.tuning.count) {
         const type = pickSpawnType(ctx.region, ctx.phase, rng);
-        this.spawnFrom(type, ctx.defenseActive ? 'defense' : 'general', ctx, env, rng, ctx.phase);
+        this.spawnFrom(type, ctx.defenseActive ? 'defense' : 'general', ctx, env, rng, ctx.phase, ctx.defenseActive ? 1 : lite.hp);
       }
     }
   }
 
   /** Try to place a zombie at a valid, reachable, concealed spawn point. */
-  private spawnFrom(type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number): boolean {
-    if (this.spawnOverride && this.spawnOverride(type, group, ctx, env, rng, phase)) return true;
+  private spawnFrom(type: SpawnType, group: SpawnGroup, ctx: DirectorContext, env: ZombieEnv, rng: Rng, phase: number, hpMul = 1): boolean {
+    const placed = this.spawnOverride?.(type, group, ctx, env, rng, phase);
+    if (placed) {
+      if (hpMul !== 1) {
+        placed.maxHp *= hpMul;
+        placed.hp = placed.maxHp;
+      }
+      return true;
+    }
     const pts = this.level.data.spawnPoints;
     const allowed = this.spawnAllowed;
     const fx = -Math.sin(ctx.playerYaw);
@@ -839,7 +847,7 @@ export class ZombieManager {
     }
     if (chosen < 0) return false;
     const sp = pts[chosen]!;
-    const z = this.spawn(type, sp.x, sp.z, rng, { hpScale: 1 + 0.08 * phase, yaw: Math.atan2(-(ctx.playerX - sp.x), -(ctx.playerZ - sp.z)) });
+    const z = this.spawn(type, sp.x, sp.z, rng, { hpScale: (1 + 0.08 * phase) * hpMul, yaw: Math.atan2(-(ctx.playerX - sp.x), -(ctx.playerZ - sp.z)) });
     z.aggro(ctx.playerX, ctx.playerZ);
     return true;
   }

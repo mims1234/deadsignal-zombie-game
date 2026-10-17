@@ -1,4 +1,5 @@
 /** Shared settings + controls panels used by the title screen and the pause menu. */
+import { QUALITY_TIERS } from '../config';
 import type { QualityLevel, Settings } from '../types';
 import { el } from './dom';
 
@@ -60,7 +61,6 @@ function toggle(parent: HTMLElement, label: string, onChange: (v: boolean) => vo
   return input;
 }
 
-const QUALITIES: QualityLevel[] = ['low', 'medium', 'high'];
 
 export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, touch = false): SettingsPanel {
   const root = el('div', 'ds-settings');
@@ -71,18 +71,20 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
 
   const qRow = el('div', 'ds-set-row', root);
   el('span', 'lbl', qRow, 'GRAPHICS QUALITY');
-  const seg = el('div', 'ds-seg', qRow);
+  const seg = el('div', 'ds-seg tiers', qRow);
   seg.setAttribute('role', 'radiogroup');
   seg.setAttribute('aria-label', 'Graphics quality');
   const qBtns = new Map<QualityLevel, HTMLButtonElement>();
-  for (const q of QUALITIES) {
+  for (const q of QUALITY_TIERS) {
     const b = el('button', 'seg-btn', seg, q.toUpperCase());
     b.type = 'button';
     b.setAttribute('role', 'radio');
-    b.addEventListener('click', () => change({ quality: q }));
+    // a quality picked by hand stays: the game stops adjusting it
+    b.addEventListener('click', () => change({ quality: q, qualityAuto: false }));
     qBtns.set(q, b);
   }
 
+  const autoQ = toggle(root, 'AUTO GRAPHICS (ADJUSTS TO THIS DEVICE)', (v) => change({ qualityAuto: v }));
   const rm = toggle(root, 'REDUCED MOTION', (v) => change({ reducedMotion: v }));
   const inv = toggle(root, 'INVERT Y-AXIS', (v) => change({ invertY: v }));
   const fps = toggle(root, 'SHOW FPS COUNTER', (v) => change({ showFps: v }));
@@ -92,8 +94,8 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
 
   const hint = el('div', 'ds-set-hint', root);
   hint.textContent = touch
-    ? 'Low is the smooth default on phones. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
-    : 'Medium is the smooth default (no shadows or bloom). High turns nearby shadows back on. Reduced motion cuts camera bob, sway and screen shake.';
+    ? 'Auto graphics picks Lite or Low for this phone and steps down if it struggles. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
+    : 'Auto graphics picks a quality for this computer and adjusts it as you play; picking one turns it off. High turns nearby shadows on, High+ adds bloom and smoothing. Reduced motion cuts camera bob, sway and screen shake.';
 
   const paintOf = (r: SliderRow): void => (r.input as HTMLInputElement & { _paint?: () => void })._paint?.();
 
@@ -111,6 +113,7 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
         b.classList.toggle('on', on);
         b.setAttribute('aria-checked', on ? 'true' : 'false');
       }
+      autoQ.checked = s.qualityAuto;
       rm.checked = s.reducedMotion;
       inv.checked = s.invertY;
       fps.checked = s.showFps;

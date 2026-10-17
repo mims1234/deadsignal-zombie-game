@@ -168,7 +168,7 @@ class Menus implements MenusApi {
     if (!c) return;
     c.replaceChildren();
     el('span', 'ql', c, 'GRAPHICS');
-    el('span', 'qv', c, this.settings.quality.toUpperCase());
+    el('span', 'qv', c, `${this.settings.qualityAuto ? 'AUTO ' : ''}${this.settings.quality.toUpperCase()}`);
   }
 
   private pushSetting(patch: Partial<Settings>): void {

@@ -4,7 +4,8 @@
  * on its own) `online` is false and the game runs as a local, signed-out build that reports nothing.
  */
 import { GATED_MAPS, MAP_IDS, asMapId, type MapId } from '../world/layout/data';
-import type { GameMode, MissionStats } from '../types';
+import type { GameMode, MissionStats, QualityLevel } from '../types';
+import type { DeviceClass, GpuVendor } from '../render/device';
 
 export interface AccountUser {
   id: string;
@@ -94,6 +95,22 @@ export async function logout(): Promise<void> {
   await post('/auth/logout', {});
 }
 
+/** The coarse device a run was played on (no renderer string, screen size or user agent). */
+export interface RunDevice {
+  device: DeviceClass;
+  gpu: GpuVendor | null;
+  /** The quality tier the run started on. */
+  quality: QualityLevel;
+}
+
+/** How the run ran: the tier it ended on, mean frame rate, p95 frame time and the lowest render scale reached. */
+export interface RunPerf {
+  quality: QualityLevel;
+  fps: number;
+  p95Ms: number;
+  renderScale: number;
+}
+
 /**
  * Reports one run at a time. Calls are chained, so an `end` issued before the server has answered the `start`
  * still closes the right run.
@@ -108,19 +125,23 @@ export class RunTracker {
     return this.open;
   }
 
-  /** `version` is the build (no leading v), `difficulty` the infected's: the leaderboards are split by both. */
-  start(mode: GameMode, touch: boolean, map: string, version: string, difficulty: string): void {
+  /**
+   * `version` is the build (no leading v), `difficulty` the infected's: the leaderboards are split by both. `story`: a
+   * Sakura District story mission (kept off the leaderboards: it starts with a contract settled).
+   */
+  start(mode: GameMode, touch: boolean, map: string, version: string, difficulty: string, device: RunDevice, story: string | null = null): void {
     if (!this.enabled()) return;
     this.open = true;
-    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', { mode, touch, map, version, difficulty }))?.id ?? null);
+    const body = { mode, touch, map, version, difficulty, device: device.device, gpu: device.gpu, quality: device.quality, story };
+    this.chain = this.chain.then(async () => (await post<{ id: number }>('/api/runs', body))?.id ?? null);
   }
 
-  /** `keepalive` lets the request outlive the page (tab closing). */
-  end(outcome: 'victory' | 'defeat' | 'abandoned', reason: string, stats: MissionStats, keepalive = false): void {
+  /** `keepalive` lets the request outlive the page (tab closing). `perf` is null when too few frames were drawn. */
+  end(outcome: 'victory' | 'defeat' | 'abandoned', reason: string, stats: MissionStats, perf: RunPerf | null, keepalive = false): void {
     if (!this.open) return;
     this.open = false;
     this.chain = this.chain.then(async (id) => {
-      if (id !== null) await post(`/api/runs/${id}/end`, { outcome, reason, stats }, keepalive);
+      if (id !== null) await post(`/api/runs/${id}/end`, { outcome, reason, stats, perf }, keepalive);
       return null;
     });
   }
