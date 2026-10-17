@@ -52,6 +52,7 @@ import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
+import { farCrowd } from '../anime/farCrowd';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
 import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
@@ -398,6 +399,7 @@ export class Game implements GameCtx {
       // the Sakura District's kinds of infected, and the Kurenai Court's people (`sakura/director.ts`)
       this.zombies.pickVariant = sakuraVariantPicker(this.level);
       this.zombies.courtRig = (seed) => new CourtRig(seed);
+      this.zombies.beforeUpdate = () => farCrowd().begin();
     }
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);

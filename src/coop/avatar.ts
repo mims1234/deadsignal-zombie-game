@@ -339,6 +339,8 @@ export class Avatar {
   private fallDir = 1;
   // ---- a worn VRoid model ----
   private anime: AnimeBody | null = null;
+  /** The figure's own meshes a worn model hides (shown again while the model is off, `animeLod`). */
+  private readonly ownMeshes: THREE.Object3D[] = [];
   private animeSrc: PoseSource | null = null;
   private blinkT = 2;
 
@@ -465,7 +467,10 @@ export class Avatar {
     // hide the figure's own meshes (not the weapon, which lives in the gun holder)
     const hide = (o: THREE.Object3D): void => {
       if (o === this.gunHolder) return;
-      if ((o as THREE.Mesh).isMesh) o.visible = false;
+      if ((o as THREE.Mesh).isMesh) {
+        o.visible = false;
+        this.ownMeshes.push(o);
+      }
       for (const c of o.children) hide(c);
     };
     hide(this.body);
@@ -494,10 +499,22 @@ export class Avatar {
     };
   }
 
+  /**
+   * Far away (the Sakura District's Court): the worn model comes off and the figure's own plain body shows (a dozen
+   * cheap parts instead of a 13-material model); near, the model goes back on.
+   */
+  animeLod(near: boolean): void {
+    const a = this.anime;
+    if (!a || near === !!a.root.parent) return;
+    if (near) this.body.add(a.root);
+    else a.root.removeFromParent();
+    for (const m of this.ownMeshes) m.visible = !near;
+  }
+
   /** The worn model follows the posed skeleton; she blinks, looks worried while caged, and closes her eyes when down. */
   private followAnime(dt: number): void {
     const a = this.anime;
-    if (!a || !this.animeSrc) return;
+    if (!a || !this.animeSrc || !a.root.parent) return;
     a.root.matrixWorldAutoUpdate = false;
     this.root.updateMatrixWorld(true);
     a.root.matrixWorldAutoUpdate = true;

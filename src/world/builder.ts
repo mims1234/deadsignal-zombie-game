@@ -130,12 +130,16 @@ export class LevelBuilder {
   }
 
   private bake(mesh: THREE.Mesh, opts: AddOpts): void {
-    const material = mesh.material as THREE.Material;
+    const own = mesh.material as THREE.Material;
+    // a plain-coloured surface goes onto a shared palette material, its colour baked into its vertices: every
+    // plain colour at the same finish draws together (each its own material, each was its own draw call per chunk)
+    const tint = paletteable(own) ? (own as THREE.MeshStandardMaterial).color : null;
+    const material = tint ? paletteFor(own as THREE.MeshStandardMaterial) : own;
     const cast = opts.cast ?? mesh.castShadow;
     const receive = opts.receive ?? mesh.receiveShadow;
     const src = mesh.geometry;
     const g = src.clone();
-    const wantColor = (material as THREE.MeshStandardMaterial).vertexColors === true;
+    const wantColor = !tint && (material as THREE.MeshStandardMaterial).vertexColors === true;
 
     // keep only what the merged batch needs
     for (const name of Object.keys(g.attributes)) {
@@ -150,6 +154,15 @@ export class LevelBuilder {
     if (wantColor && !g.attributes.color) {
       const white = new Float32Array(count * 3).fill(1);
       g.setAttribute('color', new THREE.BufferAttribute(white, 3));
+    }
+    if (tint) {
+      const c = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        c[i * 3] = tint.r;
+        c[i * 3 + 1] = tint.g;
+        c[i * 3 + 2] = tint.b;
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(c, 3));
     }
     if (!g.index) {
       const idx = count > 65535 ? new Uint32Array(count) : new Uint16Array(count);
@@ -401,6 +414,36 @@ const texId = (t: THREE.Texture | null | undefined): string => (t ? t.uuid : '-'
  * Identity of a material for batching: two material INSTANCES with identical parameters and textures render identically,
  * so their geometry can share one merged draw call. Custom shader materials fall back to their own uuid.
  */
+/**
+ * Can this material's colour live in the vertices instead? A plain, opaque, unlit-by-itself standard material with no
+ * textures. `userData.noPalette` keeps one out (something recolours it while the game runs).
+ */
+function paletteable(m: THREE.Material): boolean {
+  const s = m as THREE.MeshStandardMaterial;
+  if (m.type !== 'MeshStandardMaterial' || m.userData?.noPalette) return false;
+  if (s.map || s.normalMap || s.roughnessMap || s.metalnessMap || s.emissiveMap || s.alphaMap || s.aoMap || s.lightMap || s.bumpMap || s.displacementMap) return false;
+  if (s.vertexColors || m.transparent || m.opacity < 1 || m.alphaTest > 0 || !m.depthWrite || m.polygonOffset || !s.fog || !m.toneMapped) return false;
+  if (s.emissive && s.emissive.getHex() !== 0 && s.emissiveIntensity > 0) return false;
+  if (m.blending !== THREE.NormalBlending || m.onBeforeCompile !== THREE.Material.prototype.onBeforeCompile) return false;
+  return true;
+}
+
+const palettes = new Map<string, THREE.MeshStandardMaterial>();
+
+/** The shared palette material for a finish (roughness and metalness to the nearest 0.05, side, flat shading). */
+function paletteFor(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
+  const r = Math.round(m.roughness * 20) / 20;
+  const mt = Math.round(m.metalness * 20) / 20;
+  const key = `${r}|${mt}|${m.side}|${m.flatShading ? 1 : 0}|${m.envMapIntensity}`;
+  let p = palettes.get(key);
+  if (!p) {
+    p = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: r, metalness: mt, side: m.side, flatShading: m.flatShading, envMapIntensity: m.envMapIntensity });
+    p.name = `palette ${key}`;
+    palettes.set(key, p);
+  }
+  return p;
+}
+
 export function materialSignature(m: THREE.Material): string {
   if ((m as THREE.ShaderMaterial).isShaderMaterial) return m.uuid;
   const s = m as THREE.MeshStandardMaterial;

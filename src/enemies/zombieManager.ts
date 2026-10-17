@@ -169,6 +169,8 @@ export class ZombieManager {
    */
   pickVariant: ((type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant) | null = null;
   courtRig: ((seed: number) => ZombieRig) | null = null;
+  /** Called before each frame's update (the Sakura District's far crowd starts its count again). */
+  beforeUpdate: (() => void) | null = null;
   private readonly oneOff = new Set<ZombieRig>();
   /**
    * Map scripts may place a director spawn themselves (the Asylum: in through a boarded window). Return the infected
@@ -409,6 +411,7 @@ export class ZombieManager {
    */
   update(dt: number, env: ZombieEnv, aiEnabled: boolean, envs?: readonly ZombieEnv[]): void {
     this.simTime += dt;
+    this.beforeUpdate?.();
     const p = env.player;
     // spatial hash of living zombies
     this.grid.clear();
@@ -547,6 +550,7 @@ export class ZombieManager {
   /** Co-op guest: animate the puppets (no AI runs here). */
   updatePuppets(dt: number, env: ZombieEnv): void {
     this.simTime += dt;
+    this.beforeUpdate?.();
     this.grid.clear();
     const p = env.player;
     for (const z of this.zombies) {

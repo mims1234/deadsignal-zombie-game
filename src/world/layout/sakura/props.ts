@@ -82,10 +82,22 @@ export interface JpSignOpts {
   sub?: string;
 }
 
-/** A signboard texture: Japanese text (horizontal or vertical) on a coloured board, faded by the years. */
+const signKey = (text: string, o: JpSignOpts): string => `${text}:${o.bg}:${o.fg}:${o.vertical ? 1 : 0}:${o.glow ?? 0}:${o.worn ?? 0.5}:${o.aspect}:${o.sub ?? ''}`;
+
+/** A signboard texture on its own material (one-off signs that are not batched with the map). */
 export function jpSignMaterial(text: string, o: JpSignOpts = {}): THREE.MeshStandardMaterial {
-  const key = `jpsign:${text}:${o.bg}:${o.fg}:${o.vertical ? 1 : 0}:${o.glow ?? 0}:${o.worn ?? 0.5}:${o.aspect}:${o.sub ?? ''}`;
-  return memo(key, () => {
+  return memo(`jpsign:${signKey(text, o)}`, () => {
+    const tex = new THREE.CanvasTexture(jpSignCanvas(text, o));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const glow = o.glow ?? 0;
+    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, emissive: glow > 0 ? 0xffffff : 0x000000, emissiveMap: glow > 0 ? tex : null, emissiveIntensity: glow });
+  });
+}
+
+/** A signboard's picture: Japanese text (horizontal or vertical) on a coloured board, faded by the years. */
+function jpSignCanvas(text: string, o: JpSignOpts = {}): HTMLCanvasElement {
+  return memo(`jpsigncv:${signKey(text, o)}`, () => {
     const aspect = o.aspect ?? (o.vertical ? 0.28 : 3.2);
     const H = 256;
     const W = Math.round(H * aspect);
@@ -133,24 +145,100 @@ export function jpSignMaterial(text: string, o: JpSignOpts = {}): THREE.MeshStan
       g.arc(rnd() * cv.width, rnd() * H, 6 + rnd() * 26, 0, Math.PI * 2);
       g.fill();
     }
+    return cv;
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// the sign atlas: every sign, banner and painted word drawn onto a few shared textures, so the
+// level builder batches them like any other surface (a texture of its own each made every one a
+// separate draw call: about half of the district's)
+// ---------------------------------------------------------------------------------------------
+
+/** Where a picture sits in an atlas page: the page's material and its UV rectangle. */
+export interface Tile {
+  mat: THREE.Material;
+  u0: number;
+  v0: number;
+  u1: number;
+  v1: number;
+}
+
+const PAGE = 2048;
+const PAD = 4;
+
+class Atlas {
+  private page: { g: CanvasRenderingContext2D; tex: THREE.CanvasTexture; mat: THREE.Material; x: number; y: number; rowH: number } | null = null;
+
+  constructor(private readonly make: (tex: THREE.CanvasTexture) => THREE.Material) {}
+
+  private open(): NonNullable<Atlas['page']> {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = PAGE;
     const tex = new THREE.CanvasTexture(cv);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
-    const glow = o.glow ?? 0;
-    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, emissive: glow > 0 ? 0xffffff : 0x000000, emissiveMap: glow > 0 ? tex : null, emissiveIntensity: glow });
-  });
+    this.page = { g: cv.getContext('2d')!, tex, mat: this.make(tex), x: 0, y: 0, rowH: 0 };
+    return this.page;
+  }
+
+  /** Draw `src` in, scaled to `h` pixels tall. */
+  add(src: HTMLCanvasElement, h: number): Tile {
+    const w = Math.min(PAGE - PAD, Math.max(8, Math.round((src.width / Math.max(1, src.height)) * h)));
+    let p = this.page ?? this.open();
+    if (p.x + w > PAGE) {
+      p.x = 0;
+      p.y += p.rowH + PAD;
+      p.rowH = 0;
+    }
+    if (p.y + h > PAGE) p = this.open();
+    p.g.drawImage(src, p.x, p.y, w, h);
+    p.tex.needsUpdate = true;
+    const t: Tile = { mat: p.mat, u0: p.x / PAGE, u1: (p.x + w) / PAGE, v0: 1 - (p.y + h) / PAGE, v1: 1 - p.y / PAGE };
+    p.x += w + PAD;
+    p.rowH = Math.max(p.rowH, h);
+    return t;
+  }
+}
+
+const SIGNS = new Atlas((tex) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, side: THREE.DoubleSide }));
+const LIT_SIGNS = new Atlas((tex) => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.75, side: THREE.DoubleSide, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.5 }));
+const PAINT = new Atlas((tex) => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2, side: THREE.DoubleSide }));
+
+/** A sign's picture in the shared atlas (lit signs on their own pages). */
+export function signTile(text: string, o: JpSignOpts = {}): Tile {
+  return memo(`signtile:${signKey(text, o)}`, () => ((o.glow ?? 0) > 0 ? LIT_SIGNS : SIGNS).add(jpSignCanvas(text, o), o.vertical ? 256 : 128));
+}
+
+/** A plane `w` x `h` showing `t` (its UVs moved onto the tile). */
+export function tilePlane(w: number, h: number, t: Tile): THREE.Mesh {
+  const geo = new THREE.PlaneGeometry(w, h);
+  const uv = geo.attributes.uv!;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, t.u0 + uv.getX(i) * (t.u1 - t.u0), t.v0 + uv.getY(i) * (t.v1 - t.v0));
+  return new THREE.Mesh(geo, t.mat);
 }
 
 /** A sign board on a wall or a pole: `w` x `h`, facing the way the place faces (+Z after rotation). */
 export function signBoard(b: LevelBuilder, o: At & { w: number; h: number; text: string; sign?: JpSignOpts }): void {
-  const mat = jpSignMaterial(o.text, { aspect: o.w / o.h, ...o.sign });
-  const m = new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, 0.08), [MAT.blackLacquer(), MAT.blackLacquer(), MAT.blackLacquer(), MAT.blackLacquer(), mat, MAT.blackLacquer()]);
-  place(b, m, o);
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(o.w, o.h, 0.08), MAT.blackLacquer()));
+  const face = tilePlane(o.w, o.h, signTile(o.text, { aspect: o.w / o.h, ...o.sign }));
+  face.position.z = 0.042;
+  g.add(face);
+  place(b, g, o);
 }
 
 /** A canvas decal: big painted words on the ground or a wall (SOS, warnings, the Court's red graffiti). */
 export function paintedWordsMaterial(text: string, color: string, opts: { font?: string; scale?: number; drip?: boolean } = {}): THREE.MeshBasicMaterial {
   return memo(`paint:${text}:${color}:${opts.drip ? 1 : 0}`, () => {
+    const tex = new THREE.CanvasTexture(paintedWordsCanvas(text, color, opts));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: true });
+  });
+}
+
+function paintedWordsCanvas(text: string, color: string, opts: { font?: string; drip?: boolean } = {}): HTMLCanvasElement {
+  return memo(`paintcv:${text}:${color}:${opts.drip ? 1 : 0}`, () => {
     const lines = text.split('\n');
     const cv = document.createElement('canvas');
     cv.width = 1024;
@@ -172,28 +260,31 @@ export function paintedWordsMaterial(text: string, color: string, opts: { font?:
         for (let k = 0; k < 14; k++) g.fillRect(150 + rnd() * 724, 160 + i * 256, 4 + rnd() * 5, 20 + rnd() * 70);
       }
     });
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    return new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.85, polygonOffset: true, polygonOffsetFactor: -2, toneMapped: true });
+    return cv;
   });
+}
+
+/** Painted words in the shared paint atlas. */
+function paintTile(text: string, color: string, drip = false): Tile {
+  return memo(`painttile:${text}:${color}:${drip ? 1 : 0}`, () => PAINT.add(paintedWordsCanvas(text, color, { drip }), 128 * text.split('\n').length));
 }
 
 /** Painted words flat on the ground (an SOS on a sports field, KEEP OUT on a road). */
 export function groundWords(b: LevelBuilder, o: At & { text: string; w: number; h: number; color: string }): void {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(o.w, o.h), paintedWordsMaterial(o.text, o.color));
+  const m = tilePlane(o.w, o.h, paintTile(o.text, o.color));
   m.rotation.set(-Math.PI / 2, 0, o.rot ?? 0);
   m.position.set(o.x, (o.y ?? 0) + 0.035, o.z);
-  m.renderOrder = 2;
-  b.addDynamic(m);
+  m.updateMatrixWorld(true);
+  b.add(m, { cast: false });
 }
 
 /** Painted words on a wall (spray paint, the Court's graffiti, "WE ARE HERE"). Faces +Z after `rot`. */
 export function wallWords(b: LevelBuilder, o: At & { text: string; w: number; h: number; color: string; drip?: boolean }): void {
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(o.w, o.h), paintedWordsMaterial(o.text, o.color, { drip: o.drip }));
+  const m = tilePlane(o.w, o.h, paintTile(o.text, o.color, o.drip));
   m.position.set(o.x, o.y ?? 1.6, o.z);
   m.rotation.y = o.rot ?? 0;
-  m.renderOrder = 2;
-  b.addDynamic(m);
+  m.updateMatrixWorld(true);
+  b.add(m, { cast: false });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -306,10 +397,8 @@ export function omamoriFence(c: Ctx, o: { x0: number; z0: number; x1: number; z1
 /** A tall nobori banner on a pole (festival banners, the Court's red ones). */
 export function nobori(b: LevelBuilder, o: At & { text: string; color: string; fg?: string; torn?: boolean }): void {
   addBox(b, 'steelDark', o.x, 2.2, o.z, 0.06, 4.4, 0.06);
-  const mat = jpSignMaterial(o.text, { bg: o.color, fg: o.fg ?? '#f4ede0', vertical: true, worn: 0.8 });
   const h = o.torn ? 2.1 : 2.9;
-  const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.62, h), mat);
-  (flag.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+  const flag = tilePlane(0.62, h, signTile(o.text, { bg: o.color, fg: o.fg ?? '#f4ede0', vertical: true, worn: 0.8 }));
   const [fx, fz] = local(o, 0.34, 0);
   flag.position.set(fx, 4.2 - h / 2, fz);
   flag.rotation.y = o.rot ?? 0;
@@ -544,16 +633,19 @@ export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; su
     dark.position.set(0, 1.35, 0.02);
     g.add(dark);
     if (o.shutter === 'torn') {
-      const half = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 1.1, 0.06), new THREE.MeshStandardMaterial({ color: 0x7a7e80, roughness: 0.6, metalness: 0.5 }));
+      const half = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 1.1, 0.06), std('shutterTorn', 0x7a7e80, 0.6, { metalness: 0.5 }));
       half.position.set(0, 2.15, 0.07);
       half.rotation.x = 0.35;
       g.add(half);
     }
   }
   // the signboard
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(w - 0.2, 0.75, 0.12), [MAT.blackLacquer(), MAT.blackLacquer(), MAT.blackLacquer(), MAT.blackLacquer(), jpSignMaterial(o.name, { bg: o.color, aspect: (w - 0.2) / 0.75, sub: o.sub, glow: o.lit ? 0.6 : 0, worn: 0.7 }), MAT.blackLacquer()]);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(w - 0.2, 0.75, 0.12), MAT.blackLacquer());
   sign.position.set(0, 3.15, 0.1);
   g.add(sign);
+  const face = tilePlane(w - 0.2, 0.75, signTile(o.name, { bg: o.color, aspect: (w - 0.2) / 0.75, sub: o.sub, glow: o.lit ? 0.6 : 0, worn: 0.7 }));
+  face.position.set(0, 3.15, 0.162);
+  g.add(face);
   // the awning
   const aw = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, 0.9), std(`awning${o.color}`, new THREE.Color(o.color).multiplyScalar(0.8).getHex(), 0.9));
   aw.position.set(0, 2.78, 0.45);
@@ -561,9 +653,7 @@ export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; su
   g.add(aw);
   // the noren: split cloth panels in the doorway
   if (o.noren && o.shutter !== 'down') {
-    const mat = jpSignMaterial(o.noren, { bg: '#1e2a4a', fg: '#f0ece0', aspect: 1.6, worn: 0.9 });
-    const nor = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.95), mat);
-    (nor.material as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
+    const nor = tilePlane(1.5, 0.95, signTile(o.noren, { bg: '#1e2a4a', fg: '#f0ece0', aspect: 1.6, worn: 0.9 }));
     nor.position.set(0, 2.2, 0.12);
     g.add(nor);
   }

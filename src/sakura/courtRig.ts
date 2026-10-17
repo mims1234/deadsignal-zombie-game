@@ -28,6 +28,11 @@ export class CourtRig implements ZombieRig {
 
   reset(): void {}
 
+  /** Far off, the plain figure stands in for the model. */
+  setDistance2(d2: number): void {
+    this.fig.animeLod(d2 < 26 * 26);
+  }
+
   update(s: ZombieAnimState, dt: number): void {
     const r = this.root;
     if (!this.fig.root.parent && r.parent) r.parent.add(this.fig.root);

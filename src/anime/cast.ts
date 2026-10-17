@@ -8,6 +8,7 @@ import { ANIME_CAST } from '../config';
 import type { ZombieAnimState, ZombieRig } from '../enemies/zombieRigTypes';
 import type { ZombieType } from '../types';
 import { type Dims, type Style, StyleFigure } from './figure';
+import { FAR, farCrowd } from './farCrowd';
 import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource, animeModel, animeSlotState, loadAnimeFiles } from './vrm';
 
 const PEOPLE = [...ANIME_CAST.squad, ...ANIME_CAST.operators, ...ANIME_CAST.survivors];
@@ -63,6 +64,10 @@ export class AnimeZombieRig implements ZombieRig {
   private readonly src: PoseSource;
   private d2 = 0;
   private skip = 0;
+  /** Drawn in the far crowd (`farCrowd.ts`) instead of wearing the model. */
+  private far = false;
+  /** What the model hangs from (put back on it when the infected comes near again). */
+  private bodyFrame!: THREE.Object3D;
 
   constructor(type: ZombieType, template: AnimeTemplate, def: { radius: number; height: number; headRadius: number }, seed: number) {
     this.type = type;
@@ -92,6 +97,7 @@ export class AnimeZombieRig implements ZombieRig {
     this.body = new AnimeBody(template, { scale: s, offset: new THREE.Vector3(), tint: TINTS[type], grip: 0.45, shadows: true });
     const frame = this.fig.getFall();
     frame.add(this.body.root);
+    this.bodyFrame = frame;
     const J = this.fig.J;
     this.src = {
       frame,
@@ -119,9 +125,24 @@ export class AnimeZombieRig implements ZombieRig {
   }
 
   update(s: ZombieAnimState, dt: number): void {
-    // a model is ~13 skinned meshes, so a crowd of them is the Sakura District's frame cost: far ones are re-posed only every
-    // 2nd or 3rd frame (the pose is a pure function of time, so it just steps), the dying and the struck always are
-    const every = this.d2 > 55 * 55 ? 3 : this.d2 > 30 * 30 ? 2 : 1;
+    // far away: the model comes off and ten boxes in the far crowd follow the stand-in skeleton (one draw call for all)
+    const far = this.d2 > FAR * FAR;
+    if (far !== this.far) {
+      this.far = far;
+      // off the figure entirely while far: its ~180 bones are not even walked
+      if (far) this.body.root.removeFromParent();
+      else this.bodyFrame.add(this.body.root);
+    }
+    if (far) {
+      this.fig.update(s, dt);
+      this.root.updateMatrixWorld(true);
+      const t = TINTS[this.type];
+      farCrowd().write(this.fig, t.skin, t.cloth, this.root.parent);
+      return;
+    }
+    // a model is ~13 skinned meshes: the farther of the near ones are re-posed only every 2nd frame (the pose is a pure
+    // function of time, so it just steps), the dying and the struck always are
+    const every = this.d2 > 16 * 16 ? 2 : 1;
     if (every > 1 && s.mode !== 'death' && s.hitKick <= 0 && this.skip++ % every !== 0) return;
     this.fig.update(s, dt);
     // bring the stand-in's joints up to date without walking the model's whole skeleton twice

@@ -738,7 +738,8 @@ export class SessionSim {
   private flush(dt: number): void {
     this.sendT -= dt;
     if (this.sendT > 0) return;
-    this.sendT = 1 / COOP.snapshotHz;
+    // carry the leftover over, so a 30 Hz tick really sends 10 a second (resetting it sent about 7); never a burst after a stall
+    this.sendT = Math.max(0, this.sendT + 1 / COOP.snapshotHz);
     this.snapshot();
   }
 
