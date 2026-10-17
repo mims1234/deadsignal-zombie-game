@@ -623,6 +623,7 @@ export class SessionSim {
       time: 0,
       world: this.level.world,
       nav: this.level.nav,
+      floors: this.level.floors,
       field,
       player: ref,
       rng: this.rng,
@@ -860,7 +861,7 @@ export class SessionSim {
       }
       if (leader) {
         this.allyLeader = leader;
-        allyMove(a, this.allyWorld, dt, leader.ref.x, leader.ref.z, leader.yaw);
+        allyMove(a, this.allyWorld, dt, leader.ref.x, leader.ref.z, leader.yaw, leader.ref.y);
         this.allyLeader = null;
       }
       const shot = allyFight(a, this.allyWorld, dt);

@@ -34,8 +34,16 @@ export class NavGrid {
   /** How far colliders are grown (an agent's radius) and the playable bounds (for the edge margin). */
   private readonly inflate: number;
   private readonly bounds: WorldBoundsXZ;
+  /** The height this grid's floor is at: what an agent's body spans is measured from it (a storey's grid, `floors.ts`). */
+  private readonly yBase: number;
+  /** Only the raised floors at `yBase` are walkable (an upper storey): everywhere else is open air. */
+  private readonly floorsOnly: boolean;
 
-  constructor(bounds: WorldBoundsXZ, world: CollisionWorld, inflate = 0.42) {
+  /**
+   * `opts.yBase` / `opts.floorsOnly`: a grid for one storey of a building (`floors.ts`): walkable only where a floor's top
+   * is at `yBase`, with the walls standing on that floor as obstacles. The ground's grid takes the defaults.
+   */
+  constructor(bounds: WorldBoundsXZ, world: CollisionWorld, inflate = 0.42, opts: { yBase?: number; floorsOnly?: boolean } = {}) {
     this.minX = bounds.minX;
     this.minZ = bounds.minZ;
     this.cols = Math.ceil((bounds.maxX - bounds.minX) / NAV_CELL);
@@ -44,8 +52,38 @@ export class NavGrid {
     this.blocked = new Uint8Array(this.count);
     this.inflate = inflate;
     this.bounds = { ...bounds };
+    this.yBase = opts.yBase ?? 0;
+    this.floorsOnly = opts.floorsOnly ?? false;
+    if (this.floorsOnly) {
+      this.blocked.fill(1);
+      this.openFloors(world, 0, this.cols - 1, 0, this.rows - 1);
+    }
     for (const c of world.colliders) this.stamp(c, 0, this.cols - 1, 0, this.rows - 1);
     this.margin(0, this.cols - 1, 0, this.rows - 1);
+  }
+
+  /** A storey's grid: open the cells over a floor whose top is this grid's height (an agent's centre kept off its edges). */
+  private openFloors(world: CollisionWorld, ci0: number, ci1: number, cj0: number, cj1: number): void {
+    for (const c of world.colliders) {
+      if (!c.floor || Math.abs(c.y1 - this.yBase) > 0.35) continue;
+      const i0 = Math.max(ci0, Math.floor((c.minX - this.minX) / NAV_CELL));
+      const i1 = Math.min(ci1, Math.floor((c.maxX - this.minX) / NAV_CELL));
+      const j0 = Math.max(cj0, Math.floor((c.minZ - this.minZ) / NAV_CELL));
+      const j1 = Math.min(cj1, Math.floor((c.maxZ - this.minZ) / NAV_CELL));
+      for (let j = j0; j <= j1; j++) {
+        const z = this.minZ + (j + 0.5) * NAV_CELL;
+        for (let i = i0; i <= i1; i++) {
+          const x = this.minX + (i + 0.5) * NAV_CELL;
+          const dx = x - c.cx;
+          const dz = z - c.cz;
+          const lx = Math.abs(c.cos * dx - c.sin * dz);
+          const lz = Math.abs(c.sin * dx + c.cos * dz);
+          // the whole slab: a storey's floor is several slabs round its stair hole, and their seams must stay open
+          // (real drops are railed or walled, and those are stamped as obstacles)
+          if (lx <= c.hx && lz <= c.hz) this.blocked[j * this.cols + i] = 0;
+        }
+      }
+    }
   }
 
   /**
@@ -58,7 +96,8 @@ export class NavGrid {
     const j0 = Math.max(0, Math.floor((z0 - this.minZ) / NAV_CELL));
     const j1 = Math.min(this.rows - 1, Math.floor((z1 - this.minZ) / NAV_CELL));
     if (i1 < i0 || j1 < j0) return;
-    for (let j = j0; j <= j1; j++) this.blocked.fill(0, j * this.cols + i0, j * this.cols + i1 + 1);
+    for (let j = j0; j <= j1; j++) this.blocked.fill(this.floorsOnly ? 1 : 0, j * this.cols + i0, j * this.cols + i1 + 1);
+    if (this.floorsOnly) this.openFloors(world, i0, i1, j0, j1);
     const r = Math.max(x1 - x0, z1 - z0) / 2 + this.inflate + NAV_CELL;
     world.forEachNear((x0 + x1) / 2, (z0 + z1) / 2, r, (c) => this.stamp(c, i0, i1, j0, j1));
     this.margin(i0, i1, j0, j1);
@@ -67,7 +106,8 @@ export class NavGrid {
   /** Block the cells (within the given index range) an agent's centre cannot occupy because of one collider. */
   private stamp(c: BoxCollider, ci0: number, ci1: number, cj0: number, cj1: number): void {
     if (!c.blocksMove || c.floor) return; // a raised floor is walked on (its open edges carry rims that are stamped)
-    if (c.y1 <= 0.5 || c.y0 >= 1.7) return;
+    // what an agent's body spans, from the floor this grid is at
+    if (c.y1 <= this.yBase + 0.5 || c.y0 >= this.yBase + 1.7) return;
     const inflate = this.inflate;
     const infl2 = inflate * inflate;
     const i0 = Math.max(ci0, Math.floor((c.minX - inflate - this.minX) / NAV_CELL));

@@ -597,7 +597,9 @@ export class Avatar {
     this.ty = y;
     this.tz = z;
     this.tyaw = yaw;
-    if (!this.placed || !this.root.visible) {
+    // a jump of more than a few metres (through a stairwell, back to the start) is a move, not a walk: be there at once
+    const far = Math.hypot(x - this.root.position.x, z - this.root.position.z) > 6;
+    if (!this.placed || !this.root.visible || far) {
       this.root.position.set(x, y, z);
       this.body.rotation.y = yaw;
       this.placed = true;

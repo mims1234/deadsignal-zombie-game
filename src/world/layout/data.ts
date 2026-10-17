@@ -219,7 +219,10 @@ export const MAP_TEXT: Record<MapId, MapText> = {
 export interface LevelData {
   id: MapId;
   text: MapText;
+  /** The street map (the minimap, the director). */
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** All the space anyone can be in: the street map, plus underground spaces built beside it (`floors.ts`). */
+  worldBounds: { minX: number; maxX: number; minZ: number; maxZ: number };
   playerStart: { x: number; z: number; yaw: number };
   stations: StationDef[];
   crates: CrateDef[];

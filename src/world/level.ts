@@ -9,6 +9,7 @@ import type { Region, SurfaceKind } from '../types';
 import type { MapData, MapFootprint } from '../ui/hudTypes';
 import { LevelBuilder, type LampSpec } from './builder';
 import { CollisionWorld } from './collision';
+import { Floors } from './floors';
 import type { GlowField } from './glow';
 import type { SpireHandle, TransmitterHandle } from './landmarks';
 import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, type MapId } from './layout/data';
@@ -20,6 +21,7 @@ import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
 import { buildLandingZone, buildNorthStrip, LZ } from './layout/northwest';
 import { buildRoads } from './layout/roads';
+import { buildSakura, SAKURA_BOUNDS, SAKURA_SITES, SAKURA_SPACE, type SakuraHandles } from './layout/sakura';
 import { buildApartments, buildCheckpoint, buildCornerStore, buildParkingLot } from './layout/southwest';
 import type { Ctx } from './layout/util';
 import type { MaterialLib } from './materials';
@@ -38,6 +40,8 @@ export interface Level {
   root: THREE.Group;
   world: CollisionWorld;
   nav: NavGrid;
+  /** Storeys, roofs and underground spaces and the stairs between them (only the street on most maps). */
+  floors: Floors;
   data: LevelData;
   lights: LampSpec[];
   glowField: GlowField | null;
@@ -47,6 +51,8 @@ export interface Level {
   doors: DoorWorld | null;
   /** The Forge: what its story animates (doors, the seven forges, the Hearth's gate, the furnace, the billboard). */
   forgeFx: ForgeHandles | null;
+  /** The Sakura District: what its story and its Easter egg use (the lanterns, the bell, the tree, the stage...). */
+  sakura: SakuraHandles | null;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -66,11 +72,16 @@ interface Sites {
 export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level {
   const forge = mapId === 'forge';
   const asylum = mapId === 'asylum';
-  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : WORLD_BOUNDS;
-  const world = new CollisionWorld(WORLD);
+  const sakura = mapId === 'sakura';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : WORLD_BOUNDS;
+  // all the space there is: the street map, plus any underground spaces built beside it
+  const SPACE = sakura ? SAKURA_SPACE : WORLD;
+  const world = new CollisionWorld(SPACE);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : 20240928), mats, placed: [] };
+  const floors = new Floors(WORLD);
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : 20240928), mats, placed: [], floors };
+  let sakuraFx: SakuraHandles | null = null;
 
   let transmitter: TransmitterHandle;
   let spireHandle: SpireHandle;
@@ -100,6 +111,19 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
       defense: { ...FORGE.beacon },
       hunt: { wardenX: FORGE.infernus.x, wardenZ: FORGE.infernus.z, searchX: FORGE.crucible.x, searchZ: FORGE.crucible.z, searchRadius: 22 },
       hazard: { ...FORGE.spire },
+    };
+  } else if (sakura) {
+    const r = buildSakura(c);
+    sakuraFx = r;
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    const S = SAKURA_SITES;
+    site = {
+      start: { x: S.start.x, z: S.start.z, yaw: yawFacing(0.55, -0.83) },
+      lz: { ...S.lz, terminalYaw: yawFacing(-1, -0.2) },
+      defense: { ...S.defense },
+      hunt: { wardenX: S.boss.x, wardenZ: S.boss.z, searchX: S.boss.searchX, searchZ: S.boss.searchZ, searchRadius: S.boss.searchRadius },
+      hazard: { ...S.hazard },
     };
   } else {
     buildRoads(c);
@@ -247,6 +271,11 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   const snapList = <T extends { x: number; z: number }>(list: T[], label: string): T[] => {
     const out: T[] = [];
     list.forEach((p, i) => {
+      // underground (outside the street map): placed by hand on its own floor, kept as it is
+      if (p.x < WORLD.minX || p.x > WORLD.maxX || p.z < WORLD.minZ || p.z > WORLD.maxZ) {
+        out.push(p);
+        return;
+      }
       const spot = findSpot(p.x, p.z, 9, clearOfProps);
       if (!spot) {
         report.dropped.push(`${label}${i} dropped at (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`);
@@ -263,6 +292,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   d.ambient = snapList(d.ambient, 'ambient');
 
   const nav = new NavGrid(WORLD, world);
+  floors.build(world, nav);
   // the Asylum's buyable doors: colliders that start switched off (open), see src/asylum/doorWorld.ts
   const doors = asylum ? new DoorWorld(world, nav) : null;
 
@@ -289,6 +319,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     id: mapId,
     text: MAP_TEXT[mapId],
     bounds: { ...WORLD },
+    worldBounds: { ...SPACE },
     playerStart: { ...site.start },
     stations: d.stations,
     crates: d.crates,
@@ -325,6 +356,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     root: b.root,
     world,
     nav,
+    floors,
     data,
     lights: b.lights,
     glowField: b.glowField,
@@ -332,6 +364,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     spire: spireHandle,
     doors,
     forgeFx,
+    sakura: sakuraFx,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

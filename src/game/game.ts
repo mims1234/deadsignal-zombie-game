@@ -371,6 +371,7 @@ export class Game implements GameCtx {
     this.flow = new FlowField(this.level.nav);
     this.zenv.world = this.level.world;
     this.zenv.nav = this.level.nav;
+    this.zenv.floors = this.level.floors;
     this.zenv.field = this.flow;
     this.zenv.audio = this.audio;
     this.zenv.fx = this.fx;
@@ -1261,6 +1262,7 @@ export class Game implements GameCtx {
     }
     if (!this.player.onGround || this.player.horizontalSpeed < 0.05) this.player.unstick();
     this.clampToBounds();
+    if (alive) this.stairwells(dt);
 
     // ---- weapons ----
     const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen ? this.autoFire(dt) : 0;
@@ -1436,8 +1438,50 @@ export class Game implements GameCtx {
     return 1;
   }
 
+  /** Seconds before a stairwell can take the player again (so coming out never sends them straight back). */
+  private stairwellCd = 0;
+  private passFadeEl: HTMLDivElement | null = null;
+
+  /**
+   * Walking into a stairwell's doorway (`floors.ts`): a moment of black, then out at its other end - down into the
+   * underground or back up to the street - with the squad close behind.
+   */
+  private stairwells(dt: number): void {
+    const fl = this.level.floors;
+    if (!fl.hasFloors) return;
+    this.stairwellCd = Math.max(0, this.stairwellCd - dt);
+    if (this.stairwellCd > 0) return;
+    const p = this.player;
+    const area = fl.areaAt(p.x, p.y, p.z);
+    const link = fl.stairwellAt(area, p.x, p.z, 0.9);
+    if (!link) return;
+    const out = fl.exitOf(link, area);
+    this.stairwellCd = 1.5;
+    this.fadeThroughBlack(0.45);
+    p.teleport(out.x, out.z, out.yaw);
+    this.squad.regroupAt(out.x, out.z, out.yaw, out.area);
+    this.audio.play('step_concrete', { priority: 1, volume: 0.7 });
+  }
+
+  /** Black for a moment, fading back in (a stairwell, a train). */
+  fadeThroughBlack(seconds: number): void {
+    if (!this.passFadeEl) {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;inset:0;background:#000;pointer-events:none;opacity:0;z-index:2147482000;transition:opacity 0.18s linear';
+      document.body.appendChild(el);
+      this.passFadeEl = el;
+    }
+    const el = this.passFadeEl;
+    el.style.transition = 'none';
+    el.style.opacity = '1';
+    // force the style to apply before fading back
+    void el.offsetWidth;
+    el.style.transition = `opacity ${seconds}s ease-out`;
+    el.style.opacity = '0';
+  }
+
   private clampToBounds(): void {
-    const b = this.level.data.bounds;
+    const b = this.level.data.worldBounds;
     const m = 1.0;
     this.player.x = Math.max(b.minX + m, Math.min(b.maxX - m, this.player.x));
     this.player.z = Math.max(b.minZ + m, Math.min(b.maxZ - m, this.player.z));

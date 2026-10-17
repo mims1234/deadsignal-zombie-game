@@ -1,4 +1,5 @@
 import type { Rng } from '../../logic/rng';
+import type { Floors } from '../floors';
 import type { LevelBuilder } from '../builder';
 import type { MaterialLib } from '../materials';
 import type { LevelDataBuilder } from './data';
@@ -10,6 +11,8 @@ export interface Ctx {
   mats: MaterialLib;
   /** Footprints of things placed so far, used to keep procedural scatter from overlapping. */
   placed: { x: number; z: number; r: number }[];
+  /** Storeys, roofs and underground spaces, and the stairs between them (`floors.ts`). */
+  floors: Floors;
 }
 
 /** ISO container dimensions (metres). */

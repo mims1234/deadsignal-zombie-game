@@ -101,6 +101,11 @@ export class CollisionWorld {
   private readonly floorCells: Uint8Array;
   /** Surface material of the ground plane at a location (defaults to concrete). */
   groundSurface: (x: number, z: number) => SurfaceKind = () => 'concrete';
+  /**
+   * Floors stack on this map (a building's storeys, `floors.ts`): an agent's floor depends on how high it already is
+   * (`floorBelow`). Elsewhere floors never stack and the highest one under a spot is the floor there.
+   */
+  stackedFloors = false;
 
   constructor(bounds: WorldBoundsXZ) {
     // pad so colliders slightly outside the playable bounds (perimeter walls) are still indexed
@@ -227,6 +232,24 @@ export class CollisionWorld {
     let h = 0;
     this.forEachNear(x, z, r, (c) => {
       if (!c.floor || c.y1 <= h) return;
+      if (circleOverlapsBox(c, x, z, r)) h = c.y1;
+    });
+    return h;
+  }
+
+  /**
+   * The raised floor (`ColliderSpec.floor`) an agent standing at height `fromY` is on, or would drop to: the highest floor
+   * top under a footprint of radius `r` that is no higher than `fromY + step`, else 0 (the ground). Unlike `floorHeight`,
+   * floors may stack: a storey above someone does not lift them onto it (the Sakura District's buildings).
+   */
+  floorBelow(x: number, z: number, r: number, fromY: number, step = 0.65): number {
+    if (!this.stackedFloors) return this.floorHeight(x, z, r);
+    const [i, j] = this.cellOf(x, z);
+    if (this.floorCells[j * this.cols + i] === 0) return 0;
+    const maxTop = fromY + step;
+    let h = 0;
+    this.forEachNear(x, z, r, (c) => {
+      if (!c.floor || c.y1 <= h || c.y1 > maxTop) return;
       if (circleOverlapsBox(c, x, z, r)) h = c.y1;
     });
     return h;

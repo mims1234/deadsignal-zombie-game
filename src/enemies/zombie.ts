@@ -8,6 +8,7 @@ import type { FxApi } from '../fx/fxTypes';
 import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { CollisionWorld } from '../world/collision';
+import type { FloorLink, Floors } from '../world/floors';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
 
@@ -45,6 +46,8 @@ export interface NetZombie {
   flags: number;
   /** Card carrier number (1-based), or 0 for an ordinary infected. */
   carrier: number;
+  /** Height of the floor it stands on (floors may stack on the Sakura District, so it is sent). */
+  y?: number;
   /** Ragdoll: height of the body off the ground and its tumble (pitch, roll), for bodies thrown by a blast. */
   fy: number;
   fp: number;
@@ -77,6 +80,8 @@ export interface ZombieEnv {
   alertNear(x: number, z: number, radius: number, srcId: number): void;
   /** Shake the camera (slams, explosions). */
   shake(strength: number): void;
+  /** Floors above and below the street, and the stairs between them (`floors.ts`); absent on single-level maps. */
+  floors?: Floors | null;
 }
 
 /**
@@ -134,6 +139,11 @@ export class Zombie {
   tag: string | null = null;
   /** Whose voice it has: the Sakura District's infected are women (`audio/synth/creaturesFemale.ts`). */
   voiceKind: 'female' | null = null;
+  /** Which walkable area it is in (`floors.ts`): 0 the street, else a storey, a roof or an underground space. */
+  area = 0;
+  /** Crossing stairs or a stairwell toward whoever it hunts (`floors.ts`). */
+  private crossing: { link: FloorLink; from: number; prog: { s: number } } | null = null;
+  private netY = 0;
   private netX = 0;
   private netZ = 0;
   private netYaw = 0;
@@ -237,12 +247,15 @@ export class Zombie {
   }
 
   /** (Re)initialise for a fresh life. */
-  init(x: number, z: number, yaw: number, rng: Rng, opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; def?: ZombieDef; curable?: boolean } = {}): void {
+  init(x: number, z: number, yaw: number, rng: Rng, opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; def?: ZombieDef; curable?: boolean; y?: number; area?: number } = {}): void {
     if (opts.def) this.def = opts.def;
     this.curable = opts.curable ?? false;
     this.x = this.homeX = x;
     this.z = this.homeZ = z;
-    this.y = this.drawY = 0; // stood on whatever floor is there at its first step
+    // stood on whatever floor is there at its first step (a storey's, when spawned up there)
+    this.y = this.drawY = this.netY = opts.y ?? 0;
+    this.area = opts.area ?? 0;
+    this.crossing = null;
     this.yaw = yaw;
     this.vx = this.vz = 0;
     this.maxHp = this.def.hp * (opts.hpScale ?? 1);
@@ -329,6 +342,7 @@ export class Zombie {
       hp: Math.max(0, this.hp / this.maxHp),
       flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0),
       carrier: this.carrierIdx,
+      y: this.y,
       fy: this.flingY + this.scriptPose.lift,
       fp: this.tumbleP,
       fr: this.tumbleR,
@@ -350,6 +364,7 @@ export class Zombie {
     if (n.mode === 'death' && this.state !== 'dead' && this.state !== 'downed') this.netSounds |= n.flags & 16 ? 8 : 16;
     this.netX = n.x;
     this.netZ = n.z;
+    this.netY = n.y ?? this.netY;
     this.netYaw = n.yaw;
     this.netMode = n.mode;
     this.netActionT = n.actionT;
@@ -413,15 +428,31 @@ export class Zombie {
     this.x += (this.netX - this.x) * k;
     this.z += (this.netZ - this.z) * k;
     this.yaw = wrap(this.yaw + wrap(this.netYaw - this.yaw) * k);
-    this.settle(env.world, dt);
+    if (env.floors?.hasFloors) {
+      // floors stack here: the host says how high it stands
+      this.y = this.netY;
+      const d = this.y - this.drawY;
+      this.drawY = Math.abs(d) > 2.5 ? this.y : this.drawY + d * Math.min(1, dt * 14);
+    } else {
+      this.settle(env.world, dt);
+    }
     this.hitKick = Math.max(0, this.hitKick - dt * 5);
     if (this.state === 'dead' || this.state === 'downed') this.deathT += dt;
     this.pose(env, this.netSpeed);
   }
 
+  /** Put it at a point (crossing stairs, coming out of a stairwell): drawn there at once. */
+  placeAt(x: number, y: number, z: number, yaw: number): void {
+    this.x = x;
+    this.z = z;
+    this.y = this.drawY = y;
+    this.yaw = yaw;
+  }
+
   /** Stand on the floor under it now (`y`), easing the height it is drawn at toward it. */
   private settle(world: CollisionWorld, dt: number): void {
-    this.y = world.floorHeight(this.x, this.z, 0.2);
+    // the floor it is on, or drops to: a storey overhead never lifts it (floors stack on the Sakura District)
+    this.y = world.floorBelow(this.x, this.z, 0.2, this.y);
     const d = this.y - this.drawY;
     this.drawY = Math.abs(d) < 0.003 ? this.y : this.drawY + d * Math.min(1, dt * 14);
   }
@@ -727,7 +758,28 @@ export class Zombie {
 
     const dx = p.x - this.x;
     const dz = p.z - this.z;
-    const dist = Math.hypot(dx, dz);
+    let dist = Math.hypot(dx, dz);
+    // on another floor: how far it is to walk there (the underground is built off to one side of the map)
+    if (env.floors?.hasFloors && this.state === 'chase') {
+      const pa = env.floors.areaAt(p.x, p.y, p.z);
+      if (pa !== this.area) dist = Math.min(dist, env.floors.walkDistance(this.area, this.x, this.z, pa, p.x, p.z));
+    }
+
+    // crossing stairs or a stairwell to reach whoever it hunts on another floor
+    if (this.crossing && env.floors) {
+      const c = this.crossing;
+      const speed = this.state === 'idle' ? this.def.speedWalk * 0.55 : Math.max(this.def.speedWalk, this.chaseSpeed() * 0.75);
+      this.vx = this.vz = 0;
+      if (env.floors.traverse(this, c.link, c.from, c.prog, speed, dt)) {
+        this.voice(dt, env, dist);
+        this.pose(env, speed);
+        return;
+      }
+      this.crossing = null;
+      this.hasSteer = false;
+      this.homeX = this.x;
+      this.homeZ = this.z;
+    }
 
     // a script (the Asylum's barricades) drives this infected instead of the AI until it lets go
     if (this.script) {
@@ -809,7 +861,7 @@ export class Zombie {
         p2.x = bx + ((move.x - bx) * i) / n;
         p2.z = bz + ((move.z - bz) * i) / n;
         env.world.resolveCircle(p2, this.def.radius, this.y + 0.5, this.y + 1.7, 2);
-        if (i < n) this.y = env.world.floorHeight(p2.x, p2.z, 0.2);
+        if (i < n) this.y = env.world.floorBelow(p2.x, p2.z, 0.2, this.y);
       }
       move.x = p2.x;
       move.z = p2.z;
@@ -819,6 +871,7 @@ export class Zombie {
     this.x = move.x;
     this.z = move.z;
     this.settle(env.world, dt);
+    if (env.floors?.hasFloors) this.area = env.floors.areaAt(this.x, this.y, this.z);
     const actual = Math.hypot(this.x - bx, this.z - bz) / Math.max(dt, 1e-4);
 
     // stuck detection while chasing: nudge sideways / re-path
@@ -942,7 +995,8 @@ export class Zombie {
         this.wanderZ = stop.z;
         this.wanderWait = stop.wait;
       } else if (this.wanderWait <= 0) {
-        const pt = env.nav.randomFreeNear(this.homeX, this.homeZ, ZOMBIE_AI.wanderRadius, () => env.rng.f());
+        const nav = env.floors?.hasFloors ? env.floors.navOf(this.area) : env.nav;
+        const pt = nav.randomFreeNear(this.homeX, this.homeZ, ZOMBIE_AI.wanderRadius, () => env.rng.f());
         if (pt && env.world.segmentBlocked(this.x, this.y + 0.9, this.z, pt.x, this.y + 0.9, pt.z, 'move') === false) {
           this.wanderX = pt.x;
           this.wanderZ = pt.z;
@@ -1008,6 +1062,11 @@ export class Zombie {
       return 0;
     }
 
+    // ---- on another floor: make for the stairs (or the stairwell) toward them (they follow the scent, seen or not) ----
+    const fl = env.floors?.hasFloors ? env.floors : null;
+    const pArea = fl ? fl.areaAt(p.x, p.y, p.z) : 0;
+    if (fl && pArea !== this.area) return this.chaseAcross(dt, env, fl, pArea);
+
     // ---- special attacks (Warden) ----
     if (this.isBoss && this.cooldown <= 0) {
       if (this.slamCd <= 0 && dist < WARDEN.slamRange) {
@@ -1029,20 +1088,49 @@ export class Zombie {
     }
 
     // ---- steering target ----
+    const tx = this.memory < 0.6 ? p.x : this.lastKnownX;
+    const tz = this.memory < 0.6 ? p.z : this.lastKnownZ;
+    // up a storey or underground, that area's own grid and a field toward them there; on the street, the shared one
+    const nav = fl && this.area !== 0 ? fl.navOf(this.area) : env.nav;
+    const field = fl && this.area !== 0 ? fl.liveField(this.area, tx, tz) : env.field;
+    return this.steerTo(tx, tz, dt, env, nav, field, dist, reach);
+  }
+
+  /** Hunting someone on another floor: walk to the near end of the next stairs toward them, then cross. */
+  private chaseAcross(dt: number, env: ZombieEnv, fl: Floors, toArea: number): number {
+    const link = fl.route(this.area, toArea);
+    if (!link) {
+      // no way there: wait below (they have to come down sometime)
+      this.vx *= 0.8;
+      this.vz *= 0.8;
+      return 0;
+    }
+    const end = fl.endIn(link, this.area);
+    const d = Math.hypot(end.x - this.x, end.z - this.z);
+    if (d < 0.8) {
+      this.crossing = { link, from: this.area, prog: { s: 0 } };
+      return 0;
+    }
+    return this.steerTo(end.x, end.z, dt, env, fl.navOf(this.area), fl.fieldTo(this.area, end.x, end.z), d, 0);
+  }
+
+  /**
+   * Steer toward (tx, tz): straight at it when the grid shows a clear line, else down `field` around obstacles. Builds
+   * speed along its heading (weighty turns), slowing within `slowWithin` metres of the target.
+   */
+  private steerTo(tx: number, tz: number, dt: number, env: ZombieEnv, nav: NavGrid, field: FlowField | null, dist: number, slowWithin: number): number {
     this.steerTimer -= dt;
     if (this.steerTimer <= 0 || !this.hasSteer) {
       this.steerTimer = 0.12 + env.rng.f() * 0.06;
-      const tx = this.memory < 0.6 ? p.x : this.lastKnownX;
-      const tz = this.memory < 0.6 ? p.z : this.lastKnownZ;
       // direct line when clear (cheap grid LOS), otherwise follow the flow field around obstacles
       let direct = false;
-      if (dist < 22 || env.time < this.directUntil) direct = env.nav.los(this.x, this.z, tx, tz);
+      if (dist < 22 || env.time < this.directUntil) direct = nav.los(this.x, this.z, tx, tz);
       if (direct) {
         this.steerX = tx;
         this.steerZ = tz;
         this.hasSteer = true;
         this.directUntil = env.time + 0.5;
-      } else if (env.field.follow(this.x, this.z, this.tmp, 10)) {
+      } else if (field?.follow(this.x, this.z, this.tmp, 10)) {
         this.steerX = this.tmp.x;
         this.steerZ = this.tmp.z;
         this.hasSteer = true;
@@ -1067,13 +1155,11 @@ export class Zombie {
     const align = Math.max(0.3, Math.cos(wrap(desired - this.yaw)));
     let speed = this.chaseSpeed() * align;
     // slow down when right on the player so they do not shove through
-    if (dist < reach) speed *= 0.5;
+    if (dist < slowWithin) speed *= 0.5;
     const hx = -Math.sin(this.yaw);
     const hz = -Math.cos(this.yaw);
     this.vx += (hx * speed - this.vx) * Math.min(1, dt * 10);
     this.vz += (hz * speed - this.vz) * Math.min(1, dt * 10);
-    void dx;
-    void dz;
     return speed;
   }
 

@@ -182,7 +182,7 @@ export class ZombieManager {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
     this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' ? 'sakura' : undefined;
-    const b = level.data.bounds;
+    const b = level.data.worldBounds ?? level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
 
@@ -225,7 +225,7 @@ export class ZombieManager {
     x: number,
     z: number,
     rng: Rng,
-    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean } = {},
+    opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean; y?: number; area?: number } = {},
   ): Zombie {
     if (opts.rig && opts.oneOff) this.oneOff.add(opts.rig);
     if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron

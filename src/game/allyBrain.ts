@@ -10,6 +10,7 @@ import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
 import { Rng } from '../logic/rng';
+import type { FloorLink, Traveller } from '../world/floors';
 import type { MapId } from '../world/layout/data';
 import type { Level } from '../world/level';
 import { FlowField } from '../world/nav';
@@ -49,6 +50,9 @@ export interface AllyBody {
   warned: boolean;
   /** Survivors: still in the cage. */
   trapped: boolean;
+  /** Crossing stairs or a stairwell after the leader (`floors.ts`), and its handle on the ally's position. */
+  crossing?: { link: FloorLink; from: number; prog: { s: number } } | null;
+  traveller?: Traveller;
 }
 
 export interface AllyWorld {
@@ -71,35 +75,85 @@ const tmpA = new THREE.Vector3();
 const tmpB = new THREE.Vector3();
 const steer = { x: 0, z: 0 };
 
-/** Keep up with the leader at (px, pz) facing `pyaw`. */
-export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number, pyaw: number): void {
+/** The ally as something the floors can move along stairs (`floors.ts`). */
+function travellerOf(a: AllyBody): Traveller {
+  return (a.traveller ??= {
+    x: a.ref.x,
+    z: a.ref.z,
+    yaw: a.yaw,
+    area: 0,
+    placeAt(x: number, y: number, z: number, yaw: number) {
+      a.ref.x = this.x = x;
+      a.ref.z = this.z = z;
+      a.ref.y = y;
+      a.ref.eyeY = y + 1.6;
+      a.yaw = this.yaw = yaw;
+    },
+  });
+}
+
+/** Keep up with the leader at (px, py, pz) facing `pyaw`; on another floor, take the stairs after them. */
+export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number, pyaw: number, py = 0): void {
+  const fl = w.level.floors.hasFloors ? w.level.floors : null;
+  const myArea = fl ? fl.areaAt(a.ref.x, a.ref.y, a.ref.z) : 0;
+  const leaderArea = fl ? fl.areaAt(px, py, pz) : 0;
+  // on the stairs (or in a stairwell) after the leader
+  if (fl && a.crossing) {
+    const t = travellerOf(a);
+    t.x = a.ref.x;
+    t.z = a.ref.z;
+    t.area = a.crossing.from;
+    if (fl.traverse(t, a.crossing.link, a.crossing.from, a.crossing.prog, 4.4, dt)) return;
+    a.crossing = null;
+  }
   const c = Math.cos(pyaw);
   const s = Math.sin(pyaw);
-  const tx = px + a.slot.x * c + a.slot.z * s;
-  const tz = pz - a.slot.x * s + a.slot.z * c;
+  let tx = px + a.slot.x * c + a.slot.z * s;
+  let tz = pz - a.slot.x * s + a.slot.z * c;
   const toLeader = Math.hypot(px - a.ref.x, pz - a.ref.z);
-  // lost (left far behind, or stuck on something for a few seconds): regroup next to the leader
-  if (toLeader > FORGE_SQUAD.regroupDistance || a.stuckT > 2.5) {
-    const at = w.level.nav.randomFreeNear(tx, tz, 3, () => w.rng.f());
+  // lost (left far behind, or stuck on something for a few seconds): regroup next to the leader, on their floor
+  if ((toLeader > FORGE_SQUAD.regroupDistance && myArea === leaderArea) || a.stuckT > 2.5) {
+    const nav = fl ? fl.navOf(leaderArea) : w.level.nav;
+    const at = nav.randomFreeNear(tx, tz, 3, () => w.rng.f()) ?? (leaderArea !== 0 ? { x: px, z: pz } : null);
     if (at) {
       a.ref.x = at.x;
       a.ref.z = at.z;
-      a.ref.y = w.level.world.floorHeight(at.x, at.z, 0.2);
+      a.ref.y = w.level.world.floorBelow(at.x, at.z, 0.2, Math.max(py, a.ref.y) + 0.3);
       a.ref.eyeY = a.ref.y + 1.6;
     }
     a.stuckT = 0;
+    a.crossing = null;
     return;
+  }
+  // the leader is on another floor: make for the stairs toward them, and cross them
+  let field: FlowField | null = null;
+  if (fl && myArea !== leaderArea) {
+    const link = fl.route(myArea, leaderArea);
+    if (link) {
+      const end = fl.endIn(link, myArea);
+      if (Math.hypot(end.x - a.ref.x, end.z - a.ref.z) < 0.8) {
+        a.crossing = { link, from: myArea, prog: { s: 0 } };
+        return;
+      }
+      tx = end.x;
+      tz = end.z;
+      field = fl.fieldTo(myArea, end.x, end.z);
+    }
+  } else if (fl && myArea !== 0) {
+    field = fl.liveField(myArea, tx, tz);
   }
   const dx = tx - a.ref.x;
   const dz = tz - a.ref.z;
   const d = Math.hypot(dx, dz);
-  if (d < 1.2 || toLeader < 2.6) {
+  const sameFloor = myArea === leaderArea;
+  if (sameFloor && (d < 1.2 || toLeader < 2.6)) {
     if (!a.target) a.yaw = pyaw;
     return;
   }
   let gx = tx;
   let gz = tz;
-  if (!w.level.nav.los(a.ref.x, a.ref.z, tx, tz) && w.followLeader(a.ref.x, a.ref.z, steer)) {
+  const nav = fl ? fl.navOf(myArea) : w.level.nav;
+  if (!nav.los(a.ref.x, a.ref.z, tx, tz) && (field ? field.follow(a.ref.x, a.ref.z, steer, 10) : w.followLeader(a.ref.x, a.ref.z, steer))) {
     gx = steer.x;
     gz = steer.z;
   }
@@ -114,7 +168,7 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   a.stuckT = d > 6 && progress < speed * 0.25 ? a.stuckT + dt : Math.max(0, a.stuckT - dt * 2);
   a.ref.x = step.x;
   a.ref.z = step.z;
-  a.ref.y = w.level.world.floorHeight(step.x, step.z, 0.2); // up a foundry's deck after the leader
+  a.ref.y = w.level.world.floorBelow(step.x, step.z, 0.2, a.ref.y); // up a foundry's deck after the leader (floors may stack)
   a.ref.eyeY = a.ref.y + 1.6;
   if (!a.target) a.yaw = Math.atan2(-sx, -sz);
 }

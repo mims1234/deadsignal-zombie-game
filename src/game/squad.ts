@@ -421,7 +421,7 @@ export class SquadRuntime {
         if (a.field.begin(a.ref.x, a.ref.z, GAMEPLAY_FIELD_RANGE)) a.field.advance(a.field.goalIndex < 0 ? Infinity : ALLY_FIELD_SLICE_MS);
         a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
-      if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw);
+      if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw, p.y);
       const shot = allyFight(a, this.world, dt);
       if (shot) {
         a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
@@ -437,6 +437,24 @@ export class SquadRuntime {
       }
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
+    }
+  }
+
+  /** The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. */
+  regroupAt(x: number, z: number, yaw: number, area: number): void {
+    if (!this.active || this.follow) return;
+    const nav = this.g.level.floors.navOf(area);
+    for (const a of this.allies) {
+      if (!a.ref.alive || a.trapped) continue;
+      const at = nav.randomFreeNear(x, z, 3, () => this.g.rng.f()) ?? { x, z };
+      a.ref.x = at.x;
+      a.ref.z = at.z;
+      a.ref.y = 0;
+      a.ref.eyeY = 1.6;
+      a.crossing = null;
+      a.stuckT = 0;
+      a.yaw = yaw;
+      a.avatar.set(at.x, 0, at.z, yaw, true);
     }
   }
 
