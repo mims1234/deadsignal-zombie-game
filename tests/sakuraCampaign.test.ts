@@ -7,7 +7,7 @@ import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { CHAPTERS, CHECKPOINT, FIELD, MARK, PLACE_RADIO, chapterIndex, placeAt } from '../src/sakura/campaign';
 import { STORIES, storiesOpen } from '../src/sakura/missions';
-import { SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
+import { FUSE_BIT, FUSES_ALL, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
 import { VARIANTS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 
@@ -27,15 +27,18 @@ describe('KAIKA', { timeout: 30000 }, () => {
   });
 
   it('moves through its chapters in order, on the shared state', () => {
-    expect(chapterIndex(state({}))).toBe(0);
-    expect(chapterIndex(state({ found: 0b1 }))).toBe(1);
-    expect(chapterIndex(state({ found: 0b1111 }))).toBe(4); // the checkpoint next
-    expect(chapterIndex(state({ found: 0b1111, marks: MARK.checkpoint }))).toBe(5);
-    expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: 1 }))).toBe(7); // the Empress
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: 1 }, { hunt: 'complete' }))).toBe(8);
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: 1 }, { hunt: 'complete' }))).toBe(9);
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(10);
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: 1 }, { hunt: 'complete', defense: 'complete', extracted: true }))).toBe(CHAPTERS.length);
+    const P = FUSES_ALL; // the metro's power back
+    expect(chapterIndex(state({}))).toBe(0); // LIGHTS OUT
+    expect(chapterIndex(state({ marks: FUSE_BIT }))).toBe(0); // one fuse is not the power
+    expect(chapterIndex(state({ marks: P }))).toBe(1);
+    expect(chapterIndex(state({ found: 0b1, marks: P }))).toBe(2);
+    expect(chapterIndex(state({ found: 0b1111, marks: P }))).toBe(5); // the checkpoint next
+    expect(chapterIndex(state({ found: 0b1111, marks: P | MARK.checkpoint }))).toBe(6);
+    expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the Empress
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(9);
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(10);
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(11);
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete', extracted: true }))).toBe(CHAPTERS.length);
   });
 
   it('has a field file for every kind and a transmission for every place', () => {
@@ -61,6 +64,11 @@ describe('KAIKA', { timeout: 30000 }, () => {
     const c0 = q.spots.charms[0]!;
     const near = sim.zombies.zombies.filter((z) => z.variant === 'commuter' && Math.hypot(z.x - c0.x, z.z - c0.z) < 12);
     expect(near.length).toBeGreaterThanOrEqual(2);
+    // the metro's fuses: taken from beside their cabinets, never from across the station
+    const fz = q.spots.fuses;
+    expect(q.takeFuse(0, fz[1]!.x, 0, fz[1]!.z)).toBe(false);
+    for (let i = 0; i < 3; i++) expect(q.takeFuse(i, fz[i]!.x, 0, fz[i]!.z)).toBe(true);
+    expect(SakuraQuest.powered(q.view)).toBe(true);
     // someone at the freight yard's list board marks the checkpoint
     stand(CHECKPOINT.x, CHECKPOINT.z);
     sim.tick(1 / 30);

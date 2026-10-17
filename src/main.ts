@@ -19,6 +19,11 @@ function showFatal(title: string, message: string): void {
 }
 
 async function main(): Promise<void> {
+  // dev builds: `?bgraf` keeps frames coming in a hidden tab (automation in a background browser), on timers
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('bgraf')) {
+    window.requestAnimationFrame = (cb) => window.setTimeout(() => cb(performance.now()), 16);
+    window.cancelAnimationFrame = (id) => window.clearTimeout(id);
+  }
   showVersionTag();
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   const uiRoot = document.getElementById('ui-root');

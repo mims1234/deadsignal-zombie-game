@@ -50,12 +50,17 @@ export type QuestEvent =
 
 export interface QuestSpots {
   charms: { x: number; y: number; z: number }[];
+  /** The metro's three fuses (its power, `MARK.fuses`). */
+  fuses: { x: number; y: number; z: number }[];
   tree: { x: number; z: number };
   lanterns: { x: number; z: number }[];
   bell: { x: number; z: number };
 }
 
 const ALL = 0b11111;
+/** `QuestView.marks`: bit 0 is KAIKA's checkpoint (`campaign.ts`), bits 1-3 the metro's fuses. */
+export const FUSE_BIT = 0b10;
+export const FUSES_ALL = 0b1110;
 const bits = (v: number): number => {
   let n = 0;
   for (let i = 0; i < 5; i++) if (v & (1 << i)) n++;
@@ -158,6 +163,28 @@ export class SakuraQuest {
       this.events.push({ kind: 'bloom' });
     } else this.events.push({ kind: 'bellEarly' });
     return true;
+  }
+
+  /** Take fuse `i` from its cabinet (someone at (x, y, z)); the third one puts the metro's power back. */
+  takeFuse(i: number, x: number, y: number, z: number): boolean {
+    const s = this.spots.fuses[i];
+    const bit = FUSE_BIT << i;
+    if (!s || this.view.marks & bit) return false;
+    if (Math.hypot(s.x - x, s.z - z) > QUEST_REACH.charm || Math.abs(s.y - 1.4 - y) > 2.6) return false;
+    this.view.marks |= bit;
+    return true;
+  }
+
+  /** The metro's power is back (all three fuses in). */
+  static powered(v: QuestView): boolean {
+    return (v.marks & FUSES_ALL) === FUSES_ALL;
+  }
+
+  /** Fuses taken so far. */
+  static fuses(v: QuestView): number {
+    let n = 0;
+    for (let i = 0; i < 3; i++) if (v.marks & (FUSE_BIT << i)) n++;
+    return n;
   }
 
   /** Someone reached a campaign place (`campaign.ts` MARK); true the first time. */

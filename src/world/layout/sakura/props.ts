@@ -661,7 +661,7 @@ export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; su
 }
 
 /** A commuter train car: silver with a pink stripe, windows, doors; `barricade` stands it across the tracks as a wall. */
-export function commuterCar(b: LevelBuilder, o: At & { len?: number; doorsChained?: boolean }): void {
+export function commuterCar(b: LevelBuilder, o: At & { len?: number; doorsChained?: boolean; windows?: THREE.Material }): void {
   const len = o.len ?? 18;
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.BoxGeometry(2.9, 3.1, len), std('trainSilver', 0xb8bec4, 0.4, { metalness: 0.6 }));
@@ -670,18 +670,57 @@ export function commuterCar(b: LevelBuilder, o: At & { len?: number; doorsChaine
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.92, 0.25, len + 0.02), std('trainPink', 0xd85a8a, 0.5));
   stripe.position.y = 1.9;
   g.add(stripe);
-  const glass = std('trainGlass', 0x1a2228, 0.15, { metalness: 0.3 });
-  for (let i = 0; i < Math.floor(len / 2.2); i++) {
-    const z = -len / 2 + 1.4 + i * 2.2;
+  const glass = o.windows ?? std('trainGlass', 0x1a2228, 0.15, { metalness: 0.3 });
+  // doors every 4.4 m (a darker panel with a tall window), windows between them
+  const doorMat = std('trainDoor', 0x8a9096, 0.45, { metalness: 0.5 });
+  const doors = Math.max(1, Math.floor(len / 4.4));
+  const doorZ = (i: number): number => -len / 2 + (len / doors) * (i + 0.5);
+  for (let i = 0; i < doors; i++) {
+    for (const x of [-1.47, 1.47]) {
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.04, 2.0, 1.3), doorMat);
+      door.position.set(x, 2.05, doorZ(i));
+      g.add(door);
+      const dw = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.8, 0.4), glass);
+      dw.position.set(x, 2.55, doorZ(i) - 0.3);
+      g.add(dw);
+      const dw2 = dw.clone();
+      dw2.position.z = doorZ(i) + 0.3;
+      g.add(dw2);
+    }
+  }
+  for (let i = 0; i < doors; i++) {
+    const z = doorZ(i) + len / doors / 2;
+    if (z > len / 2 - 1) continue;
     for (const x of [-1.46, 1.46]) {
-      const win = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 1.4), glass);
-      win.position.set(x, 3.0, z);
+      const win = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.9, 2.4), glass);
+      win.position.set(x, 2.9, z);
       g.add(win);
     }
+  }
+  // the ends: a cab window and the destination panel
+  for (const s of [-1, 1]) {
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.0, 0.04), glass);
+    cab.position.set(0, 2.9, s * (len / 2 + 0.01));
+    g.add(cab);
+    const dest = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.3), jpSignMaterial('各停 きさらぎ', { bg: '#0a0a0a', fg: '#ffa020', glow: 0.8, aspect: 4.6, worn: 0.2 }));
+    dest.position.set(0, 3.7, s * (len / 2 + 0.03));
+    dest.rotation.y = s > 0 ? 0 : Math.PI;
+    g.add(dest);
   }
   const skirt = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.0, len - 2), std('bogie', 0x262626, 0.9));
   skirt.position.y = 0.5;
   g.add(skirt);
+  // the bogies' wheels
+  const wheel = memo('wheel-geo', () => new THREE.CylinderGeometry(0.42, 0.42, 0.12, 12).rotateZ(Math.PI / 2));
+  for (const bz of [-len / 2 + 2.2, len / 2 - 2.2]) {
+    for (const dz of [-0.9, 0.9]) {
+      for (const x of [-0.75, 0.75]) {
+        const w = new THREE.Mesh(wheel, std('wheel', 0x3a3a3a, 0.6, { metalness: 0.7 }));
+        w.position.set(x, 0.42, bz + dz);
+        g.add(w);
+      }
+    }
+  }
   const roof = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.25, len), std('trainRoof', 0x6a7076, 0.6));
   roof.position.y = 4.2;
   g.add(roof);

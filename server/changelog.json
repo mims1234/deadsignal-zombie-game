@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.0",
+      "date": "2026-10-17",
+      "title": "Follow the petals: the Sakura District shows you the way, and a real metro",
+      "notes": [
+        "A trail of glowing petals on the ground now leads you to whatever is next - KAIKA's chapter, or the operation's next contract and then the landing zone - round walls, through doors and down the right stairs, with a pillar of light over the goal. The Thousand Lanterns stays a secret you find yourself.",
+        "Orders are short now (\"Metro: put the 3 fuses back\"), and the radio waits for a lull in the fighting before it talks, so nothing important is said while you are being chewed on.",
+        "The metro is rebuilt as a real Japanese subway: tiled walls with the Sakura Line's stripe, automatic ticket gates, ticket machines under a fare map, the station office and its lost and found, pillars with the station nameboard, half-height platform gates, benches, drink machines, a departure board, adverts, a ribbed tunnel with cables and signals, and a proper train with doors and wheels.",
+        "New pickups that change the map: put the metro's three fuses back and the whole station lights up - ceilings, strips, boards, machines and the train's windows. Every shrine charm you take now raises a ring of glowing paper lanterns where it was, so you can see from afar which places are at peace.",
+        "KAIKA starts with a new chapter, LIGHTS OUT (twelve in all).",
+        "Fixed: infected chasing you down a stairwell could get stuck at the bottom when they could not see you from the stairs."
+      ]
+    },
+    {
       "version": "0.3.2",
       "date": "2026-10-17",
       "title": "Admins can switch any map off",

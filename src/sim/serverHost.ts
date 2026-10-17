@@ -585,6 +585,7 @@ export class SessionSim {
         const q = this.sakura;
         const i = Math.floor(Number(d.i));
         if (d.a === 'charm') q.takeCharm(i, p.ref.x, p.ref.y, p.ref.z);
+        else if (d.a === 'fuse') q.takeFuse(i, p.ref.x, p.ref.y, p.ref.z);
         else if (d.a === 'tie') q.tie(p.ref.x, p.ref.z);
         else if (d.a === 'light') q.light(i, p.ref.x, p.ref.z);
         // KAIKA: a relay already finished still carries the bell (the helicopter waits for the bloom, so it must stay possible)

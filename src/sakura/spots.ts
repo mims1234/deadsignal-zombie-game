@@ -18,6 +18,7 @@ export function questSpots(h: SakuraHandles): QuestSpots {
       { x: boat.x + 2.3, y: -0.4, z: boat.z - 0.8 }, // the sunken boat's bow
       { x: fridge.x - 0.6, y: 1.5, z: fridge.z }, // the lab's sample fridge
     ],
+    fuses: h.under.metro.fuses.map((f) => ({ ...f })),
     tree: { x: h.canal.sacredTree.x, z: h.canal.sacredTree.z },
     lanterns: h.canal.lanterns.map((l) => ({ x: l.x, z: l.z })),
     bell: { x: 122, z: 39 },

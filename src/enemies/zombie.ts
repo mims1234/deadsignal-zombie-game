@@ -1000,6 +1000,9 @@ export class Zombie {
       this.hasSteer = false;
       this.homeX = this.x;
       this.homeZ = this.z;
+      // off the stairs: the scent it followed leads to where they are now, not to where it last saw them a floor away
+      this.lastKnownX = env.player.x;
+      this.lastKnownZ = env.player.z;
     }
 
     // a script (the Asylum's barricades) drives this infected instead of the AI until it lets go

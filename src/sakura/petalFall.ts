@@ -8,7 +8,7 @@ import * as THREE from 'three';
 const R = 22; // half-width of the box round the camera
 const TOP = 14;
 
-function petalTexture(): THREE.Texture {
+export function petalTexture(): THREE.Texture {
   const c = document.createElement('canvas');
   c.width = c.height = 32;
   const g = c.getContext('2d')!;

@@ -29,7 +29,9 @@ import { buildFieldFile, type FieldFileStory, type NoteText, SakuraHud, STAMP_UR
 import { CHAPTERS, CHECKPOINT, FIELD, type FieldKind, type Line, MARK, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt } from './campaign';
 import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
-import { CHARM_PLACES, decodeQuest, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
+import { type RouteGoal, RouteTrail } from './trail';
+import { metroPower } from '../world/layout/sakura/metro';
+import { CHARM_PLACES, decodeQuest, FUSE_BIT, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
 import { populateSakura, Stalker } from './director';
 import { STORIES, type StoryId } from './missions';
 import { questSpots } from './spots';
@@ -45,6 +47,9 @@ const PERKS = {
   step: { name: 'RAIJU STEP', blurb: 'Reload 30% faster, fire 15% faster', color: 0x7ac8ff },
 } as const;
 type PerkId = keyof typeof PERKS;
+
+/** What a player asks of the quest (co-op: the simulation does it). */
+type QuestAct = 'charm' | 'fuse' | 'tie' | 'light' | 'ring';
 
 interface NoteView {
   n: SakuraNote;
@@ -67,7 +72,7 @@ export class SakuraRuntime {
   private shown: QuestView;
   /** Co-op story run: the simulation decides; `request` asks it. */
   private follow = false;
-  request: ((a: 'charm' | 'tie' | 'light' | 'ring', i: number) => void) | null = null;
+  request: ((a: QuestAct, i: number) => void) | null = null;
   private progress: SakuraProgress;
   private readonly found: Set<string>;
   private readonly notes: NoteView[] = [];
@@ -101,6 +106,16 @@ export class SakuraRuntime {
   /** The festival scroll read this run (the field file shows the poem). */
   private poemRead = false;
   private readonly labArea: number;
+  /** The petal trail to the next goal, and when the goal is worked out again. */
+  private readonly trail: RouteTrail;
+  private routeT = 0;
+  /** The metro's fuses in their cabinets (gone once taken), and whether its power shows as on. */
+  private readonly fuses: THREE.Group[] = [];
+  private powerShown = false;
+  /** Paper lanterns risen where a charm was taken (the place is at peace), cleared on a new run. */
+  private readonly risen: THREE.Group[] = [];
+  /** Radio lines waiting their turn (they wait for a lull in the fighting, up to a while). */
+  private readonly radioQueue: { who: Line[0]; text: string; at: number; waited: number }[] = [];
 
   constructor(private readonly g: Game) {
     this.h = g.level.sakura!;
@@ -118,6 +133,8 @@ export class SakuraRuntime {
     this.buildKisaragi();
     g.interaction.sources.push((t) => this.targets(t));
     this.labArea = g.level.floors.areas.findIndex((a) => a.name === 'Kurenai lab');
+    this.trail = new RouteTrail(g.level, g.worldRoot);
+    this.buildFuses();
     g.menus.pauseTab = () => ({ label: 'FIELD FILE', build: () => buildFieldFile({ story: this.fieldStory(), seen: new Set(this.progress.seen), poem: this.poemRead ? SakuraQuest.poem(this.view.order) : null }) });
   }
 
@@ -335,7 +352,14 @@ export class SakuraRuntime {
     this.met.clear();
     this.timers.length = 0;
     this.radioAt = 0;
+    this.radioQueue.length = 0;
     this.poemRead = false;
+    this.routeT = 0;
+    this.trail.set(null);
+    for (const r of this.risen) r.removeFromParent();
+    this.risen.length = 0;
+    this.powerShown = false;
+    metroPower(g.level.lights, false);
     // KAIKA: the helicopter waits for the bloom (co-op: the simulation holds it)
     g.mission.extractGate = () => !this.campaign || this.view.phase === 'bloom';
     // any other run: Aoi's first call a little way in (KAIKA opens on it)
@@ -411,6 +435,16 @@ export class SakuraRuntime {
       }
       this.scanKinds();
     }
+    // the petal trail: the goal worked out twice a second, the petals every frame
+    this.routeT -= dt;
+    if (this.routeT <= 0) {
+      this.routeT = 0.5;
+      this.trail.set(g.playerAlive() ? this.routeGoal() : null);
+    }
+    this.trail.update(dt, this.time, g.player.x, g.player.y, g.player.z);
+    for (const f of this.fuses) f.rotation.y += dt * 1.5;
+    for (const r of this.risen) for (let i = 0; i < r.children.length; i++) r.children[i]!.position.y = 2.4 + i * 0.35 + Math.sin(this.time * 1.2 + i) * 0.18;
+    this.pumpRadio(dt);
     this.ambT -= dt;
     if (this.ambT <= 0) {
       this.ambT = 9 + g.rng.f() * 14;
@@ -457,16 +491,103 @@ export class SakuraRuntime {
 
   /** Lines on the radio, one after another (after whatever is already queued), from `delay` seconds on. */
   private say(lines: readonly Line[], delay = 0): void {
-    let t = Math.max(this.time + delay, this.radioAt);
-    for (const [who, text] of lines) {
-      const dur = Math.min(11, 3.2 + text.length / 17);
-      this.later(t - this.time, () => {
-        if (who === 'AOI') this.g.audio.play('relay_voice', { priority: 2, volume: 0.7 });
-        this.g.radio(who === 'AOI' ? 'AOI  //  SHRINE RELAY' : who, text, dur);
-      });
-      t += dur + 0.5;
+    for (const [who, text] of lines) this.radioQueue.push({ who, text, at: this.time + delay, waited: 0 });
+  }
+
+  /**
+   * The next line on the radio when the last one is done - and when the fighting has let up (nobody reads in a melee):
+   * a line waits while infected are on the player, up to 18 s.
+   */
+  private pumpRadio(dt: number): void {
+    const next = this.radioQueue[0];
+    if (!next || this.time < next.at || this.time < this.radioAt) return;
+    if (this.underAttack() && next.waited < 18) {
+      next.waited += dt;
+      return;
     }
-    this.radioAt = t;
+    this.radioQueue.shift();
+    const dur = Math.min(11, 3.2 + next.text.length / 17);
+    if (next.who === 'AOI') this.g.audio.play('relay_voice', { priority: 2, volume: 0.7 });
+    this.g.radio(next.who === 'AOI' ? 'AOI  //  SHRINE RELAY' : next.who, next.text, dur);
+    this.radioAt = this.time + dur + 0.5;
+  }
+
+  /** Infected on the player right now (chasing or striking within a dozen metres). */
+  private underAttack(): boolean {
+    const p = this.g.player;
+    for (const z of this.g.zombies.zombies) {
+      if (!z.alive || z.dormant || (z.state !== 'chase' && z.state !== 'attack')) continue;
+      if (Math.hypot(z.x - p.x, z.z - p.z) < 12 && Math.abs(z.y - p.y) < 3) return true;
+    }
+    return false;
+  }
+
+  /** Where the petal trail leads: KAIKA's chapter; otherwise the operation's next contract (then the landing zone). */
+  private routeGoal(): RouteGoal | null {
+    const g = this.g;
+    const fl = g.level.floors;
+    const at = (x: number, z: number, y = 0): RouteGoal => {
+      const area = fl.areaAt(x, y, z);
+      return { x, z, y: fl.areas[area]?.y ?? 0, area };
+    };
+    if (this.campaign) {
+      const ch = CHAPTERS[this.chapter];
+      const t = ch?.target(this.spots, this.campaignState());
+      if (t) return at(t.x, t.z, t.y ?? 0);
+      if (!ch || ch.id !== 'home') return null;
+    }
+    const s = g.session;
+    const d = g.level.data;
+    if (s.extraction.phase === 'extracted') return null;
+    if (s.defense.status !== 'complete') return at(d.defense.x, d.defense.z);
+    if (s.hunt.status !== 'complete') {
+      const b = g.zombies.boss;
+      return b && b.alive ? at(b.x, b.z, b.y) : at(d.hunt.searchX, d.hunt.searchZ);
+    }
+    return at(d.extraction.lzX, d.extraction.lzZ);
+  }
+
+  /** The metro's fuses: yellow cartridges glowing in their cabinets until taken. */
+  private buildFuses(): void {
+    const g = this.g;
+    const body = new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.4, emissive: 0xffb000, emissiveIntensity: 0.9 });
+    const cap = new THREE.MeshStandardMaterial({ color: 0xc8ccd0, roughness: 0.3, metalness: 0.8 });
+    const glowMat = new THREE.SpriteMaterial({ color: 0xffd040, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    for (const f of this.spots.fuses) {
+      const grp = new THREE.Group();
+      grp.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 10), body));
+      for (const y of [-0.15, 0.15]) {
+        const c = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.05, 10), cap);
+        c.position.y = y;
+        grp.add(c);
+      }
+      const glow = new THREE.Sprite(glowMat);
+      glow.scale.setScalar(0.7);
+      grp.add(glow);
+      grp.position.set(f.x, f.y, f.z);
+      g.worldRoot.add(grp);
+      this.fuses.push(grp);
+    }
+  }
+
+  /** Paper lanterns rising where a charm was taken: the place is at peace, and anyone can see it from afar. */
+  private riseLanterns(x: number, y: number, z: number): void {
+    const shade = new THREE.MeshStandardMaterial({ color: 0xffe0b0, roughness: 0.8, emissive: 0xff9a40, emissiveIntensity: 1.6, side: THREE.DoubleSide });
+    const halo = new THREE.SpriteMaterial({ color: 0xffb060, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const grp = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const l = new THREE.Group();
+      l.add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.36, 10, 1, true), shade));
+      const h = new THREE.Sprite(halo);
+      h.scale.setScalar(1.1);
+      l.add(h);
+      const a = (i / 5) * Math.PI * 2;
+      l.position.set(Math.cos(a) * 0.9, 2.4 + i * 0.35, Math.sin(a) * 0.9);
+      grp.add(l);
+    }
+    grp.position.set(x, y - 1, z);
+    this.g.worldRoot.add(grp);
+    this.risen.push(grp);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -609,6 +730,13 @@ export class SakuraRuntime {
     }
     const v = this.view;
     const s = this.spots;
+    // the metro's fuses
+    s.fuses.forEach((f, i) => {
+      if (v.marks & (FUSE_BIT << i)) return;
+      const d = Math.hypot(f.x - p.x, f.z - p.z);
+      if (d > QUEST_REACH.charm || Math.abs(f.y - 1.4 - p.y) > 2.4) return;
+      out.push({ id: `fuse:${i}`, dist: d * 0.5, text: 'TAKE THE FUSE', sub: `Metro power ${SakuraQuest.fuses(v)}/3`, tone: 'good', hold: 0.5, enabled: true, onUse: () => this.act('fuse', i) });
+    });
     // the charms
     s.charms.forEach((c, i) => {
       if (v.found & (1 << i)) return;
@@ -695,7 +823,7 @@ export class SakuraRuntime {
   // doing it
   // ---------------------------------------------------------------------------------------------
 
-  private act(a: 'charm' | 'tie' | 'light' | 'ring', i: number): void {
+  private act(a: QuestAct, i: number): void {
     const g = this.g;
     const p = g.player;
     if (this.follow) {
@@ -704,6 +832,7 @@ export class SakuraRuntime {
     }
     const q = this.local;
     if (a === 'charm') q.takeCharm(i, p.x, p.y, p.z);
+    else if (a === 'fuse') q.takeFuse(i, p.x, p.y, p.z);
     else if (a === 'tie') q.tie(p.x, p.z);
     else if (a === 'light') q.light(i, p.x, p.z);
     else q.ring(p.x, p.z, g.session.defense.status === 'active' || (this.campaign && g.session.defense.status === 'complete')); // KAIKA: a finished relay still carries it
@@ -822,10 +951,33 @@ export class SakuraRuntime {
     const v = this.view;
     const was = this.shown;
     const s = this.spots;
-    // charms found
+    // the metro's fuses, and its power
+    for (let i = 0; i < 3; i++) {
+      const taken = (v.marks & (FUSE_BIT << i)) !== 0;
+      this.fuses[i]!.visible = !taken;
+      if (taken && !(was.marks & (FUSE_BIT << i)) && !silent && !SakuraQuest.powered(v)) {
+        g.audio.play('pickup_plate', { priority: 2 });
+        g.banner(`FUSE ${SakuraQuest.fuses(v)}/3`, 'The metro\'s power', 'good', 3);
+      }
+    }
+    const powered = SakuraQuest.powered(v);
+    if (powered !== this.powerShown) {
+      this.powerShown = powered;
+      metroPower(g.level.lights, powered);
+      if (powered && !silent) {
+        g.audio.play('defense_start', { priority: 3 });
+        g.audio.play('station_chime', { priority: 2, volume: 0.9 });
+        g.banner('POWER RESTORED', 'The metro\'s lights are back on', 'good', 4);
+      }
+    }
+    // charms found: lanterns rise where each one was
     for (let i = 0; i < 5; i++) {
       const has = (v.found & (1 << i)) !== 0;
       this.charms[i]!.visible = !has;
+      if (has && !(was.found & (1 << i))) {
+        const c = s.charms[i]!;
+        this.riseLanterns(c.x, c.y, c.z);
+      }
       if (has && !(was.found & (1 << i)) && !silent) {
         const n = bitsOf(v.found);
         g.audio.play('omamori_chime', { priority: 2 });

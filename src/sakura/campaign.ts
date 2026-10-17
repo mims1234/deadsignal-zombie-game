@@ -17,7 +17,7 @@ import type { ZombieVariant } from '../enemies/variants';
 import type { Rng } from '../logic/rng';
 import type { Level } from '../world/level';
 import { ZONES } from '../world/layout/sakura/consts';
-import { LANTERN_SIGNS, type QuestSpots, type QuestView } from './quest';
+import { FUSE_BIT, LANTERN_SIGNS, type QuestSpots, type QuestView, SakuraQuest } from './quest';
 
 export type Speaker = 'AOI' | 'HANA' | 'YUZU';
 export type Line = readonly [Speaker, string];
@@ -248,7 +248,7 @@ export interface Chapter {
   goal: string;
   done: (s: CampaignState) => boolean;
   /** Where the marker points (the spots of the quest; null: the place's own landmark). */
-  target: (q: QuestSpots, s: CampaignState) => { x: number; z: number; label: string } | null;
+  target: (q: QuestSpots, s: CampaignState) => { x: number; z: number; y?: number; label: string } | null;
   /** The radio when it begins. */
   intro: readonly Line[];
   /** Kinds this chapter introduces (the set piece spawns them where it happens). */
@@ -256,29 +256,41 @@ export interface Chapter {
 }
 
 const has = (v: QuestView, i: number): boolean => (v.found & (1 << i)) !== 0;
-const charm = (i: number, label: string) => (q: QuestSpots): { x: number; z: number; label: string } => ({ x: q.charms[i]!.x, z: q.charms[i]!.z, label });
+const charm = (i: number, label: string) => (q: QuestSpots): { x: number; z: number; y: number; label: string } => ({ x: q.charms[i]!.x, z: q.charms[i]!.z, y: q.charms[i]!.y, label });
 
 export const CHAPTERS: readonly Chapter[] = [
+  {
+    id: 'power',
+    title: 'LIGHTS OUT',
+    place: 'metro',
+    goal: 'Metro: put the 3 fuses back',
+    done: (s) => SakuraQuest.powered(s.quest),
+    target: (q, s) => {
+      const i = [0, 1, 2].find((k) => !(s.quest.marks & (FUSE_BIT << k))) ?? 0;
+      return { x: q.fuses[i]!.x, z: q.fuses[i]!.z, y: 0, label: `FUSE ${SakuraQuest.fuses(s.quest) + 1}/3` };
+    },
+    intro: [
+      ['AOI', '...if anyone can hear this. This is Aoi Kisaragi, at Sakuragi Shrine. My five charms can end this. Bring them home.'],
+      ['HANA', 'Aoi Kisaragi - missing seven years. Follow the petals. The first charm is down in the metro.'],
+      ['YUZU', 'It\'s pitch black down there. Three fuses on the walls - put the power back.'],
+    ],
+    kinds: ['commuter', 'jorogumo'],
+  },
   {
     id: 'train',
     title: 'THE 21:47',
     place: 'metro',
-    goal: 'Down into the metro: take the charm from the lost and found',
+    goal: 'Metro: charm at the lost and found',
     done: (s) => has(s.quest, 0),
     target: charm(0, 'LOST AND FOUND'),
-    intro: [
-      ['AOI', '...if anyone can hear this. This is Aoi Kisaragi, at Sakuragi Shrine. The relay is running on its own. I do not know for how long.'],
-      ['HANA', 'Aoi Kisaragi. The shrine keeper. She\'s been on the missing list for seven years.'],
-      ['AOI', 'The shrine\'s five charms were scattered when the city fell. Bring them home to the sacred tree, and I can show you how to end this. The first is under the station.'],
-      ['YUZU', 'A dead woman giving us directions. Fine. Into the metro.'],
-    ],
-    kinds: ['commuter', 'jorogumo'],
+    intro: [['AOI', 'The station lights... the 21:47 never came. My charm is at the lost and found, by the ticket gates.']],
+    kinds: ['commuter'],
   },
   {
     id: 'school',
     title: 'THE LAST HELICOPTER',
     place: 'school',
-    goal: 'Up to the hilltop school: the charm in the music room piano',
+    goal: 'School: charm in the music room piano',
     done: (s) => has(s.quest, 1),
     target: charm(1, 'MUSIC ROOM'),
     intro: [
@@ -291,7 +303,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'encore',
     title: 'ENCORE',
     place: 'shotengai',
-    goal: 'Into the arcade: the charm on the karaoke\'s mirror ball',
+    goal: 'Arcade: charm on the karaoke mirror ball',
     done: (s) => has(s.quest, 2),
     target: charm(2, 'KARAOKE'),
     intro: [
@@ -304,7 +316,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'canal',
     title: 'HANAMI',
     place: 'canal',
-    goal: 'Down to the canal: the charm on the sunken boat\'s bow',
+    goal: 'Canal: charm on the sunken boat',
     done: (s) => has(s.quest, 3),
     target: charm(3, 'SUNKEN BOAT'),
     intro: [
@@ -317,7 +329,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'checkpoint',
     title: 'THE CHECKPOINT',
     place: 'freight',
-    goal: 'Through the Court\'s freight yard to the army\'s list board',
+    goal: 'Freight yard: reach the checkpoint',
     done: (s) => (s.quest.marks & MARK.checkpoint) !== 0,
     target: () => ({ x: CHECKPOINT.x, z: CHECKPOINT.z, label: 'CHECKPOINT' }),
     intro: [
@@ -330,7 +342,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'lab',
     title: 'PATIENT ZERO',
     place: 'lab',
-    goal: 'Down under the theatre: the charm in the lab\'s sample fridge',
+    goal: 'Lab under the theatre: fridge charm',
     done: (s) => has(s.quest, 4),
     target: charm(4, 'SAMPLE FRIDGE'),
     intro: [
@@ -343,7 +355,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'tree',
     title: 'THE SACRED TREE',
     place: 'shrine',
-    goal: 'To the shrine: tie the five charms to the sacred tree',
+    goal: 'Shrine: tie the 5 charms to the tree',
     done: (s) => s.quest.tied === 0b11111,
     target: (q) => ({ x: q.tree.x, z: q.tree.z, label: 'SACRED TREE' }),
     intro: [
@@ -355,7 +367,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'curtain',
     title: 'THE CRIMSON CURTAIN',
     place: 'theatre',
-    goal: 'To the theatre: bring down the Crimson Empress',
+    goal: 'Theatre: kill the Crimson Empress',
     done: (s) => s.hunt === 'complete',
     target: () => ({ x: 20, z: -44, label: 'THE STAGE' }),
     intro: [
@@ -369,7 +381,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'lanterns',
     title: 'THE THOUSAND LANTERNS',
     place: 'shrine',
-    goal: 'Light the five great lanterns in the poem\'s order',
+    goal: 'Shrine: light the lanterns in order',
     done: (s) => s.quest.phase === 'bell' || s.quest.phase === 'bloom',
     target: (q, s) => {
       const j = s.quest.order[Math.min(4, s.quest.lit)]!;
@@ -384,7 +396,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'bell',
     title: 'THE NIGHT THEY GO HOME',
     place: 'shrine',
-    goal: 'Start the shrine relay, and ring the bell while it transmits',
+    goal: 'Shrine: start the relay, ring the bell',
     done: (s) => s.quest.phase === 'bloom',
     target: (q, s) => (s.defense === 'complete' || s.defense === 'active' ? { x: q.bell.x, z: q.bell.z, label: 'THE BELL' } : { x: 100, z: 50, label: 'SHRINE RELAY' }),
     intro: [
@@ -397,7 +409,7 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'home',
     title: 'HOME',
     place: 'school',
-    goal: 'The dead are going home. Radio the helicopter from the hilltop and get out',
+    goal: 'Hilltop: call the helicopter, get out',
     done: (s) => s.extracted,
     target: () => null,
     intro: [
@@ -437,9 +449,17 @@ export function campaignSetPiece(index: number, zm: ZombieManager, level: Level,
     return { x: c.x, y: c.y, z: c.z, area: fl.areaAt(c.x, c.y, c.z) };
   };
   switch (ch.id) {
-    case 'train': {
+    case 'power': {
+      // commuters waiting in the dark concourse, a jorogumo in the tunnel by the last fuse
       const c = at(0);
       near(c.x, c.z, c.y, c.area, 3, 7, 'shambler', 'commuter');
+      const f = q.fuses[2]!;
+      near(f.x, f.z - 3, 0, fl.areaAt(f.x, 0.5, f.z), 1, 4, 'runner', 'jorogumo');
+      break;
+    }
+    case 'train': {
+      const c = at(0);
+      near(c.x, c.z, c.y, c.area, 2, 9, 'shambler', 'commuter');
       break;
     }
     case 'school': {

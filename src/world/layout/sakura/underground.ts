@@ -13,6 +13,7 @@ import { addBox, groundRect, wall } from '../../structures';
 import type { Ctx } from '../util';
 import { UNDER } from './consts';
 import { MAT, commuterCar, jpSignMaterial, rails, signBoard, wallWords } from './props';
+import { type MetroInfo, dressMetro, trainWindows } from './metro';
 
 const CEIL = 4.4;
 
@@ -43,6 +44,8 @@ export interface UnderInfo {
   /** The specimen room's fridge (an Easter egg spot) and the graft vault (story). */
   fridge: { x: number; z: number };
   vault: { x: number; z: number };
+  /** The metro's fuse cabinets (its power). */
+  metro: MetroInfo;
 }
 
 /** A box of rock: solid, not drawn (the space round the tunnels), so nobody walks where nothing is. */
@@ -115,16 +118,12 @@ export function buildUnderground(c: Ctx): UnderInfo {
   stairsUp(c, UNDER_FEET.station, '出口 A');
   signBoard(b, { x: -82, z: 150.25, y: 3.4, rot: 0, w: 6, h: 0.7, text: '桜木駅', sign: { bg: '#f2f0ea', fg: '#1a2a5a', sub: 'SAKURAGI', glow: 0.1 } });
   // the ticket gates, a crush of bodies against them; luggage
-  for (let x = -100; x <= -86; x += 2) {
-    addBox(b, 'steel', x, 0.55, 159, 0.3, 1.1, 1.4);
-    b.collideBox(x, 159, 0.3, 1.4, 1.1, { mapKind: 'none', tag: 'gate', surface: 'metal' });
-  }
+  for (let x = -100; x <= -86; x += 2) b.collideBox(x, 159, 0.3, 1.4, 1.1, { mapKind: 'none', tag: 'gate', surface: 'metal' }); // (drawn by `dressMetro`)
   for (const [x, z] of [[-96, 157], [-92, 157.5], [-90, 156.4], [-104, 154]] as const) corpse(b, { x, z, rot: rng.f() * 6, kind: 'civilian', seed: Math.round(x * 3 + z) });
   wallWords(b, { x: -60, y: 2, z: 150.25, rot: 0, w: 8, h: 1.6, text: '地上は安全じゃない\nTHE SURFACE IS NOT SAFE', color: '#e8e0d0' });
   emergencyLights(c, -116, 156, -48, 156, 12);
   // the platform: z 162..168, the track bed and tunnel z 168..176 running east to the far concourse
   groundRect(b, 'concreteSlab', -118, 162, -46, 168, 0.04);
-  groundRect(b, 'paintYellow', -118, 167.4, -46, 167.8, 0.05);
   groundRect(b, 'gravel', -118, 168, M.x1, 176, 0.03);
   rails(c, { x0: -118, z0: 172, x1: M.x1, z1: 172 });
   // walls of the tunnel and platform
@@ -135,13 +134,14 @@ export function buildUnderground(c: Ctx): UnderInfo {
   addBox(b, 'concreteDark', (-118 + M.x1) / 2, CEIL + 0.2, 172, M.x1 + 118, 0.4, 8.4);
   addBox(b, 'concreteDark', -82, CEIL + 0.2, 165, 72, 0.4, 6.4);
   // the last train, still at the platform; a derailed car further down the tunnel
-  commuterCar(b, { x: -84, z: 172, rot: Math.PI / 2, len: 36, doorsChained: false });
+  commuterCar(b, { x: -84, z: 172, rot: Math.PI / 2, len: 36, doorsChained: false, windows: trainWindows() });
   const derailed = { x: 2, z: 171.4 };
   commuterCar(b, { x: derailed.x, z: derailed.z, rot: Math.PI / 2 + 0.06, len: 16 });
   emergencyLights(c, -116, 165, -48, 165, 14);
   emergencyLights(c, -40, 174.5, M.x1 - 2, 174.5, 16);
   for (const x of [-60, -20, 24]) roots(c, x, 172);
   for (const [x, z] of [[-30, 170], [40, 173], [-70, 164]] as const) debris(b, { x, z, radius: 2.5, density: 0.6, seed: Math.round(x) });
+  const metro = dressMetro(c, { x1: M.x1 });
   // east concourse: x 36..70, z 150..168, stairs up to the shotengai and the canal
   room(c, 36, 150, M.x1, 168, { floor: 'tile', open: [{ side: 'S', at: 17, width: 34 }] });
   stairsUp(c, UNDER_FEET.shotengai, '出口 B  商店街');
@@ -208,5 +208,5 @@ export function buildUnderground(c: Ctx): UnderInfo {
   d.zombies('medium', 'runner', [[-110, 165], [-10, 174], [60, 166]]);
   d.zombies('high', 'shambler', [[100, 158], [110, 156], [102, 170], [86, 170], [118, 178]]);
   d.zombies('high', 'armored', [[102, 176]]);
-  return { fridge, vault };
+  return { fridge, vault, metro };
 }
