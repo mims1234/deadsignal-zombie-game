@@ -15,7 +15,7 @@ export const DEVICES = ['phone', 'tablet', 'computer'];
 export const GPU_VENDORS = ['Apple', 'Adreno', 'Mali', 'PowerVR', 'Xclipse', 'NVIDIA', 'Intel', 'AMD', 'Software'];
 export const QUALITIES = ['lite', 'low', 'medium', 'high', 'high+'];
 /** The Sakura District's story missions (`src/sakura/missions.ts`). */
-export const STORIES = ['curtain', 'lasttrain', 'hanami'];
+export const STORIES = ['kaika', 'curtain', 'lasttrain', 'hanami'];
 
 /**
  * The leaderboards: one per map, per way of playing (solo - Standard and Standard Mazoku together - or co-op; free

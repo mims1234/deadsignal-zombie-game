@@ -13,6 +13,7 @@ import { MatronRig } from './matronRig';
 import { hasModel } from '../models/library';
 import { ModelZombieRig } from '../models/zombieRig';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
+import type { ZombieVariant } from './variants';
 
 export interface ZombieFactoryExt extends ZombieFactory {
   /** Bake every appearance variant now (avoids a few ms of hitching on first spawn of each variant); with a theme, its looks instead. */
@@ -39,15 +40,15 @@ export function createZombieFactory(): ZombieFactoryExt {
   };
   return {
     material,
-    create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig {
+    create(type: ZombieType, seed: number, theme?: ZombieTheme, variant: ZombieVariant = ''): ZombieRig {
       const def = ZOMBIES[type];
       const dims = { radius: def.radius, height: def.height, headRadius: def.headRadius };
-      const anime = theme === 'sakura' ? hordeModel(type, seed) : null;
+      const anime = theme === 'sakura' ? hordeModel(type, seed, variant) : null;
       const stock = theme === 'sakura' ? undefined : theme;
       // a model pack's infected (Settings) on the maps with the standard look; the Warden keeps his own frame
       const model = !theme && type !== 'warden' && hasModel('zombie');
       const rig: ZombieRig = anime
-        ? new AnimeZombieRig(type, anime, dims, seed)
+        ? new AnimeZombieRig(type, anime, dims, seed, variant)
         : model
           ? new ModelZombieRig(type, dims.radius, dims.height, dims.headRadius, seed)
           : new ZombieRigImpl(get(type, type === 'warden' ? undefined : stock), material, dims, seed);

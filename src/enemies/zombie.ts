@@ -26,6 +26,25 @@ const FEMALE_VOICE: Partial<Record<SoundId, SoundId>> = {
   warden_roar: 'matron_shriek',
 };
 
+/**
+ * The Sakura District's kinds each have a voice of their own for some of the horde's noises (`synth/sakuraKinds.ts`):
+ * the Kuchisake whispers and snips, the Jorogumo skitters and hisses, the miko's call is her bells, the idol sings, the
+ * Oni roars and swings its club, a bloomed bursts, a rooted tears up out of the ground, the Court whistles, the Empress
+ * wails, a commuter mutters (or its phone buzzes).
+ */
+const KIND_VOICE: Partial<Record<ZombieVariant, Partial<Record<SoundId, SoundId>>>> = {
+  kuchisake: { zombie_alert: 'kuchisake_whisper', zombie_screech: 'kuchisake_whisper', zombie_snarl: 'kuchisake_whisper', zombie_attack: 'shears_snip' },
+  jorogumo: { zombie_snarl: 'spider_skitter', zombie_screech: 'spider_hiss', zombie_alert: 'spider_hiss' },
+  miko: { zombie_screech: 'miko_call' },
+  idol: { zombie_groan: 'idol_song' },
+  oni: { zombie_bellow: 'oni_roar', zombie_alert: 'oni_roar', zombie_attack: 'kanabo_swing' },
+  bloomed: { zombie_death: 'petal_burst' },
+  rooted: { zombie_screech: 'earth_burst' },
+  court: { zombie_alert: 'court_whistle', zombie_screech: 'court_whistle' },
+  empress: { warden_roar: 'empress_wail' },
+  commuter: { zombie_groan: 'commuter_groan' },
+};
+
 /** `downed`: a curable carrier at zero health, lying helpless until it is purged or gets back up. */
 export type ZombieState = 'idle' | 'alert' | 'chase' | 'attack' | 'stagger' | 'downed' | 'dead';
 export type AttackKind = 'melee' | 'slam' | 'charge';
@@ -829,7 +848,10 @@ export class Zombie {
 
   /** Every noise this infected makes, in its own voice (a woman's on the Sakura District). */
   private say(env: ZombieEnv, id: SoundId, opts: Parameters<AudioEngineApi['play']>[1]): void {
-    env.audio.play(this.voiceKind === 'female' ? (FEMALE_VOICE[id] ?? id) : id, opts);
+    const own = this.variant ? KIND_VOICE[this.variant]?.[id] : undefined;
+    // a kind's own voice plays at its own pitch (only a touch of the caller's variation)
+    if (own) env.audio.play(own, { ...opts, rate: 1 + ((opts?.rate ?? 1) - 1) * 0.15 });
+    else env.audio.play(this.voiceKind === 'female' ? (FEMALE_VOICE[id] ?? id) : id, opts);
   }
 
   /** A boss's roar (the Warden's, unless its stats bring another voice). */

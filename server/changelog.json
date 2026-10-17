@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.3.0",
+      "date": "2026-10-17",
+      "title": "KAIKA: the Sakura District's whole story, its own cast, and its own sounds",
+      "notes": [
+        "NEW STORY - KAIKA: THE BLOOMING (pick it under STORY on the Sakura District, solo or co-op, open from the start): a dead shrine keeper calls from the shrine relay, and her five charms send you through every corner of Sakuragi - the metro, the hilltop school, the arcade, the canal, the Court's freight yard, the lab under the theatre - then to the sacred tree, the Crimson Empress, the Thousand Lanterns and home. Eleven chapters with a marker for each; the helicopter only comes once the dead are seen home.",
+        "Every kind of infected on the Sakura District now has a body and look of its own: the miko in red and white with her bells, the Oni red-skinned with an iron club, the Jorogumo with eight legs, the Kuchisake in a red coat and mask with her shears, the idol in her stage dress, the bloomed full of blossom, the rooted grown through with roots, commuters with their briefcases - and the Crimson Empress under her red parasol. The Kurenai Court wear the theatre's crimson. Yuzu and your co-op teammates have their own models too.",
+        "The notes are gone. The story is told on the radio instead (the first time you walk into each part of the district), and a FIELD FILE card shows the first time you meet each kind of infected: what it looks like, what it does, and why it is there. The pause menu's FIELD FILE has how the outbreak began, the story so far and every infected you have met. Only the festival scroll on the theatre stage is left to read.",
+        "New sounds for the district: the Kuchisake's whisper and shears, the Jorogumo skittering and hissing, the miko's bells, the idol's song, the Oni's roar and club, a bloomed bursting, a rooted tearing out of the ground, the Court's whistle, the Empress's wail, commuters' phones; the shrine relay's static, a koto for each chapter, wind chimes, crows and the station's old departure melody.",
+        "Fixed: picking a story mission on the title screen and pressing PLAY straight away started the normal operation instead."
+      ]
+    },
+    {
       "version": "0.2.1",
       "date": "2026-10-17",
       "title": "The new infected fall when they die, and a brighter FPS counter",

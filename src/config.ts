@@ -1266,26 +1266,42 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
       { female: true, outfit: 'tactical', hair: 'twintails', hairColor: 0xf2a6c8, skin: 0xf6dccb, eyes: 0x8a3a6a, accent: 0x3a2a3a },
       { female: true, outfit: 'tactical', hair: 'ponytail', hairColor: 0x2a2236, skin: 0xf3d6c2, eyes: 0x3a4a8a, accent: 0x2a2e3a },
     ],
-    models: ['squad-1.vrm', 'squad-2.vrm'],
+    models: ['hana.vrm', 'yuzu.vrm'],
     fillsSeats: true,
   },
 };
 
 /**
- * The Sakura District's cast: VRoid Studio models (.vrm) in `public/anime/` (see the README there). Any missing file
- * falls back to another loaded model of its kind, then to the game's own figures.
+ * The Sakura District's cast: VRoid Studio models (.vrm) in `public/anime/` (see the README there), by role. A file can
+ * play several roles (it loads once). Any missing file falls back to another loaded model of its kind, then to the
+ * game's own figures. `core` loads before the run starts; the rest stream in behind it (a role whose file is not in yet
+ * wears a horde model until it is).
  */
 export const ANIME_CAST = {
-  /** Worn by `SQUADS.sakura`, in order. */
-  squad: ['squad-1.vrm', 'squad-2.vrm'],
+  /** Worn by `SQUADS.sakura`, in order: Hana (the user's own 02 Cyberpunk), Yuzu. */
+  squad: ['hana.vrm', 'yuzu.vrm'],
   /** Worn by co-op players (a teammate's figure, by seat), in order. */
-  operators: ['operator-1.vrm', 'operator-2.vrm', 'operator-3.vrm'],
-  /** Worn by the Kurenai Court, the district's armed humans, in order. */
-  survivors: ['survivor-1.vrm', 'survivor-2.vrm', 'survivor-3.vrm'],
-  /** The horde: every shambler, runner and armored infected wears one of these (tinted by kind). */
-  horde: ['infected-1.vrm', 'infected-2.vrm', 'infected-3.vrm'],
+  operators: ['fumiriya.vrm', 'kuro.vrm', 'bibi.vrm'],
+  /** Worn by the Kurenai Court, the district's armed humans, in order (in the Court's crimson). */
+  survivors: ['hoodie.vrm', 'student-m.vrm', 'fumiriya.vrm'],
+  /** The plain horde: every shambler, runner and armored infected with no kind of its own wears one of these. */
+  horde: ['student-f.vrm', 'student-m.vrm', 'shino.vrm', 'fumiriya.vrm'],
+  /** Each Sakura kind's own body (`anime/looks.ts` dresses it). */
+  kinds: {
+    commuter: 'student-m.vrm',
+    bloomed: 'bibi.vrm',
+    rooted: 'hoodie.vrm',
+    kuchisake: 'shino.vrm',
+    jorogumo: 'kuro.vrm',
+    miko: 'student-f.vrm',
+    idol: 'victoria.vrm',
+    oni: 'vita.vrm',
+    empress: 'empress.vrm',
+  },
   /** The boss (the Warden's part). */
-  boss: 'boss.vrm',
+  boss: 'empress.vrm',
+  /** Loaded before the run starts: the squad, the horde and the Court. */
+  core: ['hana.vrm', 'yuzu.vrm', 'student-f.vrm', 'student-m.vrm', 'shino.vrm', 'fumiriya.vrm', 'hoodie.vrm'],
   /** Live infected at once on this map: each one draws far more than a stock zombie. Phones get fewer. */
   hardCap: 24,
   hardCapTouch: 12,

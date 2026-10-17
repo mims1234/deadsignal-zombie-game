@@ -1,8 +1,9 @@
 /**
- * The Sakura District's own HUD pieces: the note card (what a place was, the fall, now; a clue under the sakura stamp)
- * shown when a note is read, and the journal page in the pause menu (every note found so far, by zone).
+ * The Sakura District's own HUD pieces: the card (the festival scroll, a charm found, an infected met for the first
+ * time, a chapter) and the field file in the pause menu.
  */
-import { NOTES, type SakuraNote, ZONE_NAMES } from './lore';
+import { FIELD, type FieldKind, OUTBREAK } from './campaign';
+import type { SakuraNote } from './lore';
 
 /** The sakura stamp: a five-petalled blossom in a red seal. */
 export const STAMP_URL =
@@ -149,54 +150,93 @@ export class SakuraHud {
   }
 }
 
-/** The journal page (the pause menu): every note found, by zone; the ones not yet found as blanks. */
-export function buildJournal(found: ReadonlySet<string>, textOf: (n: SakuraNote) => NoteText, egg: { done: boolean; status: string }): HTMLElement {
+/** The field file's story section: KAIKA's chapters on a campaign run, the Thousand Lanterns otherwise. */
+export interface FieldFileStory {
+  chapters: { title: string; place: string; goal: string; state: 'done' | 'now' | 'todo' }[] | null;
+  lanterns: { done: boolean; status: string };
+}
+
+/**
+ * The field file (the pause menu): how the outbreak began, the story so far, every kind of infected met (its look, what
+ * it does, why it is here; the rest as blanks), and the festival poem once it has been read.
+ */
+export function buildFieldFile(o: { story: FieldFileStory; seen: ReadonlySet<string>; poem: string[] | null }): HTMLElement {
   css();
   const root = document.createElement('div');
   root.className = 'ds-journal';
   const head = document.createElement('div');
   head.className = 'jhead';
   const a = document.createElement('span');
-  a.textContent = 'SAKURAGI JOURNAL';
+  a.textContent = 'SAKURAGI FIELD FILE';
+  const kinds = Object.keys(FIELD) as FieldKind[];
   const b = document.createElement('span');
-  b.textContent = `${NOTES.filter((n) => found.has(n.id)).length} / ${NOTES.length} NOTES`;
+  b.textContent = `${kinds.filter((k) => o.seen.has(k)).length} / ${kinds.length} INFECTED`;
   head.append(a, b);
   root.appendChild(head);
-  const eg = document.createElement('div');
-  eg.className = 'egg';
-  eg.textContent = egg.done ? 'THE THOUSAND LANTERNS: the dead of Sakuragi were seen home. The story missions are open.' : egg.status;
-  root.appendChild(eg);
-  for (const zone of Object.keys(ZONE_NAMES) as SakuraNote['zone'][]) {
+  const section = (t: string): void => {
     const z = document.createElement('div');
     z.className = 'jzone';
-    z.textContent = ZONE_NAMES[zone];
+    z.textContent = t;
     root.appendChild(z);
-    for (const n of NOTES.filter((q) => q.zone === zone)) {
-      if (!found.has(n.id)) {
+  };
+  const entry = (title: string, fill: (body: HTMLElement) => void, open = false, stamp = false): void => {
+    const d = document.createElement('details');
+    d.open = open;
+    const s = document.createElement('summary');
+    if (stamp) {
+      const i = document.createElement('i');
+      i.style.backgroundImage = `url("${STAMP_URL}")`;
+      s.appendChild(i);
+    }
+    s.append(title);
+    const body = document.createElement('div');
+    body.className = 'jb';
+    fill(body);
+    d.append(s, body);
+    root.appendChild(d);
+  };
+  // the story so far
+  section('THE STORY');
+  if (o.story.chapters) {
+    o.story.chapters.forEach((c, i) => {
+      if (c.state === 'todo') {
         const u = document.createElement('div');
         u.className = 'unk';
-        u.textContent = '? ? ?   (not yet found)';
+        u.textContent = `${i + 1}.  ${c.title}`;
         root.appendChild(u);
-        continue;
+        return;
       }
-      const d = document.createElement('details');
-      const s = document.createElement('summary');
-      if (n.clue) {
-        const i = document.createElement('i');
-        i.style.backgroundImage = `url("${STAMP_URL}")`;
-        s.appendChild(i);
-      }
-      s.append(n.title);
-      const body = document.createElement('div');
-      body.className = 'jb';
-      const t = textOf(n);
-      para(body, 'BEFORE', t.was);
-      para(body, 'THE FALL', t.during);
-      para(body, 'NOW', t.now);
-      if (t.clue) para(body, '桜', t.clue);
-      d.append(s, body);
-      root.appendChild(d);
+      entry(`${i + 1}.  ${c.title}${c.state === 'done' ? '   ✓' : '   (now)'}`, (body) => para(body, c.place, c.goal), c.state === 'now');
+    });
+  }
+  const eg = document.createElement('div');
+  eg.className = 'egg';
+  eg.textContent = o.story.lanterns.done ? 'THE THOUSAND LANTERNS: the dead of Sakuragi were seen home. Every story mission is open.' : o.story.lanterns.status;
+  root.appendChild(eg);
+  if (o.poem) entry('The festival scroll', (body) => para(body, '桜', o.poem!.join('\n')), false, true);
+  // how it began
+  section('THE OUTBREAK');
+  for (const p of OUTBREAK) entry(p.title, (body) => {
+    const q = document.createElement('p');
+    q.textContent = p.text;
+    body.appendChild(q);
+  });
+  // the infected
+  section('THE INFECTED');
+  for (const k of kinds) {
+    const f = FIELD[k];
+    if (!o.seen.has(k)) {
+      const u = document.createElement('div');
+      u.className = 'unk';
+      u.textContent = '? ? ?   (not yet met)';
+      root.appendChild(u);
+      continue;
     }
+    entry(`${f.name}  -  ${f.tag}`, (body) => {
+      para(body, 'LOOK', f.look);
+      para(body, 'WHAT IT DOES', f.does);
+      para(body, 'WHY HERE', f.why);
+    });
   }
   return root;
 }

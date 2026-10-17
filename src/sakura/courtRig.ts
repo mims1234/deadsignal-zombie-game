@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { ZOMBIES } from '../config';
-import { courtModel } from '../anime/cast';
+import { COURT_TINT, courtModel } from '../anime/cast';
 import { Avatar } from '../coop/avatar';
 import type { ZombieAnimState, ZombieRig } from '../enemies/zombieRigTypes';
 
@@ -22,7 +22,7 @@ export class CourtRig implements ZombieRig {
   private visible = true;
 
   constructor(seed: number) {
-    this.fig = new Avatar('', seed % 3, { weapon: 'rifle', helmet: false, anime: courtModel(seed % 3) });
+    this.fig = new Avatar('', seed % 3, { weapon: 'rifle', helmet: false, anime: courtModel(seed % 3), animeTint: COURT_TINT });
     this.root.name = 'court';
   }
 

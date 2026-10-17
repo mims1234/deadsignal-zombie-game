@@ -58,7 +58,7 @@ import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
-import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
+import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, storiesOpen, type StoryId } from '../sakura/missions';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput } from './interaction';
@@ -144,6 +144,8 @@ export class Game implements GameCtx {
   sakura: SakuraRuntime | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
   private storyPick: StoryId | null = null;
+  /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
+  private builtTale: StoryId | null = null;
 
   /** The story mission this run plays: the co-op session's kind, or the solo pick (the Sakura District only). */
   get tale(): StoryId | null {
@@ -782,7 +784,7 @@ export class Game implements GameCtx {
       return [{ id, badge: b?.[0], badgeTone: b?.[1] }];
     });
     // the Sakura District's story missions, once the Thousand Lanterns has been seen through
-    const stories = this.mapId === 'sakura' && loadSakura().egg ? STORY_IDS.map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
+    const stories = this.mapId === 'sakura' ? storiesOpen(loadSakura().egg).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
     return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '' };
   }
 
@@ -929,7 +931,7 @@ export class Game implements GameCtx {
       return;
     }
     this.audio.init(); // needs the user gesture
-    if (restart || this.dirty || this.mode === 'coop') this.resetRun(false);
+    if (restart || this.dirty || this.mode === 'coop' || this.builtTale !== this.tale) this.resetRun(false);
     this.dirty = true;
     if (this.touchMode) {
       this.startWithoutLock(true);
@@ -1141,6 +1143,7 @@ export class Game implements GameCtx {
     }
 
     // a story mission comes in somewhere of its own
+    this.builtTale = this.tale;
     if (this.mapId === 'sakura') applyStoryStart(this.level, this.tale);
     const st = this.level.data.playerStart;
     this.player.teleport(st.x, st.z, st.yaw);
@@ -2216,7 +2219,7 @@ export class Game implements GameCtx {
   /** Start playing without pointer lock (automation). */
   devStartWithoutLock(fresh = true): void {
     this.audio.init();
-    if (fresh && (this.dirty || this.mode === 'coop')) this.resetRun(false);
+    if (fresh && (this.dirty || this.mode === 'coop' || this.builtTale !== this.tale)) this.resetRun(false);
     this.dirty = true;
     this.noLock = true;
     this.beginPlaying(fresh);

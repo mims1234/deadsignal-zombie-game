@@ -28,7 +28,7 @@ const BONES = [
   'leftShoulder', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightShoulder', 'rightUpperArm', 'rightLowerArm', 'rightHand',
   'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
 ] as const satisfies readonly VRMHumanBoneName[];
-type Bone = (typeof BONES)[number];
+export type Bone = (typeof BONES)[number];
 
 const FINGERS = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'] as const;
 const FINGER_SEGS = { Thumb: ['Metacarpal', 'Proximal', 'Distal'], Index: ['Proximal', 'Intermediate', 'Distal'], Middle: ['Proximal', 'Intermediate', 'Distal'], Ring: ['Proximal', 'Intermediate', 'Distal'], Little: ['Proximal', 'Intermediate', 'Distal'] } as const;
@@ -66,6 +66,8 @@ export interface AnimeTemplate {
   materials: number;
   /** Shared infected material sets, by tint key. */
   tints: Map<string, Map<THREE.Material, THREE.Material>>;
+  /** A man's body (VRoid's male base: its body material is named M00_...): he groans in a man's voice. */
+  male: boolean;
 }
 
 /** A node constraint, by node names (the VRM runtime's own constraints point at the template's nodes). */
@@ -226,6 +228,7 @@ function makeTemplate(file: string, vrm: VRM): AnimeTemplate {
     tris: Math.round(tris),
     materials: mats.size,
     tints: new Map(),
+    male: [...mats].some((m) => /^M00_\d+_\d+_Body/.test(m.name)),
   };
 }
 
@@ -240,10 +243,16 @@ export interface AnimeTint {
   /** Multiplies clothes and hair. */
   cloth: number;
   hair: number;
-  /** The irises glow this colour; the eye whites go sallow and the catch-lights go out. */
-  eyes: number;
+  /** The irises glow this colour; the eye whites go sallow and the catch-lights go out. Null: the model's own eyes. */
+  eyes: number | null;
   /** Draw the ink outline pass (two draws per material). */
   outlines: boolean;
+  /**
+   * Garments recoloured, by material name (VRoid names them `..._Tops_01_CLOTH`, `_Bottoms_`, `_Onepice_`, `_Shoes_`,
+   * `_Accessory_`): `flat` drops the texture for a plain colour (the miko's red hakama), otherwise it multiplies;
+   * `glow` lights it up. The first match wins, before the skin / cloth / hair multiply.
+   */
+  parts?: readonly { match: RegExp; color: number; flat?: boolean; glow?: number }[];
 }
 
 type MatLike = THREE.Material & { color?: THREE.Color; shadeColorFactor?: THREE.Color; emissive?: THREE.Color; emissiveIntensity?: number; isOutline?: boolean };
@@ -268,12 +277,28 @@ function tinted(t: AnimeTemplate, tint: AnimeTint | null): Map<THREE.Material, T
         mat.color?.multiply(new THREE.Color(c));
         mat.shadeColorFactor?.multiply(new THREE.Color(c));
       };
-      if (/Iris/i.test(name)) {
-        mat.emissive?.set(tint.eyes);
-        if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 1.4;
-        mul(tint.eyes);
-      } else if (/Highlight/i.test(name)) mat.visible = false;
-      else if (/EyeWhite/i.test(name)) mul(0xd8cc9a);
+      const part = tint.parts?.find((p) => p.match.test(name));
+      if (part) {
+        const m = mat as MatLike & { map?: THREE.Texture | null; shadeMultiplyTexture?: THREE.Texture | null };
+        if (part.flat) {
+          m.map = null;
+          m.shadeMultiplyTexture = null;
+          m.color?.set(part.color);
+          m.shadeColorFactor?.set(part.color).multiplyScalar(0.55);
+          m.needsUpdate = true;
+        } else mul(part.color);
+        if (part.glow !== undefined) {
+          m.emissive?.set(part.color);
+          if (m.emissiveIntensity !== undefined) m.emissiveIntensity = part.glow;
+        }
+      } else if (/Iris/i.test(name)) {
+        if (tint.eyes !== null) {
+          mat.emissive?.set(tint.eyes);
+          if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 1.4;
+          mul(tint.eyes);
+        }
+      } else if (/Highlight/i.test(name)) mat.visible = tint.eyes === null;
+      else if (/EyeWhite/i.test(name)) mul(tint.eyes === null ? 0xffffff : 0xd8cc9a);
       else if (/SKIN|Body|Face_/i.test(name)) mul(tint.skin);
       else if (/HAIR/i.test(name)) mul(tint.hair);
       else if (!/FACE|Eye|Brow|Mouth/i.test(name)) mul(tint.cloth);
@@ -487,6 +512,11 @@ export class AnimeBody {
 
   hasExpression(name: string): boolean {
     return this.template.expressions.has(name);
+  }
+
+  /** The model's own bone node (for gear held in a hand or worn on the head). */
+  boneNode(name: Bone): THREE.Object3D | null {
+    return this.b.get(name)?.bone ?? null;
   }
 
   /** World position of a bone (as of the last `follow`). */

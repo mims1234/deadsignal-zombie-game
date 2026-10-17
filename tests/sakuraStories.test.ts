@@ -15,12 +15,12 @@ const run = (kind: 'mission' | (typeof STORY_IDS)[number]) => {
 };
 
 describe('the Sakura District story missions', { timeout: 30000 }, () => {
-  for (const id of STORY_IDS) {
+  for (const id of STORY_IDS.filter((k) => !STORIES[k].campaign)) {
     it(`${id}: its own start, one contract settled, its own people`, () => {
       const sim = run(id);
       const s = STORIES[id];
       const st = sim.level.data.playerStart;
-      expect([st.x, st.z]).toEqual([s.start.x, s.start.z]);
+      expect([st.x, st.z]).toEqual([s.start!.x, s.start!.z]);
       const { defense, hunt } = sim.debug as unknown as { defense: { status: string }; hunt: { status: string } };
       if (s.settled === 'defense') {
         expect(defense.status).toBe('complete');

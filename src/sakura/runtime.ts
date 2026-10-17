@@ -1,11 +1,14 @@
 /**
- * The Sakura District's own runtime (built when the map is): the petals in the air, the notes and the journal, and the
+ * The Sakura District's own runtime (built when the map is): the petals in the air, the story told aloud (Aoi on the
+ * shrine relay and the squad, the first time you walk into each part of the district), the field file (a card the
+ * first time you meet each kind of infected; the pause menu's page), KAIKA's chapters (`campaign.ts`), and the
  * Thousand Lanterns - the charms, the sacred tree, the five great lanterns, the bell, the bloom (the blood moon, the
  * crimson trees, the glowing canal, the ghost train) and Kisaragi Station's relics and altar.
  *
  * The quest's state is the simulation's in a co-op story run (`applyWire`; requests go to it through `request`) and
- * this runtime's own otherwise. Either way what changed is presented by comparing views, so both look the same. The
- * notes, the journal, the relics and the altar are each player's own.
+ * this runtime's own otherwise. Either way what changed is presented by comparing views, so both look the same; the
+ * chapters are worked out from the same view and the contracts, so they move together for everyone. The radio, the
+ * field file, the scroll, the relics and the altar are each player's own.
  */
 import * as THREE from 'three';
 import { PLAYER, WEAPONS } from '../config';
@@ -22,7 +25,8 @@ import type { HudState, MapDynamic } from '../ui/hudTypes';
 import type { SakuraHandles } from '../world/layout/sakura';
 import { CANAL_WATER } from '../world/layout/sakura/canal';
 import { BLOSSOM, jpSignMaterial } from '../world/layout/sakura/props';
-import { buildJournal, type NoteText, SakuraHud, STAMP_URL } from './hud';
+import { buildFieldFile, type FieldFileStory, type NoteText, SakuraHud, STAMP_URL } from './hud';
+import { CHAPTERS, CHECKPOINT, FIELD, type FieldKind, type Line, MARK, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt } from './campaign';
 import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
 import { CHARM_PLACES, decodeQuest, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
@@ -83,6 +87,20 @@ export class SakuraRuntime {
   /** Movement while an idol's song is in your ears (1 = free). */
   moveMul = 1;
   private idolWarned = false;
+  /** This run's story mission (KAIKA: the campaign), and the chapter it is on (-1 before the first). */
+  private tale: StoryId | null = null;
+  private chapter = -1;
+  /** Places whose transmission has played this run; kinds met this run (their field card shows once a run). */
+  private readonly heard = new Set<Place>();
+  private readonly met = new Set<string>();
+  /** When the radio is free again (lines queue, never over each other). */
+  private radioAt = 0;
+  private scanT = 0;
+  /** The district's air: the next wind chime, crow or departure melody. */
+  private ambT = 6;
+  /** The festival scroll read this run (the field file shows the poem). */
+  private poemRead = false;
+  private readonly labArea: number;
 
   constructor(private readonly g: Game) {
     this.h = g.level.sakura!;
@@ -99,7 +117,8 @@ export class SakuraRuntime {
     this.ghost = this.buildGhost();
     this.buildKisaragi();
     g.interaction.sources.push((t) => this.targets(t));
-    g.menus.pauseTab = () => ({ label: 'JOURNAL', build: () => buildJournal(this.found, (n) => this.textOf(n), { done: this.progress.egg, status: this.journalStatus() }) });
+    this.labArea = g.level.floors.areas.findIndex((a) => a.name === 'Kurenai lab');
+    g.menus.pauseTab = () => ({ label: 'FIELD FILE', build: () => buildFieldFile({ story: this.fieldStory(), seen: new Set(this.progress.seen), poem: this.poemRead ? SakuraQuest.poem(this.view.order) : null }) });
   }
 
   /** The dusk look (sky, fog, lights): the map's own; the bloom changes it. */
@@ -310,6 +329,17 @@ export class SakuraRuntime {
     this.stalker.reset();
     this.moveMul = 1;
     this.idolWarned = false;
+    this.tale = tale;
+    this.chapter = -1;
+    this.heard.clear();
+    this.met.clear();
+    this.timers.length = 0;
+    this.radioAt = 0;
+    this.poemRead = false;
+    // KAIKA: the helicopter waits for the bloom (co-op: the simulation holds it)
+    g.mission.extractGate = () => !this.campaign || this.view.phase === 'bloom';
+    // any other run: Aoi's first call a little way in (KAIKA opens on it)
+    if (!this.campaign) this.say(CHAPTERS[0]!.intro.slice(0, 3), 22);
     this.view = this.local.view;
     this.shown = { ...this.view, found: 0, tied: 0, lit: 0, phase: 'charms' };
     this.relicTaken.fill(false);
@@ -364,6 +394,28 @@ export class SakuraRuntime {
       this.stalker.spawned = true;
       this.stalkerCame();
     }
+    // KAIKA: the checkpoint (solo: here; co-op: the simulation), and the chapter it is on
+    if (this.campaign) {
+      if (!this.follow && g.playerAlive() && Math.hypot(g.player.x - CHECKPOINT.x, g.player.z - CHECKPOINT.z) < CHECKPOINT.r) this.local.mark(MARK.checkpoint);
+      const ch = chapterIndex(this.campaignState());
+      if (ch !== this.chapter) this.onChapter(ch);
+    }
+    // a place's transmission the first time in, and the field file's card the first time a kind is met
+    this.scanT -= dt;
+    if (this.scanT <= 0 && g.playerAlive()) {
+      this.scanT = 0.4;
+      const place = this.placeOf();
+      if (place && !this.heard.has(place)) {
+        this.heard.add(place);
+        this.say(PLACE_RADIO[place], 0.6);
+      }
+      this.scanKinds();
+    }
+    this.ambT -= dt;
+    if (this.ambT <= 0) {
+      this.ambT = 9 + g.rng.f() * 14;
+      this.airSound();
+    }
     // an idol's song: slower while one sings within reach
     let near = Infinity;
     for (const z of g.zombies.zombies) if (z.variant === 'idol' && z.alive && !z.dormant) near = Math.min(near, Math.hypot(z.x - g.player.x, z.z - g.player.z));
@@ -380,7 +432,7 @@ export class SakuraRuntime {
     }
     for (let i = 0; i < this.flames.length; i++) this.flames[i]!.scale.setScalar(1 + Math.sin(this.time * 13 + i * 2) * 0.08);
     for (const r of this.relicMeshes) r.children[0]!.rotation.y += dt * 0.8;
-    for (const n of this.notes) (n.beam.material as THREE.MeshBasicMaterial).opacity = (this.found.has(n.n.id) ? 0.05 : 0.13) + Math.sin(this.time * 2 + n.x) * 0.03;
+    for (const n of this.notes) (n.beam.material as THREE.MeshBasicMaterial).opacity = (this.poemRead ? 0.05 : 0.16) + Math.sin(this.time * 2 + n.x) * 0.03;
     if (this.bloomed) this.ghost.position.y = Math.sin(this.time * 0.9) * 0.08;
     // the blessings
     const v = g.session.vitals;
@@ -403,6 +455,112 @@ export class SakuraRuntime {
     this.timers.push({ t: this.time + s, fn });
   }
 
+  /** Lines on the radio, one after another (after whatever is already queued), from `delay` seconds on. */
+  private say(lines: readonly Line[], delay = 0): void {
+    let t = Math.max(this.time + delay, this.radioAt);
+    for (const [who, text] of lines) {
+      const dur = Math.min(11, 3.2 + text.length / 17);
+      this.later(t - this.time, () => {
+        if (who === 'AOI') this.g.audio.play('relay_voice', { priority: 2, volume: 0.7 });
+        this.g.radio(who === 'AOI' ? 'AOI  //  SHRINE RELAY' : who, text, dur);
+      });
+      t += dur + 0.5;
+    }
+    this.radioAt = t;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // the story: places, kinds, chapters
+  // ---------------------------------------------------------------------------------------------
+
+  /** A KAIKA run. */
+  private get campaign(): boolean {
+    return !!this.tale && !!STORIES[this.tale].campaign;
+  }
+
+  private campaignState(): { quest: QuestView; defense: string; hunt: string; extracted: boolean } {
+    const s = this.g.session;
+    return { quest: this.view, defense: s.defense.status, hunt: s.hunt.status, extracted: s.extraction.phase === 'extracted' };
+  }
+
+  /** Which part of the district the player is in. */
+  private placeOf(): Place | null {
+    const g = this.g;
+    const p = g.player;
+    const fl = g.level.floors;
+    const area = fl.areaAt(p.x, p.y, p.z);
+    return placeAt(p.x, p.z, fl.areas[area]?.kind === 'under', area === this.labArea && area >= 0, area === this.h.kisaragi.area);
+  }
+
+  /** The district's air round the player: the station's melody below and by the station, chimes and crows elsewhere. */
+  private airSound(): void {
+    const g = this.g;
+    const p = g.player;
+    const place = this.placeOf();
+    const a = g.rng.f() * Math.PI * 2;
+    const at = (d: number, y: number): { x: number; y: number; z: number } => ({ x: p.x + Math.cos(a) * d, y: p.y + y, z: p.z + Math.sin(a) * d });
+    if ((place === 'station' || place === 'metro') && g.rng.f() < 0.5) g.audio.play('station_chime', { pos: at(22, 4), priority: 0, volume: 0.7 });
+    else if (place === 'metro' || place === 'lab' || place === 'kisaragi') return;
+    else if (g.rng.f() < 0.55) g.audio.play('amb_furin', { pos: at(7 + g.rng.f() * 6, 2.5), priority: 0, volume: 0.6 });
+    else g.audio.play('amb_crow', { pos: at(20 + g.rng.f() * 12, 9), priority: 0, volume: 0.7 });
+  }
+
+  /** The first kind of infected in sight this run that has not been met yet. */
+  private scanKinds(): void {
+    const g = this.g;
+    const p = g.player;
+    for (const z of g.zombies.zombies) {
+      const k = z.variant;
+      if (!k || !z.alive || z.dormant || this.met.has(k)) continue;
+      if (Math.hypot(z.x - p.x, z.z - p.z) > 24 || Math.abs(z.y - p.y) > 3) continue;
+      this.meet(k as FieldKind);
+      return;
+    }
+  }
+
+  /** The field file's card for a kind (and, the first time ever, the squad's word on it). */
+  private meet(k: FieldKind): void {
+    this.met.add(k);
+    const f = FIELD[k];
+    const first = !this.progress.seen.includes(k);
+    if (first) {
+      this.progress.seen = [...this.progress.seen, k];
+      saveSakura(this.progress);
+      if (k !== 'kuchisake') this.say([f.quip]);
+    }
+    this.hud.card(first ? 'FIELD FILE  //  NEW' : 'FIELD FILE', `${f.name}  -  ${f.tag}`, first ? `${f.look}\n\n${f.does}\n\n${f.why}` : f.does, first ? 13 : 6);
+  }
+
+  /** KAIKA moved on (or a co-op player joined part way in). */
+  private onChapter(i: number): void {
+    const g = this.g;
+    const prev = this.chapter;
+    this.chapter = i;
+    if (i <= prev) return;
+    if (!this.follow) campaignSetPiece(i, g.zombies, g.level, this.spots, g.rng);
+    const done = prev >= 0 ? CHAPTERS[prev] : undefined;
+    if (done) {
+      g.audio.play('contract_complete', { priority: 2 });
+      g.banner(`CHAPTER ${prev + 1} COMPLETE`, done.title, 'good', 3);
+    }
+    const ch = CHAPTERS[i];
+    if (!ch) return;
+    this.later(done ? 3.4 : 5.5, () => {
+      g.audio.play('chapter_koto', { priority: 3 });
+      g.banner(`CHAPTER ${i + 1}/${CHAPTERS.length}  //  ${ch.title}`, ch.goal, 'info', 6);
+    });
+    this.say(ch.intro, done ? 4 : 7);
+  }
+
+  /** The field file's story page. */
+  private fieldStory(): FieldFileStory {
+    const v = this.view;
+    const lanterns = { done: this.progress.egg, status: v.found === 0 && v.phase === 'charms' ? 'THE THOUSAND LANTERNS: listen to the shrine relay. Aoi Kisaragi says where her charms went.' : `THE THOUSAND LANTERNS: ${SakuraQuest.status(v)}` };
+    if (!this.campaign) return { chapters: null, lanterns };
+    const at = this.chapter;
+    return { chapters: CHAPTERS.map((c, i) => ({ title: c.title, place: PLACE_NAMES[c.place], goal: c.goal, state: i < at ? 'done' : i === at ? 'now' : 'todo' })), lanterns };
+  }
+
   /** Max health with SAKURA SPIRIT (regeneration and the HUD read it). */
   get maxHealth(): number {
     return PLAYER.maxHealth + (this.perks.has('spirit') ? 50 : 0);
@@ -411,8 +569,20 @@ export class SakuraRuntime {
   decorateHud(st: HudState, md: MapDynamic): void {
     st.maxHealth = this.maxHealth;
     const v = this.view;
-    // the quest shows once you are on its trail: a stamped note read, or any of it done
-    if (v.found || v.phase !== 'charms' || NOTES.some((n) => n.clue && this.found.has(n.id))) {
+    if (this.campaign) {
+      // KAIKA: the chapter on top, its marker on the compass
+      const i = this.chapter;
+      const ch = CHAPTERS[i];
+      if (ch) {
+        const s = this.campaignState();
+        const goal = ch.id === 'lanterns' ? `${ch.goal}: ${orderWords(v)}` : ch.id === 'tree' ? `${ch.goal} (${SakuraQuest.held(v)} carried)` : ch.goal;
+        const tg = ch.target(this.spots, s);
+        const dist = tg ? Math.round(Math.hypot(tg.x - this.g.player.x, tg.z - this.g.player.z)) : -1;
+        st.objectives.unshift({ id: 'kaika', title: `${i + 1}/${CHAPTERS.length}  ${ch.title}`, detail: goal, state: 'active', progress: i / CHAPTERS.length, tracked: true, distance: dist });
+        if (tg) md.markers.push({ id: 'kaika', kind: 'objective', x: tg.x, z: tg.z, label: tg.label, color: '#ff9ec8', visible: true, compass: true, pulse: true });
+      }
+    } else if (v.found || v.phase !== 'charms' || this.heard.size > 1) {
+      // the quest shows once you are on its trail: once Aoi has been heard, or any of it done
       st.objectives.push({ id: 'lanterns', title: 'THE THOUSAND LANTERNS', detail: SakuraQuest.status(v), state: v.phase === 'bloom' ? 'complete' : 'active', progress: -1, tracked: false, distance: -1 });
     }
     if (this.bloomed) md.markers.push({ id: 'ghost-train', kind: 'landmark', x: this.h.kisaragi.boardStreet.x, z: this.h.kisaragi.boardStreet.z, label: 'GHOST TRAIN', color: '#9fe8ff', visible: true, compass: true, pulse: true });
@@ -435,7 +605,7 @@ export class SakuraRuntime {
       const d = near(nv.x, nv.z, nv.y, 1.8);
       if (d < 0) continue;
       const seen = this.found.has(nv.n.id);
-      out.push({ id: `note:${nv.n.id}`, dist: d, text: seen ? 'READ AGAIN' : 'READ THE NOTE', sub: nv.n.title, tone: seen ? 'normal' : 'good', hold: 0, enabled: true, onUse: () => this.read(nv.n) });
+      out.push({ id: `note:${nv.n.id}`, dist: d, text: seen && this.poemRead ? 'READ AGAIN' : 'READ THE SCROLL', sub: nv.n.title, tone: this.poemRead ? 'normal' : 'good', hold: 0, enabled: true, onUse: () => this.read(nv.n) });
     }
     const v = this.view;
     const s = this.spots;
@@ -566,14 +736,18 @@ export class SakuraRuntime {
   private read(n: SakuraNote): void {
     const g = this.g;
     const first = !this.found.has(n.id);
-    this.hud.show(n, this.textOf(n), first ? `NOTE ${this.found.size + 1}/${NOTES.length}` : 'NOTE', 20);
+    this.hud.show(n, this.textOf(n), 'THE THOUSAND LANTERNS', 20);
+    if (!this.poemRead) {
+      this.poemRead = true;
+      this.say([['AOI', 'The festival poem. Read it line by line - that is the order of the lanterns.']], 2);
+    }
     if (!first) return;
     this.found.add(n.id);
     this.progress.notes = [...this.found];
     saveSakura(this.progress);
     this.refreshNotes();
     g.audio.play('objective_ping', { priority: 1, volume: 0.6 });
-    if (this.found.size === 1) g.banner('A NOTE', 'Every note you read goes in the journal (pause menu)', 'info', 4);
+    g.banner('THE FESTIVAL SCROLL', 'The poem is in the field file (pause menu)', 'info', 4);
   }
 
   /** A note's text as shown: the poem on the stage is this run's. */
@@ -584,12 +758,6 @@ export class SakuraRuntime {
 
   private refreshNotes(): void {
     for (const nv of this.notes) nv.root.children[0]!.scale.setScalar(this.found.has(nv.n.id) ? 0.85 : 1);
-  }
-
-  private journalStatus(): string {
-    const v = this.view;
-    if (v.found === 0 && v.phase === 'charms') return NOTES.some((n) => n.clue && this.found.has(n.id)) ? `THE THOUSAND LANTERNS: ${SakuraQuest.status(v)}` : 'Some notes carry a sakura stamp. Read them closely.';
-    return `THE THOUSAND LANTERNS: ${SakuraQuest.status(v)}`;
   }
 
   /** The ghost train: from the street to Kisaragi, or back. */

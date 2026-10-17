@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
-import { AnimeBody, type AnimeTemplate, type PoseSource } from '../anime/vrm';
+import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource } from '../anime/vrm';
 import type { AvatarLook } from '../config';
 import type { WeaponId } from '../types';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
@@ -38,6 +38,8 @@ export interface AvatarStyle {
   tagColor?: string;
   /** A VRoid model to wear (the Sakura District): it follows this figure's skeleton, which is then not drawn. */
   anime?: AnimeTemplate | null;
+  /** Colours over the model (the Kurenai Court's crimson). */
+  animeTint?: AnimeTint | null;
 }
 
 function nameTag(name: string, sub: string | undefined, color: string): THREE.Sprite {
@@ -454,7 +456,7 @@ export class Avatar {
     this.tilt.add(this.body);
     this.root.add(this.tilt, this.tag);
     this.root.visible = false;
-    if (style.anime) this.wear(style.anime);
+    if (style.anime) this.wear(style.anime, style.animeTint ?? null);
     this.pose(0, 0, 1);
   }
 
@@ -463,7 +465,7 @@ export class Avatar {
    * -Z, and driven from these joints each frame. The jointed figure stays as the skeleton it follows, unseen; the
    * weapon and the name tag stay.
    */
-  private wear(t: AnimeTemplate): void {
+  private wear(t: AnimeTemplate, tint: AnimeTint | null = null): void {
     // hide the figure's own meshes (not the weapon, which lives in the gun holder)
     const hide = (o: THREE.Object3D): void => {
       if (o === this.gunHolder) return;
@@ -478,7 +480,7 @@ export class Avatar {
     const hip = 0.93;
     const ankle = hip - THIGH - SHIN;
     const scale = (hip - ankle) / Math.max(0.1, m.legTop - m.ankle);
-    const body = new AnimeBody(t, { scale, offset: new THREE.Vector3(0, hip - m.legTop * scale, 0), tint: null, grip: 1, shadows: true });
+    const body = new AnimeBody(t, { scale, offset: new THREE.Vector3(0, hip - m.legTop * scale, 0), tint, grip: 1, shadows: true });
     this.body.add(body.root);
     this.anime = body;
     const [R, L] = this.arms as [Limb, Limb];

@@ -107,6 +107,8 @@ export class MissionRuntime implements MissionApi {
   onPowerRestored: (() => void) | null = null;
   /** The Forge: the helicopter holds off (its countdown stops) while the reborn is loose. */
   holdExtraction: () => boolean = () => false;
+  /** Besides the contracts, what the helicopter waits for (KAIKA: the bloom). */
+  extractGate: () => boolean = () => true;
   /** The Forge after the burnout: the firestorm dies down and stops hurting. */
   calm: () => boolean = () => false;
 
@@ -391,7 +393,7 @@ export class MissionRuntime implements MissionApi {
     }
 
     // ---- unlock extraction ----
-    if (!this.follow && unlockExtraction(ex, allContractsComplete(s.defense, s.hunt))) this.onUnlocked();
+    if (!this.follow && unlockExtraction(ex, allContractsComplete(s.defense, s.hunt) && this.extractGate())) this.onUnlocked();
 
     // ---- extraction sequence ----
     if (extractionInProgress(ex)) {

@@ -95,7 +95,7 @@ export class ZombieManager {
   readonly root = new THREE.Group();
   readonly zombies: Zombie[] = [];
   boss: Zombie | null = null;
-  private readonly pools = new Map<ZombieType, ZombieRig[]>();
+  private readonly pools = new Map<string, ZombieRig[]>();
   private nextId = 1;
   private readonly grid: SpatialGrid;
   private readonly nearby: Zombie[] = [];
@@ -199,11 +199,21 @@ export class ZombieManager {
   // pooling / population
   // ---------------------------------------------------------------------------------------------
 
-  private acquireRig(type: ZombieType): ZombieRig {
-    const pool = this.pools.get(type);
-    const rig = pool?.pop();
+  /** Pooled by type and (the Sakura District) kind: a kind's rig wears its own body and gear. */
+  private poolKey(type: ZombieType, variant: ZombieVariant): string {
+    return variant ? `${type}:${variant}` : type;
+  }
+
+  private acquireRig(type: ZombieType, variant: ZombieVariant = ''): ZombieRig {
+    const pool = this.pools.get(this.poolKey(type, variant));
+    let rig = pool?.pop();
+    // one made in a stand-in before its own model streamed in: make it again in its own
+    while (rig?.stale?.()) {
+      rig.dispose();
+      rig = pool?.pop();
+    }
     if (rig) return rig;
-    const created = type === 'warden' && this.matron ? createMatronRig(this.factory, this.nextId * 131) : this.factory.create(type, this.nextId * 131, this.theme);
+    const created = type === 'warden' && this.matron ? createMatronRig(this.factory, this.nextId * 131) : this.factory.create(type, this.nextId * 131, this.theme, variant);
     this.root.add(created.root);
     return created;
   }
@@ -213,10 +223,11 @@ export class ZombieManager {
     this.untag(z);
     if (this.oneOff.delete(z.rig)) z.rig.dispose();
     else if (z.ownsRig) {
-      let pool = this.pools.get(z.type);
+      const key = this.poolKey(z.type, z.variant);
+      let pool = this.pools.get(key);
       if (!pool) {
         pool = [];
-        this.pools.set(z.type, pool);
+        this.pools.set(key, pool);
       }
       pool.push(z.rig);
     }
@@ -244,14 +255,14 @@ export class ZombieManager {
     }
     if (opts.rig && opts.oneOff) this.oneOff.add(opts.rig);
     if (type === 'warden' && this.matron && !opts.def) opts = { ...opts, def: MATRON_DEF }; // the Asylum's boss: the Matron
-    const rig = opts.rig ?? this.acquireRig(type);
+    const rig = opts.rig ?? this.acquireRig(type, variant === 'court' ? '' : variant);
     if (opts.rig && rig.root.parent !== this.root) this.root.add(rig.root);
     rig.root.scale.setScalar(variant ? VARIANT_INFO[variant].scale : 1);
     const zz = new Zombie(this.nextId++, type, rig);
     zz.ownsRig = !opts.rig;
     zz.variant = variant;
-    // the Sakura District's infected are women: they moan, giggle, hiss and scream in a woman's voice
-    zz.voiceKind = this.theme === 'sakura' ? 'female' : null;
+    // the Sakura District's infected moan, giggle, hiss and scream in a woman's voice (a man's body keeps a man's)
+    zz.voiceKind = this.theme === 'sakura' && rig.voice !== 'male' ? 'female' : null;
     const t = this.tuning;
     zz.init(x, z, opts.yaw ?? rng.f() * Math.PI * 2, rng, { ...opts, hpScale: (opts.hpScale ?? 1) * t.hp });
     zz.speedScale *= t.speed;

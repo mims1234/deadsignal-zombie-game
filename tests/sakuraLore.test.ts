@@ -1,6 +1,6 @@
 /**
- * The Sakura District's notes (`sakura/lore.ts`): every one lies on open ground of its own floor, somewhere you can walk
- * to from the start (up the stairs, down the stairwells).
+ * The Sakura District's paper (`sakura/lore.ts`, the festival scroll): it lies on open ground of its own floor,
+ * somewhere you can walk to from the start (up the stairs, down the stairwells).
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +8,7 @@ import { SessionSim } from '../src/sim/serverHost';
 import { NOTES } from '../src/sakura/lore';
 import { FlowField } from '../src/world/nav';
 
-describe('the Sakura District notes', { timeout: 30000 }, () => {
+describe('the Sakura District scroll', { timeout: 30000 }, () => {
   const sim = new SessionSim({ seed: 3, kind: 'mission', map: 'sakura', send() {} });
   const level = sim.level;
   const fl = level.floors;
@@ -29,9 +29,8 @@ describe('the Sakura District notes', { timeout: 30000 }, () => {
     return f;
   };
 
-  it('has about thirty, each with a unique id', () => {
-    expect(NOTES.length).toBeGreaterThanOrEqual(30);
-    expect(new Set(NOTES.map((n) => n.id)).size).toBe(NOTES.length);
+  it('is the festival scroll on the theatre stage', () => {
+    expect(NOTES.map((n) => n.id)).toEqual(['th-stage']);
   });
 
   it('every note is on open, reachable ground of its floor', () => {

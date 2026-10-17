@@ -8,6 +8,7 @@
  */
 import type * as THREE from 'three';
 import type { ZombieType } from '../types';
+import type { ZombieVariant } from './variants';
 
 export type ZombieMode = 'idle' | 'walk' | 'run' | 'attack' | 'stagger' | 'death' | 'slam' | 'charge' | 'roar';
 
@@ -60,6 +61,10 @@ export interface ZombieRig {
   headAttach?(obj: THREE.Object3D): void;
   /** Take off whatever `headAttach` put on (a pooled rig goes to someone else next). */
   clearAttach?(): void;
+  /** Whose voice it has (the Sakura District's bodies: a man's or a woman's). */
+  readonly voice?: 'female' | 'male';
+  /** Wearing a stand-in while its own model streamed in, which has now arrived: not reused from the pool. */
+  stale?(): boolean;
   dispose(): void;
 }
 
@@ -70,7 +75,8 @@ export interface ZombieRig {
 export type ZombieTheme = 'asylum' | 'forge' | 'sakura';
 
 export interface ZombieFactory {
-  create(type: ZombieType, seed: number, theme?: ZombieTheme): ZombieRig;
+  /** `variant`: the Sakura District's kind (its own body and gear there). */
+  create(type: ZombieType, seed: number, theme?: ZombieTheme, variant?: ZombieVariant): ZombieRig;
   /** The Asylum's boss, the Matron (`matron.ts`): animates as a 'warden'. Absent: a Warden's model stands in. */
   createMatron?(seed: number): ZombieRig;
   dispose(): void;

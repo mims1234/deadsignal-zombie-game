@@ -1,0 +1,15 @@
+Sakura District cast models
+
+hana.vrm
+  "02 Cyberpunk" by mims1234, made for Dead Signal.
+
+yuzu.vrm, empress.vrm, bibi.vrm, vita.vrm, victoria.vrm, student-f.vrm, student-m.vrm, kuro.vrm, hoodie.vrm,
+fumiriya.vrm, shino.vrm
+  VRoid Studio sample models by the VRoid Project (pixiv Inc.): AvatarSample_D, AvatarSample_D (Darkness),
+  AvatarSample_E, AvatarSample_F, AvatarSample_G, Base_Female, Base_Male, HairSample_Female, HairSample_Male,
+  Sakurada Fumiriya and Sendagaya Shino.
+  Released by the VRoid Project for free use; each file's own licence metadata (VRoid Hub licence) allows use by
+  everyone, corporate and personal commercial use, modification and redistribution, with no credit required:
+  https://hub.vroid.com/license?allowed_to_use_user=everyone&characterization_allowed_user=everyone&corporate_commercial_use=allow&credit=unnecessary&modification=allow&personal_commercial_use=profit&redistribution=allow&sexual_expression=allow&version=1&violent_expression=allow
+  Mirrored as CC0 at https://opengameart.org/content/vroid-studio-cc0-models
+  Modified for the game: textures scaled down, normal maps flattened, unused blend shapes removed, recoloured in game.

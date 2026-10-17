@@ -133,6 +133,26 @@ export const SOUND_IDS = [
   'ghost_train', // a far horn and humming rails (spatial)
   'petal_shot', // Hanafubuki, one round of the petal stream
   'thunder_shot', // Raijin's Drum
+  // ---- the Sakura District's kinds and air (`synth/sakuraKinds.ts`) ----
+  'kuchisake_whisper', // "watashi... kirei?" - a breathy whisper rising to a question
+  'shears_snip', // the Kuchisake's shears
+  'spider_skitter', // the Jorogumo's legs on concrete
+  'spider_hiss', // the Jorogumo, from the tunnel roof
+  'miko_call', // the kagura bells shaken, and the miko's scream (she calls the dead)
+  'idol_song', // a phrase of Mei Hoshino's song
+  'oni_roar', // the Oni's roar
+  'kanabo_swing', // the iron club coming round
+  'kanabo_hit', // the club landing
+  'petal_burst', // a bloomed bursting into petals
+  'earth_burst', // a rooted tearing up out of the ground
+  'court_whistle', // the Court has seen an outsider
+  'empress_wail', // the Crimson Empress
+  'commuter_groan', // a tired mutter, or a phone buzzing in a pocket
+  'relay_voice', // Aoi's voice opening on the shrine relay
+  'chapter_koto', // a KAIKA chapter begins
+  'amb_furin', // a glass wind chime
+  'amb_crow', // a crow on the wires
+  'station_chime', // the station's departure melody
 ] as const;
 
 export type SoundId = (typeof SOUND_IDS)[number];

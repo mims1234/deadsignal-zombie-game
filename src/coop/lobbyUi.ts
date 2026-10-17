@@ -6,7 +6,7 @@
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import { type Hosting, LATE_CHOICES, LATE_NOTE, type RoomView } from '../net/room';
-import { isStory, STORIES, STORY_IDS } from '../sakura/missions';
+import { isStory, STORIES, STORY_IDS, storiesOpen } from '../sakura/missions';
 import { loadSakura } from '../storage';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
@@ -16,6 +16,7 @@ const KIND_NOTE: Record<RoomView['kind'], string> = {
   mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
   roam: 'No infected and no clock: fly anywhere together.',
+  kaika: STORIES.kaika.note,
   curtain: STORIES.curtain.note,
   lasttrain: STORIES.lasttrain.note,
   hanami: STORIES.hanami.note,
@@ -274,7 +275,7 @@ export class CoopUi {
     const variant = el('div', 'row choice', body);
     // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
     // the Sakura District's story missions, once the owner has seen the Thousand Lanterns through
-    const tales = room.map === 'sakura' && (loadSakura().egg || isStory(room.kind)) ? STORY_IDS.map((id) => [id, STORIES[id].title] as const) : [];
+    const tales = room.map === 'sakura' ? (isStory(room.kind) && !storiesOpen(loadSakura().egg).includes(room.kind) ? STORY_IDS : storiesOpen(loadSakura().egg)).map((id) => [id, STORIES[id].title] as const) : [];
     const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ...tales];
     const roam = room.kind === 'roam';
     if (!roam && !isStory(room.kind)) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';

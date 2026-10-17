@@ -21,18 +21,24 @@ Paid, one consistent style across many packs: Synty POLYGON. Sketchfab: check ev
 
 ## A character for the Sakura District (VRoid)
 
-Export from VRoid Studio as `.vrm` into `public/anime/` with the slot's file name (`public/anime/README.md` lists
-them: the squad, co-op teammates, the Kurenai Court, the horde, the boss). An image of the character is enough to
-build one in VRoid Studio. Keep to 2-4 materials and 15-25k triangles (export settings in that README).
+Export from VRoid Studio as `.vrm` into `public/anime/` and point a role at it in `ANIME_CAST` (`src/config.ts`):
+the squad, the co-op teammates, the Court, the horde, or one kind of infected (`kinds`). `public/anime/README.md` lists
+who wears what now. An image of the character is enough to build one in VRoid Studio. A kind's colours and gear (the
+Oni's club, the miko's hakama) are `KIND_LOOKS` in `src/anime/looks.ts`.
 
-## Lore, notes and story
+## Story, lore and the infected
 
-- Notes: `src/sakura/lore.ts`. Each note is a place (`area`, `x`, `z`), a title, a source, and three short paragraphs:
-  what it was, how it fell, what is left. `clue` stamps it as an Easter egg hint. `tests/sakuraLore.test.ts` checks
-  every note can be walked to.
-- Story missions: `src/sakura/missions.ts` (where you start, which contract is settled, who is out there, the
-  briefing).
-- Map text (the title screen, the objectives, the radio): `MAP_TEXT` in `src/world/layout/data.ts`.
+The Sakura District's story is told aloud and kept in the field file (pause menu). All of it is data in
+`src/sakura/campaign.ts`:
+
+- `OUTBREAK`: how it began (the field file's first pages).
+- `FIELD`: each kind of infected - its look, what it does, why it is where it is, and what the squad says the first
+  time they see one (a card pops up the first time each kind is met).
+- `PLACE_RADIO`: what Aoi, Hana and Yuzu say the first time you walk into each part of the district.
+- `CHAPTERS`: KAIKA, the campaign - each chapter's title, objective, marker, the radio when it begins, the kinds it
+  introduces, and when it is done (from state every co-op player shares). `campaignSetPiece` stages its infected.
+- Story missions: `src/sakura/missions.ts`. Map text (the title screen, the objectives): `MAP_TEXT` in
+  `src/world/layout/data.ts`.
 
 ## Maps
 

@@ -57,7 +57,8 @@ import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
 import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
 import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
-import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORY_IDS, type StoryId } from '../sakura/missions';
+import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
+import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex } from '../sakura/campaign';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
@@ -368,6 +369,25 @@ export class SessionSim {
     if (this.hunt.status === 'available' && b && b.alive) this.zombies.remove(b);
   }
 
+  /** A KAIKA run (`sakura/campaign.ts`). */
+  private get campaign(): boolean {
+    return this.map === 'sakura' && isStory(this.kind) && !!STORIES[this.kind].campaign && !!this.sakura;
+  }
+
+  /** The chapter KAIKA is on (its set piece comes when it begins). */
+  private chapter = -1;
+
+  /** KAIKA: anyone at the freight yard's checkpoint marks it; a new chapter brings its set piece. */
+  private stepCampaign(): void {
+    const q = this.sakura!;
+    for (const p of this.peers.values()) {
+      if (p.ref.alive && Math.hypot(p.ref.x - CHECKPOINT.x, p.ref.z - CHECKPOINT.z) < CHECKPOINT.r) q.mark(MARK.checkpoint);
+    }
+    const ch = chapterIndex({ quest: q.view, defense: this.defense.status, hunt: this.hunt.status, extracted: this.extraction.phase === 'extracted' });
+    if (ch > this.chapter) campaignSetPiece(ch, this.zombies, this.level, q.spots, this.rng);
+    this.chapter = ch;
+  }
+
   /** The story operation's world: residents and the boss, the Vulcan names, the squad, the cages, carriers. */
   private setUpStory(): void {
     const level = this.level;
@@ -380,6 +400,7 @@ export class SessionSim {
     const roster = this.forge?.reset(rng) ?? null;
     // the Thousand Lanterns: a new poem, and the ghost train gone until the next bloom
     this.sakura?.reset(() => rng.f());
+    this.chapter = -1;
     if (this.level.sakura) this.level.sakura.kisaragi.link.closed = true;
     this.rosterSentAt = -99;
     if (this.map === 'forge') {
@@ -808,6 +829,7 @@ export class SessionSim {
       this.sakura.tick(dt);
       this.sakuraEvents();
       if (this.story) this.stalker.update(dt, this.zombies, this.level, [...this.peers.values()].map((q) => ({ x: q.ref.x, z: q.ref.z, alive: q.ref.alive })), this.rng);
+      if (this.campaign) this.stepCampaign();
     }
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
@@ -836,7 +858,8 @@ export class SessionSim {
     if (this.asylum && this.defense.status === 'complete') setPower(this.loop, true);
     this.barricades?.update();
     this.stepPowerups(dt, peers);
-    unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt));
+    // KAIKA: the helicopter waits for the bloom
+    unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt) && (!this.campaign || this.sakura?.view.phase === 'bloom'));
     this.stepExtraction(dt, up);
     this.stepAllies(dt, peers);
     this.stepCarriers(dt);

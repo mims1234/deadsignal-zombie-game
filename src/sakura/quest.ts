@@ -36,6 +36,8 @@ export interface QuestView {
   lit: number;
   /** Seconds since the bloom (0 before). */
   bloomT: number;
+  /** The campaign's places someone has reached (`campaign.ts` MARK bits). */
+  marks: number;
 }
 
 export type QuestEvent =
@@ -68,7 +70,7 @@ export class SakuraQuest {
   constructor(readonly spots: QuestSpots) {}
 
   static empty(): QuestView {
-    return { phase: 'charms', found: 0, tied: 0, order: [0, 1, 2, 3, 4], lit: 0, bloomT: 0 };
+    return { phase: 'charms', found: 0, tied: 0, order: [0, 1, 2, 3, 4], lit: 0, bloomT: 0, marks: 0 };
   }
 
   /** A new run: a fresh order for the lanterns (`rand` in [0, 1)). */
@@ -158,6 +160,13 @@ export class SakuraQuest {
     return true;
   }
 
+  /** Someone reached a campaign place (`campaign.ts` MARK); true the first time. */
+  mark(bit: number): boolean {
+    if (this.view.marks & bit) return false;
+    this.view.marks |= bit;
+    return true;
+  }
+
   tick(dt: number): void {
     if (this.view.phase === 'bloom') this.view.bloomT += dt;
   }
@@ -177,11 +186,11 @@ export class SakuraQuest {
   }
 }
 
-/** On the wire (co-op): [phase, found bits, tied bits, order as five digits, lit, bloom seconds]. */
-export type QuestWire = [number, number, number, number, number, number];
+/** On the wire (co-op): [phase, found bits, tied bits, order as five digits, lit, bloom seconds, campaign marks]. */
+export type QuestWire = [number, number, number, number, number, number, number];
 
 export function encodeQuest(v: QuestView): QuestWire {
-  return [QUEST_PHASES.indexOf(v.phase), v.found, v.tied, v.order.reduce((m, d) => m * 10 + d, 0), v.lit, Math.round(v.bloomT)];
+  return [QUEST_PHASES.indexOf(v.phase), v.found, v.tied, v.order.reduce((m, d) => m * 10 + d, 0), v.lit, Math.round(v.bloomT), v.marks];
 }
 
 export function decodeQuest(w: unknown): QuestView | null {
@@ -194,7 +203,7 @@ export function decodeQuest(w: unknown): QuestView | null {
     o = Math.floor(o / 10);
   }
   if (new Set(order).size !== 5 || order.some((d) => d > 4)) return null;
-  return { phase: QUEST_PHASES[n(0)] ?? 'charms', found: n(1) & ALL, tied: n(2) & ALL, order, lit: Math.min(5, n(4)), bloomT: n(5) };
+  return { phase: QUEST_PHASES[n(0)] ?? 'charms', found: n(1) & ALL, tied: n(2) & ALL, order, lit: Math.min(5, n(4)), bloomT: n(5), marks: n(6) };
 }
 
 /** Spots round the shrine gate where the dead come from when a lantern is lit out of turn. */

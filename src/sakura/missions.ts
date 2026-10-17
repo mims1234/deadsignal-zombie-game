@@ -1,9 +1,12 @@
 /**
- * The Sakura District's three story missions, opened by the Thousand Lanterns (`quest.ts`). Each is the district's
- * operation with its own night: where you come in, which contract is already settled, who else is out there, and what
- * the radio says. The same in solo and co-op (players take the Hanabi girls' places; a co-op run's kind is the
- * mission's id, so the room and the simulation carry it as they do every kind).
+ * The Sakura District's story missions. KAIKA, the whole story (`campaign.ts`), is open from the start; the other three
+ * are opened by the Thousand Lanterns (`quest.ts`). Each is the district's operation with its own night: where you come
+ * in, which contract is already settled, who else is out there, and what the radio says. The same in solo and co-op
+ * (players take the Hanabi girls' places; a co-op run's kind is the mission's id, so the room and the simulation carry
+ * it as they do every kind).
  *
+ *   KAIKA                the whole story: every corner of Sakuragi, the five charms, the Empress, the Thousand
+ *                        Lanterns, and the way home (the helicopter waits for the bloom)
  *   The Crimson Curtain  the relay is up; storm the Kurenai Theatre through the Court and bring the Empress down
  *   Last Train           the last train did come, and stopped under the station: up from the metro to the shrine relay
  *   Hanami               the blood-moon festival night: hold the shrine against the bloomed, then get out
@@ -12,7 +15,7 @@ import type { ZombieManager } from '../enemies/zombieManager';
 import type { Rng } from '../logic/rng';
 import type { Level } from '../world/level';
 
-export const STORY_IDS = ['curtain', 'lasttrain', 'hanami'] as const;
+export const STORY_IDS = ['kaika', 'curtain', 'lasttrain', 'hanami'] as const;
 export type StoryId = (typeof STORY_IDS)[number];
 
 export interface StoryDef {
@@ -24,15 +27,28 @@ export interface StoryDef {
   brief: string;
   /** The banner when it starts. */
   banner: string;
-  /** Where you come in (floor 0: the street, or an underground space by where it is). */
-  start: { x: number; z: number; yaw: number };
-  /** The contract already settled when it starts. */
-  settled: 'defense' | 'hunt';
+  /** Where you come in (floor 0: the street, or an underground space by where it is); none: the operation's own. */
+  start?: { x: number; z: number; yaw: number };
+  /** The contract already settled when it starts (none: both are to do). */
+  settled?: 'defense' | 'hunt';
+  /** Open from the start (the rest wait for the Thousand Lanterns). */
+  open?: boolean;
+  /** The campaign (`campaign.ts`): its chapters lead the run, and the helicopter waits for the bloom. */
+  campaign?: boolean;
   /** The blood moon over it from the start. */
   bloodMoon?: boolean;
 }
 
 export const STORIES: Record<StoryId, StoryDef> = {
+  kaika: {
+    title: 'KAIKA: THE BLOOMING',
+    note: 'The whole story: every corner of Sakuragi, the five charms, the Empress, the Thousand Lanterns - and home.',
+    kicker: 'STORY  //  KAIKA',
+    brief: 'Last night the shrine relay started transmitting on its own. The voice on it is Aoi Kisaragi, the shrine keeper - missing seven years. She says she can end this. We listen, and we go where she sends us.',
+    banner: 'A dead woman is calling from the shrine relay. Listen to her.',
+    open: true,
+    campaign: true,
+  },
   curtain: {
     title: 'THE CRIMSON CURTAIN',
     note: 'Storm the Kurenai Theatre through the Court and bring the Empress down.',
@@ -63,6 +79,11 @@ export const STORIES: Record<StoryId, StoryDef> = {
   },
 };
 
+/** The story missions this player can pick: KAIKA always, the rest once the Thousand Lanterns is done. */
+export function storiesOpen(egg: boolean): StoryId[] {
+  return STORY_IDS.filter((id) => egg || STORIES[id].open);
+}
+
 export function isStory(kind: string | null | undefined): kind is StoryId {
   return !!kind && (STORY_IDS as readonly string[]).includes(kind);
 }
@@ -74,7 +95,7 @@ const homeStart = new WeakMap<Level, { x: number; z: number; yaw: number }>();
 export function applyStoryStart(level: Level, story: StoryId | null): void {
   const s = level.data.playerStart;
   if (!homeStart.has(level)) homeStart.set(level, { x: s.x, z: s.z, yaw: s.yaw });
-  const at = story ? STORIES[story].start : homeStart.get(level)!;
+  const at = (story && STORIES[story].start) || homeStart.get(level)!;
   s.x = at.x;
   s.z = at.z;
   s.yaw = at.yaw;
@@ -82,7 +103,9 @@ export function applyStoryStart(level: Level, story: StoryId | null): void {
 
 /** The contract a story settles before it starts. */
 export function settleStoryContracts(story: StoryId, defense: { status: string; progress: number; rewardClaimed: boolean }, hunt: { status: string; identified: boolean; rewardClaimed: boolean }): void {
-  if (STORIES[story].settled === 'defense') {
+  const settled = STORIES[story].settled;
+  if (!settled) return;
+  if (settled === 'defense') {
     defense.status = 'complete';
     defense.progress = 1;
     defense.rewardClaimed = true;
@@ -115,7 +138,7 @@ export function populateStory(story: StoryId, zm: ZombieManager, level: Level, r
     // the commuters on the platform and the concourse, the jorogumo in the tunnel
     for (const [x, z] of [[-110, 164], [-96, 165], [-84, 164], [-72, 165], [-60, 164], [-90, 155], [-70, 157], [-56, 156]] as const) zm.spawn('shambler', x, z, rng, { ambient: true, variant: 'commuter' });
     for (const [x, z] of [[-20, 172], [20, 172], [50, 170]] as const) zm.spawn('runner', x, z, rng, { ambient: true, variant: 'jorogumo' });
-  } else {
+  } else if (story === 'hanami') {
     // the bloomed coming up out of the park, a miko at the gate, rooted in the grass
     ring(12, 30, 50, 14, (x, z) => free(x, z) && void zm.spawn('shambler', x, z, rng, { ambient: true, variant: 'bloomed' }));
     ring(2, 82, 50, 3, (x, z) => free(x, z) && void zm.spawn('shambler', x, z, rng, { ambient: true, variant: 'miko' }));

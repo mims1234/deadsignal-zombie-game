@@ -204,6 +204,8 @@ export interface SakuraProgress {
   notes: string[];
   egg: boolean;
   missions: string[];
+  /** Kinds of infected met (the field file). */
+  seen: string[];
 }
 
 const KEY_SAKURA = 'deadsignal.sakura.v1';
@@ -212,9 +214,9 @@ export function loadSakura(): SakuraProgress {
   try {
     const raw = JSON.parse(window.localStorage.getItem(KEY_SAKURA) ?? '{}') as Partial<SakuraProgress> | null;
     const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []);
-    return { notes: strings(raw?.notes), egg: raw?.egg === true, missions: strings(raw?.missions) };
+    return { notes: strings(raw?.notes), egg: raw?.egg === true, missions: strings(raw?.missions), seen: strings(raw?.seen) };
   } catch {
-    return { notes: [], egg: false, missions: [] };
+    return { notes: [], egg: false, missions: [], seen: [] };
   }
 }
 

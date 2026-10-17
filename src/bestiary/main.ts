@@ -8,8 +8,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { AnimeZombieRig, loadAnimeCast, modelStats, personModel } from '../anime/cast';
-import { animeModel, animeSlotState, loadAnime } from '../anime/vrm';
+import { AnimeZombieRig, COURT_TINT, courtModel, hordeFile, loadWholeCast, modelStats, personModel } from '../anime/cast';
+import { animeSlotState } from '../anime/vrm';
 import { ANIME_CAST, FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
 import { VARIANT_BASE, VARIANT_INFO, variantDef, type ZombieVariant } from '../enemies/variants';
 import { vulcanLook } from '../forge/looks';
@@ -161,8 +161,7 @@ const factory = createZombieFactory();
 const carrierMaterial = createZombieMaterial(createDetailTexture());
 const kits = await loadCardKits(CARRIERS).catch(() => new Map());
 /** A male VRoid model, shown here only (not in the game yet): a squad soldier and an infected. */
-const GUY = 'guy-1.vrm';
-await Promise.all([loadAnimeCast(), loadAnime(GUY)]).catch(() => undefined);
+await loadWholeCast().catch(() => undefined);
 
 /** The Sakura District's kinds in the bestiary: tagline and what they do. */
 const SAKURA_KINDS: readonly [Exclude<ZombieVariant, '' | 'court' | 'empress'>, string, string][] = [
@@ -415,33 +414,21 @@ const entries: Entry[] = [
       return a.root;
     },
   },
-  // a guy in the same style, for later: bestiary only
+  // the Kurenai Court: living people in the theatre's crimson
   {
-    id: 'sakura-guy', group: 'SAKURA DISTRICT', name: 'Ren (bestiary only)', height: 1.85,
-    tagline: 'A Hanabi soldier - not in the game yet.',
-    lore: 'A male member of the Hanabi unit in the same anime style, kept here for later. Put a VRoid Studio model with a male body in anime/guy-1.vrm and he wears it; nothing in the game uses him yet.',
-    where: 'Bestiary only (for a future squad or survivor)', stats: [], modes: 'avatar',
-    avatarModes: ['RIFLE', 'SHOTGUN', 'PISTOL', 'IDLE', 'WALK', 'FALL'],
+    id: 'sakura-court', group: 'SAKURA DISTRICT', name: 'The Kurenai Court', height: 1.8,
+    tagline: 'The living who kneel to the Empress.',
+    lore: "The people who stayed at the Kurenai Theatre when the city fell, and made a goddess of the woman who turned first. They wear the theatre's crimson, they carry the checkpoint's rifles, they keep their distance and they shoot outsiders on sight. They are not infected: a headshot is a headshot.",
+    where: 'Sakura District: the theatre and the freight yard', stats: [], modes: 'avatar',
+    cast: ['ONE', 'TWO', 'THREE'],
+    avatarModes: ['ONE', 'TWO', 'THREE', 'IDLE', 'WALK', 'FIRE', 'FALL'],
     build: () => {
-      const t = animeModel(GUY);
-      const a = new Avatar('Ren', 0, { tag: 'HANABI', tagColor: '#9fd0ff', weapon: 'rifle', helmet: false, anime: t });
-      current!.stats = [['Health', '160'], slotNote(GUY), ...(t ? modelStats(t) : [])];
+      const i = Math.max(0, castIndex);
+      const t = courtModel(i);
+      const a = new Avatar('', i, { weapon: 'rifle', helmet: false, anime: t, animeTint: COURT_TINT });
+      current!.stats = [['Health', `${Math.round(variantDef(ZOMBIES.shambler, 'court').hp)}`], ['Weapon', 'rifle'], slotNote(ANIME_CAST.survivors[i]!), ...(t ? modelStats(t) : [])];
       current!.avatar = a;
       return a.root;
-    },
-  },
-  {
-    id: 'sakura-guy-infected', group: 'SAKURA DISTRICT', name: 'Turned guy (bestiary only)', height: ZOMBIES.shambler.height,
-    tagline: 'The same model, turned - not in the game yet.',
-    lore: 'The male model as an infected: grey skin, red eyes, the snarl. Kept here for a future horde with more variety; nothing in the game spawns him yet.',
-    where: 'Bestiary only (for a future horde)', stats: [], modes: ZOMBIE_MODES,
-    build: () => {
-      const t = animeModel(GUY);
-      const def = ZOMBIES.shambler;
-      const r = t ? new AnimeZombieRig('shambler', t, { radius: def.radius, height: def.height, headRadius: def.headRadius }, 31) : factory.create('shambler', 31);
-      current!.rig = r;
-      current!.stats = [...zombieStats('shambler'), slotNote(GUY), ...(t ? modelStats(t) : [])];
-      return r.root;
     },
   },
   ...(['shambler', 'runner', 'armored', 'warden'] as const).map((type, i): Entry => ({
@@ -456,9 +443,9 @@ const entries: Entry[] = [
     ][i]!,
     where: 'Sakura District', stats: [], modes: type === 'warden' ? BOSS_MODES : ZOMBIE_MODES, enraged: false,
     build: () => {
-      const r = factory.create(type, 11 + i, 'sakura');
+      const r = factory.create(type, 11 + i, 'sakura', type === 'warden' ? 'empress' : '');
       current!.rig = r;
-      const file = type === 'warden' ? ANIME_CAST.boss : ANIME_CAST.horde[0];
+      const file = hordeFile(type, 11 + i, type === 'warden' ? 'empress' : '');
       current!.stats = [...zombieStats(type), slotNote(file), ...(r instanceof AnimeZombieRig ? modelStats(r.body.template) : [])];
       return r.root;
     },
@@ -471,10 +458,10 @@ const entries: Entry[] = [
       id: `sakura-kind-${v}`, group: 'SAKURA DISTRICT', height: def.height, name: def.name, tagline, lore,
       where: 'Sakura District', stats: [], modes: ZOMBIE_MODES, enraged: false,
       build: () => {
-        const r = factory.create(base, 31 + i, 'sakura');
+        const r = factory.create(base, 31 + i, 'sakura', v);
         r.root.scale.setScalar(VARIANT_INFO[v].scale);
         current!.rig = r;
-        current!.stats = [['Health', `${Math.round(def.hp)}`], ['Damage', `${Math.round(def.damage)}`], ['Speed', `${def.speedChase.toFixed(1)} m/s`], ['Body', base]];
+        current!.stats = [['Health', `${Math.round(def.hp)}`], ['Damage', `${Math.round(def.damage)}`], ['Speed', `${def.speedChase.toFixed(1)} m/s`], ['Body', base], slotNote(hordeFile(base, 31 + i, v)), ...(r instanceof AnimeZombieRig ? modelStats(r.body.template) : [])];
         return r.root;
       },
     };
