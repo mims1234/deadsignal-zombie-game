@@ -57,14 +57,16 @@ import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
 import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
 import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
+import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORY_IDS, type StoryId } from '../sakura/missions';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
 import { FlowField, GAMEPLAY_FIELD_RANGE } from '../world/nav';
 import { createNullRigFactory } from './nullRig';
 
-export type SessionKind = 'mission' | 'mazoku' | 'roam';
-export const SESSION_KINDS: readonly SessionKind[] = ['mission', 'mazoku', 'roam'];
+/** 'mission' (Standard), 'mazoku', 'roam', or one of the Sakura District's story missions (`sakura/missions.ts`). */
+export type SessionKind = 'mission' | 'mazoku' | 'roam' | StoryId;
+export const SESSION_KINDS: readonly SessionKind[] = ['mission', 'mazoku', 'roam', ...STORY_IDS];
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
@@ -293,7 +295,7 @@ export class SessionSim {
   }
 
   private get story(): boolean {
-    return this.kind === 'mission' || this.kind === 'mazoku';
+    return this.kind === 'mission' || this.kind === 'mazoku' || isStory(this.kind);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -372,6 +374,9 @@ export class SessionSim {
     const rng = this.rng;
     // the Forge: who is holed up where this run (and the first infected at their doors), before the residents, so none
     // of them carries a living person's name; the co-leaders who deploy come from the same roster
+    // a Sakura District story mission comes in somewhere of its own
+    const tale = this.map === 'sakura' && isStory(this.kind) ? this.kind : null;
+    if (this.map === 'sakura') applyStoryStart(this.level, tale);
     const roster = this.forge?.reset(rng) ?? null;
     // the Thousand Lanterns: a new poem, and the ghost train gone until the next bloom
     this.sakura?.reset(() => rng.f());
@@ -392,6 +397,10 @@ export class SessionSim {
     if (this.map === 'sakura') {
       populateSakura(this.zombies, this.level, rng);
       this.stalker.reset();
+      if (tale) {
+        populateStory(tale, this.zombies, this.level, rng);
+        settleStoryContracts(tale, this.defense, this.hunt);
+      }
     }
     const st = level.data.playerStart;
     const squad = roster ? roster.squad : squadRoster(this.map, Math.max(1, this.seated.size));

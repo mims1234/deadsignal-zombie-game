@@ -25,7 +25,7 @@ export interface RoomView {
   ownerId: string;
   hosting: Hosting;
   /** What it plays: the story operation (Standard), with the Mazoku carriers, or free roam. */
-  kind: 'mission' | 'mazoku' | 'roam';
+  kind: 'mission' | 'mazoku' | 'roam' | 'curtain' | 'lasttrain' | 'hanami';
   /** The map; fixed when the session is created (players on another map reload onto it). */
   map: MapId;
   /** Difficulty: the infected's and the AI squad's (the owner sets both in the lobby). */

@@ -288,6 +288,7 @@ const menus = createMenus({
   onDeploy: () => calls.push('deploy'),
   onResume: () => calls.push('resume'),
   onRestart: () => calls.push('restart'),
+  onStoryChange: () => calls.push('story'),
   onDifficultyChange: () => calls.push('difficulty'),
   onRoamChange: () => calls.push('roam'),
   onQuitToTitle: () => calls.push('title'),

@@ -9,6 +9,20 @@ two wonder weapons and opens a story that is only played once it has been found.
 
 The plan splits it into phases that can each ship on their own.
 
+## Status (v0.1.119)
+
+All seven phases are built:
+
+- **Floors** (`src/world/floors.ts`, `layout/storeys.ts`): storeys, stairs and stairwells; the infected and the squad route across them.
+- **The map** (`src/world/layout/sakura/`): every zone, the metro and the lab underground, Kisaragi Station; no rescues, co-op players take the squad's places.
+- **Lore** (`src/sakura/lore.ts`, `hud.ts`): 35 notes (before / the fall / now) and the pause-menu JOURNAL, kept between runs.
+- **Enemies** (`src/enemies/variants.ts`, `src/sakura/director.ts`, `courtRig.ts`): the eight new kinds, the Kurenai Court's riflemen and the Empress's calls.
+- **The Thousand Lanterns** (`src/sakura/quest.ts`, `runtime.ts`): charms, tree, lanterns, bell, the bloom, the ghost train, Hanafubuki, Raijin's Drum and the Blossom Altar.
+- **Story missions** (`src/sakura/missions.ts`): The Crimson Curtain, Last Train and Hanami, as session kinds (solo and co-op).
+
+Still to come: the cast's own VRoid models (most slots wear the stand-in), and the block editor.
+
+
 ## What is decided
 
 | Topic | Decision |

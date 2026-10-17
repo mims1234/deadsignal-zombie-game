@@ -27,6 +27,7 @@ import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
 import { CHARM_PLACES, decodeQuest, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
 import { populateSakura, Stalker } from './director';
+import { STORIES, type StoryId } from './missions';
 import { questSpots } from './spots';
 
 /** Blossom dusk (every run starts here) and the blood moon (the bloom). */
@@ -299,8 +300,8 @@ export class SakuraRuntime {
   // a run
   // ---------------------------------------------------------------------------------------------
 
-  /** A new run (`coop`: a co-op story run, where the simulation keeps the quest). */
-  reset(coop = false): void {
+  /** A new run (`coop`: a co-op story run, where the simulation keeps the quest; `tale`: a story mission). */
+  reset(coop = false, tale: StoryId | null = null): void {
     const g = this.g;
     this.follow = coop;
     this.local.reset(() => g.rng.f());
@@ -316,8 +317,17 @@ export class SakuraRuntime {
     g.weapons.perkReloadMul = 1;
     g.weapons.perkFireIntervalMul = 1;
     this.unbloom();
+    // Hanami: the festival night under a blood moon from the first minute
+    if (tale && STORIES[tale].bloodMoon) this.redMoon();
     this.present(true);
     this.hud.hide();
+  }
+
+  /** A story mission won: it goes in the journal (the title and the lobby list it as done). */
+  completeStory(id: StoryId): void {
+    if (this.progress.missions.includes(id)) return;
+    this.progress.missions = [...this.progress.missions, id];
+    saveSakura(this.progress);
   }
 
   /** Co-op: the simulation's quest state (in every report). */
@@ -686,6 +696,16 @@ export class SakuraRuntime {
     if (v.phase === 'bloom' && !this.bloomed) this.bloom(silent);
     else if (v.phase !== 'bloom' && this.bloomed) this.unbloom();
     this.shown = { ...v, order: [...v.order] };
+  }
+
+  /** The blood moon and the crimson trees without the bloom itself (Hanami). */
+  private redMoon(): void {
+    SakuraRuntime.look(this.g.renderer, BLOOD);
+    BLOSSOM.color.setHex(0xff2a48);
+    BLOSSOM.emissive.setHex(0x5a0a10);
+    CANAL_WATER.emissive.setHex(0xff2a6a);
+    CANAL_WATER.emissiveIntensity = 0.9;
+    this.petals.setColor(0xd8203a);
   }
 
   private bloom(silent: boolean): void {

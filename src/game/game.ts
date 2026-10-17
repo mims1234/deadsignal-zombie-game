@@ -32,7 +32,7 @@ import { DetailCuller, halveTextures } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
 import { setSkyColors } from '../render/stage';
-import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
+import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSakura, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
 import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
@@ -54,6 +54,7 @@ import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
+import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput } from './interaction';
@@ -137,6 +138,15 @@ export class Game implements GameCtx {
   forge: ForgeRuntime | null = null;
   /** The Sakura District's own runtime (petals, lore, the Easter egg), on that map only. */
   sakura: SakuraRuntime | null = null;
+  /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
+  private storyPick: StoryId | null = null;
+
+  /** The story mission this run plays: the co-op session's kind, or the solo pick (the Sakura District only). */
+  get tale(): StoryId | null {
+    if (this.mapId !== 'sakura') return null;
+    if (this.mode === 'coop') return isStory(this.coop.kind) ? this.coop.kind : null;
+    return this.mode === 'standard' ? this.storyPick : null;
+  }
   /** Which map was built this page load. */
   mapId: MapId = 'district';
   private coopUi!: CoopUi;
@@ -266,6 +276,10 @@ export class Game implements GameCtx {
       onMapChange: (m) => this.setMap(m),
       onDifficultyChange: (d) => this.setDifficulty(d),
       onRoamChange: (on) => this.setRoam(on),
+      onStoryChange: (id) => {
+        this.storyPick = isStory(id) ? id : null;
+        this.menus.setModeInfo(this.modeInfo());
+      },
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -716,7 +730,9 @@ export class Game implements GameCtx {
       const b = a === 'admin-only' ? (['ADMIN ONLY', 'warn'] as const) : a === 'dev-only' ? (['DEV ONLY', 'warn'] as const) : a === 'public' && this.account.admin ? (['PUBLIC', 'good'] as const) : null;
       return [{ id, badge: b?.[0], badgeTone: b?.[1] }];
     });
-    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps };
+    // the Sakura District's story missions, once the Thousand Lanterns has been seen through
+    const stories = this.mapId === 'sakura' && loadSakura().egg ? STORY_IDS.map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '' };
   }
 
   /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */
@@ -966,13 +982,16 @@ export class Game implements GameCtx {
         if (spectating) {
           // watching: no briefing
         } else if (kind === 'roam') this.banner('CO-OP  //  FREE ROAM', 'Fly anywhere together. No infected, no clock.', 'info', 4.5);
+        else if (isStory(kind)) this.banner(`CO-OP  //  ${STORIES[kind].title}`, STORIES[kind].banner, 'info', 5);
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, bring the clan home. Rise.', 'info', 5);
       } else if (this.mapId === 'sakura' && !roam) {
-        this.banner('SAKURAGI', 'Seventh spring. Restore the shrine relay, put down the Empress, extract. Nobody is left to save.', 'info', 5);
+        const tale = this.tale;
+        if (tale) this.banner(STORIES[tale].title, STORIES[tale].banner, 'info', 5);
+        else this.banner('SAKURAGI', 'Seventh spring. Restore the shrine relay, put down the Empress, extract. Nobody is left to save.', 'info', 5);
       } else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
       // the first deploy on a browser that never opened Settings: where to raise the graphics
       if (this.qualityHint && !spectating) {
@@ -1059,6 +1078,8 @@ export class Game implements GameCtx {
       this.ambience = null;
     }
 
+    // a story mission comes in somewhere of its own
+    if (this.mapId === 'sakura') applyStoryStart(this.level, this.tale);
     const st = this.level.data.playerStart;
     this.player.teleport(st.x, st.z, st.yaw);
     this.player.stamina = PLAYER.maxStamina;
@@ -1067,8 +1088,14 @@ export class Game implements GameCtx {
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
-    this.sakura?.reset(this.mode === 'coop');
+    this.sakura?.reset(this.mode === 'coop', this.tale);
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
+    // a story mission's own night: who else is out there, and the contract already settled (co-op: the simulation's)
+    const tale = this.tale;
+    if (tale && this.mode !== 'coop') {
+      populateStory(tale, this.zombies, this.level, this.rng);
+      settleStoryContracts(tale, this.session.defense, this.session.hunt);
+    }
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
     // the squad: solo runs it here; a co-op story run shows the simulation's
@@ -1765,6 +1792,7 @@ export class Game implements GameCtx {
     const s = this.session;
     if (s.ended) return;
     if (outcome === 'victory') this.squad.onExtracted();
+    if (outcome === 'victory' && this.tale) this.sakura?.completeStory(this.tale);
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
     const stats = buildStats(s, outcome, reason, this.mission.contractsDone());
@@ -1841,6 +1869,7 @@ export class Game implements GameCtx {
   finishCoop(outcome: 'victory' | 'defeat', reason: string): void {
     const s = this.session;
     if (s.ended || this.state === 'results' || this.state === 'title') return;
+    if (outcome === 'victory' && this.tale) this.sakura?.completeStory(this.tale);
     s.ended = { outcome, reason, at: s.elapsed };
     this.pendingResults = { stats: buildStats(s, outcome, reason, 0), outcome };
     this.input.setEnabled(false);

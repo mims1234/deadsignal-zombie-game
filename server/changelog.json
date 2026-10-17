@@ -2,6 +2,21 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.119",
+      "date": "2026-10-17",
+      "title": "The Sakura District, rebuilt: seven springs after the fall",
+      "notes": [
+        "The Sakura District is now its own 256 x 132 m map: the station and its evacuation point, the hilltop school, the covered shopping arcade, the canal and its park, the shrine on its hill, the Kurenai Theatre and the freight yard, all overgrown with cherry trees under a pink dusk sky with petals in the air.",
+        "Floors above and below: climb the school to its roof, the karaoke house, the apartments and the container decks, and take the stairwells down into the metro and the lab under the theatre. The infected follow you up and down.",
+        "Nobody is left to rescue here. Hana and Yuzu deploy with you; in co-op, players take their places (three people at most), and teammates wear VRoid models too.",
+        "35 notes lie around the district telling what each place was, how it fell and what is left; everything you read goes in the new JOURNAL tab in the pause menu and is kept between runs.",
+        "New infected: commuters who keep their routine (walk past quietly), bloomed who burst into stinging petal clouds, rooted who wait under the petals, a masked stalker who only moves when you are not looking, jorogumo on the tunnel ceilings, a miko who screams the dead to her, a singing idol who slows you, and the huge oni.",
+        "The Kurenai Court: living people with the checkpoint's rifles, on the container decks and round their fires before the theatre. They keep their distance and shoot. The Crimson Empress now calls her bloomed to her.",
+        "An Easter egg, the Thousand Lanterns: some notes carry a sakura stamp. Follow them, and the night changes - with a hidden station, two relics (the Hanafubuki petal cannon and Raijin's Drum) and an altar at the end of it.",
+        "Finishing the Easter egg opens three story missions on the map: The Crimson Curtain, Last Train and Hanami, in solo and in co-op."
+      ]
+    },
+    {
       "version": "0.1.118",
       "date": "2026-10-17",
       "title": "Fights on the Sakura District stay sharp",

@@ -29,6 +29,7 @@ import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind, sessi
 import type { ZombieType } from '../types';
 import type { HudState, MapDynamic, PauseSession } from '../ui/hudTypes';
 import { operatorModel } from '../anime/cast';
+import { isStory } from '../sakura/missions';
 import { AVATAR_WEAPONS, Avatar, avatarWeaponOf } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
@@ -138,7 +139,7 @@ export class CoopSession {
 
   /** The story kinds: contracts, extraction, revives. */
   get story(): boolean {
-    return this.kind === 'mission' || this.kind === 'mazoku';
+    return this.kind === 'mission' || this.kind === 'mazoku' || isStory(this.kind);
   }
 
   /** A live free-roam session: fly, no damage, no HUD. */

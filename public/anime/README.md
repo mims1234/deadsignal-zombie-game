@@ -9,9 +9,8 @@ character wants and whether it was found.
 | --- | --- |
 | `squad-1.vrm` | Hana (squad, rifle) |
 | `squad-2.vrm` | Yuzu (squad, shotgun) |
-| `survivor-1.vrm` | Aoi Kisaragi (survivor) |
-| `survivor-2.vrm` | Mei Hoshino (survivor) |
-| `survivor-3.vrm` | Koharu Tachibana (survivor) |
+| `operator-1.vrm` .. `operator-3.vrm` | co-op teammates, by seat (they take the squad's places) |
+| `survivor-1.vrm` .. `survivor-3.vrm` | the Kurenai Court, the district's armed humans (no rescues on this map) |
 | `infected-1.vrm` .. `infected-3.vrm` | the horde (every infected wears one, tinted grey with glowing eyes) |
 | `boss.vrm` | the Crimson Empress (boss) |
 | `guy-1.vrm` | Ren - a male model, **bestiary only** for now |

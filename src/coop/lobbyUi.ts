@@ -5,15 +5,20 @@
  */
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
-import { type Hosting, LATE_CHOICES, LATE_NOTE } from '../net/room';
+import { type Hosting, LATE_CHOICES, LATE_NOTE, type RoomView } from '../net/room';
+import { isStory, STORIES, STORY_IDS } from '../sakura/missions';
+import { loadSakura } from '../storage';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 
 const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM' };
-const KIND_NOTE: Record<'mission' | 'mazoku' | 'roam', string> = {
+const KIND_NOTE: Record<RoomView['kind'], string> = {
   mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
   roam: 'No infected and no clock: fly anywhere together.',
+  curtain: STORIES.curtain.note,
+  lasttrain: STORIES.lasttrain.note,
+  hanami: STORIES.hanami.note,
 };
 
 /** A phone or a computer, before a name: what they are playing on. */
@@ -268,15 +273,17 @@ export class CoopUi {
     el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
     const variant = el('div', 'row choice', body);
     // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
-    const kinds = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU']] as const;
+    // the Sakura District's story missions, once the owner has seen the Thousand Lanterns through
+    const tales = room.map === 'sakura' && (loadSakura().egg || isStory(room.kind)) ? STORY_IDS.map((id) => [id, STORIES[id].title] as const) : [];
+    const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ...tales];
     const roam = room.kind === 'roam';
-    if (!roam) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';
+    if (!roam && !isStory(room.kind)) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';
     const active = roam ? this.roamBase : room.kind;
     if (isOwner && room.state !== 'playing') {
       for (const [kind, label] of kinds) {
         this.button(variant, label, active === kind ? 'on' : '', () => {
-          if (roam) {
-            this.roamBase = kind; // free roam stays on; this is what it returns to
+          if (roam && !isStory(kind)) {
+            this.roamBase = kind === 'mazoku' ? 'mazoku' : 'mission'; // free roam stays on; this is what it returns to
             this.render();
           } else this.coop.setKind(kind);
         });
@@ -392,7 +399,7 @@ export class CoopUi {
     const { rows, spectators } = this.coop.scoreboard();
     const b = this.board;
     b.replaceChildren();
-    el('div', 'ttl', b, this.coop.kind === 'roam' ? 'FREE ROAM' : this.coop.kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD');
+    el('div', 'ttl', b, this.coop.kind === 'roam' ? 'FREE ROAM' : this.coop.kind === 'mazoku' ? 'STANDARD MAZOKU' : isStory(this.coop.kind) ? STORIES[this.coop.kind].title : 'STANDARD');
     const table = el('div', 'grid', b);
     for (const h of ['PLAYER', 'KILLS', 'DOWNS', 'PING', 'STATUS']) el('span', 'h', table, h);
     for (const r of rows) {

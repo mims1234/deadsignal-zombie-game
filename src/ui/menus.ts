@@ -481,6 +481,9 @@ class Menus implements MenusApi {
         if (!roam) {
           const d = this.info.difficulty;
           this.picker(cta, 'DIFFICULTY', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
+          // the Sakura District's story missions (open once the Thousand Lanterns is done; in co-op the lobby picks)
+          const stories = this.info.stories;
+          if (stories && !coop) this.picker(cta, 'STORY', [{ id: '', label: 'THE OPERATION', note: 'The district\'s own operation: both contracts, then extract.' }, ...stories], this.info.story ?? '', (id) => this.cb.onStoryChange(id || null));
           const more = this.button(cta, this.moreOpen ? 'FEWER OPTIONS' : 'MORE OPTIONS', 'ghost', () => {
             this.moreOpen = !this.moreOpen;
             this.showTitle(this.lastBest);

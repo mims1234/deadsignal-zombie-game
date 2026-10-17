@@ -194,6 +194,9 @@ export interface ModeInfo {
   lockedMap?: MapId | null;
   /** Free roam is an option, not a mode: the mode it was switched on from (and returns to). */
   roamBase?: 'standard' | 'cards';
+  /** The Sakura District's story missions, once the Thousand Lanterns is done: the choices and the one picked. */
+  stories?: { id: string; label: string; note: string }[];
+  story?: string;
   /**
    * The maps this player may pick, in order, each with a badge for a gated map as an admin sees it (PUBLIC / ADMIN
    * ONLY / DEV ONLY). Without it, every map.
@@ -308,6 +311,8 @@ export interface MenuCallbacks {
   onMapChange(map: MapId): void;
   /** Title screen: free roam switched on or off (an option on Standard / Standard Mazoku). */
   onRoamChange(on: boolean): void;
+  /** Title screen: a story mission picked (the Sakura District), or none for the operation. */
+  onStoryChange(id: string | null): void;
   /** Title screen: the difficulty picks changed. */
   onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }

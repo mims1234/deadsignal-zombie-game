@@ -54,6 +54,8 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 export class MissionRuntime implements MissionApi {
   readonly root = new THREE.Group();
+  /** A briefing of its own for this run (the Sakura District's story missions), instead of the map's. */
+  brief: (() => string | null) | null = null;
   private readonly areaMarker: AreaMarker;
   private readonly wall: ContaminationWall;
   private readonly beam: THREE.Object3D;
@@ -440,7 +442,7 @@ export class MissionRuntime implements MissionApi {
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
       s.flags.add('brief');
-      ctx.radio('COMMAND', data.text.brief, 8);
+      ctx.radio('COMMAND', this.brief?.() ?? data.text.brief, 8);
       ctx.audio.play('contract_new', { priority: 3 });
     }
     void escalationPhase;
