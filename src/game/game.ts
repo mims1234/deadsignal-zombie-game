@@ -61,7 +61,8 @@ import { sakuraVariantPicker } from '../sakura/director';
 import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, storiesOpen, type StoryId } from '../sakura/missions';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
-import { Interaction, type InteractionOutput } from './interaction';
+import { Interaction, type InteractionOutput, type InteractionTarget } from './interaction';
+import type { FloorLink } from '../world/floors';
 import { wireMatronFx } from './matronFx';
 import { MissionRuntime } from './missionRuntime';
 import { buildStats, newSession, type Session } from './session';
@@ -512,6 +513,7 @@ export class Game implements GameCtx {
       this.mission.calm = () => this.forge?.burnedOut ?? false;
     }
     if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
+    this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       mapId: () => this.mapId,
@@ -1404,7 +1406,7 @@ export class Game implements GameCtx {
     }
     if (!this.player.onGround || this.player.horizontalSpeed < 0.05) this.player.unstick();
     this.clampToBounds();
-    if (alive) this.stairwells(dt);
+    this.stairwellCd = Math.max(0, this.stairwellCd - dt);
 
     // ---- weapons ----
     const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen ? this.autoFire(dt) : 0;
@@ -1586,19 +1588,38 @@ export class Game implements GameCtx {
   private passFadeEl: HTMLDivElement | null = null;
 
   /**
-   * Walking into a stairwell's doorway (`floors.ts`): a moment of black, then out at its other end - down into the
-   * underground or back up to the street - with the squad close behind.
+   * At a stairwell's doorway (`floors.ts`): ENTER (or LEAVE) with a short hold - never by walking into it by mistake.
+   * Named for where it goes: the metro, the lab, or back up to the street.
    */
-  private stairwells(dt: number): void {
+  private stairwellPrompt(out: InteractionTarget[]): void {
     const fl = this.level.floors;
-    if (!fl.hasFloors) return;
-    this.stairwellCd = Math.max(0, this.stairwellCd - dt);
-    if (this.stairwellCd > 0) return;
+    if (!fl.hasFloors || !this.playerAlive() || this.stairwellCd > 0) return;
     const p = this.player;
     const area = fl.areaAt(p.x, p.y, p.z);
-    const link = fl.stairwellAt(area, p.x, p.z, 0.9);
+    const link = fl.stairwellAt(area, p.x, p.z, 2.8);
     if (!link) return;
-    const out = fl.exitOf(link, area);
+    const to = fl.exitOf(link, area);
+    const here = fl.areas[area];
+    const there = fl.areas[to.area];
+    const place = (a: typeof here): string => (!a || a.kind === 'ground' ? 'the street' : /metro/i.test(a.name) ? 'the metro' : /lab/i.test(a.name) ? 'the lab' : a.name);
+    const down = there?.kind === 'under';
+    const e = fl.entryIn(link, area);
+    out.push({
+      id: `stairwell:${link.id}`,
+      dist: Math.hypot(e.x - p.x, e.z - p.z) * 0.6,
+      text: down ? `ENTER ${place(there).replace(/^the /, '').toUpperCase()}` : `LEAVE ${place(here).replace(/^the /, '').toUpperCase()}`,
+      sub: down ? 'Down the stairs' : 'Up to the street',
+      tone: 'normal',
+      hold: 0.35,
+      enabled: true,
+      onUse: () => this.takeStairwell(link, area),
+    });
+  }
+
+  /** Through a stairwell: a moment of black, then out at its other end, with the squad close behind. */
+  private takeStairwell(link: FloorLink, area: number): void {
+    const p = this.player;
+    const out = this.level.floors.exitOf(link, area);
     this.stairwellCd = 1.5;
     this.fadeThroughBlack(0.45);
     p.teleport(out.x, out.z, out.yaw);

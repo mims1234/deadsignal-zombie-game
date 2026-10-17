@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.1",
+      "date": "2026-10-17",
+      "title": "Enter and leave the metro on purpose",
+      "notes": [
+        "The stairwells down to the metro and the lab no longer take you through when you walk into them: stand at the doorway and hold E - ENTER METRO / ENTER LAB going down, LEAVE METRO / LEAVE LAB coming back up. No more dropping underground by mistake in the middle of a fight. (The infected still follow you through.)"
+      ]
+    },
+    {
       "version": "0.4.0",
       "date": "2026-10-17",
       "title": "Follow the petals: the Sakura District shows you the way, and a real metro",

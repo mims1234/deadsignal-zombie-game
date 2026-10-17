@@ -353,7 +353,11 @@ export function stairwellDown(
     sign.rotation.y = top.yaw;
     b.add(sign);
   }
-  // walking in a metre past the doorway takes you down; coming back up the stairs below brings you out here
+  // going down is a choice (ENTER, at the doorway): the steps behind it are closed off (solid, not a pocket), so nobody
+  // walks onto them by mistake
+  const [bx, bz] = at(0, -(0.63 + kioskD) / 2);
+  b.collide({ x: bx, z: bz, hx: kioskW / 2, hz: (kioskD - 0.63) / 2, rot: top.yaw, y1: H, mapKind: 'none', tag: 'stairwell-door' });
+  // the doorway's point (where the ENTER prompt is); coming back up the stairs below brings you out in front of it
   const [ix, iz] = at(0, -1.2);
   const [ox, oz] = at(0, 1.3);
   const ux = under.x;
@@ -363,6 +367,8 @@ export function stairwellDown(
   // in the underground space: the foot of the stairs, and a step out from it
   const footIn = { x: ux, y: 0, z: uz };
   const footOut = { x: ux - usin * 1.6, y: 0, z: uz - ucos * 1.6 };
+  // and a stop at the foot of the steps below (LEAVE is a choice too)
+  b.collide({ x: ux + usin * 0.45, z: uz + ucos * 0.45, hx: 1.5, hz: 0.12, rot: under.yaw, y1: 3, mapKind: 'none', tag: 'stairwell-door' });
   // lower end first: [underground out-point, underground foot, street entry, street out-point]
   floors.addLink(under.area, 0, [footOut, footIn, { x: ix, y: 0, z: iz }, { x: ox, y: 0, z: oz }], true);
 }
