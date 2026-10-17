@@ -36,7 +36,7 @@ Every model costs triangles, draw calls (one per material) and texture memory, a
 - Keep the bone structure as VRoid makes it (the game drives the standard humanoid bones).
 
 The shipped files were slimmed for the web (textures scaled down, normal maps flattened, unused face blend shapes
-removed) with a script over the original exports; the blend shapes the game uses (blink, the vowels, angry, joy,
+removed) with `scripts/vrm-slim.py` over the original exports (`python scripts/vrm-slim.py IN.vrm public/anime/OUT.vrm 512`); the blend shapes the game uses (blink, the vowels, angry, joy,
 sorrow, fun) are kept. Hair and skirt physics are not simulated: they hold their shape.
 
 ## Licences
