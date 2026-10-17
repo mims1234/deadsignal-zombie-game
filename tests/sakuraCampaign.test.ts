@@ -10,6 +10,7 @@ import { STORIES, storiesOpen } from '../src/sakura/missions';
 import { FUSE_BIT, FUSES_ALL, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
 import { VARIANTS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
+import { missionClock } from '../src/logic/mission';
 
 const state = (q: Partial<QuestView>, more: Partial<{ defense: string; hunt: string; extracted: boolean }> = {}) => ({
   quest: { ...SakuraQuest.empty(), ...q },
@@ -111,5 +112,17 @@ describe('KAIKA', { timeout: 30000 }, () => {
     q.view.lit = 5;
     sim.message('p1', { k: 'sq', a: 'ring', i: 0 }, false);
     expect(q.view.phase).toBe('bloom');
+  });
+});
+
+describe('the Sakura District clock', () => {
+  it('gives the operation more time than the standard maps, and KAIKA far more', () => {
+    const op = missionClock('sakura', 'mission');
+    const kaika = missionClock('sakura', 'kaika');
+    expect(op.deadline).toBeGreaterThan(missionClock('district').deadline);
+    expect(kaika.deadline).toBeGreaterThanOrEqual(op.deadline * 2);
+    expect(missionClock('sakura', 'curtain')).toBe(op);
+    const sim = new SessionSim({ seed: 2, kind: 'kaika', map: 'sakura', send() {} });
+    expect((sim as unknown as { clock: { deadline: number } }).clock.deadline).toBe(kaika.deadline);
   });
 });

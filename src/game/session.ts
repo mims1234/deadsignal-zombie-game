@@ -66,7 +66,7 @@ export function buildStats(s: Session, outcome: 'victory' | 'defeat', reason: st
     cashSpent: s.inv.cashSpent,
     ammoCollected: s.inv.ammoCollected,
     platesCollected: s.inv.platesCollected,
-    timeSurvived: Math.min(s.elapsed, MISSION.deadline * 2),
+    timeSurvived: Math.min(s.elapsed, MISSION.deadline * 6), // (KAIKA runs to 45 minutes)
     shotsFired: s.stats.shotsFired,
     shotsHit: s.stats.shotsHit,
     highestRegion: s.stats.highestRegion,

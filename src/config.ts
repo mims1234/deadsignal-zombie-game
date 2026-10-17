@@ -1390,6 +1390,15 @@ export const FREE_ROAM = {
 // Mission
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * The Sakura District's clocks: the biggest map (a street grid, a metro and a lab under it, a shrine on its hill) needs
+ * more time than `MISSION`; KAIKA, its whole story in twelve chapters across all of it, far more.
+ */
+export const SAKURA_CLOCK = {
+  operation: { deadline: 1200, surgeStart: 860, phases: [150, 420, 860] as readonly number[] },
+  kaika: { deadline: 2700, surgeStart: 2280, phases: [180, 900, 1800] as readonly number[] },
+} as const;
+
 export const MISSION = {
   /** Seconds until the district is sealed (last chance to call extraction). */
   deadline: 720,

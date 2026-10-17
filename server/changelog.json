@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.2",
+      "date": "2026-10-17",
+      "title": "More time on the Sakura District",
+      "notes": [
+        "The Sakura District is the biggest map, so it gets more time: 20 minutes before the district is sealed (was 12), with the surge and the escalation pushed back to match. The story missions get the same.",
+        "KAIKA, the whole story across the whole map, gets 45 minutes.",
+        "A long run's time survived is no longer cut off at 24 minutes in your results."
+      ]
+    },
+    {
       "version": "0.4.1",
       "date": "2026-10-17",
       "title": "Enter and leave the metro on purpose",

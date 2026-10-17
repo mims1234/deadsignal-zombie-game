@@ -236,7 +236,7 @@ export class SessionSim {
     this.zombies.onKill = (z, head) => this.onKill(z, head);
     // insta-kill: any hit kills (not bosses, not carriers)
     this.zombies.damageFilter = (z, amount) => filterDamage(this.powerups, amount, z);
-    this.clock = missionClock(this.map);
+    this.clock = missionClock(this.map, this.kind);
     this.asylum = this.map === 'asylum';
     if (this.asylum) {
       // the director only spawns in zones whose doors are open; a share of its spawns come in through the windows

@@ -21,7 +21,7 @@ import { createFx } from '../fx/fx';
 import type { FxApi } from '../fx/fxTypes';
 import { applyDamageToPlayer, regenHealth } from '../logic/damage';
 import { addCash, killReward } from '../logic/economy';
-import { escalationPhase } from '../logic/mission';
+import { escalationPhase, missionClock } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
@@ -1147,6 +1147,8 @@ export class Game implements GameCtx {
     // a story mission comes in somewhere of its own
     this.builtTale = this.tale;
     if (this.mapId === 'sakura') applyStoryStart(this.level, this.tale);
+    // the clock this run is held to (the Sakura District's by its story: KAIKA gets far longer)
+    this.mission.clock = missionClock(this.mapId, this.mode === 'coop' ? this.coop.kind : this.tale);
     const st = this.level.data.playerStart;
     this.player.teleport(st.x, st.z, st.yaw);
     this.player.stamina = PLAYER.maxStamina;

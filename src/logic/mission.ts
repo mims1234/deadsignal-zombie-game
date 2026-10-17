@@ -1,12 +1,13 @@
 /** Mission clock, escalation phases and the contamination front (pure). */
 import { ASYLUM_CLOCK } from '../asylum/nightConfig';
-import { FORGE_STORY, MISSION } from '../config';
+import { FORGE_STORY, MISSION, SAKURA_CLOCK } from '../config';
 import type { MapId } from '../world/layout/data';
 
 /**
  * The timings a run is held to. Every map uses `MISSION`'s except the Asylum, whose night needs longer
- * (`asylum/nightConfig.ts`), and the Forge, which is twice the size with a story to get through (`FORGE_STORY`).
- * Each function below takes one and defaults to `MISSION`.
+ * (`asylum/nightConfig.ts`), the Forge, which is twice the size with a story to get through (`FORGE_STORY`), and the
+ * Sakura District (`SAKURA_CLOCK`: longer again for KAIKA, `kind` 'kaika'). Each function below takes one and defaults
+ * to `MISSION`.
  */
 export interface MissionClock {
   deadline: number;
@@ -14,7 +15,8 @@ export interface MissionClock {
   phases: readonly number[];
 }
 
-export function missionClock(map: MapId): MissionClock {
+export function missionClock(map: MapId, kind?: string | null): MissionClock {
+  if (map === 'sakura') return kind === 'kaika' ? SAKURA_CLOCK.kaika : SAKURA_CLOCK.operation;
   return map === 'asylum' ? ASYLUM_CLOCK : map === 'forge' ? FORGE_STORY.clock : MISSION;
 }
 

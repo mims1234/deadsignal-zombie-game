@@ -99,8 +99,8 @@ export class MissionRuntime implements MissionApi {
   private tmp = new THREE.Vector3();
   private readonly lz;
   private readonly toLzDist: number;
-  /** This map's deadline, black fog / surge and escalation timings (the Asylum's night runs longer). */
-  readonly clock: MissionClock;
+  /** This run's deadline, black fog / surge and escalation timings (by map, and on the Sakura District by story). */
+  clock: MissionClock;
   /** The Asylum only: the day / night cycle, the records, the Matron's hours (`asylum/nightRuntime.ts`). */
   readonly night: AsylumNight | null;
   /** The defense contract completed: on the Asylum the boiler house power is back (wire to the power switch here). */
