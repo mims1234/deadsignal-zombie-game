@@ -55,6 +55,8 @@ export interface Settings {
   aimAssist: boolean;
   /** Touch play only: shoot automatically while the crosshair is on an enemy. */
   autoFire: boolean;
+  /** Which 3D models stand in for the procedural props and infected (`models/library.ts`). Applies when the game loads. */
+  modelPack: 'classic' | 'quaternius';
 }
 
 /** Best successful-run statistics persisted to localStorage. */

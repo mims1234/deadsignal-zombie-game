@@ -1,0 +1,10 @@
+Models by Quaternius (https://quaternius.com), released under CC0 1.0 Universal (public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Downloaded from Poly Pizza (https://poly.pizza/u/Quaternius), which mirrors Quaternius's CC0 models:
+  zombie.glb      - Zombie (Zombie Apocalypse Kit)        https://poly.pizza/m/VlXjG0N8Eg
+  barrel.glb      - Barrel                                 https://poly.pizza/m/ONdghDBByN
+  cone.glb        - Traffic Cone                           https://poly.pizza/m/lAx8JytxGD
+  hydrant.glb     - Fire Hydrant                           https://poly.pizza/m/DKkMQbEklp
+  tires.glb       - Wheels Stack                           https://poly.pizza/m/o1MJrkMUPN
+  pallet.glb      - Pallet                                 https://poly.pizza/m/cUAsYHDqfD

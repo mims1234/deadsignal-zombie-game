@@ -1612,6 +1612,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showFps: false,
   aimAssist: true,
   autoFire: false,
+  modelPack: 'classic',
 };
 
 export const RENDER = {

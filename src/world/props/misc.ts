@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { LevelBuilder } from '../builder';
 import type { Place } from './types';
 import { Parts, collideLocal, rngFor, TAU } from './util';
+import { modelProp } from '../../models/library';
 
 let tireGeoCache: THREE.BufferGeometry | null = null;
 function tireGeo(): THREE.BufferGeometry {
@@ -17,10 +18,13 @@ function tireGeo(): THREE.BufferGeometry {
 export function tireStack(b: LevelBuilder, o: Place & { count?: number }): void {
   const count = Math.max(1, Math.min(4, o.count ?? 4));
   const rng = rngFor(o, 171);
-  const set = b.instanced('tire', tireGeo(), b.mats.get('tire'));
   const base = o.y ?? 0;
-  for (let i = 0; i < count; i++) {
-    set.add(o.x + rng.range(-0.04, 0.04) * i, base + 0.105 + i * 0.205, o.z + rng.range(-0.04, 0.04) * i, rng.range(0, TAU));
+  // a model pack's stack (Settings): its four tyres, squashed to as many as there are
+  if (!modelProp(b, 'tires', o.x, base, o.z, rng.range(0, TAU), 1, new THREE.Matrix4().makeScale(1, count / 4, 1))) {
+    const set = b.instanced('tire', tireGeo(), b.mats.get('tire'));
+    for (let i = 0; i < count; i++) {
+      set.add(o.x + rng.range(-0.04, 0.04) * i, base + 0.105 + i * 0.205, o.z + rng.range(-0.04, 0.04) * i, rng.range(0, TAU));
+    }
   }
   b.collide({ x: o.x, z: o.z, hx: 0.33, hz: 0.33, y0: base, y1: base + 0.21 * count + 0.02, surface: 'metal', mapKind: 'prop', tag: 'tires' });
 }

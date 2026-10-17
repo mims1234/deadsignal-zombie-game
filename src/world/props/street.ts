@@ -4,6 +4,7 @@ import { type LampSpec, type LevelBuilder } from '../builder';
 import { lampIntensityMul } from '../../render/lightPool';
 import type { Place } from './types';
 import { GeoBuilder, Parts, cachedMat, collideLocal, placeMatrix, plainMat, rngFor, toWorld, stencil } from './util';
+import { modelProp } from '../../models/library';
 
 // ---------------------------------------------------------------------------------------------
 // street lamps
@@ -277,6 +278,7 @@ function coneGeo(): THREE.BufferGeometry {
 const coneMat = (): THREE.MeshStandardMaterial => cachedMat('coneMat', () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
 
 export function cone(b: LevelBuilder, o: Place & { fallen?: boolean }): void {
+  if (modelProp(b, 'cone', o.x, o.y ?? 0, o.z, o.rot ?? 0, 1, o.fallen ? new THREE.Matrix4().makeTranslation(0, 0.15, 0).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2 - 0.05)).multiply(new THREE.Matrix4().makeTranslation(0, -0.27, 0)) : undefined)) return;
   const set = b.instanced('cone', coneGeo(), coneMat());
   if (!o.fallen) {
     set.add(o.x, o.y ?? 0, o.z, o.rot ?? 0);
@@ -352,6 +354,10 @@ export function busShelter(b: LevelBuilder, o: Place): void {
 
 /** Fire hydrant (~0.75 m). */
 export function hydrant(b: LevelBuilder, o: Place): void {
+  if (modelProp(b, 'hydrant', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    b.collide({ x: o.x, z: o.z, hx: 0.16, hz: 0.16, y0: o.y ?? 0, y1: (o.y ?? 0) + 0.75, surface: 'metal', mapKind: 'prop', tag: 'hydrant' });
+    return;
+  }
   const p = new Parts(o);
   const red = b.mats.get('paintRed');
   const dark = b.mats.get('steelDark');

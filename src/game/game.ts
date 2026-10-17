@@ -55,6 +55,7 @@ import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
 import { farCrowd } from '../anime/farCrowd';
+import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
 import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
@@ -330,6 +331,12 @@ export class Game implements GameCtx {
     await nextFrame();
     this.mats = createMaterialLib();
 
+    // a model pack (Settings) loads before the map is built: its props are placed with the map
+    const pack = PACKS[this.settings.modelPack];
+    if (pack.length > 0) {
+      this.menus.showLoading(0.2, 'LOADING MODELS');
+      await loadModels(pack);
+    }
     this.menus.showLoading(0.25, 'BUILDING DISTRICT');
     await nextFrame();
     this.level = buildLevel(this.mats, this.mapId);
@@ -726,6 +733,7 @@ export class Game implements GameCtx {
     // a quality picked by hand: the calibration and the governor's tier steps stop
     if (!s.qualityAuto) this.calFrames = null;
     const qualityChanged = s.quality !== this.settings.quality;
+    const packChanged = s.modelPack !== this.settings.modelPack;
     this.settings = { ...s };
     if (persist) saveSettings(this.settings);
     if (persist) this.qualityHint = false; // they found Settings: no need to point at it
@@ -738,6 +746,11 @@ export class Game implements GameCtx {
     }
     if (persist && s.qualityAuto) saveTier(s.quality);
     this.menus.setSettings(this.settings);
+    // the models are part of building the map: on the title screen the game reloads with them, mid-run they wait
+    if (persist && packChanged) {
+      if (this.state === 'title' && this.mode !== 'coop') window.location.reload();
+      else this.menus.flash('The new models load next time the game starts.');
+    }
   }
 
   /** The renderer, effects and prop culling for a quality preset (and, `live`, the textures: `halveTexturesTo`). */

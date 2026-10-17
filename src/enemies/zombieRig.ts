@@ -10,6 +10,8 @@ import { disposeShapeCache } from './zombie/mesh';
 import { type TypeAssets, ZombieRigImpl, makeTypeAssets, variantGeometry } from './zombie/rig';
 import { AnimeZombieRig, hordeModel } from '../anime/cast';
 import { MatronRig } from './matronRig';
+import { hasModel } from '../models/library';
+import { ModelZombieRig } from '../models/zombieRig';
 import type { ZombieFactory, ZombieRig, ZombieTheme } from './zombieRigTypes';
 
 export interface ZombieFactoryExt extends ZombieFactory {
@@ -42,7 +44,13 @@ export function createZombieFactory(): ZombieFactoryExt {
       const dims = { radius: def.radius, height: def.height, headRadius: def.headRadius };
       const anime = theme === 'sakura' ? hordeModel(type, seed) : null;
       const stock = theme === 'sakura' ? undefined : theme;
-      const rig: ZombieRig = anime ? new AnimeZombieRig(type, anime, dims, seed) : new ZombieRigImpl(get(type, type === 'warden' ? undefined : stock), material, dims, seed);
+      // a model pack's infected (Settings) on the maps with the standard look; the Warden keeps his own frame
+      const model = !theme && type !== 'warden' && hasModel('zombie');
+      const rig: ZombieRig = anime
+        ? new AnimeZombieRig(type, anime, dims, seed)
+        : model
+          ? new ModelZombieRig(type, dims.radius, dims.height, dims.headRadius, seed)
+          : new ZombieRigImpl(get(type, type === 'warden' ? undefined : stock), material, dims, seed);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {

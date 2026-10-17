@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import type { LevelBuilder } from '../builder';
 import { type BarrelColor, type ContainerColor, type Place } from './types';
 import { GeoBuilder, Parts, cachedMat, collideLocal, plainMat, rngFor, toWorld, TAU, stencil } from './util';
+import { modelProp } from '../../models/library';
 
 const CONTAINER_MAT: Record<ContainerColor, string> = {
   red: 'containerRed',
@@ -170,6 +171,8 @@ const BARREL_MAT: Record<BarrelColor, string> = {
 };
 
 function placeBarrel(b: LevelBuilder, color: BarrelColor, x: number, y: number, z: number, yaw: number, fallen: boolean): void {
+  // a model pack's drum (Settings), lying on its side about its middle when fallen
+  if (modelProp(b, 'barrel', x, y, z, yaw, 1, fallen ? new THREE.Matrix4().makeTranslation(0, 0.29, 0).multiply(new THREE.Matrix4().makeRotationZ(Math.PI / 2)).multiply(new THREE.Matrix4().makeTranslation(0, -0.44, 0)) : undefined)) return;
   const set = b.instanced(`barrel:${color}`, barrelGeo(), b.mats.get(BARREL_MAT[color] as never));
   if (!fallen) {
     set.add(x, y + 0.44, z, yaw);
@@ -331,7 +334,7 @@ export function pallet(b: LevelBuilder, o: Place & { goods?: 'none' | 'boxes' | 
   const rng = rngFor(o, 51);
   const base = o.y ?? 0;
   const rot = o.rot ?? 0;
-  b.instanced('pallet', palletGeo(), b.mats.get('pallet')).add(o.x, base, o.z, rot);
+  if (!modelProp(b, 'pallet', o.x, base, o.z, rot)) b.instanced('pallet', palletGeo(), b.mats.get('pallet')).add(o.x, base, o.z, rot);
   if (goods === 'none') return;
   const place: Place = { x: o.x, z: o.z, y: base + 0.144, rot };
   let height = 0.144;

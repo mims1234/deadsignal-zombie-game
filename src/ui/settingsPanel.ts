@@ -88,6 +88,7 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
   const rm = toggle(root, 'REDUCED MOTION', (v) => change({ reducedMotion: v }));
   const inv = toggle(root, 'INVERT Y-AXIS', (v) => change({ invertY: v }));
   const fps = toggle(root, 'SHOW FPS COUNTER', (v) => change({ showFps: v }));
+  const models = toggle(root, 'NEW 3D MODELS (BETA)', (v) => change({ modelPack: v ? 'quaternius' : 'classic' }));
   // Aiming helpers only make sense for thumbs; a mouse is already precise.
   const assist = touch ? toggle(root, 'AIM ASSIST', (v) => change({ aimAssist: v })) : null;
   const auto = touch ? toggle(root, 'AUTO FIRE WHEN ON TARGET', (v) => change({ autoFire: v })) : null;
@@ -95,7 +96,7 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
   const hint = el('div', 'ds-set-hint', root);
   hint.textContent = touch
     ? 'Auto graphics picks Lite or Low for this phone and steps down if it struggles. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
-    : 'Auto graphics picks a quality for this computer and adjusts it as you play; picking one turns it off. High turns nearby shadows on, High+ adds bloom and smoothing. Reduced motion cuts camera bob, sway and screen shake.';
+    : 'Auto graphics picks a quality for this computer and adjusts it as you play; picking one turns it off. High turns nearby shadows on, High+ adds bloom and smoothing. Reduced motion cuts camera bob, sway and screen shake. New 3D models swaps in an animated infected and street props from an art pack (the game reloads; mid-run it applies next time).';
 
   const paintOf = (r: SliderRow): void => (r.input as HTMLInputElement & { _paint?: () => void })._paint?.();
 
@@ -117,6 +118,7 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
       rm.checked = s.reducedMotion;
       inv.checked = s.invertY;
       fps.checked = s.showFps;
+      models.checked = s.modelPack === 'quaternius';
       if (assist) assist.checked = s.aimAssist;
       if (auto) auto.checked = s.autoFire;
     },

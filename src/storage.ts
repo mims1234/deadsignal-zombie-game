@@ -31,6 +31,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     showFps: typeof r.showFps === 'boolean' ? r.showFps : DEFAULT_SETTINGS.showFps,
     aimAssist: typeof r.aimAssist === 'boolean' ? r.aimAssist : DEFAULT_SETTINGS.aimAssist,
     autoFire: typeof r.autoFire === 'boolean' ? r.autoFire : DEFAULT_SETTINGS.autoFire,
+    modelPack: r.modelPack === 'quaternius' ? 'quaternius' : 'classic',
   };
 }
 
