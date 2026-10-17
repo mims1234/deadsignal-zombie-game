@@ -13,7 +13,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GRENADE, PLAYER, QUALITY, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
+import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GOVERNOR, GRENADE, PLAYER, QUALITY, QUALITY_TIERS, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -23,16 +23,18 @@ import { applyDamageToPlayer, regenHealth } from '../logic/damage';
 import { addCash, killReward } from '../logic/economy';
 import { escalationPhase } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
+import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
-import { type Account, RunTracker, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
+import { type Account, type RunPerf, RunTracker, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
-import { DetailCuller, halveTextures } from '../render/lite';
+import { DetailCuller, halveTextures, lowSpecHardware } from '../render/lite';
+import { deviceReport } from '../render/device';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
-import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
-import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
+import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
+import type { BestRun, GameMode, MissionStats, QualityLevel, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
@@ -240,7 +242,10 @@ export class Game implements GameCtx {
   async init(): Promise<boolean> {
     const { canvas, uiRoot } = this.deps;
     this.settings = loadSettings();
-    // everyone starts on Low (DEFAULT_SETTINGS); a player who never opened Settings is told once where to raise it
+    // Auto quality: the tier saved for this device, else a guess from touch, memory and cores (the calibration and the
+    // governor correct it in play); a player who never opened Settings is told once where to pick one
+    if (this.settings.qualityAuto) this.settings.quality = startTier(loadTier(), this.touchMode, lowSpecHardware());
+    this.gov = newGovernor(tierCeiling(this.touchMode));
     this.qualityHint = !hasStoredSettings() && !hintShown();
     this.best = loadBest();
     this.mode = loadMode();
@@ -543,9 +548,9 @@ export class Game implements GameCtx {
     await nextFrame();
     this.resetRun(true);
     this.renderer.resize();
-    // Low: every texture at half size, before anything is uploaded; small props stop being drawn at a distance
-    this.texturesHalved = QUALITY[this.settings.quality].halfTextures;
-    if (this.texturesHalved) halveTextures([this.renderer.scene, this.renderer.viewScene]);
+    // Low: every texture at half size, before anything is uploaded (Lite: a quarter); small props stop being drawn at
+    // a distance
+    this.halveTexturesTo(this.settings.quality);
     this.culler = new DetailCuller(this.level.root);
     this.culler.distance = QUALITY[this.settings.quality].detailDistance;
     if (this.touchMode) this.renderer.setRenderScale(0.85);
@@ -610,7 +615,19 @@ export class Game implements GameCtx {
 
   private resizeObserver: ResizeObserver | null = null;
   private culler: DetailCuller | null = null;
-  private texturesHalved = false;
+  /** Times every texture has been halved (Low: 1, Lite: 2). Only a page reload brings detail back. */
+  private textureHalvings = 0;
+
+  /** Halve the textures until they are as small as `level` wants. False when they are already smaller. */
+  private halveTexturesTo(level: QualityLevel): boolean {
+    const q = QUALITY[level];
+    const want = q.quarterTextures ? 2 : q.halfTextures ? 1 : 0;
+    while (this.textureHalvings < want) {
+      halveTextures([this.renderer.scene, this.renderer.viewScene]);
+      this.textureHalvings++;
+    }
+    return this.textureHalvings <= want;
+  }
 
   /** Compile the world's and the weapons' shaders without blocking (all weapons shown for the moment it takes). */
   private async compileShaders(): Promise<void> {
@@ -675,6 +692,13 @@ export class Game implements GameCtx {
   // ---------------------------------------------------------------------------------------------
 
   applySettings(s: Settings, persist: boolean): void {
+    // Settings back on Auto: the governor carries on from the current quality (within this device's ceiling)
+    if (s.qualityAuto && !this.settings.qualityAuto) {
+      s = { ...s, quality: QUALITY_TIERS[Math.min(tierIndex(s.quality), tierIndex(tierCeiling(this.touchMode)))]! };
+      this.gov = newGovernor(tierCeiling(this.touchMode));
+    }
+    // a quality picked by hand: the calibration and the governor's tier steps stop
+    if (!s.qualityAuto) this.calFrames = null;
     const qualityChanged = s.quality !== this.settings.quality;
     this.settings = { ...s };
     if (persist) saveSettings(this.settings);
@@ -683,18 +707,30 @@ export class Game implements GameCtx {
     this.renderer.updateFov();
     this.audio.setMasterVolume(s.masterVolume);
     if (qualityChanged || !persist) {
-      this.renderer.setQuality(s.quality);
-      const q = QUALITY[s.quality];
-      this.fx.setQuality(q.particleScale, q.decalScale);
-      if (this.culler) this.culler.distance = q.detailDistance;
-      if (persist && q.halfTextures && !this.texturesHalved) {
-        this.texturesHalved = true;
-        halveTextures([this.renderer.scene, this.renderer.viewScene]);
-      } else if (persist && !q.halfTextures && this.texturesHalved) {
-        this.menus.flash('Full texture detail comes back after a page reload.');
-      }
+      this.applyQuality(s.quality, persist);
+      if (persist && !this.halveTexturesTo(s.quality)) this.menus.flash('Full texture detail comes back after a page reload.');
     }
+    if (persist && s.qualityAuto) saveTier(s.quality);
     this.menus.setSettings(this.settings);
+  }
+
+  /** The renderer, effects and prop culling for a quality preset (and, `live`, the textures: `halveTexturesTo`). */
+  private applyQuality(level: QualityLevel, live: boolean): void {
+    this.renderer.setQuality(level);
+    const q = QUALITY[level];
+    this.fx.setQuality(q.particleScale, q.decalScale);
+    if (this.culler) this.culler.distance = q.detailDistance;
+    if (live) this.halveTexturesTo(level);
+  }
+
+  /** Auto quality: move to another tier (the calibration or the governor) and remember it for this device. */
+  private setTier(level: QualityLevel): void {
+    if (level === this.settings.quality || !this.settings.qualityAuto) return;
+    this.settings = { ...this.settings, quality: level };
+    this.applyQuality(level, true);
+    saveTier(level);
+    this.menus.setSettings(this.settings);
+    this.feed(`GRAPHICS AUTO: ${level.toUpperCase()}`, 'normal');
   }
 
   /** What the title screen shows as picked. */
@@ -945,7 +981,16 @@ export class Game implements GameCtx {
     this.audio.resume();
     if (fresh) {
       this.closeRun();
-      this.tracker.start(this.mode, this.touchMode, this.mapId, VERSION.replace(/^v/, ''), this.runDifficulty.zombies);
+      this.device ??= deviceReport(this.touchMode, this.renderer.renderer.getContext());
+      this.runFrames.reset();
+      this.runMinScale = this.renderer.renderScale;
+      this.tracker.start(this.mode, this.touchMode, this.mapId, VERSION.replace(/^v/, ''), this.runDifficulty.zombies, { ...this.device, quality: this.settings.quality });
+      // Auto quality: the first seconds of the page's first real run (free roam has no infected) correct the guess
+      if (this.settings.qualityAuto && !this.calibrationDone && !roam && !spectating) {
+        this.calibrationDone = true;
+        this.calFrames = [];
+        this.calClock = 0;
+      }
     }
     if (fresh || wasTitle) {
       this.audio.play('ui_deploy', { priority: 3 });
@@ -966,7 +1011,9 @@ export class Game implements GameCtx {
       if (this.qualityHint && !spectating) {
         this.qualityHint = false;
         markHintShown();
-        this.feed(`GRAPHICS: ${this.settings.quality.toUpperCase()} FOR A SMOOTH START - ${this.touchMode ? 'II' : 'ESC'} > SETTINGS TO RAISE IT`, 'normal');
+        const pick = `${this.touchMode ? 'II' : 'ESC'} > SETTINGS`;
+        const q = this.settings.quality.toUpperCase();
+        this.feed(this.settings.qualityAuto ? `GRAPHICS: AUTO (${q}) - IT ADJUSTS TO THIS DEVICE - ${pick} TO PICK ONE` : `GRAPHICS: ${q} - ${pick} TO CHANGE IT`, 'normal');
       }
     }
   }
@@ -1011,7 +1058,7 @@ export class Game implements GameCtx {
   /** Report the run in progress as abandoned (restart, quit to title, tab closing). No-op when none is open. */
   private closeRun(keepalive = false): void {
     if (!this.tracker.running) return;
-    this.tracker.end('abandoned', 'Left the run', buildStats(this.session, 'defeat', 'Left the run', this.mission.contractsDone()), keepalive);
+    this.tracker.end('abandoned', 'Left the run', buildStats(this.session, 'defeat', 'Left the run', this.mission.contractsDone()), this.runPerf(), keepalive);
   }
 
   resetRun(initial: boolean): void {
@@ -1099,34 +1146,71 @@ export class Game implements GameCtx {
   };
 
   private adaptWindow = 0;
-  private adaptSlow = 0;
-  private adaptFrames = 0;
-  private adaptCooldown = 4;
+  /** The frame times (ms) of the window being judged. */
+  private readonly adaptFrames: number[] = [];
+  /** Device tiers (`logic/governor.ts`): the governor's state, the calibration's frames (null when not running). */
+  private gov = newGovernor('high+');
+  private calFrames: number[] | null = null;
+  private calClock = 0;
+  private calibrationDone = false;
+  /** The run report's frame times and the lowest render scale reached. */
+  private readonly runFrames = new FrameHistogram();
+  private runMinScale = 1;
+  private device: ReturnType<typeof deviceReport> | null = null;
 
   /**
-   * Dynamic resolution: if a large share of frames miss ~50 fps over a two-second window the render scale steps down
-   * (never below 0.6); after a long clean stretch it steps back up. Only active while playing and never on the dev hooks.
+   * Dynamic resolution and the device-tier governor: every two seconds of play the frames are judged against the
+   * tier's budget. The render scale steps down when many frames are slow (never below 0.6) and back up after a clean
+   * stretch; with Auto quality the tier steps down once the scale is at its floor and the frames stay over budget, and
+   * up after a long stretch with room to spare. Tiers hold still through a defense hold, a horde or an extraction.
+   * Only active while playing and never on the dev hooks.
    */
   private adaptResolution(dt: number): void {
     if (this.state !== 'playing' || this.devFrozen) return;
+    const ms = dt * 1000;
+    this.runFrames.add(ms);
+    this.adaptFrames.push(ms);
     this.adaptWindow += dt;
-    this.adaptFrames++;
-    if (dt > 0.022) this.adaptSlow++;
-    if (this.adaptWindow < 2) return;
-    const slowShare = this.adaptSlow / Math.max(1, this.adaptFrames);
-    this.adaptCooldown -= this.adaptWindow;
-    if (this.adaptCooldown <= 0) {
-      if (slowShare > 0.25 && this.renderer.renderScale > 0.61) {
-        this.renderer.setRenderScale(this.renderer.renderScale - 0.1);
-        this.adaptCooldown = 3;
-      } else if (slowShare === 0 && this.renderer.renderScale < 0.99) {
-        this.renderer.setRenderScale(this.renderer.renderScale + 0.05);
-        this.adaptCooldown = 12;
+    if (this.calFrames) {
+      this.calClock += dt;
+      // the first two seconds (spawns, late shader compiles) are left out
+      if (this.calClock > 2) this.calFrames.push(ms);
+      if (this.calClock >= 2 + GOVERNOR.calibrate) {
+        const to = calibrate(summarize(this.calFrames, this.settings.quality), this.settings.quality, QUALITY_TIERS[this.gov.ceiling]!);
+        this.calFrames = null;
+        this.setTier(to);
+        if (this.settings.qualityAuto) saveTier(this.settings.quality);
       }
     }
+    if (this.adaptWindow < GOVERNOR.window) return;
+    const window = summarize(this.adaptFrames, this.settings.quality);
     this.adaptWindow = 0;
-    this.adaptSlow = 0;
-    this.adaptFrames = 0;
+    this.adaptFrames.length = 0;
+    const { state, action } = governorStep(this.gov, {
+      window,
+      tier: this.settings.quality,
+      renderScale: this.renderer.renderScale,
+      busy: this.calFrames !== null || this.tierHold(),
+      auto: this.settings.qualityAuto,
+    });
+    this.gov = state;
+    if (action === 'scale-down') this.renderer.setRenderScale(this.renderer.renderScale - 0.1);
+    else if (action === 'scale-up') this.renderer.setRenderScale(this.renderer.renderScale + 0.05);
+    else if (action === 'tier-down' || action === 'tier-up') this.setTier(QUALITY_TIERS[tierIndex(this.settings.quality) + (action === 'tier-up' ? 1 : -1)]!);
+    this.runMinScale = Math.min(this.runMinScale, this.renderer.renderScale);
+  }
+
+  /** A defense hold, an extraction (its horde) or the Forge's last stand is on: the graphics tier holds still. */
+  private tierHold(): boolean {
+    const s = this.session;
+    return s.defense.status === 'active' || extractionInProgress(s.extraction) || (this.forge?.assaultOn ?? false);
+  }
+
+  /** How this run ran, for its report (null when too few frames were drawn to say). */
+  private runPerf(): RunPerf | null {
+    const f = this.runFrames;
+    if (f.frames < 60) return null;
+    return { quality: this.settings.quality, fps: f.avgFps, p95Ms: f.p95, renderScale: this.runMinScale };
   }
 
   /** One frame of whatever the current state needs, followed by rendering. */
@@ -1852,7 +1936,7 @@ export class Game implements GameCtx {
   private showResults(): void {
     const pr = this.pendingResults!;
     this.pendingResults = null;
-    this.tracker.end(pr.outcome, pr.stats.reason, pr.stats);
+    this.tracker.end(pr.outcome, pr.stats.reason, pr.stats, this.runPerf());
     this.state = 'results';
     this.menus.setModeInfo(this.modeInfo());
     this.hud.setVisible(false);

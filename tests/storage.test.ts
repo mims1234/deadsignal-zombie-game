@@ -12,7 +12,7 @@ vi.stubGlobal('window', {
   matchMedia: () => ({ matches: false }),
 });
 
-const { sanitizeSettings, loadSettings, saveSettings, loadBest, saveBest, isBetterRun } = await import('../src/storage');
+const { sanitizeSettings, loadSettings, saveSettings, loadBest, saveBest, isBetterRun, loadTier, saveTier } = await import('../src/storage');
 
 describe('settings persistence', () => {
   it('sanitises garbage into safe, clamped settings', () => {
@@ -35,6 +35,29 @@ describe('settings persistence', () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('keeps the new tiers and whether the quality is on Auto', () => {
+    expect(DEFAULT_SETTINGS.qualityAuto).toBe(true);
+    for (const q of ['lite', 'high+'] as const) {
+      const s = { ...DEFAULT_SETTINGS, quality: q, qualityAuto: false };
+      saveSettings(s);
+      expect(loadSettings()).toEqual(s);
+    }
+    // saved before the tiers: the old default stays on Auto, anything else was picked by hand
+    expect(sanitizeSettings({ quality: 'low' }).qualityAuto).toBe(true);
+    expect(sanitizeSettings({ quality: 'high' }).qualityAuto).toBe(false);
+    expect(sanitizeSettings({ quality: 'high', qualityAuto: true }).qualityAuto).toBe(true);
+  });
+
+  it('remembers the tier the governor settled on for this device', () => {
+    expect(loadTier()).toBeNull();
+    for (const q of ['lite', 'low', 'medium', 'high', 'high+'] as const) {
+      saveTier(q);
+      expect(loadTier()).toBe(q);
+    }
+    store.set('deadsignal.tier.v1', 'ultra');
+    expect(loadTier()).toBeNull();
+  });
+
   it('a throwing storage never breaks loading or saving', () => {
     const win = (globalThis as unknown as { window: { localStorage: Record<string, unknown> } }).window;
     const orig = win.localStorage;
@@ -50,6 +73,8 @@ describe('settings persistence', () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
     expect(loadBest()).toBeNull();
     expect(() => saveBest({ time: 1, kills: 1, headshots: 1, cash: 1, date: 'x' })).not.toThrow();
+    expect(() => saveTier('low')).not.toThrow();
+    expect(loadTier()).toBeNull();
     win.localStorage = orig;
   });
 });

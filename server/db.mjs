@@ -10,6 +10,10 @@ const now = () => Math.floor(Date.now() / 1000);
 export const MODES = ['standard', 'cards', 'roam', 'coop'];
 export const OUTCOMES = ['victory', 'defeat', 'abandoned'];
 export const DIFFICULTIES = ['easy', 'normal', 'hard', 'nightmare'];
+/** What a run report may say about the device (`src/render/device.ts`, `QUALITY_TIERS`): coarse classes only. */
+export const DEVICES = ['phone', 'tablet', 'computer'];
+export const GPU_VENDORS = ['Apple', 'Adreno', 'Mali', 'PowerVR', 'Xclipse', 'NVIDIA', 'Intel', 'AMD', 'Software'];
+export const QUALITIES = ['lite', 'low', 'medium', 'high', 'high+'];
 
 /**
  * The leaderboards: one per map, per way of playing (solo - Standard and Standard Mazoku together - or co-op; free
@@ -138,8 +142,9 @@ export function openDb(file) {
   `);
 
   // added after the first release: older databases get the columns here (the build a run was played on and its
-  // difficulty arrived with the leaderboards; older runs have neither)
-  for (const col of ['map TEXT', 'version TEXT', 'difficulty TEXT']) {
+  // difficulty arrived with the leaderboards; older runs have neither). The device class, the quality tier at the
+  // start and the end, the mean fps, the p95 frame time and the lowest render scale came with the device tiers.
+  for (const col of ['map TEXT', 'version TEXT', 'difficulty TEXT', 'device TEXT', 'gpu TEXT', 'quality_start TEXT', 'quality TEXT', 'fps REAL', 'p95_ms REAL', 'render_scale REAL']) {
     try {
       db.exec(`ALTER TABLE runs ADD COLUMN ${col}`);
     } catch {
@@ -159,12 +164,13 @@ export function openDb(file) {
     dropUserSessions: db.prepare('DELETE FROM sessions WHERE user_id = ?'),
     purgeSessions: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
     addVisit: db.prepare('INSERT INTO visits (ts, day, visitor, user_id, touch) VALUES (?, ?, ?, ?, ?)'),
-    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map, version, difficulty) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'),
+    startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map, version, difficulty, device, gpu, quality_start) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
     setSetting: db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
     run: db.prepare('SELECT * FROM runs WHERE id = ?'),
     endRun: db.prepare(`UPDATE runs SET ended_at = @t, outcome = @outcome, reason = @reason, duration = @duration, kills = @kills, headshots = @headshots,
-      contracts = @contracts, cards = @cards, cash = @cash, shots_fired = @shots_fired, shots_hit = @shots_hit, region = @region WHERE id = @id AND ended_at IS NULL`),
+      contracts = @contracts, cards = @cards, cash = @cash, shots_fired = @shots_fired, shots_hit = @shots_hit, region = @region,
+      quality = @quality, fps = @fps, p95_ms = @p95_ms, render_scale = @render_scale WHERE id = @id AND ended_at IS NULL`),
     addCard: db.prepare(`INSERT INTO cards (user_id, card_id, count, first_at) VALUES (?, ?, 1, ?) ON CONFLICT(user_id, card_id) DO UPDATE SET count = count + 1`),
     cards: db.prepare('SELECT card_id, count FROM cards WHERE user_id = ?'),
     addReport: db.prepare('INSERT INTO reports (ts, reporter_id, target_id, reason, context) VALUES (?, ?, ?, ?, ?)'),
@@ -177,6 +183,9 @@ export function openDb(file) {
   const day = (t = now()) => new Date(t * 1000).toISOString().slice(0, 10);
   const int = (v, max = 1e9) => (Number.isFinite(+v) ? Math.max(0, Math.min(max, Math.round(+v))) : 0);
   const text = (v, max) => (typeof v === 'string' ? v.slice(0, max) : null);
+  const oneOf = (v, list) => (list.includes(v) ? v : null);
+  /** A finite number in [lo, hi], rounded to `places` decimals; null otherwise. */
+  const num = (v, lo, hi, places) => (typeof v === 'number' && Number.isFinite(v) ? +Math.max(lo, Math.min(hi, v)).toFixed(places) : null);
 
   return {
     raw: db,
@@ -197,7 +206,8 @@ export function openDb(file) {
     },
     dropSession: (token) => q.dropSession.run(token),
     visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
-    startRun: (userId, mode, touch, map, version, difficulty) =>
+    /** `device`: the coarse class from the client ({ device, gpu, quality }); anything not on the lists is dropped. */
+    startRun: (userId, mode, touch, map, version, difficulty, device = {}) =>
       Number(
         q.startRun.run(
           userId,
@@ -208,6 +218,9 @@ export function openDb(file) {
           ['sakura', 'forge', 'asylum'].includes(map) ? map : 'district',
           typeof version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,4}$/.test(version) ? version : null,
           DIFFICULTIES.includes(difficulty) ? difficulty : null,
+          oneOf(device.device, DEVICES),
+          oneOf(device.gpu, GPU_VENDORS),
+          oneOf(device.quality, QUALITIES),
         ).lastInsertRowid,
       ),
     setting: (key) => q.getSetting.get(key)?.value ?? null,
@@ -288,6 +301,7 @@ export function openDb(file) {
       const run = q.run.get(id);
       if (!run || run.user_id !== userId || run.ended_at !== null) return false;
       const s = body.stats ?? {};
+      const p = body.perf && typeof body.perf === 'object' ? body.perf : {};
       q.endRun.run({
         id,
         t: now(),
@@ -303,6 +317,10 @@ export function openDb(file) {
         shots_fired: int(s.shotsFired, 1e6),
         shots_hit: int(s.shotsHit, 1e6),
         region: text(s.highestRegion, 12),
+        quality: oneOf(p.quality, QUALITIES),
+        fps: num(p.fps, 0, 1000, 1),
+        p95_ms: num(p.p95Ms, 0, 1000, 2),
+        render_scale: num(p.renderScale, 0, 2, 2),
       });
       return true;
     },

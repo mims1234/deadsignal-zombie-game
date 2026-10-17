@@ -94,7 +94,7 @@ export class GameRenderer {
     this.scene.environmentIntensity = 0.5;
     // 22 m keeps contact shadows on nearby walls and zombies. The old 46 m box redrew most of the district every frame.
     this.light = setupBlueHour(this.scene, 22);
-    this.lightPool = new LightPool(this.scene, QUALITY.high.lightPool, QUALITY.medium.lightPool);
+    this.lightPool = new LightPool(this.scene, Math.max(...Object.values(QUALITY).map((q) => q.lightPool)), QUALITY.medium.lightPool);
     this.scene.add(this.camera);
 
     this.flashLight = new THREE.PointLight(0xffc27a, 0, 16, 2);

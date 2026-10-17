@@ -1,7 +1,8 @@
 /**
- * Help for weaker devices (phones, tablets, low-memory laptops). Everything here is driven by the Low quality preset,
- * which phones start on and weak computers are now given by default:
- *  - every painted texture is halved before it is uploaded (a quarter of the memory, on the GPU and in the page);
+ * Help for weaker devices (phones, tablets, low-memory laptops). Everything here is driven by the Low and Lite quality
+ * presets, which phones and weak computers start on (`logic/governor.ts`):
+ *  - every painted texture is halved before it is uploaded (a quarter of the memory, on the GPU and in the page), and
+ *    on Lite halved again;
  *  - small props beyond a short distance are not drawn (fewer draw calls), see `DetailCuller`;
  *  - the view distance stops where the fog already hides everything (set by the renderer).
  */
@@ -9,7 +10,15 @@ import * as THREE from 'three';
 
 /** A device that should start on the Low preset: touch screens, and computers with little memory or few cores. */
 export function isWeakDevice(touch: boolean): boolean {
-  if (touch) return true;
+  return touch || lowSpecHardware();
+}
+
+/**
+ * Little memory (4 GB or less; only Chromium browsers report it) or few cores. On a phone it means the Lite tier to
+ * start with, on a computer Low (`guessTier` in `logic/governor.ts`).
+ */
+export function lowSpecHardware(): boolean {
+  if (typeof navigator === 'undefined') return false;
   const nav = navigator as Navigator & { deviceMemory?: number };
   return (nav.deviceMemory !== undefined && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
 }

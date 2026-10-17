@@ -1835,6 +1835,11 @@ input.ds-range:focus-visible {
   padding: 0.6em 0.4em 0.55em;
   cursor: pointer;
 }
+/* the five graphics tiers share one row */
+.ds-seg.tiers .seg-btn {
+  letter-spacing: 0.08em;
+  padding-inline: 0.2em;
+}
 .ds-seg .seg-btn + .seg-btn {
   border-left: 1px solid var(--ds-line);
 }

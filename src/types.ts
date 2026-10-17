@@ -17,7 +17,8 @@ export type Region = 'low' | 'medium' | 'high';
 /** Material family of a surface; drives impact effects and impact / footstep audio. */
 export type SurfaceKind = 'concrete' | 'metal' | 'wood' | 'dirt' | 'flesh' | 'glass' | 'fabric';
 
-export type QualityLevel = 'low' | 'medium' | 'high';
+/** Graphics presets, lightest first (`QUALITY_TIERS`). Lite is for budget phones, High+ for fast GPUs with headroom. */
+export type QualityLevel = 'lite' | 'low' | 'medium' | 'high' | 'high+';
 
 /**
  * What DEPLOY starts: the standard operation, the same operation with the card carriers and their side contract,
@@ -45,6 +46,8 @@ export interface Settings {
   /** Master volume 0..1. */
   masterVolume: number;
   quality: QualityLevel;
+  /** The game picks the quality for this device and adjusts it while playing. Picking a quality by hand turns it off. */
+  qualityAuto: boolean;
   reducedMotion: boolean;
   invertY: boolean;
   showFps: boolean;

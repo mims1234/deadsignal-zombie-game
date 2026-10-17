@@ -180,7 +180,8 @@ app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
   if (!mapOpenTo(req.user, req.body?.map)) return reply.code(403).send({ error: 'that map is not open yet' });
-  return { id: db.startRun(req.user.id, mode, !!req.body?.touch, req.body?.map, req.body?.version, req.body?.difficulty) };
+  const b = req.body;
+  return { id: db.startRun(req.user.id, mode, !!b?.touch, b?.map, b?.version, b?.difficulty, { device: b?.device, gpu: b?.gpu, quality: b?.quality }) };
 });
 
 app.post('/api/runs/:id/end', { preHandler: player }, async (req) => ({ ok: db.endRun(req.user.id, Number(req.params.id), req.body ?? {}) }));

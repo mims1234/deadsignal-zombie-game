@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.1.118",
+      "date": "2026-10-17",
+      "title": "Graphics that fit the device",
+      "notes": [
+        "Graphics now start on Auto: the game picks a quality for your device, checks it in the first 20 seconds of play and keeps adjusting while you play. It lowers the resolution first and the quality only if that is not enough, raises it again after a couple of smooth minutes, and never changes it during a defense hold, a horde or an extraction. The result is remembered on that browser.",
+        "Two new qualities: Lite, under Low, for budget phones (shorter view, fewer lights and effects, smaller textures), and High+, above High, with bloom, smoothing and bigger crowds for fast graphics cards.",
+        "On Lite fewer infected are out at once, so each is a little tougher and they come back sooner: the zone is no easier.",
+        "Picking a quality in Settings keeps it and turns Auto off; the Auto graphics switch turns it back on.",
+        "Each run report now says how the game ran (quality, average frame rate, slowest frames, resolution) and on what kind of device: phone, tablet or computer, and the graphics chip's maker. Nothing that identifies the device is sent."
+      ]
+    },
+    {
       "version": "0.1.117",
       "date": "2026-10-17",
       "title": "02 Cyberpunk joins the Sakura District",
