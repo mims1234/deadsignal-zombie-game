@@ -191,3 +191,33 @@ export function saveCards(ids: readonly string[]): void {
     /* ignore */
   }
 }
+
+/**
+ * The Sakura District's progress, across runs: the notes read (the journal), whether the Thousand Lanterns has been
+ * completed (it unlocks the story missions), and the story missions finished.
+ */
+export interface SakuraProgress {
+  notes: string[];
+  egg: boolean;
+  missions: string[];
+}
+
+const KEY_SAKURA = 'deadsignal.sakura.v1';
+
+export function loadSakura(): SakuraProgress {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(KEY_SAKURA) ?? '{}') as Partial<SakuraProgress> | null;
+    const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((s): s is string => typeof s === 'string') : []);
+    return { notes: strings(raw?.notes), egg: raw?.egg === true, missions: strings(raw?.missions) };
+  } catch {
+    return { notes: [], egg: false, missions: [] };
+  }
+}
+
+export function saveSakura(p: SakuraProgress): void {
+  try {
+    window.localStorage.setItem(KEY_SAKURA, JSON.stringify(p));
+  } catch {
+    /* ignore */
+  }
+}

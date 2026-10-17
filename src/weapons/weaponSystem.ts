@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import type { AudioEngineApi, SoundId } from '../audio/ids';
-import { GRENADE, PLAYER, RAGDOLL, WEAPONS, type WeaponDef } from '../config';
+import { GRENADE, PLAYER, RAGDOLL, RAIJIN, WEAPONS, type WeaponDef } from '../config';
 import type { ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import type { FxApi } from '../fx/fxTypes';
@@ -106,7 +106,7 @@ export class WeaponSystem {
     private readonly host: WeaponHost,
     private readonly rigs: ViewmodelSet,
   ) {
-    for (const r of [rigs.rifle, rigs.pistol, rigs.shotgun, rigs.rpg, rigs.grenade, rigs.plate]) host.renderer.viewScene.add(r.root);
+    for (const r of this.allRigs()) host.renderer.viewScene.add(r.root);
     this.hideAll();
   }
 
@@ -146,7 +146,12 @@ export class WeaponSystem {
   perkFireIntervalMul = 1;
 
   private rigFor(id: WeaponId): ViewmodelRig {
-    return this.rigs[id];
+    return this.rigs[id] ?? (id === 'raijin' ? this.rigs.rpg : this.rigs.rifle);
+  }
+
+  private allRigs(): ViewmodelRig[] {
+    const r = this.rigs;
+    return [r.rifle, r.pistol, r.shotgun, r.rpg, r.grenade, r.plate, ...(r.hanafubuki ? [r.hanafubuki] : []), ...(r.raijin ? [r.raijin] : [])];
   }
 
   get adsAmount(): number {
@@ -234,7 +239,7 @@ export class WeaponSystem {
     this.visualTier = -1;
     this.visualWeapon = null;
     this.hidden = false;
-    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.rpg, this.rigs.grenade, this.rigs.plate]) r.reset();
+    for (const r of this.allRigs()) r.reset();
     this.hideAll();
     this.host.renderer.zoom = 1;
     this.host.renderer.viewFlash.intensity = 0;
@@ -242,7 +247,7 @@ export class WeaponSystem {
   }
 
   private hideAll(): void {
-    for (const r of [this.rigs.rifle, this.rigs.pistol, this.rigs.shotgun, this.rigs.rpg, this.rigs.grenade, this.rigs.plate]) r.root.visible = false;
+    for (const r of this.allRigs()) r.root.visible = false;
   }
 
   /** Cancel anything in progress (pause safety, death, cinematics). Never touches ammunition counts. */
@@ -480,6 +485,9 @@ export class WeaponSystem {
       host.fireRocket(this.tmp, this.dir, s.damage);
       host.recordShot(false);
     }
+    // ---- Raijin's Drum: a shockwave, and a bolt that leaps from one infected to the next ----
+    let thunder: { hit: boolean; kill: boolean } | null = null;
+    if (c.id === 'raijin') thunder = this.thunder(s, c.tier, host.zombieEnv());
 
     // ---- pellets ----
     const zenv = host.zombieEnv();
@@ -487,7 +495,11 @@ export class WeaponSystem {
     let anyKill = false;
     let anyHead = false;
     let impactSounds = 0;
-    for (let i = 0; c.id !== 'rpg' && i < s.pellets; i++) {
+    if (thunder) {
+      anyHit = thunder.hit;
+      anyKill = thunder.kill;
+    }
+    for (let i = 0; c.id !== 'rpg' && c.id !== 'raijin' && i < s.pellets; i++) {
       const r = Math.sqrt(Math.random()) * spreadDeg * DEG;
       const a = Math.random() * Math.PI * 2;
       this.dir.copy(this.fwd).addScaledVector(this.right, Math.tan(r) * Math.cos(a)).addScaledVector(this.up, Math.tan(r) * Math.sin(a)).normalize();
@@ -496,7 +508,7 @@ export class WeaponSystem {
       if (res.head) anyHead = true;
       if (res.kill) anyKill = true;
       // tracers: every shot for the pistol/shotgun (a few pellets), every second round for the rifle
-      const wantTracer = c.id === 'rifle' ? this.shotIndex % 2 === 0 : c.id === 'pistol' ? true : i < 3;
+      const wantTracer = c.id === 'rifle' || c.id === 'hanafubuki' ? this.shotIndex % 2 === 0 : c.id === 'pistol' ? true : i < 3;
       if (wantTracer) {
         this.tmp2.set(res.x, res.y, res.z);
         host.fx.tracer(this.muzzleW, this.tmp2, d.tracerColors[c.tier]!);
@@ -513,7 +525,7 @@ export class WeaponSystem {
     if (anyHit) host.audio.play(anyKill ? 'kill_confirm' : anyHead ? 'hit_head' : 'hit_body', { priority: 2, volume: anyKill ? 0.8 : 0.6 });
 
     // ---- feedback: sound, recoil, flash, viewmodel, particles ----
-    const soundId = `${c.id}_shot${c.tier > 0 ? '_up' : ''}` as SoundId;
+    const soundId = c.id === 'hanafubuki' ? 'petal_shot' : c.id === 'raijin' ? 'thunder_shot' : (`${c.id}_shot${c.tier > 0 ? '_up' : ''}` as SoundId);
     host.audio.play(soundId, { priority: 3, rate: 0.97 + Math.random() * 0.06 });
     const adsMul = 1 - 0.3 * this.adsAmount;
     const rm = host.reducedMotion() ? 0.6 : 1;
@@ -532,6 +544,8 @@ export class WeaponSystem {
     host.renderer.flashLight.position.copy(this.camPos).addScaledVector(this.fwd, 1.2);
     rig.onFire(c.tier, c.id === 'rpg' ? 1.5 : c.id === 'shotgun' ? 1.3 : c.id === 'pistol' ? 1.0 : 0.85);
     host.fx.muzzleSmoke(this.muzzleW, this.fwd, c.id === 'shotgun' || c.id === 'rpg');
+    // the petal stream sheds blossom at the muzzle
+    if (c.id === 'hanafubuki' && this.shotIndex % 3 === 0) host.fx.sparkle(this.muzzleW, d.tracerColors[c.tier]!, 3);
     if (c.id === 'rifle' || c.id === 'pistol') this.ejectCasing(rig, c.id);
     // noise wakes nearby infected (throttled)
     if (this.time - this.lastNoise > 0.2) {
@@ -558,6 +572,93 @@ export class WeaponSystem {
     // pull the point to ~0.9 m in front of the camera along that ray
     r.camera.getWorldPosition(this.tmp);
     out.sub(this.tmp).normalize().multiplyScalar(0.9).add(this.tmp);
+  }
+
+  /**
+   * Raijin's Drum: everything in a cone in front is thrown back by the shockwave, and the bolt strikes the first
+   * infected along the sight and leaps on to the nearest one not yet struck, again and again, keeping most of its force.
+   */
+  private thunder(s: WeaponStats, tier: number, zenv: ZombieEnv): { hit: boolean; kill: boolean } {
+    const host = this.host;
+    const zs = host.zombies;
+    const o = this.camPos;
+    const R = RAIJIN;
+    const color = WEAPONS.raijin.tracerColors[tier] ?? 0x9fd8ff;
+    let hit = false;
+    let kill = false;
+    const fl = Math.hypot(this.fwd.x, this.fwd.z) || 1;
+    // the shockwave
+    for (const z of zs.zombies) {
+      if (!z.alive || !z.active || Math.abs(z.y - host.player.y) > 3) continue;
+      const dx = z.x - o.x;
+      const dz = z.z - o.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > R.waveRange || dist < 0.01) continue;
+      if (Math.acos(Math.max(-1, Math.min(1, (dx * this.fwd.x + dz * this.fwd.z) / (dist * fl)))) > R.waveCone) continue;
+      const k = 1 - (dist / R.waveRange) * 0.5;
+      if (zs.damage(z, s.damage * R.waveShare * k, false, zenv, Math.atan2(-dx, -dz) + Math.PI, R.wavePush * k, R.waveLift * k)) kill = true;
+      hit = true;
+    }
+    // the bolt: the first infected along the sight (walls stop it), then leap after leap
+    const wall = host.world.raycast(o.x, o.y, o.z, this.fwd.x, this.fwd.y, this.fwd.z, WEAPONS.raijin.maxRange, 'shots', this.rayHit);
+    const first = zs.raycast(o.x, o.y, o.z, this.fwd.x, this.fwd.y, this.fwd.z, wall ? wall.t : WEAPONS.raijin.maxRange);
+    const from = { x: this.muzzleW.x, y: this.muzzleW.y, z: this.muzzleW.z };
+    if (!first) {
+      const end = wall ? { x: wall.x, y: wall.y, z: wall.z } : { x: o.x + this.fwd.x * 40, y: o.y + this.fwd.y * 40, z: o.z + this.fwd.z * 40 };
+      this.bolt(from, end, color);
+      return { hit, kill };
+    }
+    const struck = new Set<object>();
+    type Strike = { zombie: (typeof zs.zombies)[number]; x: number; y: number; z: number };
+    let target: Strike | null = { zombie: first.zombie, x: first.x, y: first.y, z: first.z };
+    let dmg = s.damage;
+    const jumps = R.jumps[tier] ?? R.jumps[0]!;
+    const reach = R.jumpRange[tier] ?? R.jumpRange[0]!;
+    for (let j = 0; target && j <= jumps; j++) {
+      const z = target.zombie;
+      struck.add(z);
+      this.bolt(from, target, color);
+      const yaw = Math.atan2(-(target.x - from.x), -(target.z - from.z));
+      if (zs.damage(z, dmg, false, zenv, yaw, 2.5, 1.5)) kill = true;
+      hit = true;
+      host.fx.sparkle({ x: target.x, y: target.y, z: target.z }, color, 8);
+      from.x = target.x;
+      from.y = target.y;
+      from.z = target.z;
+      dmg *= R.jumpKeep;
+      // the nearest infected not yet struck, within a leap
+      let best: Strike | null = null;
+      let bd = reach;
+      for (const q of zs.zombies) {
+        if (struck.has(q) || !q.alive || !q.active) continue;
+        const d = Math.hypot(q.x - from.x, q.z - from.z);
+        if (d < bd && Math.abs(q.y - z.y) < 3) {
+          bd = d;
+          best = { zombie: q, x: q.x, y: q.y + 1.1, z: q.z };
+        }
+      }
+      target = best;
+    }
+    return { hit, kill };
+  }
+
+  /** A jagged bolt between two points (a few kinked tracers). */
+  private bolt(a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }, color: number): void {
+    const n = 4;
+    let px = a.x;
+    let py = a.y;
+    let pz = a.z;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      const j = i === n ? 0 : 0.35;
+      const x = a.x + (b.x - a.x) * t + (Math.random() - 0.5) * j;
+      const y = a.y + (b.y - a.y) * t + (Math.random() - 0.5) * j;
+      const z = a.z + (b.z - a.z) * t + (Math.random() - 0.5) * j;
+      this.host.fx.tracer({ x: px, y: py, z: pz }, { x, y, z }, color);
+      px = x;
+      py = y;
+      pz = z;
+    }
   }
 
   private resolveRay(dir: THREE.Vector3, d: WeaponDef, s: WeaponStats, zenv: ZombieEnv): { x: number; y: number; z: number; hitZombie: boolean; head: boolean; kill: boolean; surface: keyof typeof SURFACE_OK | null } {

@@ -70,7 +70,6 @@ export function storeyBuilding(c: Ctx, s: StoreyBuildingSpec): StoreyBuilding {
   const H = s.storeyH ?? 4;
   const t = 0.35;
   const slabT = 0.3;
-  const levels = s.storeys + (s.roofAccess ? 1 : 0);
   const floorMat: MaterialName = s.floor ?? 'concreteSlab';
   const tag = s.tag ?? s.name;
   const steps = Math.round(H / 2 / STEP.rise);
@@ -105,7 +104,7 @@ export function storeyBuilding(c: Ctx, s: StoreyBuildingSpec): StoreyBuilding {
   const floorY = [0];
   const pad = 0.6;
   const topY = s.storeys * H;
-  for (let k = 1; k < levels; k++) {
+  for (let k = 1; k < s.storeys; k++) {
     const y = k * H;
     floorY.push(y);
     // the slab minus the stairwell: four pieces round the hole

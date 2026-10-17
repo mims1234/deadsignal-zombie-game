@@ -7,6 +7,7 @@ import type { Ctx } from '../util';
 import { buildCanal, CANAL_KIOSK, type CanalInfo } from './canal';
 import { CANAL, type Rect, SITES } from './consts';
 import { buildFreight, type FreightInfo } from './freight';
+import { buildKisaragi, type KisaragiInfo } from './kisaragi';
 import { buildSakuraGround } from './ground';
 import { buildSchool, type SchoolInfo } from './school';
 import { buildShotengai, SHOTENGAI_KIOSK, type ShotengaiInfo } from './shotengai';
@@ -26,6 +27,7 @@ export interface SakuraHandles {
   theatre: TheatreInfo;
   freight: FreightInfo;
   under: UnderInfo;
+  kisaragi: KisaragiInfo;
 }
 
 /** The inside of a stairwell kiosk (`stairwellDown`), where the ground is left open for the steps going down. */
@@ -53,6 +55,7 @@ export function buildSakura(c: Ctx): SakuraHandles {
   const theatre = buildTheatre(c, { area: areas.lab, ...UNDER_FEET.lab });
   const freight = buildFreight(c);
   const under = buildUnderground(c);
+  const kisaragi = buildKisaragi(c);
   void SITES;
-  return { transmitter: canal.transmitter, spire: theatre.spire, areas, school, shotengai, canal, theatre, freight, under };
+  return { transmitter: canal.transmitter, spire: theatre.spire, areas, school, shotengai, canal, theatre, freight, under, kisaragi };
 }

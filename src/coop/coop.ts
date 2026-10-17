@@ -28,7 +28,8 @@ import { RoomClient, type RoomRole, type RoomView } from '../net/room';
 import { EXTRACTION_PHASES, LIFE, type Life, SessionSim, type SessionKind, sessionDifficulty } from '../sim/serverHost';
 import type { ZombieType } from '../types';
 import type { HudState, MapDynamic, PauseSession } from '../ui/hudTypes';
-import { AVATAR_WEAPONS, Avatar } from './avatar';
+import { operatorModel } from '../anime/cast';
+import { AVATAR_WEAPONS, Avatar, avatarWeaponOf } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
@@ -369,7 +370,7 @@ export class CoopSession {
       this.sendT = 1 / COOP.reportHz;
       const p = g.player;
       const inv = g.session.inv;
-      const w = Math.max(0, AVATAR_WEAPONS.indexOf(inv.slots[inv.activeSlot]?.id ?? 'none'));
+      const w = Math.max(0, AVATAR_WEAPONS.indexOf(avatarWeaponOf(inv.slots[inv.activeSlot]?.id ?? 'none')));
       this.toHost({ k: 'p', x: r1(p.x), y: r1(p.y), z: r1(p.z), yaw: r2(p.yaw), up: this.life === LIFE.up, st: this.life, hp: Math.round(g.session.vitals.health), w, pi: r2(p.pitch), f: g.session.stats.shotsFired % 4096, ar: Math.round(g.session.vitals.armor), cs: Math.round(g.session.inv.cash), dv: g.touchMode ? 1 : 0 });
     }
   }
@@ -377,7 +378,8 @@ export class CoopSession {
   private showAvatar(p: Peer, fired = false): void {
     let a = this.avatars.get(p.id);
     if (!a) {
-      a = new Avatar(p.name, this.avatars.size);
+      // the Sakura District: everyone wears a VRoid model, teammates too
+      a = new Avatar(p.name, this.avatars.size, this.g.mapId === 'sakura' ? { anime: operatorModel(this.avatars.size) } : undefined);
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
     }

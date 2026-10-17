@@ -125,6 +125,14 @@ export const SOUND_IDS = [
   'powerup_double_points',
   'powerup_nuke',
   'powerup_carpenter',
+  // ---- the Sakura District (`synth/sakura.ts`) ----
+  'temple_bell', // the shrine's great bell: one deep strike and a long beating hum (spatial)
+  'lantern_light', // a great lantern takes the flame (spatial)
+  'omamori_chime', // an omamori found
+  'bloom_swell', // the Thousand Lanterns: the bloom
+  'ghost_train', // a far horn and humming rails (spatial)
+  'petal_shot', // Hanafubuki, one round of the petal stream
+  'thunder_shot', // Raijin's Drum
 ] as const;
 
 export type SoundId = (typeof SOUND_IDS)[number];

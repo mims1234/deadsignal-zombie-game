@@ -82,6 +82,9 @@ export interface ViewmodelSet {
   grenade: ViewmodelRig;
   /** Hand pulling an armour plate from the vest and slotting it in; `action` spans the apply time (arm reaches, plate slides, tap). */
   plate: ViewmodelRig;
+  /** The Sakura District's relics (built on that map only; elsewhere nobody can carry them). */
+  hanafubuki?: ViewmodelRig;
+  raijin?: ViewmodelRig;
   dispose(): void;
 }
 

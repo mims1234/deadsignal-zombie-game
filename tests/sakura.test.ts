@@ -28,7 +28,7 @@ describe('the Sakura District', () => {
     expect(names).toContain('Sakuragi metro');
     expect(names).toContain('Kurenai lab');
     expect(floors.areas.length).toBeGreaterThanOrEqual(14);
-    expect(floors.links.filter((l) => l.teleport).length).toBe(4);
+    expect(floors.links.filter((l) => l.teleport && !l.manual).length).toBe(4);
     expect(placement.dropped, placement.dropped.join('\n')).toEqual([]);
     expect(data.bounds.maxX - data.bounds.minX).toBe(256);
     expect(data.worldBounds.maxZ).toBeGreaterThan(data.bounds.maxZ);

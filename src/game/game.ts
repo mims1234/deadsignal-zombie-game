@@ -31,6 +31,7 @@ import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
 import { DetailCuller, halveTextures } from '../render/lite';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
+import { setSkyColors } from '../render/stage';
 import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings } from '../storage';
 import type { BestRun, GameMode, MissionStats, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
@@ -51,6 +52,7 @@ import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
+import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput } from './interaction';
 import { wireMatronFx } from './matronFx';
@@ -131,6 +133,8 @@ export class Game implements GameCtx {
   asylum: AsylumLoopRuntime | null = null;
   /** The Forge's story: the holdouts, the Hearth, the ledger, the Pit, the last carrier (null on other maps). */
   forge: ForgeRuntime | null = null;
+  /** The Sakura District's own runtime (petals, lore, the Easter egg), on that map only. */
+  sakura: SakuraRuntime | null = null;
   /** Which map was built this page load. */
   mapId: MapId = 'district';
   private coopUi!: CoopUi;
@@ -307,6 +311,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.25, 'BUILDING DISTRICT');
     await nextFrame();
     this.level = buildLevel(this.mats, this.mapId);
+    setSkyColors(this.renderer.sky);
     if (this.mapId === 'forge') {
       // ember night: warm haze, firelit ground bounce and an orange horizon fill
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -316,8 +321,9 @@ export class Game implements GameCtx {
       this.renderer.light.fill.color.set(0xff7a2a);
     } else if (this.mapId === 'sakura') {
       // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill
+      setSkyColors(this.renderer.sky, { zenith: 0x1e1434, mid: 0x5a3466, horizon: 0xd8869e, glow: 0xff9670, haze: 0x6a4058, stars: 0.35 });
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
-      fog?.color.set(0x3a2638);
+      fog?.color.set(0x4a2c44);
       this.renderer.light.hemi.color.set(0xe6b4d2);
       this.renderer.light.hemi.groundColor.set(0x2a1a2a);
       this.renderer.light.fill.color.set(0xffb4d4);
@@ -354,7 +360,7 @@ export class Game implements GameCtx {
     await nextFrame();
     this.zombieFactory = createZombieFactory();
     this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
-    this.viewmodels = createViewmodels();
+    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
     await nextFrame();
@@ -473,6 +479,7 @@ export class Game implements GameCtx {
       this.mission.holdExtraction = () => this.forge?.holdExtraction ?? false;
       this.mission.calm = () => this.forge?.burnedOut ?? false;
     }
+    if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
       mapId: () => this.mapId,
@@ -962,6 +969,8 @@ export class Game implements GameCtx {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, bring the clan home. Rise.', 'info', 5);
+      } else if (this.mapId === 'sakura' && !roam) {
+        this.banner('SAKURAGI', 'Seventh spring. Restore the shrine relay, put down the Empress, extract. Nobody is left to save.', 'info', 5);
       } else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
       // the first deploy on a browser that never opened Settings: where to raise the graphics
       if (this.qualityHint && !spectating) {
@@ -1056,13 +1065,14 @@ export class Game implements GameCtx {
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
+    this.sakura?.reset();
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
     // the squad: solo runs it here; a co-op story run shows the simulation's
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
-    this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team);
+    this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team, coopStory ? Math.max(1, this.coop.room.room?.players.length ?? 1) : 1);
     if (forgeSquad && solo) this.squad.deployForge(forgeSquad);
     // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
     this.asylum?.reset(this.mode === 'coop');
@@ -1154,6 +1164,7 @@ export class Game implements GameCtx {
     const shadows = QUALITY[this.settings.quality].shadows && (this.state === 'playing' || this.state === 'ending');
     this.renderer.setShadowPass(shadows);
     this.renderer.showView = this.state !== 'title';
+    this.sakura?.frame(dt);
     this.renderer.render(dt, this.time);
     const t2 = performance.now();
     this.perf.sim += (t1 - t0 - this.perf.sim) * 0.05;
@@ -1297,6 +1308,7 @@ export class Game implements GameCtx {
     this.cards.update(dt);
     this.squad.update(dt);
     this.forge?.update(dt);
+    this.sakura?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----

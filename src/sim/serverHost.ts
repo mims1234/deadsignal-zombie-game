@@ -53,6 +53,8 @@ import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { encodeRoster, encodeState } from '../forge/net';
 import { ForgeStory, type StoryTick } from '../forge/story';
+import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
+import { questSpots } from '../sakura/spots';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
@@ -205,6 +207,8 @@ export class SessionSim {
   private forgeTick: StoryTick | null = null;
   /** When the Forge's roster last went out (it goes every couple of seconds, for anyone who joins late). */
   private rosterSentAt = -99;
+  /** The Sakura District's Easter egg, the Thousand Lanterns (`sakura/quest.ts`): shared by everyone in the run. */
+  readonly sakura: SakuraQuest | null = null;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -256,6 +260,16 @@ export class SessionSim {
         envNear: (x, z) => this.nearestUpEnv(x, z),
         seen: (x, z) => this.upPeers().some((p) => Math.hypot(p.ref.x - x, p.ref.z - z) < 70 && !this.level.world.segmentBlocked(p.ref.x, p.ref.eyeY, p.ref.z, x, 1.5, z, 'shots')),
       };
+    }
+    if (this.map === 'sakura' && this.level.sakura) this.sakura = new SakuraQuest(questSpots(this.level.sakura));
+  }
+
+  /** The Thousand Lanterns' consequences: the dead at the shrine for a wrong lantern; the ghost train at the bloom. */
+  private sakuraEvents(): void {
+    if (!this.sakura) return;
+    for (const e of this.sakura.drain()) {
+      if (e.kind === 'wrong') lanternWrath((type, x, z) => void this.zombies.spawn(type, x, z, this.rng, { state: 'chase' }));
+      else if (e.kind === 'bloom' && this.level.sakura) this.level.sakura.kisaragi.link.closed = false;
     }
   }
 
@@ -354,6 +368,9 @@ export class SessionSim {
     // the Forge: who is holed up where this run (and the first infected at their doors), before the residents, so none
     // of them carries a living person's name; the co-leaders who deploy come from the same roster
     const roster = this.forge?.reset(rng) ?? null;
+    // the Thousand Lanterns: a new poem, and the ghost train gone until the next bloom
+    this.sakura?.reset(() => rng.f());
+    if (this.level.sakura) this.level.sakura.kisaragi.link.closed = true;
     this.rosterSentAt = -99;
     if (this.map === 'forge') {
       let bag: string[] = [];
@@ -368,7 +385,7 @@ export class SessionSim {
     }
     this.zombies.populate(rng);
     const st = level.data.playerStart;
-    const squad = roster ? roster.squad : squadRoster(this.map);
+    const squad = roster ? roster.squad : squadRoster(this.map, Math.max(1, this.seated.size));
     const at = soldierSpots(level, rng, squad.length);
     squad.forEach((name, i) => this.allies.push({ ...makeAllyBody(level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, this.difficulty.team), leader: null }));
     // cages everywhere but the Forge (its people are holed up in rooms)
@@ -520,6 +537,18 @@ export class SessionSim {
         // the Forge: talk holdout i out of their room (at their door, with nothing on its feet at it)
         if (!this.forge || !this.story || !up) return;
         this.forge.rescue(Number(d.i), p.ref.x, p.ref.z);
+        return;
+      }
+      case 'sq': {
+        // the Thousand Lanterns: a charm, the tree, a lantern or the bell (the quest checks they are within reach)
+        if (!this.sakura || !this.story || !up) return;
+        const q = this.sakura;
+        const i = Math.floor(Number(d.i));
+        if (d.a === 'charm') q.takeCharm(i, p.ref.x, p.ref.y, p.ref.z);
+        else if (d.a === 'tie') q.tie(p.ref.x, p.ref.z);
+        else if (d.a === 'light') q.light(i, p.ref.x, p.ref.z);
+        else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z, this.defense.status === 'active');
+        this.sakuraEvents();
         return;
       }
       case 'ledger': {
@@ -755,6 +784,10 @@ export class SessionSim {
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
     if (this.forge) this.forge.tick(dt, this.fillForgeTick(), this.rng);
+    if (this.sakura) {
+      this.sakura.tick(dt);
+      this.sakuraEvents();
+    }
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
     if (this.asylum) {
@@ -1002,6 +1035,7 @@ export class SessionSim {
         out.rc = bits(this.records.found); // the patient files taken
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
       }
+      if (this.sakura) out.sq = encodeQuest(this.sakura.view); // the Thousand Lanterns
       if (this.forge) {
         // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
         out.fg = encodeState(this.forge.view);

@@ -74,6 +74,15 @@ function getShared(): NonNullable<typeof shared> {
       [box(0.04, 0.1, 0.035), 'dark', 0.22, -0.09, 0],
       [box(0.03, 0.06, 0.02), 'steel', 0.12, 0.07, -0.03],
     ],
+    // never in a box (the Sakura District's relics), but drawn the same way if ever asked
+    hanafubuki: [
+      [box(0.3, 0.14, 0.12), 'dark', -0.1, 0, 0],
+      [tube(0.06, 0.5), 'steel', 0.3, 0, 0],
+    ],
+    raijin: [
+      [tube(0.16, 0.22), 'olive', -0.1, 0, 0],
+      [tube(0.04, 0.6), 'dark', 0.3, 0, 0],
+    ],
   };
   shared = { mats, guns, mark: questionMark() };
   return shared;

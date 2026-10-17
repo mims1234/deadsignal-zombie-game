@@ -62,4 +62,7 @@ export const WALL_PRICES: Record<WeaponId, number> = {
   shotgun: 1200,
   rifle: 1500,
   rpg: 4500,
+  // never on the Asylum's walls (the Sakura District's relics)
+  hanafubuki: 0,
+  raijin: 0,
 };

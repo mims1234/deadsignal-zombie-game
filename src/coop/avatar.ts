@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
 import { AnimeBody, type AnimeTemplate, type PoseSource } from '../anime/vrm';
 import type { AvatarLook } from '../config';
+import type { WeaponId } from '../types';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
 import { addHeroFace, addHeroHair, addHeroOutfit, addHeroTorso, heroBuild, heroMat, heroParts, isHeroPart, mergeStatic } from './heroLook';
 
@@ -17,6 +18,11 @@ const UNIFORM = [0x4f6b8a, 0x8a6b4f, 0x5f8a5a];
 export type AvatarWeapon = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'none' | 'bass';
 /** What a co-op player can hold, by wire index (a bass is never sent: it is someone's own instrument). */
 export const AVATAR_WEAPONS: readonly AvatarWeapon[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'none'];
+
+/** What a teammate is seen carrying: the Sakura District's relics look like the rifle and the launcher they are built on. */
+export function avatarWeaponOf(id: WeaponId | 'none'): AvatarWeapon {
+  return id === 'hanafubuki' ? 'rifle' : id === 'raijin' ? 'rpg' : id;
+}
 
 export interface AvatarStyle {
   /** Clothing colour (defaults to a squad uniform by index). */

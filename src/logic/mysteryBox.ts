@@ -36,7 +36,7 @@ export function prizeLabel(p: BoxPrize): string {
 /** Roll a box in `region` for this inventory. Never offers a gun you already carry. */
 export function rollBox(region: Region, inv: Inventory, rng: Rng): BoxPrize {
   const odds = MYSTERY_BOX.odds[region];
-  const pool = (Object.keys(MYSTERY_BOX.guns) as WeaponId[]).filter((id) => !carries(inv, id));
+  const pool = (Object.keys(MYSTERY_BOX.guns) as WeaponId[]).filter((id) => MYSTERY_BOX.guns[id] > 0 && !carries(inv, id));
   const roll = rng.f();
   if (pool.length > 0 && roll < odds.weapon) {
     const weights = pool.map((id) => MYSTERY_BOX.guns[id] * (id === 'rpg' ? odds.rpgMul : 1));

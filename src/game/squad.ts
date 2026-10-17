@@ -139,10 +139,12 @@ export class SquadRuntime {
   /**
    * Start of a run. `squad`: the map's helpers. `survivors`: cages around the map.
    * `follow` (co-op): the squad is listed in the simulation's order and placed by its reports; nothing here decides.
+   * `humans`: players in the run (where they take the squad's places, `squadRoster`).
    */
-  reset(squad: boolean, survivors: boolean, follow = false, skill: TeamSkill = 'regular'): void {
+  reset(squad: boolean, survivors: boolean, follow = false, skill: TeamSkill = 'regular', humans = 1): void {
     const forgeMap = this.g.mapId === 'forge';
-    this.soldiers = squad && squadRoster(this.g.mapId).length > 0;
+    this.humans = humans;
+    this.soldiers = squad && squadRoster(this.g.mapId, humans).length > 0;
     this.skill = skill;
     // the Forge's people are holed up in rooms, not cages (`forge/runtime.ts`)
     this.survivors = survivors && !forgeMap;
@@ -159,7 +161,7 @@ export class SquadRuntime {
     // the Forge's co-leaders come from the run's roster (`deployForge`)
     if (this.soldiers && !forgeMap) {
       const def = SQUADS[g.mapId];
-      const names = squadRoster(g.mapId);
+      const names = squadRoster(g.mapId, this.humans);
       const at = soldierSpots(g.level, g.rng, names.length);
       names.forEach((name, i) =>
         this.addAlly(
@@ -186,6 +188,7 @@ export class SquadRuntime {
   }
 
   private skill: TeamSkill = 'regular';
+  private humans = 1;
 
   /**
    * The Forge: the two co-leaders this run (solo: the roster just drawn; co-op: the simulation's, placed by its

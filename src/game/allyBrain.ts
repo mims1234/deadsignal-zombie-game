@@ -5,7 +5,7 @@
  * each shot and decides what to show.
  */
 import * as THREE from 'three';
-import { type AvatarLook, FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
+import { type AvatarLook, COOP, FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
@@ -252,9 +252,14 @@ export function survivorRoster(map: MapId): readonly { name: string; tag: string
   return SURVIVORS[map];
 }
 
-/** The helpers who deploy with you on a map (none on the District). */
-export function squadRoster(map: MapId): readonly string[] {
-  return SQUADS[map]?.names ?? [];
+/**
+ * The helpers who deploy with you on a map (none on the District). Where co-op players take their places (`fillsSeats`,
+ * the Sakura District), only as many as leave the team at `COOP.maxPlayers` with `humans` players.
+ */
+export function squadRoster(map: MapId, humans = 1): readonly string[] {
+  const def = SQUADS[map];
+  if (!def) return [];
+  return def.fillsSeats ? def.names.slice(0, Math.max(0, COOP.maxPlayers - humans)) : def.names;
 }
 
 /** Where the squad starts: either side of and behind the insertion point. */

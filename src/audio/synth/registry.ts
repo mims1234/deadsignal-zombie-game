@@ -41,6 +41,7 @@ import {
 } from './creatures';
 import { fzombieAttack, fzombieGasp, fzombieGiggle, fzombieGrowl, fzombieHiss, fzombieMoan, fzombieScream, fzombieWhimper } from './creaturesFemale';
 import { keysJingle, matronShriek } from './matron';
+import { bloomSwell, ghostTrain, lanternLight, omamoriChime, petalShot, templeBell, thunderShot } from './sakura';
 import {
   boarding,
   contractComplete,
@@ -250,6 +251,13 @@ export const SOUND_SPECS: Record<SoundId, SoundSpec> = {
   contract_complete: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, contractComplete),
   objective_ping: S(1, 'mid', 2, 'ui', 0, 0.02, 0, false, objectivePing),
   defense_start: S(1, 'mid', 3, 'ui', 0, 0.02, 0, false, defenseStart),
+  temple_bell: S(1, 'mid', 3, 'sfx', 0.01, 0.03, 0.5, false, templeBell),
+  lantern_light: S(1, 'mid', 2, 'sfx', 0.03, 0.05, 0.3, false, lanternLight),
+  omamori_chime: S(1, 'mid', 2, 'ui', 0.02, 0.03, 0.2, false, omamoriChime),
+  bloom_swell: S(1, 'mid', 3, 'ui', 0, 0, 0.3, false, bloomSwell),
+  ghost_train: S(1, 'mid', 2, 'sfx', 0, 0.03, 0.45, false, ghostTrain),
+  petal_shot: S(3, 'hi', 3, 'sfx', 0.04, 0.06, 0.2, false, petalShot),
+  thunder_shot: S(2, 'mid', 3, 'sfx', 0.03, 0.04, 0.45, false, thunderShot),
   radio_chirp: S(2, 'lo', 2, 'ui', 0.02, 0.03, 0, false, radioChirp),
   flare_ignite: S(1, 'mid', 3, 'sfx', 0.02, 0.03, 0.2, false, flareIgnite),
   countdown_tick: S(1, 'lo', 2, 'ui', 0, 0.02, 0, false, countdownTick),

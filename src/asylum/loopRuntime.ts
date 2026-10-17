@@ -778,6 +778,9 @@ function chalkTexture(weapon: WeaponId): THREE.CanvasTexture {
     pistol: [[170, 86, 190, 36], [180, 122, 130, 18], [190, 140, 44, 74]],
     shotgun: [[60, 100, 140, 34], [200, 92, 110, 36], [310, 94, 160, 16], [300, 112, 120, 18], [215, 128, 24, 34]],
     rpg: [[60, 92, 70, 46], [130, 100, 280, 30], [410, 92, 30, 46], [440, 98, 40, 34], [220, 130, 22, 46], [300, 130, 22, 36], [250, 76, 40, 24]],
+    // never chalked (the Sakura District's relics)
+    hanafubuki: [],
+    raijin: [],
   };
   for (const [sx, sy, sw, sh] of shapes[weapon]) rough(sx, sy, sw, sh, 1);
   x.font = `bold 34px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;

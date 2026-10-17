@@ -125,6 +125,24 @@ const WEAPON_PATHS: Record<WeaponId, string[]> = {
     // sight
     'M56 10h4v8h-4zM96 12h3v6h-3z',
   ],
+  hanafubuki: [
+    // the drum (the belt's box) and the stock
+    'M4 20 26 18 28 34 8 36z',
+    'M26 14h40v24H26z',
+    // the rotor housing and six barrels
+    'M66 17h26v18H66z',
+    'M92 18h56v4H92zM92 24h60v4H92zM92 30h56v4H92z',
+    // the carry handle and the grips
+    'M40 8h30v4H40zM44 38h10l-3 10h-10zM74 35h9l-2 9h-9z',
+  ],
+  raijin: [
+    // the drum itself, with its rings of tomoe
+    'M40 6a20 20 0 1 1 0 40a20 20 0 1 1 0-40z',
+    // the barrel the bolt leaves through
+    'M60 20h70v12H60zM130 16h14v20h-14z',
+    // the grips and the stock
+    'M4 20h22v12H4zM62 32h10l-3 14h-10z',
+  ],
 };
 
 export function weaponSilhouette(id: WeaponId, cls = ''): SVGSVGElement {

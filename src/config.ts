@@ -399,9 +399,175 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       },
     ],
   },
+  // ---- the Sakura District's relics (Kisaragi Station, after the Thousand Lanterns): never sold, never in a box ----
+  hanafubuki: {
+    id: 'hanafubuki',
+    name: 'Hanafubuki Petal Cannon',
+    short: 'HANAFUBUKI',
+    auto: true,
+    damage: 24,
+    pellets: 1,
+    headshotMul: 2,
+    fireInterval: 60 / 1500,
+    magSize: 300,
+    reserveStart: 600,
+    reserveMax: 900,
+    reloadStyle: 'magazine',
+    reloadTactical: 6,
+    reloadEmpty: 6.2,
+    reloadTransferAt: 0.8,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 3.2,
+    spreadAds: 1.4,
+    spreadMove: 1.2,
+    spreadAir: 3,
+    spreadPerShot: 0.05,
+    spreadMax: 1.6,
+    spreadRecover: 6,
+    recoilPitch: 0.22,
+    recoilYaw: 0.18,
+    recoilRecover: 9,
+    falloffStart: 26,
+    falloffEnd: 70,
+    minMul: 0.6,
+    maxRange: 120,
+    adsFovMul: 0.82,
+    adsTime: 0.3,
+    moveMul: 0.86,
+    noise: 50,
+    drawTime: 0.9,
+    tracerColors: [0xffa8cc, 0xff6aa8, 0xff2a6a],
+    price: 0,
+    ammoPrice: 900,
+    tiers: [
+      {
+        label: 'SHIDARE',
+        description: 'Weeping-cherry belt: +25% damage, 360-round belt, quicker reload.',
+        cost: 2600,
+        damageMul: 1.25,
+        magSizeAdd: 60,
+        reserveMaxAdd: 180,
+        fireRateMul: 1.0,
+        recoilMul: 0.85,
+        spreadMul: 0.9,
+        reloadMul: 0.85,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0.3,
+      },
+      {
+        label: 'YOZAKURA',
+        description: 'Night-blossom rounds: +55% damage, 400-round belt, faster spin, ignores 30% of armour.',
+        cost: 4800,
+        damageMul: 1.55,
+        magSizeAdd: 100,
+        reserveMaxAdd: 300,
+        fireRateMul: 1.12,
+        recoilMul: 0.85,
+        spreadMul: 0.9,
+        reloadMul: 0.75,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0.3,
+      },
+    ],
+  },
+  raijin: {
+    id: 'raijin',
+    name: "Raijin's Drum",
+    short: 'RAIJIN',
+    auto: false,
+    /** The bolt's damage at its first target; the shockwave and each jump of the chain take a share (`RAIJIN`). */
+    damage: 900,
+    pellets: 1,
+    headshotMul: 1,
+    fireInterval: 1.1,
+    magSize: 2,
+    reserveStart: 8,
+    reserveMax: 12,
+    reloadStyle: 'magazine',
+    reloadTactical: 3.2,
+    reloadEmpty: 3.4,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0.6,
+    spreadAds: 0.1,
+    spreadMove: 0.6,
+    spreadAir: 1.2,
+    spreadPerShot: 0,
+    spreadMax: 0.6,
+    spreadRecover: 4,
+    recoilPitch: 6,
+    recoilYaw: 1.4,
+    recoilRecover: 4,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 70,
+    adsFovMul: 0.85,
+    adsTime: 0.28,
+    moveMul: 0.9,
+    noise: 70,
+    drawTime: 0.8,
+    tracerColors: [0x9fd8ff, 0xc8b0ff, 0xfff0a0],
+    price: 0,
+    ammoPrice: 1200,
+    tiers: [
+      {
+        label: 'FUJIN',
+        description: 'The wind god joins in: +30% damage, a third strike in the drum, longer chains.',
+        cost: 3000,
+        damageMul: 1.3,
+        magSizeAdd: 1,
+        reserveMaxAdd: 3,
+        fireRateMul: 1.0,
+        recoilMul: 0.85,
+        spreadMul: 0.9,
+        reloadMul: 0.85,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0.3,
+      },
+      {
+        label: 'KAMINARI',
+        description: 'The full storm: +60% damage, four strikes, the chain leaps further and faster.',
+        cost: 5200,
+        damageMul: 1.6,
+        magSizeAdd: 2,
+        reserveMaxAdd: 6,
+        fireRateMul: 1.15,
+        recoilMul: 0.85,
+        spreadMul: 0.9,
+        reloadMul: 0.7,
+        pelletsAdd: 0,
+        headshotMulAdd: 0,
+        armorPierce: 0.3,
+      },
+    ],
+  },
 };
 
-export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg'];
+export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin'];
+
+/** Raijin's Drum: a shockwave in front of you, and a bolt that leaps from infected to infected. */
+export const RAIJIN = {
+  /** The shockwave: reach (m), cone half-angle (rad), share of the weapon's damage, fling. */
+  waveRange: 9,
+  waveCone: 0.7,
+  waveShare: 0.35,
+  wavePush: 9,
+  waveLift: 3.5,
+  /** The chain: jumps (more with each tier), reach of a jump (m), share of the damage each jump keeps. */
+  jumps: [6, 8, 10],
+  jumpRange: [8, 9, 11],
+  jumpKeep: 0.8,
+};
 
 /** The HX-7's rocket: flies straight and fast, bursts on whatever it touches. Damage comes from the weapon. */
 export const ROCKET = {
@@ -424,8 +590,8 @@ export const ROCKET = {
  * How hard a killing blow throws the body (m/s along the shot, and up). Explosions scale with distance from the blast.
  */
 export const RAGDOLL = {
-  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
-  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
+  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
+  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
   /** Explosions: speed at the centre, falling off to `blastEdge` at the edge; lift is `blastLift` times that. */
   blastCenter: 15,
   blastEdge: 5,
@@ -828,7 +994,8 @@ export const MYSTERY_BOX = {
     high: { weapon: 0.52, grenades: 0.2, rpgMul: 1.6 },
   } as Record<Region, { weapon: number; grenades: number; rpgMul: number }>,
   /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
-  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2 } as Record<WeaponId, number>,
+  /** The Sakura District's relics are never in a box (weight 0). */
+  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0 } as Record<WeaponId, number>,
   grenades: 2,
   /** Magazines of reserve for each carried weapon. */
   ammoMags: 3,
@@ -1069,6 +1236,8 @@ export interface SquadDef {
   looks?: readonly AvatarLook[];
   /** VRoid models they wear (the Sakura District, `ANIME_CAST`). */
   models?: readonly string[];
+  /** Co-op players take their places: the squad and the players together are at most `COOP.maxPlayers`. */
+  fillsSeats?: boolean;
 }
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
@@ -1098,6 +1267,7 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
       { female: true, outfit: 'tactical', hair: 'ponytail', hairColor: 0x2a2236, skin: 0xf3d6c2, eyes: 0x3a4a8a, accent: 0x2a2e3a },
     ],
     models: ['squad-1.vrm', 'squad-2.vrm'],
+    fillsSeats: true,
   },
 };
 
@@ -1108,7 +1278,9 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
 export const ANIME_CAST = {
   /** Worn by `SQUADS.sakura`, in order. */
   squad: ['squad-1.vrm', 'squad-2.vrm'],
-  /** Worn by `SURVIVORS.sakura`, in order. */
+  /** Worn by co-op players (a teammate's figure, by seat), in order. */
+  operators: ['operator-1.vrm', 'operator-2.vrm', 'operator-3.vrm'],
+  /** Worn by the Kurenai Court, the district's armed humans, in order. */
   survivors: ['survivor-1.vrm', 'survivor-2.vrm', 'survivor-3.vrm'],
   /** The horde: every shambler, runner and armored infected wears one of these (tinted by kind). */
   horde: ['infected-1.vrm', 'infected-2.vrm', 'infected-3.vrm'],
@@ -1131,12 +1303,8 @@ export const SURVIVORS = {
     { name: 'Kowalski', tag: 'MECHANIC', color: 0x6b6f4a },
     { name: 'Mika Reyes', tag: 'COURIER', color: 0x7a4a6a },
   ],
-  // the Sakura District: three girls holed up in the blossom quarter, each wearing her own VRoid model (`ANIME_CAST`)
-  sakura: [
-    { name: 'Aoi Kisaragi', tag: 'SHRINE KEEPER', color: 0xe8e4f0, model: 'survivor-1.vrm', look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0x1a1a2a, skin: 0xf6e0d2, eyes: 0x6a2a3a, accent: 0xc83a4a } },
-    { name: 'Mei Hoshino', tag: 'IDOL', color: 0xffc4dc, model: 'survivor-2.vrm', look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0x9ad8f0, skin: 0xf7dfcc, eyes: 0x2a6a9a, accent: 0xff7ab0 } },
-    { name: 'Koharu Tachibana', tag: 'CAFE OWNER', color: 0xf0d8b0, model: 'survivor-3.vrm', look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0xc88a4a, skin: 0xf2d8c0, eyes: 0x5a3a1a, accent: 0xd8a070 } },
-  ],
+  // the Sakura District: nobody is left to save (seven years on, everyone left has turned, or turned on you)
+  sakura: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`)
   asylum: [
     { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },

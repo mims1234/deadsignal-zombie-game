@@ -17,6 +17,12 @@ import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './se
 
 type ScreenKind = 'title' | 'pause' | 'resume' | 'results' | 'error';
 
+/** An extra page in the pause menu's tabs. */
+export interface PauseTab {
+  label: string;
+  build(): HTMLElement;
+}
+
 
 const CARD_BRIEF = {
   tag: 'SIDE CONTRACT',
@@ -297,31 +303,34 @@ class Menus implements MenusApi {
     return b;
   }
 
-  private tabs(parent: HTMLElement, controls: HTMLElement, settings: HTMLElement, initial: 'controls' | 'settings'): (which: 'controls' | 'settings') => void {
+  private tabs(parent: HTMLElement, controls: HTMLElement, settings: HTMLElement, initial: 'controls' | 'settings', extra: PauseTab | null = null): (which: 'controls' | 'settings') => void {
     const bar = el('div', 'ds-tabs', parent);
     bar.setAttribute('role', 'tablist');
     const body = el('div', 'ds-tabbody', parent);
-    body.append(controls, settings);
-    const bC = el('button', 'tab', bar, 'CONTROLS');
-    const bS = el('button', 'tab', bar, 'SETTINGS');
-    for (const b of [bC, bS]) {
+    // a map's own page first (the Sakura District's journal), when it has one
+    const pages: [HTMLElement, HTMLButtonElement][] = [];
+    if (extra) pages.push([extra.build(), el('button', 'tab', bar, extra.label) as HTMLButtonElement]);
+    pages.push([controls, el('button', 'tab', bar, 'CONTROLS') as HTMLButtonElement], [settings, el('button', 'tab', bar, 'SETTINGS') as HTMLButtonElement]);
+    for (const [page, b] of pages) {
+      body.append(page);
       b.type = 'button';
       b.setAttribute('role', 'tab');
     }
-    const show = (which: 'controls' | 'settings'): void => {
-      const c = which === 'controls';
-      controls.hidden = !c;
-      settings.hidden = c;
-      bC.classList.toggle('on', c);
-      bS.classList.toggle('on', !c);
-      bC.setAttribute('aria-selected', c ? 'true' : 'false');
-      bS.setAttribute('aria-selected', c ? 'false' : 'true');
-    };
-    bC.addEventListener('click', () => show('controls'));
-    bS.addEventListener('click', () => show('settings'));
+    const pick = (i: number): void =>
+      pages.forEach(([page, b], k) => {
+        page.hidden = k !== i;
+        b.classList.toggle('on', k === i);
+        b.setAttribute('aria-selected', k === i ? 'true' : 'false');
+      });
+    const off = extra ? 1 : 0;
+    const show = (which: 'controls' | 'settings'): void => pick(off + (which === 'controls' ? 0 : 1));
+    pages.forEach(([, b], k) => b.addEventListener('click', () => pick(k)));
     show(initial);
     return show;
   }
+
+  /** A map's own page in the pause menu (the Sakura District's journal), asked for each time the menu opens. */
+  pauseTab: (() => PauseTab | null) | null = null;
 
   // -------------------------------------------------------------------------------------------
   // title
@@ -723,7 +732,7 @@ class Menus implements MenusApi {
         el('div', 'note', co, `${LATE_NOTE[session.late]} Anyone invited always can.`);
       } else el('div', 'note', co, "Self-hosted: nobody new can come in until the run is over and you are back in the lobby.");
     }
-    this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
+    this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls', this.pauseTab?.() ?? null);
     const actions = el('div', 'actions', panel);
     const resume = this.button(actions, 'RESUME', 'primary', () => this.cb.onResume());
     this.confirmButton(actions, 'RESTART MISSION', '', () => this.cb.onRestart());

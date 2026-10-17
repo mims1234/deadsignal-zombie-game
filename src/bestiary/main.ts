@@ -402,24 +402,6 @@ const entries: Entry[] = [
       return a.root;
     },
   },
-  {
-    id: 'sakura-survivors', group: 'SAKURA DISTRICT', name: 'Blossom quarter survivors', height: 1.85,
-    tagline: 'Aoi, Mei and Koharu, holed up and waiting.',
-    lore: `Three girls trapped in cages around the Sakura District: ${SURVIVORS.sakura.map((s) => `${s.name} (${s.tag.toLowerCase()})`).join(', ')}. Break the lock and they pick up a pistol and fight beside you.`,
-    where: 'Sakura District', stats: [], modes: 'avatar',
-    cast: SURVIVORS.sakura.map((s) => s.name.split(' ')[0]!.toUpperCase()),
-    avatarModes: [...SURVIVORS.sakura.map((s) => s.name.split(' ')[0]!.toUpperCase()), 'TRAPPED', 'WALK', 'FIRE'],
-    build: () => {
-      const i = Math.max(0, castIndex);
-      const who = SURVIVORS.sakura[i]!;
-      const t = personModel(who.model);
-      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#ff9ec8', anime: t });
-      a.arm();
-      current!.stats = [['Health', `${SURVIVORS.hp}`], ['Freed', `+$${SURVIVORS.rescueCash}`], slotNote(who.model), ...(t ? modelStats(t) : [])];
-      current!.avatar = a;
-      return a.root;
-    },
-  },
   // a guy in the same style, for later: bestiary only
   {
     id: 'sakura-guy', group: 'SAKURA DISTRICT', name: 'Ren (bestiary only)', height: 1.85,

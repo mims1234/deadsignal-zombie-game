@@ -8,7 +8,7 @@
  *  - Ground is flat at y = 0.
  */
 
-export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg';
+export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin';
 
 export type ZombieType = 'shambler' | 'runner' | 'armored' | 'warden';
 

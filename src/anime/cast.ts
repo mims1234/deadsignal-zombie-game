@@ -10,7 +10,7 @@ import type { ZombieType } from '../types';
 import { type Dims, type Style, StyleFigure } from './figure';
 import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource, animeModel, animeSlotState, loadAnimeFiles } from './vrm';
 
-const PEOPLE = [...ANIME_CAST.squad, ...ANIME_CAST.survivors];
+const PEOPLE = [...ANIME_CAST.squad, ...ANIME_CAST.operators, ...ANIME_CAST.survivors];
 
 /** Load every model the cast names (in parallel; missing files are skipped). */
 export function loadAnimeCast(): Promise<void> {
@@ -20,6 +20,11 @@ export function loadAnimeCast(): Promise<void> {
 /** The model a squad member or survivor wears: their own file, else any other person's, else none. */
 export function personModel(file: string | undefined): AnimeTemplate | null {
   return animeModel(file, PEOPLE);
+}
+
+/** The model a co-op teammate wears on the Sakura District (by seat): their own file, else any other person's. */
+export function operatorModel(seat: number): AnimeTemplate | null {
+  return animeModel(ANIME_CAST.operators[seat % ANIME_CAST.operators.length], PEOPLE);
 }
 
 /** The model an infected wears: the boss file for the Warden, one of the horde files (by seed) for the rest. */

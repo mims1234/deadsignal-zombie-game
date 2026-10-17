@@ -141,6 +141,17 @@ export interface SkyDome extends THREE.Mesh {
   userData: { uniforms: Record<string, THREE.IUniform> };
 }
 
+/** A map's own sky (the blue hour's when nothing is given): the dome's gradient, afterglow, haze and stars. */
+export function setSkyColors(sky: SkyDome, c: { zenith?: number; mid?: number; horizon?: number; glow?: number; haze?: number; stars?: number } = {}): void {
+  const u = sky.userData.uniforms;
+  (u.uZenith!.value as THREE.Color).set(c.zenith ?? BLUE_HOUR.zenith);
+  (u.uMid!.value as THREE.Color).set(c.mid ?? BLUE_HOUR.midSky);
+  (u.uHorizon!.value as THREE.Color).set(c.horizon ?? BLUE_HOUR.horizon);
+  (u.uGlow!.value as THREE.Color).set(c.glow ?? BLUE_HOUR.glow);
+  (u.uHazeColor!.value as THREE.Color).set(c.haze ?? BLUE_HOUR.fog);
+  u.uStars!.value = c.stars ?? 1;
+}
+
 /** Large inside-out dome. Position it on the camera every frame. */
 export function createSkyDome(): SkyDome {
   const geo = new THREE.SphereGeometry(300, 40, 20);

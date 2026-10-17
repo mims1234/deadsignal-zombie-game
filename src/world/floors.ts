@@ -46,6 +46,10 @@ export interface FloorLink {
   teleport: boolean;
   /** Cumulative path length at each point. */
   lengths: number[];
+  /** Shut for now: nobody routes through it (the ghost train, until the bloom). */
+  closed: boolean;
+  /** Taken on purpose (an interaction), never by walking into its end. */
+  manual: boolean;
 }
 
 /** The minimal infected the traversal moves (`Zombie` implements it). */
@@ -85,14 +89,14 @@ export class Floors {
   }
 
   /** Stairs (or a stairwell) from `lower` to `upper`; `path` runs from the lower end to the upper end. */
-  addLink(lower: number, upper: number, path: FloorPoint[], teleport = false): FloorLink {
+  addLink(lower: number, upper: number, path: FloorPoint[], teleport = false, opts: { closed?: boolean; manual?: boolean } = {}): FloorLink {
     const lengths = [0];
     for (let i = 1; i < path.length; i++) {
       const a = path[i - 1]!;
       const b = path[i]!;
       lengths.push(lengths[i - 1]! + (teleport ? 0 : Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z)));
     }
-    const link: FloorLink = { id: this.links.length, lower, upper, path: path.map((p) => ({ ...p })), teleport, lengths };
+    const link: FloorLink = { id: this.links.length, lower, upper, path: path.map((p) => ({ ...p })), teleport, lengths, closed: opts.closed ?? false, manual: opts.manual ?? false };
     this.links.push(link);
     this.adj[lower]!.push(link.id);
     this.adj[upper]!.push(link.id);
@@ -151,6 +155,7 @@ export class Floors {
       const a = queue.shift()!;
       for (const li of this.adj[a]!) {
         const l = this.links[li]!;
+        if (l.closed) continue;
         const b = l.lower === a ? l.upper : l.lower;
         if (seen[b]) continue;
         seen[b] = 1;
@@ -286,7 +291,7 @@ export class Floors {
   stairwellAt(area: number, x: number, z: number, radius: number): FloorLink | null {
     for (const li of this.adj[area] ?? []) {
       const l = this.links[li]!;
-      if (!l.teleport) continue;
+      if (!l.teleport || l.manual || l.closed) continue;
       const e = this.entryIn(l, area);
       if (Math.hypot(e.x - x, e.z - z) <= radius) return l;
     }
