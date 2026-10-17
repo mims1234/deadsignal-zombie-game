@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.3.1",
+      "date": "2026-10-17",
+      "title": "Sakura District co-op fixes",
+      "notes": [
+        "Co-op on the Sakura District: the squad, power-ups, mystery boxes and drops now stay in sync for everyone (the Thousand Lanterns' state was overwriting them on every update).",
+        "KAIKA: if the shrine relay was already restored before the lanterns were lit, the bell can still be rung - the ending (and the helicopter) can no longer get stuck."
+      ]
+    },
+    {
       "version": "0.3.0",
       "date": "2026-10-17",
       "title": "KAIKA: the Sakura District's whole story, its own cast, and its own sounds",
