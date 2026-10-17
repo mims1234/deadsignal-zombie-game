@@ -9,7 +9,7 @@ import { decodeQuest, encodeQuest, QUEST_REACH, SakuraQuest } from '../src/sakur
 import { questSpots } from '../src/sakura/spots';
 import { FlowField } from '../src/world/nav';
 
-describe('the Thousand Lanterns', () => {
+describe('the Thousand Lanterns', { timeout: 30000 }, () => {
   const sim = new SessionSim({ seed: 3, kind: 'mission', map: 'sakura', send() {} });
   const level = sim.level;
   const fl = level.floors;

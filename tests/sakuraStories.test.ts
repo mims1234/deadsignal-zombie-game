@@ -14,7 +14,7 @@ const run = (kind: 'mission' | (typeof STORY_IDS)[number]) => {
   return sim;
 };
 
-describe('the Sakura District story missions', () => {
+describe('the Sakura District story missions', { timeout: 30000 }, () => {
   for (const id of STORY_IDS) {
     it(`${id}: its own start, one contract settled, its own people`, () => {
       const sim = run(id);

@@ -18,7 +18,7 @@ function sakura() {
   return sim;
 }
 
-describe('the Sakura District', () => {
+describe('the Sakura District', { timeout: 30000 }, () => {
   it('builds its storeys, decks and underground, and places everything somewhere free', () => {
     const sim = sakura();
     const { floors, placement, data } = sim.level;

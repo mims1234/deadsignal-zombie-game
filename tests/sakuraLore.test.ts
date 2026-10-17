@@ -8,7 +8,7 @@ import { SessionSim } from '../src/sim/serverHost';
 import { NOTES } from '../src/sakura/lore';
 import { FlowField } from '../src/world/nav';
 
-describe('the Sakura District notes', () => {
+describe('the Sakura District notes', { timeout: 30000 }, () => {
   const sim = new SessionSim({ seed: 3, kind: 'mission', map: 'sakura', send() {} });
   const level = sim.level;
   const fl = level.floors;

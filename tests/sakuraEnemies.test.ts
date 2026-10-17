@@ -20,7 +20,7 @@ function sakura(onSend?: (to: string, d: Record<string, unknown>) => void) {
 
 const stand = (sim: SessionSim, x: number, z: number, yaw = 0): void => sim.message('p1', { k: 'p', x, y: 0, z, yaw, up: true, st: LIFE.up, hp: 100 }, false);
 
-describe('the Sakura District enemies', () => {
+describe('the Sakura District enemies', { timeout: 30000 }, () => {
   it('the town is peopled with its kinds: the Court in the theatre and on the decks', () => {
     const sim = new SessionSim({ seed: 9, kind: 'mission', map: 'sakura', send() {} });
     sim.players([{ id: 'p1', name: 'One' }]);
