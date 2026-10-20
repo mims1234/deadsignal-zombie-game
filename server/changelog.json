@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.300",
+      "date": "2026-10-20",
+      "title": "Link previews and search",
+      "notes": [
+        "Sharing the game link (Discord, X, WhatsApp, Slack, iMessage...) now shows a proper preview card: the title screen as players see it, with the game's name and a short description. The bestiary link gets one too.",
+        "Search engines get a description, a canonical address, a sitemap and a robots file (the admin page and the API stay out of search results), plus the game's details as structured data.",
+        "The game has its own tab icon now."
+      ]
+    },
+    {
       "version": "0.4.2",
       "date": "2026-10-17",
       "title": "More time on the Sakura District",
