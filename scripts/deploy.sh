@@ -14,6 +14,13 @@ if [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
   . "${NVM_DIR:-$HOME/.nvm}/nvm.sh" > /dev/null
   set -u
 fi
+# A pnpm installed globally under one Node goes missing when nvm moves to another. Node ships corepack, which runs the
+# same major pnpm as CI without installing anything globally.
+if ! command -v pnpm > /dev/null 2>&1 && command -v corepack > /dev/null 2>&1; then
+  export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+  pnpm() { corepack pnpm@11 "$@"; }
+  echo "    pnpm is not on PATH - using corepack's ($(pnpm --version))"
+fi
 for tool in node pnpm pm2; do
   if ! command -v "$tool" > /dev/null 2>&1; then
     echo "$tool was not found on PATH for this non-interactive shell." >&2
