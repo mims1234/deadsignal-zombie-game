@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.301",
+      "date": "2026-10-23",
+      "title": "Deploys find pnpm again",
+      "notes": [
+        "Behind the scenes only: when the server has no pnpm on its path (it goes missing after a Node update), the deploy now uses the pnpm that ships with Node instead of stopping. This is what kept 0.4.300 from going live."
+      ]
+    },
+    {
       "version": "0.4.300",
       "date": "2026-10-20",
       "title": "Link previews and search",
