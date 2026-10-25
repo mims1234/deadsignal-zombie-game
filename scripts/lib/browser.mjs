@@ -1,14 +1,27 @@
 // Shared headless-Chrome helper for screenshots and scripted QA (uses the locally installed Google Chrome).
+import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 
-export const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+// CHROME_PATH wins; otherwise the usual install location for this OS
+const INSTALLED = {
+  darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'],
+  win32: [
+    `${process.env.PROGRAMFILES || 'C:/Program Files'}/Google/Chrome/Application/chrome.exe`,
+    `${process.env['PROGRAMFILES(X86)'] || 'C:/Program Files (x86)'}/Google/Chrome/Application/chrome.exe`,
+    `${process.env.LOCALAPPDATA}/Google/Chrome/Application/chrome.exe`,
+  ],
+  linux: ['/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser'],
+}[process.platform] ?? [];
+export const CHROME = process.env.CHROME_PATH || INSTALLED.find((p) => existsSync(p)) || INSTALLED[0];
+// hardware WebGL through ANGLE: Metal on macOS, Direct3D 11 on Windows, the default elsewhere
+export const ANGLE = { darwin: ['--use-angle=metal'], win32: ['--use-angle=d3d11'] }[process.platform] ?? [];
 
-/** Launch Chrome (hardware WebGL through ANGLE/Metal) and open `url`. Console output is collected in `logs`. */
+/** Launch Chrome (hardware WebGL through ANGLE) and open `url`. Console output is collected in `logs`. */
 export async function openPage({ url, w = 1280, h = 720, dpr = 1, args = [] } = {}) {
   const browser = await chromium.launch({
     executablePath: CHROME,
     headless: true,
-    args: ['--use-angle=metal', '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', ...args],
+    args: [...ANGLE, '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required', ...args],
   });
   const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: dpr });
   const page = await context.newPage();

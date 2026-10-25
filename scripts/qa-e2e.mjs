@@ -16,6 +16,21 @@ const check = (name, ok, detail = '') => {
 };
 
 const { browser, page, logs } = await openPage({ url: URL, w: 1600, h: 900 });
+// nothing may hang the run: a page call over QA_STEP_S (default 60) fails it naming the call, and the whole run stops
+// after QA_DEADLINE_MIN (default 20)
+const STEP_MS = (Number(process.env.QA_STEP_S) || 60) * 1000;
+const evaluate = page.evaluate.bind(page);
+page.evaluate = (fn, arg) => {
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`a page call took over ${STEP_MS / 1000} s: ${String(fn).slice(0, 160)} ${JSON.stringify(arg ?? null).slice(0, 120)}`)), STEP_MS);
+  });
+  return Promise.race([evaluate(fn, arg), late]).finally(() => clearTimeout(timer));
+};
+setTimeout(() => {
+  console.log(`FAIL  the run finished within ${process.env.QA_DEADLINE_MIN || 20} minutes`);
+  process.exit(1);
+}, (Number(process.env.QA_DEADLINE_MIN) || 20) * 60000).unref();
 const call = (fn, ...a) => page.evaluate(([f, x]) => window.__dead[f](...x), [fn, a]);
 const snap = () => page.evaluate(() => JSON.parse(JSON.stringify(window.__dead.snapshot())));
 const adv = (s) => call('advance', s);
@@ -40,6 +55,8 @@ const zombieStates = () => page.evaluate(() => window.__dead.game.zombies.zombie
 try {
   await page.waitForFunction('window.__dead', null, { timeout: 90000 });
   await sleep(1500);
+  // the contract payouts, from the game's own config (the dev server serves the source)
+  const REWARD = await page.evaluate(async () => { const { MISSION } = await import('/src/config.ts'); return { defense: MISSION.defense.reward.cash, hunt: MISSION.hunt.reward.cash }; });
 
   // ------------------------------------------------------------------ 1. deploy & input
   let s = await snap();
@@ -191,7 +208,8 @@ try {
   await call('clearZombies');
   await call('teleport', -20, 22.5, -Math.PI / 2);
   const openZ = await call('spawnZombie', 'shambler', -10, 22.5, false);
-  await adv(0.2);
+  // let the burst's recoil and spread settle (and the rifle finish its draw) so the aimed shots go where they are aimed
+  await adv(1.0);
   // body shot
   await call('lookAt', -10, 22.5, 1.0);
   await call('click'); await adv(0.3);
@@ -211,10 +229,12 @@ try {
   const afterHead = zs.find((z) => z.id === openZ2);
   check('a body shot deals damage', afterBody && afterBody.hp < 100 && afterBody.hp >= 60, `hp ${afterBody && afterBody.hp}`);
   check('a headshot deals more damage than a body shot and is counted', afterHead && (afterHead.hp < afterBody.hp || afterHead.state === 'dead'), `head hp ${afterHead && afterHead.hp} vs body ${afterBody && afterBody.hp}`);
-  // a second aimed headshot finishes it: the kill is tallied as a headshot kill
-  {
-    const h2 = await page.evaluate((id) => { const z = window.__dead.game.zombies.zombies.find((q) => q.id === id); const v = z.rig.root.position.clone(); z.rig.getHeadWorld(v); return { x: v.x, y: v.y, z: v.z }; }, openZ2);
+  // aimed headshots finish it: the kill is tallied as a headshot kill. The head is found after aiming down sights, as
+  // a staggering infected's head moves meanwhile
+  for (let i = 0; i < 3; i++) {
     await call('hold', { ads: true }); await adv(0.5);
+    const h2 = await page.evaluate((id) => { const z = window.__dead.game.zombies.zombies.find((q) => q.id === id); if (!z || !z.alive) return null; const v = z.rig.root.position.clone(); z.rig.getHeadWorld(v); return { x: v.x, y: v.y, z: v.z }; }, openZ2);
+    if (!h2) break;
     await call('lookAt', h2.x, h2.z, h2.y);
     await call('click'); await adv(0.4);
     await call('hold', { ads: false });
@@ -249,10 +269,12 @@ try {
   await adv(3);
   s = await snap();
   check('and the reaching zombie damages the player through its telegraphed attack', reached && s.health < 100, `health ${s.health}`);
-  // attacks do not go through walls: zombie adjacent to a wall, player on the far side
+  // attacks do not go through walls: zombie in the store's back room against the solid south wall, player just
+  // outside it, 1.4 m apart (within reach); the way round is the side door and the street, well over 6 s for a shambler
+  // (not the shop front: its door is a few steps away and the aisle to it is open)
   await fresh();
-  await call('teleport', -19.5, 28.4, 0); // outside the store north wall face (wall z 29..29.4)
-  const wz = await call('spawnZombie', 'shambler', -19.5, 30.4, false); // just inside
+  await call('teleport', -24, 41.65, Math.PI); // outside the south wall face (wall z 40.6..41)
+  const wz = await call('spawnZombie', 'shambler', -24, 40.25, false); // just inside, past the back-room shelf
   await call('setHealth', 100, 0);
   await page.evaluate((id) => { const g = window.__dead.game; const z = g.zombies.zombies.find((q) => q.id === id); z.aggro(g.player.x, g.player.z); }, wz);
   await adv(6);
@@ -388,7 +410,7 @@ try {
   s = await snap();
   const rewardCash = s.cash - c0;
   check('the defense contract completes', s.defense.status === 'complete', JSON.stringify(s.defense));
-  check('its reward is granted exactly once ($1500 + kill cash only)', s.defense.claimed === true && rewardCash >= 1500 && rewardCash < 1500 + 3000, `cash gained ${rewardCash}`);
+  check(`its reward is granted exactly once ($${REWARD.defense} + kill cash only)`, s.defense.claimed === true && rewardCash >= REWARD.defense && rewardCash < REWARD.defense + 3000, `cash gained ${rewardCash}`);
   const cashDone = s.cash;
   await survive(5, [dcfg.x + 2, dcfg.z + 1, 0]);
   s = await snap();
@@ -416,7 +438,7 @@ try {
   }
   s = await snap();
   check('killing the Warden completes the hunt contract', s.hunt.status === 'complete', JSON.stringify(s.hunt));
-  check('the hunt reward is claimed once', s.hunt.claimed === true && s.cash - cashBeforeHunt >= 2500, `+${s.cash - cashBeforeHunt}`);
+  check(`the hunt reward is claimed once ($${REWARD.hunt} + the Warden's kill cash)`, s.hunt.claimed === true && s.cash - cashBeforeHunt >= REWARD.hunt && s.cash - cashBeforeHunt < REWARD.hunt + 1000, `+${s.cash - cashBeforeHunt}`);
   const hc = s.cash;
   await adv(3);
   s = await snap();

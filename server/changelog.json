@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.302",
+      "date": "2026-10-25",
+      "title": "Security updates",
+      "notes": [
+        "Behind the scenes only: the game server and the build tools are updated to their latest patch releases, which fix several published security issues. Nothing about how the game plays changes.",
+        "The automated test runs that play the game in a browser are brought up to date with the current menus, maps and rewards, and they now run on Windows too."
+      ]
+    },
+    {
       "version": "0.4.301",
       "date": "2026-10-23",
       "title": "Deploys find pnpm again",

@@ -6,6 +6,8 @@
  *   QA_SERVER=http://127.0.0.1:3077 node scripts/qa-server.mjs
  * It expects an empty database and the admin id above.
  */
+import { BOARD_MAPS, BOARD_METRICS, BOARD_MODES } from '../server/db.mjs';
+
 const B = process.env.QA_SERVER || 'http://127.0.0.1:3077';
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  -> ' + detail : ''}`); };
@@ -99,7 +101,7 @@ r = await board('metric=kills'); check('a board switched off shows nothing', r.b
 r = await board('metric=fastest'); check('the other boards stay on', r.body.enabled === true && r.body.entries.length === 1);
 r = await adm.post('/api/admin/leaderboards', { all: false }); r = await board('metric=fastest'); check('admin switches every board off', r.body.enabled === false && r.body.all === false);
 r = await adm.get('/api/admin/leaderboards'); const kb = r.body.boards.find((b) => b.key === 'forge:solo:kills');
-check('admin list: every board, its switch and its players', r.body.all === false && r.body.boards.length === 12 && kb.on === false && kb.players === 2, JSON.stringify(kb));
+check('admin list: every board, its switch and its players', r.body.all === false && r.body.boards.length === BOARD_MAPS.length * BOARD_MODES.length * BOARD_METRICS.length && kb.on === false && kb.players === 2, `${r.body.boards.length} boards  ${JSON.stringify(kb)}`);
 await adm.post('/api/admin/leaderboards', { all: true }); await adm.post('/api/admin/leaderboards', { key: 'forge:solo:kills', on: true });
 r = await board('metric=kills'); check('boards back on', r.body.enabled === true && r.body.entries.length === 2);
 await adm.post('/api/admin/users/2000000002/ban', { reason: 'Cheating' }); r = await board('metric=kills'); check('a banned player drops off the boards', r.body.entries.length === 1);

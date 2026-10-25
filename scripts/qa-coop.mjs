@@ -9,7 +9,7 @@
  *   pnpm dev                                                               (QA_URL, default http://127.0.0.1:5173/)
  */
 import { chromium } from 'playwright-core';
-import { CHROME, sleep } from './lib/browser.mjs';
+import { ANGLE, CHROME, sleep } from './lib/browser.mjs';
 
 const URL = (process.env.QA_URL || 'http://127.0.0.1:5173/').replace(/\/$/, '');
 const HOSTING = process.env.HOSTING === 'self' ? 'self' : 'server';
@@ -19,7 +19,7 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  [${HOSTING}] ${name}${detail ? '  -> ' + detail : ''}`);
 };
 
-const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: ['--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await chromium.launch({ executablePath: CHROME, headless: true, args: [...ANGLE, '--enable-gpu-rasterization', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'] });
 const errors = [];
 async function client(id, name, { query = '', map = 'district' } = {}) {
   const context = await browser.newContext({ viewport: { width: 960, height: 540 } });
@@ -43,22 +43,43 @@ const lobby = (page) => page.evaluate(() => document.querySelector('.ds-lobby')?
 // lobby buttons first: the title screen has its own STANDARD / STANDARD MAZOKU / FREE ROAM row
 const click = (page, label) => page.evaluate((l) => ([...document.querySelectorAll('.ds-lobby button')].find((b) => b.textContent === l) ?? [...document.querySelectorAll('.modes button')].find((b) => b.textContent === l))?.click(), label);
 const keepAlive = (page) => page.evaluate(() => window.__dead.setHealth(1e6, 100));
+const lobbyShown = () => document.querySelector('.ds-lobby')?.hidden === false;
+/** The title's side menu WITH FRIENDS puts it in co-op; its OPEN LOBBY button opens the lobby if that did not. */
+async function openLobby(page) {
+  const press = (l) => page.evaluate((l) => [...document.querySelectorAll('button')].find((b) => b.offsetParent && b.textContent.trim() === l)?.click(), l);
+  await press('WITH FRIENDS');
+  if (!(await until(page, lobbyShown, null, 3000))) await press('OPEN LOBBY');
+  if (!(await until(page, lobbyShown))) throw new Error('the co-op lobby did not open from WITH FRIENDS / OPEN LOBBY');
+}
+
+/** Wait out the reload onto the session's map: settled once the page has stayed on it for a moment. */
+async function settle(page, map) {
+  const on = (m) => window.__dead?.game?.mapId === m && (window.__dead.game.state === 'title' || window.__dead.game.coop.live);
+  for (let i = 0; i < 10; i++) {
+    if (await until(page, on, map, 15000)) {
+      await sleep(1000);
+      if (await until(page, on, map, 1000)) return;
+    }
+  }
+  throw new Error(`the guest never settled on ${map}`);
+}
 
 /** Open a session as the owner and bring a guest in through the invite link. */
 async function session(ownerId, guestId, map, kind) {
   const owner = await client(ownerId, 'Owner', { map });
-  await click(owner, 'CO-OP');
-  await until(owner, () => !document.querySelector('.ds-lobby').hidden);
+  await openLobby(owner);
   if (HOSTING === 'self') await click(owner, 'SELF HOST');
   await click(owner, 'CREATE SESSION');
   await until(owner, () => window.__dead.game.coop.room.room !== null);
   const code = await owner.evaluate(() => window.__dead.game.coop.room.room.code);
   if (kind !== 'mission') {
-    await click(owner, kind === 'roam' ? 'FREE ROAM' : 'STANDARD MAZOKU');
-    await until(owner, (k) => window.__dead.game.coop.room.room.kind === k, kind);
+    // free roam is a switch on top of the mode in the lobby
+    await click(owner, kind === 'roam' ? 'FREE ROAM  OFF' : 'STANDARD MAZOKU');
+    if (!(await until(owner, (k) => window.__dead.game.coop.room.room.kind === k, kind, 10000))) throw new Error(`the lobby did not switch the session to ${kind}`);
   }
-  // the guest starts on the District whatever the session plays: the link takes them to the right map
+  // the guest starts on the District whatever the session plays: the link takes them to the right map (a reload)
   const guest = await client(guestId, 'Guest', { query: `?room=${code}` });
+  await settle(guest, map);
   await click(guest, 'JOIN');
   await until(owner, () => window.__dead.game.coop.room.room.players.length === 2);
   return { owner, guest, code };
@@ -104,11 +125,18 @@ try {
   check('both see the district\'s infected as puppets', (await until(owner, () => { const z = window.__dead.game.zombies.zombies; return z.length >= 3 && z.every((q) => q.puppet); }, null, 40000)) && (await until(guest, () => window.__dead.game.zombies.zombies.length >= 3, null, 40000)));
   check('the hidden admin watches it', await until(admin, () => window.__dead.game.zombies.zombies.length >= 3 && window.__dead.game.coop.scoreboard().rows.length === 2));
   check('a guest is brought into the session when the owner starts it', autoJoined[0] === true);
-  // a third player joins the running session by its code: they land in it straight away
+  // a third player joins the running session by its code: they land in it straight away. A self-hosted run takes
+  // nobody new (it runs on the owner's device): they stay on the title and the squad stays two
   const late = await client('6100000003', 'Late', { query: `?room=${code}` });
   await click(late, 'JOIN');
-  check('a player who joins a running session is brought into it', await until(late, () => { const g = window.__dead.game; return g.coop.role === 'guest' && g.coop.live && (g.state === 'paused' || g.state === 'playing'); }, null, 40000), await late.evaluate(() => `${window.__dead.game.state} ${window.__dead.game.coop.role}`));
-  check('and the squad sees them', await until(owner, () => window.__dead.game.coop.scoreboard().rows.length === 3, null, 20000));
+  const inRun = () => { const g = window.__dead.game; return g.coop.role === 'guest' && g.coop.live && (g.state === 'paused' || g.state === 'playing'); };
+  if (HOSTING === 'server') {
+    check('a player who joins a running session is brought into it', await until(late, inRun, null, 40000), await late.evaluate(() => `${window.__dead.game.state} ${window.__dead.game.coop.role}`));
+    check('and the squad sees them', await until(owner, () => window.__dead.game.coop.scoreboard().rows.length === 3, null, 20000));
+  } else {
+    check('a self-hosted run under way turns a new player away', !(await until(late, inRun, null, 8000)), await late.evaluate(() => `${window.__dead.game.state} ${window.__dead.game.coop.role}`));
+    check('and the squad stays as it was', (await owner.evaluate(() => window.__dead.game.coop.scoreboard().rows.length)) === 2);
+  }
   await late.context().close();
   await until(owner, () => window.__dead.game.coop.scoreboard().rows.length === 2, null, 20000);
   await guest.evaluate(() => {
@@ -123,8 +151,10 @@ try {
   await owner.evaluate(() => { const g = window.__dead.game; g.session.inv.activeSlot = g.session.inv.slots.findIndex((c) => c && c.id === 'pistol'); g.session.stats.shotsFired += 1; });
   check('a teammate is drawn with the weapon they hold, and fires', await until(guest, () => { const a = [...window.__dead.game.coop.avatars.values()][0]; return !!a && a.weapon === 'pistol' && window.__fired > 0; }, null, 8000), JSON.stringify(await guest.evaluate(() => { const a = [...window.__dead.game.coop.avatars.values()][0]; return a && { w: a.weapon, aimT: a.aimT }; })));
   check('the guest hears the infected (groans, snarls)', await until(guest, () => window.__heard.length > 0, null, 20000), JSON.stringify(await guest.evaluate(() => window.__heard.slice(0, 6))));
+  // only the tracked objective shows its details, so the squad's names are read from its row rather than the screen
   const hud = await guest.evaluate(() => document.querySelector('.ds-obj')?.innerText.replace(/\n/g, ' | ') ?? '');
-  check('the guest HUD shows the operation and the squad', /RESTORE THE RELAY/i.test(hud) && /ELIMINATE THE WARDEN/i.test(hud) && /SQUAD/i.test(hud) && /Owner/i.test(hud), hud);
+  const squadRow = await guest.evaluate(() => [...document.querySelectorAll('.ds-obj-row')].find((r) => r.querySelector('.title')?.textContent === 'SQUAD')?.querySelector('.detail')?.textContent ?? '');
+  check('the guest HUD shows the operation and the squad', /RESTORE THE RELAY/i.test(hud) && /ELIMINATE THE WARDEN/i.test(hud) && /SQUAD/i.test(hud) && /Owner/i.test(squadRow), `${hud}  // squad: ${squadRow}`);
   check('the operation clock runs from the simulation', await until(guest, () => window.__dead.game.session.elapsed > 2, null, 20000));
 
   // a kill, credited to the shooter
@@ -203,7 +233,8 @@ try {
   const f = await session('6100000003', '6100000004', 'forge', 'mission');
   check('a District player following a Forge invite lands on the Forge', (await f.guest.evaluate(() => window.__dead.game.mapId)) === 'forge');
   await deployBoth(f.owner, f.guest);
-  check('the co-leaders and the holdouts appear for the guest', await until(f.guest, () => { const g = window.__dead.game; const v = g.forge.view; return window.__dead.squad().filter((a) => a.kind === 'soldier').length === 2 && !!v && v.holdouts.length === 7 && v.squad.length === 2; }, null, 30000));
+  // tomoe, Anya, two of the four co-leads and four members (as in qa-features)
+  check('the co-leaders and the holdouts appear for the guest', await until(f.guest, () => { const g = window.__dead.game; const v = g.forge.view; return window.__dead.squad().filter((a) => a.kind === 'soldier').length === 2 && !!v && v.holdouts.length === 8 && v.squad.length === 2; }, null, 30000), JSON.stringify(await f.guest.evaluate(() => { const v = window.__dead.game.forge.view; return { soldiers: window.__dead.squad().filter((a) => a.kind === 'soldier').length, holdouts: v?.holdouts.length, squad: v?.squad.length }; })));
   // the guest clears a door and calls whoever is inside out (the vault stays shut: no beacon yet)
   const room = await f.guest.evaluate(() => {
     const g = window.__dead.game;
@@ -294,7 +325,7 @@ try {
   const r = await session('6100000005', '6100000006', 'district', 'roam');
   await deployBoth(r.owner, r.guest);
   await r.owner.evaluate(() => { window.__dead.game.player.y = 20; });
-  check('free roam: no infected, flying, and each sees the other', (await until(r.guest, () => window.__dead.game.flying && window.__dead.game.zombies.zombies.length === 0 && window.__dead.game.coop.scoreboard().rows.length === 2, null, 20000)));
+  check('free roam: no infected, flying, and each sees the other', (await until(r.guest, () => window.__dead.game.flying && window.__dead.game.zombies.zombies.length === 0 && window.__dead.game.coop.scoreboard().rows.length === 2, null, 20000)), JSON.stringify(await r.guest.evaluate(() => { const g = window.__dead.game; return { flying: g.flying, zombies: g.zombies.zombies.length, rows: g.coop.scoreboard().rows.length }; })));
   for (const p of [r.owner, r.guest]) await p.context().close();
 
   check('no page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
