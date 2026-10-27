@@ -344,7 +344,13 @@ app.post('/api/admin/reports/:id/resolve', { preHandler: admin }, async (req) =>
 // ---- the game itself ---------------------------------------------------------------------------------
 
 const dist = join(root, 'dist');
-if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1h', immutable: false });
+// pages are checked with the server on every visit (a cheap 304 when nothing changed), so an update shows at once; the
+// build's hashed files never change and keep for a year; everything else (models, sounds) for an hour
+const cacheFor = (reply, path) => {
+  if (path.endsWith('.html')) reply.header('cache-control', 'no-cache');
+  else if (/[\\/]assets[\\/]/.test(path)) reply.header('cache-control', 'public, max-age=31536000, immutable');
+};
+if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1h', immutable: false, setHeaders: cacheFor });
 else app.log.warn('dist/ not found: run "pnpm build" to serve the game from this server');
 
 rooms.attach(app.server);

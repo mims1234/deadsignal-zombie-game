@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.307",
+      "date": "2026-10-28",
+      "title": "Cinematics, and updates that show at once",
+      "notes": [
+        "A new CINEMATICS page in the menu, home to short films set apart from the game (more to come); Excalibur now lives there instead of in the menu itself.",
+        "Updates show at once: the pages are checked with the server on every visit, so a new version is never held back by the browser's copy, and Excalibur's score and voices download again whenever they change."
+      ]
+    },
+    {
       "version": "0.4.306",
       "date": "2026-10-28",
       "title": "Excalibur full screen",

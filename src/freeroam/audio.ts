@@ -8,6 +8,7 @@
  * strikes, grinding blades, a heartbeat, a long rising hum for the charge, a swelling beam and sub-bass booms.
  */
 import type * as THREE from 'three';
+import { VERSION } from '../version';
 import type { Cue } from './scene';
 
 const BASE = './freeroam/';
@@ -152,7 +153,8 @@ export class SceneAudio {
     const ctx = this.ctx!;
     const get = async (path: string): Promise<AudioBuffer | null> => {
       try {
-        const res = await fetch(BASE + path);
+        // (versioned, so an update's new score and lines replace the cached ones at once)
+        const res = await fetch(`${BASE}${path}?${VERSION}`);
         return await ctx.decodeAudioData(await res.arrayBuffer());
       } catch {
         return null; // the scene still plays without it

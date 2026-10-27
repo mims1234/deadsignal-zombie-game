@@ -3346,6 +3346,35 @@ html.ds-rm .ds-menus {
 }
 
 /* the leaderboards page: four short rows of choices, one line per player, the run on a card beside the list */
+/* the cinematics page: one card per film */
+.ds-l-films {
+  max-width: 44em;
+}
+.ds-l-films .list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+}
+.ds-btn.ds-l-film {
+  --zc: #b77cff;
+  padding: 1.1em 1.2em;
+}
+.ds-l-film .zt.about {
+  font-size: 0.72em;
+  opacity: 0.85;
+}
+.ds-btn.ds-l-film:hover,
+.ds-btn.ds-l-film:focus-visible {
+  border-color: var(--zc);
+  background: rgba(24, 12, 40, 0.88);
+}
+.ds-l-film .zon {
+  color: var(--zc);
+}
+.ds-l-films .lead.soon {
+  font-size: 0.8em;
+  color: var(--ds-ink-dim);
+}
 .ds-l-main:has(.ds-l-boards) {
   justify-content: flex-start;
 }

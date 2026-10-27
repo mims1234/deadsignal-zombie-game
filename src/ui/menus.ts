@@ -27,6 +27,21 @@ const CARD_BRIEF = {
 
 const ROAM_NOTE = 'No mission, no clock and no damage: fly anywhere and learn the zone before you fight on it.';
 const PLAY_LEAD = 'Fight through the quarantine zone, finish the contracts, and reach the helicopter alive.';
+/**
+ * The cinematics: short films set apart from the game, each its own page that opens in a new tab. A new one is a row
+ * here (and its page in `vite.config.ts`).
+ */
+const CINEMATICS: { id: string; name: string; tagline: string; about: string; length: string; href: string }[] = [
+  {
+    id: 'excalibur',
+    name: 'EXCALIBUR',
+    tagline: 'A knight, a giant, and the blade that ends it.',
+    about: 'An anime battle in five acts with its own score and voices. Watch it as a film, or walk and fly through it while it plays.',
+    length: '1 MIN 28',
+    href: './freeroam.html',
+  },
+];
+
 const COOP_LEAD = 'Play this zone with up to two friends: open a lobby, share the link, press ready together. Revive anyone who goes down, then extract together.';
 
 /** The leaderboards page: which board it shows. */
@@ -64,13 +79,14 @@ const BOARD_METRICS = [
 
 const sentence = (t: string): string => t.charAt(0) + t.slice(1).toLowerCase();
 
-type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'keys' | 'sliders';
+type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'film' | 'keys' | 'sliders';
 const NAV_PATHS: Record<NavGlyph, string[]> = {
   play: ['M7 4.5v15l12-7.5z'],
   friends: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c1.2-3.5 3.7-5.2 6.5-5.2s5.3 1.7 6.5 5.2', 'M16.5 11.5a2.8 2.8 0 1 0 0-5.6', 'M17.5 14.8c2 .4 3.4 1.8 4.2 4.2'],
   explore: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M15.5 8.5l-2 5-5 2 2-5z'],
   trophy: ['M8 21h8', 'M12 17v4', 'M7 4h10v5a5 5 0 0 1-10 0z', 'M7 6H4a3 3 0 0 0 3 4', 'M17 6h3a3 3 0 0 1-3 4'],
   book: ['M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z', 'M4 21V5', 'M9 8h6'],
+  film: ['M3 5h18v14H3z', 'M7 5v14', 'M17 5v14', 'M3 9.5h4', 'M3 14.5h4', 'M17 9.5h4', 'M17 14.5h4'],
   keys: ['M3 7h18v10H3z', 'M7 11h.01', 'M11 11h.01', 'M15 11h.01', 'M8 14h8'],
   sliders: ['M4 7h16', 'M4 17h16', 'M9 4.5v5', 'M15 14.5v5'],
 };
@@ -332,7 +348,7 @@ class Menus implements MenusApi {
   // -------------------------------------------------------------------------------------------
 
   /** The title's page: the side menu's PLAY / WITH FRIENDS / EXPLORE follow the mode; LEADERBOARDS is its own page. */
-  private titlePage: 'play' | 'boards' = 'play';
+  private titlePage: 'play' | 'boards' | 'films' = 'play';
   /** The title's extra options (squad skill, the card hunt) stay open across redraws once opened. */
   private moreOpen = false;
   /** What the leaderboards page shows. */
@@ -340,10 +356,10 @@ class Menus implements MenusApi {
   private boardMapSet = false;
   private boardReq = 0;
 
-  /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards changes nothing. */
-  private goPage(p: 'play' | 'friends' | 'explore' | 'boards'): void {
+  /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards and Cinematics change nothing. */
+  private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films'): void {
     const m = this.info.mode;
-    this.titlePage = p === 'boards' ? 'boards' : 'play';
+    this.titlePage = p === 'boards' || p === 'films' ? p : 'play';
     if (p === 'play') {
       if (m === 'roam') this.cb.onRoamChange(false);
       else if (m === 'coop') this.cb.onModeChange(this.info.roamBase ?? 'standard');
@@ -369,6 +385,8 @@ class Menus implements MenusApi {
     const roam = mode === 'roam';
     const coop = mode === 'coop';
     const boards = this.titlePage === 'boards';
+    const films = this.titlePage === 'films';
+    const elsewhere = boards || films;
     const text = MAP_TEXT[this.info.map];
     const root = el('div', 'ds-launch');
     el('div', 'ds-shade', root);
@@ -411,12 +429,12 @@ class Menus implements MenusApi {
       if (on) b.setAttribute('aria-current', 'page');
       return b;
     };
-    item('PLAY', 'play', !boards && !coop && !roam, () => this.goPage('play'));
-    item('WITH FRIENDS', 'friends', !boards && coop, () => this.goPage('friends'));
-    item('FREE ROAM', 'explore', !boards && roam, () => this.goPage('explore'));
+    item('PLAY', 'play', !elsewhere && !coop && !roam, () => this.goPage('play'));
+    item('WITH FRIENDS', 'friends', !elsewhere && coop, () => this.goPage('friends'));
+    item('FREE ROAM', 'explore', !elsewhere && roam, () => this.goPage('explore'));
     item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
+    item('CINEMATICS', 'film', films, () => this.goPage('films'));
     item('BESTIARY', 'book', false, () => window.open('./bestiary.html', '_blank', 'noopener'));
-    item('EXCALIBUR', 'explore', false, () => window.open('./freeroam.html', '_blank', 'noopener'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
     item('SETTINGS', 'sliders', false, () => showTab('settings'));
 
@@ -456,6 +474,7 @@ class Menus implements MenusApi {
     const main = el('main', 'ds-l-main', root);
     let first: HTMLElement | null = null;
     if (boards) this.buildBoards(main);
+    else if (films) this.buildCinematics(main);
     else {
       const hero = el('section', 'ds-l-hero', main);
       const kick = el('div', 'kicker', hero);
@@ -553,6 +572,27 @@ class Menus implements MenusApi {
 
     this.setScreen('title', root);
     (first ?? this.screen?.querySelector<HTMLElement>('.ds-l-item.on'))?.focus({ preventScroll: true });
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // cinematics (a page of the title)
+  // -------------------------------------------------------------------------------------------
+
+  private buildCinematics(main: HTMLElement): void {
+    const page = el('section', 'ds-l-boards ds-l-films', main);
+    el('h1', 'name', page, 'CINEMATICS');
+    el('p', 'lead', page, 'Short films set apart from the game. Each opens in a new tab: watch it as a film, or step out of the camera and walk around inside it.');
+    const list = el('div', 'list', page);
+    for (const f of CINEMATICS) {
+      const card = this.button(list, '', 'ds-l-zone ds-l-film', () => window.open(f.href, '_blank', 'noopener'));
+      card.dataset.film = f.id;
+      card.setAttribute('aria-label', `Watch ${f.name} (opens in a new tab)`);
+      el('span', 'zn', card, f.name);
+      el('span', 'zt', card, f.tagline);
+      el('span', 'zt about', card, f.about);
+      el('span', 'zon', card, `WATCH  ▸  ${f.length}`);
+    }
+    el('p', 'lead soon', page, 'More are on the way.');
   }
 
   // -------------------------------------------------------------------------------------------
