@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.309",
+      "date": "2026-10-28",
+      "title": "Visits per page, and Excalibur's starting volumes",
+      "notes": [
+        "Visits now record which page they are to: the game, Excalibur or the Bestiary (both now count their visits); the admin page shows visits, unique visitors and the share on phones for each page. Earlier visits count as the game's.",
+        "Excalibur starts at gentler volumes: master 80%, music and effects 70%, voices 85% (levels you have set yourself are kept)."
+      ]
+    },
+    {
       "version": "0.4.308",
       "date": "2026-10-28",
       "title": "The cast of Excalibur in the Bestiary",

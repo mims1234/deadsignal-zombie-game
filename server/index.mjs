@@ -178,7 +178,9 @@ app.post('/api/visit', async (req, reply) => {
     anon = token().slice(0, 22);
     reply.setCookie('ds_anon', anon, cookieOpts(365 * 86400));
   }
-  db.visit(u ? u.id : `anon:${anon}`, u ? u.id : null, !!req.body?.touch);
+  // which page: the game, or one of the pages beside it
+  const page = ['game', 'excalibur', 'bestiary'].includes(req.body?.page) ? req.body.page : 'game';
+  db.visit(u ? u.id : `anon:${anon}`, u ? u.id : null, !!req.body?.touch, page);
   return { ok: true };
 });
 

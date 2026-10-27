@@ -117,6 +117,7 @@
         <div class="grid g3">
           <div class="card tablewrap span2"><h3>Modes</h3><div class="sub">Runs per mode in the range</div><div id="modes"></div></div>
           <div class="card tablewrap"><h3>Maps</h3><div class="sub">Runs per map in the range</div><div id="maps"></div></div>
+          <div class="card tablewrap"><h3>Pages</h3><div class="sub">Visits per page in the range (Site visits counts them all)</div><div id="pages"></div></div>
           <div class="card tablewrap"><h3>Most active players</h3><div class="sub">By time played in the range</div><div id="top"></div></div>
           <div class="card tablewrap"><h3>Why runs fail</h3><div class="sub">Defeats in the range, by cause</div><div id="fails"></div></div>
           <div class="card tablewrap"><h3>Cards recovered</h3><div class="sub">All time</div><div id="cards"></div></div>
@@ -331,6 +332,13 @@
         { label: 'Extracted', num: 1, cell: (m) => pct(m.wins, m.runs), sort: (m) => (m.runs ? m.wins / m.runs : 0) },
         { label: 'Avg len', num: 1, cell: (m) => clock(m.avgDuration), sort: (m) => m.avgDuration || 0 },
       ], 'No runs in this range yet.');
+      const PAGE = { game: 'Game', excalibur: 'Excalibur', bestiary: 'Bestiary' };
+      const pages = localTable($('pages'), [
+        { label: 'Page', cell: (p) => PAGE[p.page] || p.page, sort: (p) => PAGE[p.page] || p.page },
+        { label: 'Visits', num: 1, cell: (p) => num(p.visits), sort: (p) => p.visits },
+        { label: 'Unique', num: 1, cell: (p) => num(p.visitors), sort: (p) => p.visitors },
+        { label: 'Phone', num: 1, cell: (p) => pct(p.touch, p.visits), sort: (p) => (p.visits ? p.touch / p.visits : 0) },
+      ], 'No visits in this range yet.');
       const fails = localTable($('fails'), [{ label: 'Cause', cell: (r) => r.reason, sort: (r) => r.reason }, { label: 'Runs', num: 1, cell: (r) => num(r.n), sort: (r) => r.n }], 'No defeats recorded.', 6);
       const cards = localTable($('cards'), [{ label: 'Card', cell: (r) => r.card_id, sort: (r) => r.card_id }, { label: 'Recovered', num: 1, cell: (r) => num(r.n), sort: (r) => r.n }, { label: 'Players', num: 1, cell: (r) => num(r.owners), sort: (r) => r.owners }], 'No cards recovered yet.', 6);
       const topPlayers = localTable($('top'), [
@@ -380,6 +388,7 @@
         modes.max = Math.max(1, ...o.modes.map((m) => m.runs));
         modes.set(o.modes);
         maps.set(o.maps || []);
+        pages.set(o.pages || []);
         fails.set(o.failReasons);
         cards.set(o.cardTotals);
         topPlayers.set(o.topPlayers);

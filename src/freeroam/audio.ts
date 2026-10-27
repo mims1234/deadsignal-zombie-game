@@ -85,7 +85,8 @@ export class SceneAudio {
   private crackle = 0;
   muted = false;
   /** the listener's levels, 0..1 each */
-  readonly volume = { master: 1, music: 1, sfx: 1, voice: 1 };
+  /** The starting levels (until someone sets their own): a little headroom, the voices just above the rest. */
+  readonly volume = { master: 0.8, music: 0.7, sfx: 0.7, voice: 0.85 };
 
   /** Start on the first gesture (browsers keep audio locked until then). */
   unlock(): void {

@@ -156,6 +156,13 @@ export function openDb(file) {
     }
   }
   db.exec('CREATE INDEX IF NOT EXISTS runs_board ON runs(map, mode, outcome)');
+  // which page a visit is to (the game, or a page beside it: a cinematic, the bestiary) came with 0.4.309; older visits
+  // were all to the game
+  try {
+    db.exec("ALTER TABLE visits ADD COLUMN page TEXT NOT NULL DEFAULT 'game'");
+  } catch {
+    /* already there */
+  }
 
   const q = {
     upsertUser: db.prepare(`INSERT INTO users (id, username, display_name, avatar, created_at, last_seen) VALUES (@id, @username, @display_name, @avatar, @t, @t)
@@ -167,7 +174,7 @@ export function openDb(file) {
     dropSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
     dropUserSessions: db.prepare('DELETE FROM sessions WHERE user_id = ?'),
     purgeSessions: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
-    addVisit: db.prepare('INSERT INTO visits (ts, day, visitor, user_id, touch) VALUES (?, ?, ?, ?, ?)'),
+    addVisit: db.prepare('INSERT INTO visits (ts, day, visitor, user_id, touch, page) VALUES (?, ?, ?, ?, ?, ?)'),
     startRun: db.prepare('INSERT INTO runs (user_id, mode, touch, started_at, day, map, version, difficulty, device, gpu, quality_start, story) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'),
     getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
     setSetting: db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'),
@@ -209,7 +216,7 @@ export function openDb(file) {
       return u ?? null;
     },
     dropSession: (token) => q.dropSession.run(token),
-    visit: (visitor, userId, touch) => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0),
+    visit: (visitor, userId, touch, page = 'game') => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0, page),
     /** `device`: the coarse class from the client ({ device, gpu, quality }); anything not on the lists is dropped. */
     startRun: (userId, mode, touch, map, version, difficulty, device = {}, story = null) =>
       Number(
@@ -383,6 +390,7 @@ export function openDb(file) {
         openReports: one("SELECT COUNT(*) n FROM reports WHERE status = 'open'").n,
       };
       const visitDays = new Map(all(`SELECT day, COUNT(*) visits, COUNT(DISTINCT visitor) visitors FROM visits WHERE day >= ?${xv} GROUP BY day`, since, ...ex).map((r) => [r.day, r]));
+      const pages = all(`SELECT page, COUNT(*) visits, COUNT(DISTINCT visitor) visitors, SUM(touch) touch FROM visits WHERE day >= ?${xv} GROUP BY page ORDER BY visits DESC`, since, ...ex);
       const runDays = new Map(all(`SELECT day, COUNT(*) runs, COUNT(DISTINCT user_id) players FROM runs WHERE day >= ?${x('user_id')} GROUP BY day`, since, ...ex).map((r) => [r.day, r]));
       const daily = [];
       for (let i = days - 1; i >= 0; i--) {
@@ -418,7 +426,7 @@ export function openDb(file) {
         ...ex,
       );
       const maps = all(`SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ?${x('user_id')} GROUP BY 1`, since, ...ex);
-      return { days, totals, daily, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
+      return { days, totals, daily, pages, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
     },
     /**
      * Runs, a page at a time, newest first, with filters (the admin page's Runs tab). `days` 0 = all time. Returns the page

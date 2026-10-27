@@ -27,6 +27,7 @@ import type { ZombieType } from '../types';
 import { STYLE_SAMPLES } from './styleLab';
 import { showVersionTag } from '../version';
 import { stayFresh } from '../freshness';
+import { reportVisit } from '../net/account';
 import { easePose, Giant, GIANT_POSES, Knight, KNIGHT_POSES, type GiantPose, type KnightPose } from '../freeroam/actors';
 import './bestiary.css';
 
@@ -804,3 +805,4 @@ requestAnimationFrame(frame);
 
 showVersionTag();
 stayFresh();
+reportVisit(matchMedia('(pointer: coarse)').matches, 'bestiary');

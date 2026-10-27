@@ -71,8 +71,9 @@ export async function loadAccount(): Promise<Account> {
   }
 }
 
-export function reportVisit(touch: boolean): void {
-  void post('/api/visit', { touch });
+/** `page`: which page the visit is to (the pages beside the game report their own). */
+export function reportVisit(touch: boolean, page: 'game' | 'excalibur' | 'bestiary' = 'game'): void {
+  void post('/api/visit', { touch, page });
 }
 
 export function ping(): void {
