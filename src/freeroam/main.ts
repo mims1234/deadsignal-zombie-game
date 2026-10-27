@@ -19,6 +19,7 @@ import { Ruin } from './ruin';
 import { Director, LOOP } from './scene';
 import { buildWorld } from './world';
 import { showVersionTag } from '../version';
+import { stayFresh } from '../freshness';
 import './freeroam.css';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -338,6 +339,7 @@ function frame(): void {
 }
 renderer.setAnimationLoop(frame);
 showVersionTag();
+stayFresh();
 
 // for the browser checks
 Object.assign(window, { __freeroam: { director, controls, renderer, audio, scene, world, ruin, setFilm, setFly, get ratio() { return ratio; }, get bloom() { return useBloom; } } });

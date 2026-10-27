@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.308",
+      "date": "2026-10-28",
+      "title": "The cast of Excalibur in the Bestiary",
+      "notes": [
+        "The Bestiary has a CINEMATICS section: the Black Knight (guard, strike, dash, leap, and her Excalibur charge with the blade of light) and the Giant (roar, walk, cleave, slam, block, kneel).",
+        "BESTIARY in the menu now opens a codex page first: every section of the field guide on a card, each opening the 3D bestiary on its first entry, or the whole guide.",
+        "Excalibur and the Bestiary keep themselves current: when they open, or you come back to them, they check which version is live and reload once if they are behind (a phone's saved copy included)."
+      ]
+    },
+    {
       "version": "0.4.307",
       "date": "2026-10-28",
       "title": "Cinematics, and updates that show at once",

@@ -248,6 +248,13 @@ app.get('/api/health', async (req, reply) => {
   return { ok: true, ...rooms.counts() };
 });
 
+// the live version (the deployed changelog's newest), never cached: open pages compare it to their own and reload when behind
+const LIVE_VERSION = JSON.parse(readFileSync(join(here, 'changelog.json'), 'utf8')).versions[0]?.version ?? '0.0.0';
+app.get('/api/version', async (_req, reply) => {
+  reply.header('cache-control', 'no-store');
+  return { version: LIVE_VERSION };
+});
+
 // ---- admin -------------------------------------------------------------------------------------------
 
 app.get('/admin', { preHandler: admin }, async (_req, reply) => reply.type('text/html').send(readFileSync(join(here, 'admin.html'))));

@@ -42,6 +42,17 @@ const CINEMATICS: { id: string; name: string; tagline: string; about: string; le
   },
 ];
 
+/** The bestiary's codex on the title: each section of the field guide, opening the 3D page on its first entry. */
+const CODEX: { group: string; about: string; entry: string; tone: string }[] = [
+  { group: 'THE HORDE', about: 'Shamblers, runners and the armoured, and what each zone has turned into them.', entry: 'shambler', tone: '#a9bf8e' },
+  { group: 'ELITES', about: 'The Warden, the Infernus, the Matron, and a few things better met for yourself.', entry: 'warden', tone: '#ff7a1a' },
+  { group: 'MAZOKU CARRIERS', about: 'The card carriers of the card hunt, each with their own card to collect.', entry: 'card-shiroko', tone: '#ff6fa8' },
+  { group: 'BESIDE YOU', about: 'Co-op operators, trapped survivors and the people who hold out with you.', entry: 'operators', tone: '#6fa8dc' },
+  { group: 'VULCAN', about: 'The clan of the Forge: familiar faces, and the rest of the clan.', entry: 'vulcan-leadership', tone: '#ffb060' },
+  { group: 'SAKURA DISTRICT', about: 'Hana & Yuzu, the Kurenai Court, and the infected under the blossoms.', entry: 'sakura-squad', tone: '#ff9ec8' },
+  { group: 'CINEMATICS', about: 'The Black Knight and the Giant of Excalibur.', entry: 'excalibur-knight', tone: '#b77cff' },
+];
+
 const COOP_LEAD = 'Play this zone with up to two friends: open a lobby, share the link, press ready together. Revive anyone who goes down, then extract together.';
 
 /** The leaderboards page: which board it shows. */
@@ -348,7 +359,7 @@ class Menus implements MenusApi {
   // -------------------------------------------------------------------------------------------
 
   /** The title's page: the side menu's PLAY / WITH FRIENDS / EXPLORE follow the mode; LEADERBOARDS is its own page. */
-  private titlePage: 'play' | 'boards' | 'films' = 'play';
+  private titlePage: 'play' | 'boards' | 'films' | 'codex' = 'play';
   /** The title's extra options (squad skill, the card hunt) stay open across redraws once opened. */
   private moreOpen = false;
   /** What the leaderboards page shows. */
@@ -357,9 +368,9 @@ class Menus implements MenusApi {
   private boardReq = 0;
 
   /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards and Cinematics change nothing. */
-  private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films'): void {
+  private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films' | 'codex'): void {
     const m = this.info.mode;
-    this.titlePage = p === 'boards' || p === 'films' ? p : 'play';
+    this.titlePage = p === 'boards' || p === 'films' || p === 'codex' ? p : 'play';
     if (p === 'play') {
       if (m === 'roam') this.cb.onRoamChange(false);
       else if (m === 'coop') this.cb.onModeChange(this.info.roamBase ?? 'standard');
@@ -386,7 +397,8 @@ class Menus implements MenusApi {
     const coop = mode === 'coop';
     const boards = this.titlePage === 'boards';
     const films = this.titlePage === 'films';
-    const elsewhere = boards || films;
+    const codex = this.titlePage === 'codex';
+    const elsewhere = boards || films || codex;
     const text = MAP_TEXT[this.info.map];
     const root = el('div', 'ds-launch');
     el('div', 'ds-shade', root);
@@ -434,7 +446,7 @@ class Menus implements MenusApi {
     item('FREE ROAM', 'explore', !elsewhere && roam, () => this.goPage('explore'));
     item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
     item('CINEMATICS', 'film', films, () => this.goPage('films'));
-    item('BESTIARY', 'book', false, () => window.open('./bestiary.html', '_blank', 'noopener'));
+    item('BESTIARY', 'book', codex, () => this.goPage('codex'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
     item('SETTINGS', 'sliders', false, () => showTab('settings'));
 
@@ -475,6 +487,7 @@ class Menus implements MenusApi {
     let first: HTMLElement | null = null;
     if (boards) this.buildBoards(main);
     else if (films) this.buildCinematics(main);
+    else if (codex) this.buildCodex(main);
     else {
       const hero = el('section', 'ds-l-hero', main);
       const kick = el('div', 'kicker', hero);
@@ -593,6 +606,28 @@ class Menus implements MenusApi {
       el('span', 'zon', card, `WATCH  ▸  ${f.length}`);
     }
     el('p', 'lead soon', page, 'More are on the way.');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // the bestiary's codex (a page of the title; the 3D field guide opens from it)
+  // -------------------------------------------------------------------------------------------
+
+  private buildCodex(main: HTMLElement): void {
+    const page = el('section', 'ds-l-boards ds-l-films ds-l-codex', main);
+    el('h1', 'name', page, 'BESTIARY');
+    el('p', 'lead', page, 'The field guide: everything you meet out there, in 3D. Open a section, or the whole guide, in a new tab.');
+    const open = (hash = ''): void => void window.open(`./bestiary.html${hash}`, '_blank', 'noopener');
+    const go = this.button(page, 'OPEN THE BESTIARY  ▸', 'primary ds-l-codex-open', () => open());
+    go.setAttribute('aria-label', 'Open the bestiary (opens in a new tab)');
+    const list = el('div', 'list', page);
+    for (const c of CODEX) {
+      const card = this.button(list, '', 'ds-l-zone ds-l-film', () => open(`#${c.entry}`));
+      card.style.setProperty('--zc', c.tone);
+      card.setAttribute('aria-label', `${c.group}: open in the bestiary (new tab)`);
+      el('span', 'zn', card, c.group);
+      el('span', 'zt', card, c.about);
+      el('span', 'zon', card, 'VIEW  ▸');
+    }
   }
 
   // -------------------------------------------------------------------------------------------

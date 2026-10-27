@@ -26,9 +26,11 @@ import { createEnvironment, createRenderer, createSkyDome, setupBlueHour } from 
 import type { ZombieType } from '../types';
 import { STYLE_SAMPLES } from './styleLab';
 import { showVersionTag } from '../version';
+import { stayFresh } from '../freshness';
+import { easePose, Giant, GIANT_POSES, Knight, KNIGHT_POSES, type GiantPose, type KnightPose } from '../freeroam/actors';
 import './bestiary.css';
 
-type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'VULCAN' | 'SAKURA DISTRICT' | 'STYLE LAB';
+type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'VULCAN' | 'SAKURA DISTRICT' | 'CINEMATICS' | 'STYLE LAB';
 
 /** The Forge's ending has been seen on this browser (`forge/reveal.ts`): its two secrets are shown. */
 const REVEALED = ((): boolean => {
@@ -57,8 +59,8 @@ interface Entry {
   lore: string;
   where: string;
   stats: [string, string][];
-  /** Animations this entry can play (people: the poses in `avatarModes`). */
-  modes: ZombieMode[] | 'avatar';
+  /** Animations this entry can play (people: the poses in `avatarModes`; film cast: the poses in `poser`). */
+  modes: ZombieMode[] | 'avatar' | 'pose';
   avatarModes?: string[];
   /** People entries with several characters: a mode button per person, each rebuilds the model. */
   cast?: string[];
@@ -66,6 +68,8 @@ interface Entry {
   /** Zombie rig, when the entry is one. */
   rig?: ZombieRig;
   avatar?: Avatar;
+  /** A cinematic's figure (set by build()): its named poses, and how it moves. */
+  poser?: Poser;
   enraged?: boolean;
   card?: string;
   accent?: number;
@@ -74,6 +78,38 @@ interface Entry {
   modeLabels?: Partial<Record<ZombieMode, string>>;
   /** Draw the view at this fraction of the screen's resolution, with hard pixels (the PS1 sample). */
   pixel?: number;
+}
+
+/** A figure from a cinematic, posed from its own pose table rather than a rig's animations. */
+interface Poser {
+  modes: string[];
+  set(m: string): void;
+  step(dt: number, time: number): void;
+}
+
+/** Each mode is a cycle of poses, `hold` seconds each; `stride` makes the figure walk on the spot. */
+type PoseCycle<P> = { poses: P[]; hold: number; stride?: number; rate?: number };
+
+function poser<P extends object>(fig: { pose: P; stride: number; update(dt: number, time: number): void }, cycles: Record<string, PoseCycle<P>>, extra?: (m: string, t: number, time: number) => void): Poser {
+  let cyc = Object.values(cycles)[0]!;
+  let name = Object.keys(cycles)[0]!;
+  let t = 0;
+  return {
+    modes: Object.keys(cycles),
+    set(m) {
+      name = m;
+      cyc = cycles[m]!;
+      t = 0;
+    },
+    step(dt, time) {
+      t += dt;
+      const target = cyc.poses[Math.floor(t / cyc.hold) % cyc.poses.length]!;
+      easePose(fig.pose, target, cyc.rate ?? 7, dt);
+      fig.stride += ((cyc.stride ?? 0) - fig.stride) * Math.min(1, dt * 5);
+      extra?.(name, t, time);
+      fig.update(dt, time);
+    },
+  };
 }
 
 const ZOMBIE_MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death'];
@@ -466,6 +502,53 @@ const entries: Entry[] = [
       },
     };
   }),
+  // the cast of the cinematics (freeroam/actors.ts), outside the game
+  {
+    id: 'excalibur-knight', group: 'CINEMATICS', name: 'The Black Knight', height: 1.75, accent: 0x9a5cff,
+    tagline: 'A queen in black armour, and the blade of light she carries.',
+    lore: 'She fights alone and barely speaks. When the fight turns against her she plants her feet, raises the sword and calls the darkness of the whole courtyard into it, until a blade of light grows out of the steel and she brings it down as Excalibur.',
+    where: 'Cinematics: Excalibur', stats: [['Height', '1.75 m'], ['Weapon', 'Excalibur'], ['Signature', 'a beam of light that levels the courtyard']], modes: 'pose',
+    build: () => {
+      const k = new Knight();
+      const P = KNIGHT_POSES;
+      const cycles: Record<string, PoseCycle<KnightPose>> = {
+        IDLE: { poses: [P.idle], hold: 1 },
+        GUARD: { poses: [P.guard], hold: 1 },
+        STRIKE: { poses: [P.guard, P.slashA, P.slashB, P.spin], hold: 0.55, rate: 12 },
+        DASH: { poses: [P.dash], hold: 1, stride: 1 },
+        LEAP: { poses: [P.crouch, P.aerial, P.overhead, P.release], hold: 0.7, rate: 9 },
+        EXCALIBUR: { poses: [P.kamae, P.overhead, P.overhead, P.overhead, P.release], hold: 1.1, rate: 4 },
+      };
+      current!.poser = poser(k, cycles, (m, t, time) => {
+        // the blade of light grows while she holds it overhead, and goes out after the swing
+        const charge = m === 'EXCALIBUR' ? t % 5.5 : 0;
+        const grow = charge > 1.1 && charge < 4.4 ? Math.min(1, (charge - 1.1) / 2.5) : 0;
+        k.setLightBlade(grow * 2.4, grow, time);
+      });
+      return k.root;
+    },
+  },
+  {
+    id: 'excalibur-giant', group: 'CINEMATICS', name: 'The Giant', height: 4.6, accent: 0xff4a3a,
+    tagline: 'Four and a half metres of stone-grey muscle and a slab of a sword.',
+    lore: 'He fights like a landslide: every slam throws the ground up around him, and when he is hurt he only gets angrier. His sword is a slab of iron with a glowing edge, and it is the last thing to break.',
+    where: 'Cinematics: Excalibur', stats: [['Height', '4.6 m'], ['Weapon', 'a slab of iron'], ['Signature', 'the ground slam']], modes: 'pose',
+    build: () => {
+      const g = new Giant();
+      const P = GIANT_POSES;
+      const cycles: Record<string, PoseCycle<GiantPose>> = {
+        IDLE: { poses: [P.idle], hold: 1 },
+        ROAR: { poses: [P.idle, P.roar, P.roar], hold: 0.9, rate: 6 },
+        WALK: { poses: [P.idle], hold: 1, stride: 0.6 },
+        CLEAVE: { poses: [P.raised, P.cleave, P.idle], hold: 0.8, rate: 9 },
+        SLAM: { poses: [P.slamUp, P.slamDown, P.idle], hold: 0.8, rate: 10 },
+        BLOCK: { poses: [P.block, P.press], hold: 1.2, rate: 6 },
+        KNEEL: { poses: [P.kneel], hold: 1, rate: 3 },
+      };
+      current!.poser = poser(g, cycles);
+      return g.root;
+    },
+  },
   // art-style experiments, not in the game (styleLab.ts)
   ...STYLE_SAMPLES.map((sm): Entry => {
     const e: Entry = {
@@ -532,13 +615,17 @@ function renderList(): void {
 function renderModes(): void {
   modesEl.replaceChildren();
   if (!current) return;
-  const labels = current.modes === 'avatar' ? (current.avatarModes ?? AVATAR_MODES) : current.modes.map((m) => current!.modeLabels?.[m] ?? MODE_LABEL[m]!);
+  const kind = current.modes;
+  const labels = kind === 'avatar' ? (current.avatarModes ?? AVATAR_MODES) : kind === 'pose' ? (current.poser?.modes ?? []) : kind.map((m) => current!.modeLabels?.[m] ?? MODE_LABEL[m]!);
   labels.forEach((label, i) => {
-    const on = current!.modes === 'avatar' ? avatarMode === label : mode === (current!.modes as ZombieMode[])[i];
+    const on = kind === 'avatar' || kind === 'pose' ? avatarMode === label : mode === kind[i];
     const b = el('button', on ? 'on' : '', modesEl, label);
     b.type = 'button';
     b.addEventListener('click', () => {
-      if (current!.modes === 'avatar') setAvatarMode(label);
+      if (kind === 'pose') {
+        avatarMode = label;
+        current!.poser?.set(label);
+      } else if (kind === 'avatar') setAvatarMode(label);
       else setMode((current!.modes as ZombieMode[])[i]!);
       renderModes();
     });
@@ -607,6 +694,7 @@ function select(e: Entry, keepCast = false): void {
   current = e;
   e.rig = undefined;
   e.avatar = undefined;
+  e.poser = undefined;
   model = e.build();
   model.traverse((o) => {
     const m = o as THREE.Mesh;
@@ -628,6 +716,8 @@ function select(e: Entry, keepCast = false): void {
     setAvatarMode(e.cast ? 'IDLE' : (e.avatarModes?.[0] ?? 'IDLE'));
     if (e.cast) avatarMode = e.cast[castIndex]!;
   }
+  const posed = e.poser as Poser | undefined; // set by build()
+  if (posed) avatarMode = posed.modes[0]!;
   mode = 'idle';
   modeT = 0;
   anim.enraged = e.enraged === true;
@@ -665,7 +755,8 @@ function step(dt: number): void {
       anim.mode = 'death';
     }
     e.rig.update(anim, dt);
-  } else if (e.avatar) {
+  } else if (e.poser) e.poser.step(dt, time);
+  else if (e.avatar) {
     const a = e.avatar;
     if (avatarMode === 'WALK') {
       // walk a small circle so the legs swing
@@ -712,3 +803,4 @@ requestAnimationFrame(frame);
 };
 
 showVersionTag();
+stayFresh();

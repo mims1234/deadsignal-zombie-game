@@ -3371,6 +3371,15 @@ html.ds-rm .ds-menus {
 .ds-l-film .zon {
   color: var(--zc);
 }
+.ds-btn.ds-l-codex-open {
+  align-self: flex-start;
+}
+.ds-l-codex .list {
+  gap: 0.45em;
+}
+.ds-l-codex .ds-btn.ds-l-film {
+  padding: 0.8em 1.1em;
+}
 .ds-l-films .lead.soon {
   font-size: 0.8em;
   color: var(--ds-ink-dim);
