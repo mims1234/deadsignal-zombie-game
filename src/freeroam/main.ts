@@ -170,9 +170,28 @@ addEventListener('pointerdown', unlock);
 addEventListener('keydown', unlock);
 addEventListener('touchstart', unlock, { passive: true });
 
+// full screen (not on iPhones, which only allow it for video): on a phone it also turns to landscape where it can
+const fullBtn = $('fr-btn-full');
+const canFull = document.fullscreenEnabled && typeof document.documentElement.requestFullscreen === 'function';
+if (!canFull) fullBtn.hidden = true;
+function toggleFull(): void {
+  if (!canFull) return;
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  else
+    void document.documentElement
+      .requestFullscreen({ navigationUI: 'hide' })
+      .then(() => {
+        const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+        if (touch && o.lock) return o.lock('landscape').catch(() => {});
+      })
+      .catch(() => {});
+}
+document.addEventListener('fullscreenchange', () => fullBtn.classList.toggle('on', !!document.fullscreenElement));
+
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
-  if (e.code === 'KeyC') setFilm(!film);
+  if (e.code === 'KeyG') toggleFull();
+  else if (e.code === 'KeyC') setFilm(!film);
   else if (e.code === 'KeyF') toggleFly();
   else if (e.code === 'KeyT') setSlow(!slow);
   else if (e.code === 'KeyR') replay();
@@ -194,6 +213,12 @@ hold('fr-btn-fly', toggleFly);
 hold('fr-btn-film', () => setFilm(!film));
 hold('fr-btn-slow', () => setSlow(!slow));
 hold('fr-btn-replay', replay);
+// (a click, not a press: browsers only allow full screen from a completed tap)
+fullBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+fullBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleFull();
+});
 hold('fr-btn-loop', () => setLoop(!director.loop));
 // the speaker opens the volume panel; levels are remembered
 type Level = keyof typeof audio.volume;
@@ -234,7 +259,7 @@ canvas.addEventListener('pointerdown', () => showVolume(false));
 
 hintEl.textContent = touch
   ? 'Left thumb: move · drag right side: look'
-  : 'C leaves the film camera to walk · drag or click to look · WASD move · Shift run · Space jump · F (or Space twice) to fly · T slow motion · L loop on/off · R replay · M mute (the speaker sets volumes)';
+  : 'C leaves the film camera to walk · drag or click to look · WASD move · Shift run · Space jump · F (or Space twice) to fly · T slow motion · L loop on/off · R replay · M mute (the speaker sets volumes) · G full screen';
 setTimeout(() => hintEl.classList.add('gone'), 12000);
 
 // ---- the loop ----

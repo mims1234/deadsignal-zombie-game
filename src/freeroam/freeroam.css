@@ -308,6 +308,10 @@ body.touch #fr-fly-tip {
   letter-spacing: 0.14em;
   touch-action: none;
 }
+/* the full screen glyph needs to be bigger than the labels to read */
+#fr-btn-full {
+  font-size: 17px !important;
+}
 #fr-buttons button.big {
   width: 72px;
   height: 72px;

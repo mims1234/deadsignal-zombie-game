@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.306",
+      "date": "2026-10-28",
+      "title": "Excalibur full screen",
+      "notes": [
+        "The Excalibur scene has a full screen button (top of the buttons on the right) and a G key; Esc or the button again leaves it. On Android phones it also turns the scene to landscape where the phone allows it (iPhones don't allow full screen for web pages, so the button hides there)."
+      ]
+    },
+    {
       "version": "0.4.305",
       "date": "2026-10-27",
       "title": "Excalibur sound fixes",
