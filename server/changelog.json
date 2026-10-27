@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.304",
+      "date": "2026-10-27",
+      "title": "Excalibur v2",
+      "notes": [
+        "The Excalibur scene is now a full 88-second battle in five acts. The fight: a circling exchange, his ground slam and her strike out of the sky, a shockwave she leaps, a blitz from every side with trails of light, him swatting her across the courtyard (\"...Not yet.\"), blades locked in a fountain of sparks until she breaks it, and him going berserk in a red aura.",
+        "The charge now takes twenty seconds: darkness pours in from the whole courtyard, the rubble lifts into the air, he charges and her pressure throws him back, the blade goes overhead under a column of light and lightning, a blade of light grows out of the steel, everything falls quiet but a heartbeat, and she draws out \"Exxx...\" before \"CALIBUR!\".",
+        "The beam holds on him for four seconds and keeps swelling; his slab glows white-hot and shatters; then the blast turns the world white as a nuke and it comes back slowly to ruins: the ground torn open along the beam's path into a deep crater with a molten floor (you can walk and drop down into it), scorch marks, pillars thrown flat, charred stone and trees, fires burning and smoke rising.",
+        "The shadow around her is now streams of dark particles instead of tendrils. Her violet aura and his red rage are particles too, with faint violet ripples spreading over the ground from her feet; when she moves fast a streak of violet light follows her. The rubble his slams throw up is small and settles away in seconds, never passing through her, so the fight stays clear to see; while she charges the lifted rocks hover in a wide ring around her.",
+        "It opens as a film now. Press C (or FILM) to step out and walk or fly; switching the film on and off always puts you back where you were. LOOP (or L) turned off stops the scene in the ruins and hands you the world to explore, with the last act of the score playing on and only the fire and wind around you. Looping, it fades to black at the end and back in.",
+        "A new, more intense score in three acts cut to the scene, twelve new voice lines (the best takes from several per line), and new sound effects: grinding blades, a heartbeat, a ten-second charge and a swelling beam. The scene now runs on the music's clock, so a slow frame can no longer make the music stutter or repeat."
+      ]
+    },
+    {
       "version": "0.4.303",
       "date": "2026-10-27",
       "title": "Excalibur: a free-roam film set",

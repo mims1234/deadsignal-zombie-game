@@ -38,6 +38,9 @@ body {
   opacity: 0;
   z-index: 5;
 }
+#fr-flash.white {
+  background: #fff8ec;
+}
 #fr-flash.black {
   background: #000;
 }
@@ -118,6 +121,46 @@ body {
 }
 .fr-sound.off .x {
   display: inline;
+}
+
+/* the volume panel, under the speaker button */
+.fr-volume {
+  position: fixed;
+  top: calc(max(12px, env(safe-area-inset-top)) + 44px);
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 11;
+  width: 190px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: rgba(10, 6, 16, 0.82);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.fr-volume[hidden] {
+  display: none;
+}
+.fr-volume label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fr-volume label.fr-vol-mute {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+}
+.fr-volume input[type='range'] {
+  width: 100%;
+  accent-color: var(--violet);
+}
+.fr-volume input[type='checkbox'] {
+  accent-color: var(--violet);
 }
 
 #fr-phase {

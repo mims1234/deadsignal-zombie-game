@@ -2,37 +2,61 @@
  * The scene's sound: the score, the two voices and every effect, all hung off the scene clock so they stay in step
  * through slow motion, replays and film mode.
  *
- * The score (`music.mp3`, Lyria 3) and the voices (`voice/*.mp3`, ElevenLabs v4 and Fish Audio Drama 3) were generated
- * for this scene and cut to it; the effects are
- * synthesised here with Web Audio (no files): filtered-noise whooshes, inharmonic metal for the sword strikes, a
- * rising hum for the charge, a roaring beam, sub-bass booms and the ringing silence of the cut to black.
+ * The score (`music.mp3`: three Lyria 3 cues, one per act, cut together to the 88 s scene) and the voices
+ * (`voice/*.mp3`: ElevenLabs v4 and Fish Audio Drama 3, the best of several takes each) were made for this scene; the
+ * effects are synthesised here with Web Audio (no files): filtered-noise whooshes, inharmonic metal for the sword
+ * strikes, grinding blades, a heartbeat, a long rising hum for the charge, a swelling beam and sub-bass booms.
  */
 import type * as THREE from 'three';
 import type { Cue } from './scene';
 
 const BASE = './freeroam/';
-/** The score's own climax lands 0.6 s after the blast: play it that far ahead. */
-const MUSIC_SHIFT = 0.6;
-
-type Voice = 'still' | 'roar' | 'war' | 'dash' | 'kiai' | 'kiai2' | 'charge' | 'release' | 'struck' | 'after';
-const VOICES: Voice[] = ['still', 'roar', 'war', 'dash', 'kiai', 'kiai2', 'charge', 'release', 'struck', 'after'];
-const GIANT: Voice[] = ['roar', 'war', 'struck'];
-
+/** The score is cut to the scene: it plays in step with it. */
+const MUSIC_SHIFT = 0;
 /**
- * When each line is spoken (scene seconds). The charge line ends just before "Ex...", and "CALIBUR" (1.08 s into its
- * clip) lands on the downswing at 17.5.
+ * Held in the ruins (not looping), the score keeps going: only its gentle, sorrowful last passage (the steady quiet
+ * stretch just before its fade) plays on round, each pass crossfading into the next.
  */
+const HOLD_FROM = 76;
+const HOLD_TO = 83;
+const HOLD_FADE = 2;
+
+const VOICES = [
+  'still', 'roar', 'war', 'dash', 'kiai', 'kiai2', 'kiai3', 'taunt', 'grunt', 'notyet', 'push', 'strain', 'berserk',
+  'dark1', 'dark2', 'end', 'ex', 'calibur', 'struck', 'after',
+] as const;
+type Voice = (typeof VOICES)[number];
+const GIANT: Voice[] = ['roar', 'war', 'grunt', 'push', 'berserk', 'struck'];
+
+/** When each line is spoken (scene seconds). "Exxx..." builds right up to the swing; "CALIBUR!" rides the beam. */
 const LINES: [number, Voice][] = [
-  [4.6, 'still'],
-  [6.3, 'roar'],
-  [8.05, 'war'],
-  [9.0, 'dash'],
-  [10.35, 'kiai'],
-  [11.6, 'kiai2'],
-  [12.7, 'charge'],
-  [16.42, 'release'],
-  [17.75, 'struck'],
-  [25.4, 'after'],
+  [3.0, 'still'],
+  [7.3, 'roar'],
+  [9.0, 'war'],
+  [9.5, 'dash'],
+  [10.6, 'kiai'],
+  [11.8, 'kiai2'],
+  [13.0, 'kiai3'],
+  [18.6, 'taunt'],
+  [19.25, 'roar'],
+  [22.4, 'grunt'],
+  [24.3, 'kiai'],
+  [25.0, 'grunt'],
+  [26.2, 'kiai3'],
+  [26.7, 'war'],
+  [29.3, 'notyet'],
+  [31.5, 'push'],
+  [32.6, 'strain'],
+  [35.0, 'kiai3'],
+  [36.8, 'berserk'],
+  [41.0, 'dark1'],
+  [47.5, 'war'],
+  [50.8, 'dark2'],
+  [54.6, 'end'],
+  [56.3, 'ex'],
+  [59.8, 'calibur'],
+  [62.2, 'struck'],
+  [74.5, 'after'],
 ];
 
 export class SceneAudio {
@@ -47,10 +71,18 @@ export class SceneAudio {
   readonly voices = new Map<Voice, AudioBuffer>();
   private musicSrc: AudioBufferSourceNode | null = null;
   private musicAnchor = { ctx: 0, pos: 0, rate: 1 };
+  private holding = false;
+  private holdNext = 0;
+  private holdSrcs: AudioBufferSourceNode[] = [];
+  private lastCtx = 0;
   private wind: GainNode | null = null;
+  /** the ruins burning: a low roar of fire under the crackle */
+  private fire: GainNode | null = null;
   private prevT = 0;
   private crackle = 0;
   muted = false;
+  /** the listener's levels, 0..1 each */
+  readonly volume = { master: 1, music: 1, sfx: 1, voice: 1 };
 
   /** Start on the first gesture (browsers keep audio locked until then). */
   unlock(): void {
@@ -64,7 +96,7 @@ export class SceneAudio {
     comp.threshold.value = -14;
     comp.ratio.value = 4;
     this.master = ctx.createGain();
-    this.master.gain.value = this.muted ? 0 : 0.9;
+    this.master.gain.value = this.muted ? 0 : 0.9 * this.volume.master;
     this.master.connect(comp).connect(ctx.destination);
 
     this.verb = ctx.createConvolver();
@@ -74,13 +106,14 @@ export class SceneAudio {
     this.verb.connect(verbOut).connect(this.master);
 
     this.musicBus = ctx.createGain();
-    this.musicBus.gain.value = 0.55;
+    this.musicBus.gain.value = 0.55 * this.volume.music;
     this.musicBus.connect(this.master);
     this.sfx = ctx.createGain();
+    this.sfx.gain.value = this.volume.sfx;
     this.sfx.connect(this.master);
     this.sfx.connect(this.verb);
     this.voiceBus = ctx.createGain();
-    this.voiceBus.gain.value = 1.1;
+    this.voiceBus.gain.value = 1.1 * this.volume.voice;
     this.voiceBus.connect(this.master);
     this.voiceBus.connect(this.verb);
 
@@ -98,7 +131,19 @@ export class SceneAudio {
 
   setMuted(m: boolean): void {
     this.muted = m;
-    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9, this.ctx.currentTime, 0.05);
+    if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.9 * this.volume.master, this.ctx.currentTime, 0.05);
+  }
+
+  /** Set one of the listener's levels (0..1). */
+  setVolume(which: keyof SceneAudio['volume'], v: number): void {
+    this.volume[which] = Math.min(1, Math.max(0, v));
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    if (which === 'master') this.master.gain.setTargetAtTime(this.muted ? 0 : 0.9 * this.volume.master, now, 0.05);
+    else if (which === 'sfx') this.sfx.gain.setTargetAtTime(this.volume.sfx, now, 0.05);
+    else if (which === 'voice') this.voiceBus.gain.setTargetAtTime(1.1 * this.volume.voice, now, 0.05);
+    // the music level is applied every frame in update()
   }
 
   private async load(): Promise<void> {
@@ -132,8 +177,18 @@ export class SceneAudio {
   // ------------------------------------------------------------------------------------------------------------------
   // the clock
 
-  /** `t`: scene seconds; `rate`: slow motion; `ear`: the camera. */
-  update(t: number, rate: number, ear: THREE.Vector3): void {
+  /**
+   * Where the score is (scene seconds), while it is playing: the page runs the scene on this clock, so a slow frame
+   * can never put the picture and the music out of step. Null when there is no score to follow.
+   */
+  position(): number | null {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running' || !this.music || !this.musicSrc || this.holding) return null;
+    return this.musicAnchor.pos + (ctx.currentTime - this.musicAnchor.ctx) * this.musicAnchor.rate - MUSIC_SHIFT;
+  }
+
+  /** `t`: scene seconds; `rate`: slow motion; `ear`: the camera; `held`: the scene is resting in the ruins. */
+  update(t: number, rate: number, ear: THREE.Vector3, held = false): void {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') {
       this.prevT = t;
@@ -141,33 +196,95 @@ export class SceneAudio {
     }
     const looped = t < this.prevT;
     if (looped) this.prevT = 0;
+    const real = Math.max(0, Math.min(0.25, ctx.currentTime - this.lastCtx));
+    this.lastCtx = ctx.currentTime;
 
-    // the score follows the scene clock
-    if (this.music) {
+    if (this.music && held) {
+      // the scene clock has stopped: the score carries on by itself
+      if (!this.holding) this.startHold();
+      if (ctx.currentTime > this.holdNext - 1) this.holdPass(this.holdNext);
+      this.musicBus.gain.setTargetAtTime(0.6 * this.volume.music, ctx.currentTime, 0.3);
+    } else if (this.music) {
+      if (this.holding) this.stopHold();
+      // the score follows the scene clock (re-seeking only when it has really drifted, so slow frames don't stutter it)
       const want = t + MUSIC_SHIFT;
       const now = ctx.currentTime;
       const pos = this.musicAnchor.pos + (now - this.musicAnchor.ctx) * this.musicAnchor.rate;
-      if (!this.musicSrc || looped || Math.abs(pos - want) > 0.2 || this.musicAnchor.rate !== rate) this.playMusic(want, rate);
-      // the cut: the music drops away under the beam, is gone in the black, and comes back with the blast
-      const duck = t > 17.62 && t < 19.4 ? (t < 18.9 ? 0.25 : 0.02) : 1;
-      this.musicBus.gain.setTargetAtTime(0.55 * duck, now, t > 19.38 && t < 19.5 ? 0.01 : 0.08);
+      if (!this.musicSrc || looped || Math.abs(pos - want) > 0.45 || Math.abs(this.musicAnchor.rate - rate) > 0.02) this.playMusic(want, rate);
+      // a held breath of silence just before the blast
+      const duck = t > 63.55 && t < 64 ? 0.03 : 1;
+      this.musicBus.gain.setTargetAtTime(0.6 * duck * this.volume.music, now, t > 63.5 && t < 64.1 ? 0.01 : 0.08);
     }
 
-    // voices
-    for (const [at, v] of LINES) {
-      const buf = this.voices.get(v);
-      if (this.prevT < at && t >= at && buf) this.voice(v, buf, rate);
-    }
+    // voices - never once the scene has come to rest (the ruins are only the world itself), and never all at once
+    // when the clock jumps (a replay, a skip)
+    if (!held && t - this.prevT < 2)
+      for (const [at, v] of LINES) {
+        const buf = this.voices.get(v);
+        if (this.prevT < at && t >= at && buf) this.voice(v, buf, rate);
+      }
 
-    // embers crackle and the wind breathes
-    this.crackle -= t - this.prevT;
+    // embers crackle and the wind breathes (on the real clock: they go on in the ruins too)
+    this.crackle -= real;
+    const burning = held || (t > 64.5 && t < 84);
     if (this.crackle <= 0) {
-      this.crackle = 0.08 + Math.random() * 0.35;
-      this.tick(0.04 + Math.random() * 0.05);
+      // after the blast the whole courtyard is burning: more, lower, louder pops
+      this.crackle = burning ? 0.03 + Math.random() * 0.14 : 0.08 + Math.random() * 0.35;
+      if (burning) this.tick(0.06 + Math.random() * 0.1, 700 + Math.random() * 2200);
+      else this.tick(0.04 + Math.random() * 0.05);
     }
-    if (this.wind) this.wind.gain.setTargetAtTime(0.05 + (t > 13.6 && t < 17.5 ? 0.08 : 0), ctx.currentTime, 0.5);
+    if (this.fire) this.fire.gain.setTargetAtTime(burning ? 0.09 : 0, ctx.currentTime, 1.2);
+    if (this.wind) this.wind.gain.setTargetAtTime(0.05 + (t > 44 && t < 59.8 ? 0.06 + (t - 44) * 0.008 : 0) + (t > 66 ? 0.04 : 0), ctx.currentTime, 0.5);
     void ear;
     this.prevT = t;
+  }
+
+  /** The ruins: the score's last act on round. */
+  private startHold(): void {
+    const ctx = this.ctx!;
+    this.holding = true;
+    // let what was playing ring out under the first pass
+    if (this.musicSrc) {
+      try {
+        this.musicSrc.stop(ctx.currentTime + HOLD_FADE);
+      } catch {
+        /* never started */
+      }
+      this.musicSrc = null;
+    }
+    this.holdNext = ctx.currentTime;
+    this.holdPass(this.holdNext);
+  }
+
+  /** One pass of the held music starting at `at` (context time), fading in and out so passes overlap smoothly. */
+  private holdPass(at: number): void {
+    const ctx = this.ctx!;
+    const len = HOLD_TO - HOLD_FROM;
+    const src = ctx.createBufferSource();
+    src.buffer = this.music;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(1, at + HOLD_FADE);
+    g.gain.setValueAtTime(1, at + len - HOLD_FADE);
+    g.gain.linearRampToValueAtTime(0.0001, at + len);
+    src.connect(g).connect(this.musicBus);
+    src.start(at, HOLD_FROM, len);
+    src.onended = () => (this.holdSrcs = this.holdSrcs.filter((s) => s !== src));
+    this.holdSrcs.push(src);
+    this.holdNext = at + len - HOLD_FADE;
+  }
+
+  private stopHold(): void {
+    this.holding = false;
+    for (const s of this.holdSrcs) {
+      try {
+        s.stop();
+      } catch {
+        /* already done */
+      }
+    }
+    this.holdSrcs = [];
+    this.musicSrc = null; // the scene's score picks up again where the scene is
   }
 
   private playMusic(at: number, rate: number): void {
@@ -255,24 +372,58 @@ export class SceneAudio {
       case 'leap':
         this.whoosh(0, 0.7, 2000, 400, 0.4);
         break;
+      case 'slam':
+        this.boom(0, 2.2, 48, 1.1 * Math.max(near, 0.5));
+        this.debris(1.2);
+        break;
+      case 'flung':
+        this.clang(1.0);
+        this.boom(0, 1.0, 70, 0.7);
+        this.whoosh(0.05, 0.9, 1800, 300, 0.5);
+        break;
+      case 'lock':
+        this.clang(1.1);
+        this.grind(3.6);
+        break;
+      case 'break':
+        this.clang(1.2);
+        this.boom(0, 1.6, 60, 0.9);
+        this.whoosh(0, 0.5, 400, 3000, 0.5);
+        break;
+      case 'berserk':
+        this.boom(0, 2.5, 40, 0.8);
+        this.riser(2.0, 30, 90, 0.35);
+        break;
+      case 'gather':
+        this.riser(9.5, 35, 140, 0.3);
+        break;
+      case 'barrier':
+        this.boom(0, 1.8, 55, 1.0);
+        this.whoosh(0, 1.0, 3000, 200, 0.6);
+        break;
       case 'charge':
-        this.chargeHum(3.9);
+        this.chargeHum(9.8);
+        break;
+      case 'heartbeat':
+        this.boom(0, 0.35, 34, 1.0);
+        this.boom(0.27, 0.32, 30, 0.7);
         break;
       case 'release':
-        this.beamRoar(1.6);
+        this.beamRoar(4.1);
         break;
-      case 'black':
-        this.ringing(0.9);
+      case 'shatter':
+        this.clang(1.3);
+        this.boom(0, 1.2, 80, 0.9);
+        this.debris(1.5);
         break;
       case 'impact':
-        this.boom(0, 4.5, 42, 1.4);
-        this.debris(3);
+        this.boom(0, 7, 36, 1.6);
+        this.boom(0.05, 3, 70, 1.0);
+        this.ringing(2.2);
+        this.debris(5);
         break;
       case 'ring':
         this.chime(0.35);
-        break;
-      case 'reform':
-        this.riser(2.4, 40, 160, 0.3);
         break;
       case 'loop':
         break;
@@ -306,6 +457,35 @@ export class SceneAudio {
     n.connect(bp).connect(g).connect(this.sfx);
     n.start(at);
     n.stop(at + dur + 0.05);
+  }
+
+  /** Two blades ground together: a trembling metallic scrape that rises. */
+  private grind(dur: number): void {
+    const ctx = this.ctx!;
+    const at = ctx.currentTime;
+    const n = this.noiseSrc();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 9;
+    bp.frequency.setValueAtTime(1400, at);
+    bp.frequency.linearRampToValueAtTime(2600, at + dur);
+    const trem = ctx.createGain();
+    trem.gain.value = 0.5;
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = 31;
+    const depth = ctx.createGain();
+    depth.gain.value = 0.5;
+    lfo.connect(depth).connect(trem.gain);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(0.5, at + 0.2);
+    g.gain.linearRampToValueAtTime(0.8, at + dur * 0.9);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    n.connect(bp).connect(trem).connect(g).connect(this.sfx);
+    n.start(at);
+    lfo.start(at);
+    n.stop(at + dur + 0.05);
+    lfo.stop(at + dur + 0.05);
   }
 
   /** Steel on stone: inharmonic partials with a bright transient. */
@@ -425,15 +605,15 @@ export class SceneAudio {
     shaper.curve = this.drive(6);
     const g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, at);
-    g.gain.exponentialRampToValueAtTime(0.7, at + 0.06);
-    g.gain.setValueAtTime(0.7, at + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.45, at + 0.06);
+    g.gain.linearRampToValueAtTime(0.95, at + dur * 0.9);
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
     shaper.connect(g).connect(this.sfx);
     const n = this.noiseSrc();
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime(6000, at);
-    lp.frequency.exponentialRampToValueAtTime(700, at + dur);
+    lp.frequency.setValueAtTime(1200, at);
+    lp.frequency.exponentialRampToValueAtTime(7000, at + dur * 0.9);
     n.connect(lp).connect(shaper);
     n.start(at);
     n.stop(at + dur + 0.05);
@@ -549,5 +729,22 @@ export class SceneAudio {
     n.connect(lp).connect(this.wind).connect(this.master);
     n.start();
     lfo.start();
+
+    // the fire bed: a low, breathing roar
+    const fn = this.noiseSrc();
+    const fbp = ctx.createBiquadFilter();
+    fbp.type = 'bandpass';
+    fbp.frequency.value = 320;
+    fbp.Q.value = 0.6;
+    const flfo = ctx.createOscillator();
+    flfo.frequency.value = 0.4;
+    const flg = ctx.createGain();
+    flg.gain.value = 120;
+    flfo.connect(flg).connect(fbp.frequency);
+    this.fire = ctx.createGain();
+    this.fire.gain.value = 0;
+    fn.connect(fbp).connect(this.fire).connect(this.master);
+    fn.start();
+    flfo.start();
   }
 }

@@ -62,6 +62,15 @@ export const KNIGHT_POSES = {
   slashB: { lean: 0.25, twist: -0.75, raise: 0.15, blade: 0.35, crouch: 0.3 },
   overhead: { lean: -0.1, twist: 0, raise: -2.6, blade: -0.22, crouch: 0.18 },
   release: { lean: 0.5, twist: 0, raise: 0.95, blade: 1.95, crouch: 0.5 },
+  /** the sword held upright before her face: the stance she charges from */
+  kamae: { lean: 0, twist: 0, raise: 0.55, blade: 0.1, crouch: 0.22 },
+  /** blades locked: leaning in, sword level */
+  lock: { lean: 0.38, twist: 0.1, raise: 0.55, blade: 1.3, crouch: 0.55 },
+  crouch: { lean: 0.5, twist: 0.3, raise: 0.35, blade: 2.6, crouch: 0.95 },
+  /** coming down out of a leap */
+  aerial: { lean: -0.15, twist: 0, raise: -2.5, blade: -0.5, crouch: 0.1 },
+  spin: { lean: 0.3, twist: 2.9, raise: 0.95, blade: 1.5, crouch: 0.4 },
+  flung: { lean: -0.65, twist: -0.3, raise: 0.2, blade: 2.9, crouch: 0.2 },
 } satisfies Record<string, KnightPose>;
 
 export class Knight {
@@ -69,6 +78,9 @@ export class Knight {
   /** the blade's point (world position via getWorldPosition) */
   readonly tip = new THREE.Object3D();
   readonly bladeGlow: THREE.MeshBasicMaterial;
+  /** the blade of light that grows out of her sword while she charges */
+  private readonly lightBlade: THREE.Mesh;
+  private readonly lightU = { uTime: { value: 0 }, uAmt: { value: 0 } };
   readonly pose: KnightPose = { ...KNIGHT_POSES.idle };
   /** 0: standing, 1: running */
   stride = 0;
@@ -172,6 +184,35 @@ export class Knight {
     this.tip.position.y = 1.24;
     this.sword.add(hilt, pommel, guard, blade, groove, glow, this.tip);
 
+    const lb = new THREE.CylinderGeometry(0.06, 0.32, 1, 10, 1, true);
+    lb.translate(0, 0.5, 0);
+    this.lightBlade = new THREE.Mesh(
+      lb,
+      new THREE.ShaderMaterial({
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        uniforms: this.lightU,
+        vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: /* glsl */ `
+          uniform float uTime, uAmt;
+          varying vec2 vUv;
+          float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+          void main() {
+            vec2 g = vec2(floor(vUv.x * 10.0), floor(vUv.y * 26.0 - uTime * 9.0));
+            float streak = step(0.55, h(g));
+            vec3 col = mix(vec3(0.7, 0.08, 1.8), vec3(2.6, 0.2, 0.5), streak);
+            col = mix(col, vec3(3.0, 2.4, 3.2), smoothstep(0.85, 1.0, 1.0 - vUv.y) * 0.4);
+            float a = uAmt * (0.25 + streak * 0.5) * smoothstep(1.0, 0.75, vUv.y);
+            gl_FragColor = vec4(col, a);
+          }`,
+      }),
+    );
+    this.lightBlade.position.y = 1.2;
+    this.lightBlade.visible = false;
+    this.sword.add(this.lightBlade);
+
     // arms: one gauntleted segment from shoulder to the grip, re-aimed every frame
     const armGeo = new THREE.CylinderGeometry(0.042, 0.052, 1, 8);
     armGeo.translate(0, 0.5, 0);
@@ -206,6 +247,14 @@ export class Knight {
     this.cape.position.set(0, 0.56, -0.13);
     this.torso.add(this.cape);
     this.capeBase = Float32Array.from(capeGeo.attributes.position.array as Float32Array);
+  }
+
+  /** The blade of light: `len` metres beyond the steel, at strength `amt`. */
+  setLightBlade(len: number, amt: number, time: number): void {
+    this.lightBlade.visible = amt > 0.01 && len > 0.05;
+    this.lightBlade.scale.set(1 + len * 0.06, Math.max(0.01, len), 1 + len * 0.06);
+    this.lightU.uAmt.value = amt;
+    this.lightU.uTime.value = time;
   }
 
   update(dt: number, time: number): void {
@@ -270,6 +319,13 @@ export const GIANT_POSES = {
   stagger: { lean: -0.4, armR: 0.2, armL: -0.2, spread: 0.7, roar: 0.4, crouch: 0.15 },
   brace: { lean: 0.35, armR: -1.4, armL: -1.3, spread: 0.45, roar: 0.6, crouch: 0.4 },
   struck: { lean: -0.6, armR: -0.8, armL: -0.8, spread: 1.2, roar: 1, crouch: 0.1 },
+  slamUp: { lean: -0.2, armR: -2.8, armL: -2.8, spread: 0.1, roar: 0.6, crouch: 0.15 },
+  slamDown: { lean: 0.75, armR: 0.7, armL: 0.7, spread: 0.05, roar: 0, crouch: 0.6 },
+  block: { lean: 0.2, armR: -1.65, armL: -1.2, spread: 0.3, roar: 0.2, crouch: 0.35 },
+  backhand: { lean: 0.25, armR: -0.3, armL: -1.5, spread: 1.4, roar: 0.4, crouch: 0.3 },
+  /** leaning his whole weight into the locked blades */
+  press: { lean: 0.5, armR: -1.0, armL: -0.7, spread: 0.2, roar: 0.3, crouch: 0.5 },
+  kneel: { lean: 0.55, armR: 0.4, armL: 0.3, spread: 0.4, roar: 0, crouch: 0.95 },
 } satisfies Record<string, GiantPose>;
 
 export class Giant {
@@ -277,6 +333,9 @@ export class Giant {
   readonly pose: GiantPose = { ...GIANT_POSES.idle };
   readonly skin: THREE.MeshToonMaterial;
   readonly eyes: THREE.MeshBasicMaterial;
+  /** his slab of a sword (it breaks under the beam) and its glowing edge */
+  readonly slab = new THREE.Group();
+  readonly slabEdge: THREE.MeshBasicMaterial;
   stride = 0;
   private phase = 0;
   private readonly hips = new THREE.Group();
@@ -292,6 +351,7 @@ export class Giant {
     const dark = toon(0x16100f);
     const stone = toon(0x4a4248);
     this.eyes = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 0.3, 0.2) });
+    this.slabEdge = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.2, 0.1) });
     const ink = INK_GIANT;
 
     this.root.add(this.hips);
@@ -341,9 +401,10 @@ export class Giant {
       if (sx === 1) {
         const slab = part(new THREE.BoxGeometry(0.5, 3.2, 0.16), stone, ink);
         slab.position.set(0, -2.7, 0.15);
-        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 3.0, 0.18), new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 0.2, 0.1) }));
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 3.0, 0.18), this.slabEdge);
         edge.position.set(0.25, -2.7, 0.15);
-        el.add(slab, edge);
+        this.slab.add(slab, edge);
+        el.add(this.slab);
       }
       sh.add(el);
       this.torso.add(sh);

@@ -4,6 +4,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { buildGround, type Ground } from './fissure';
 
 export const KNIGHT_HOME = new THREE.Vector3(0, 0, 14);
 export const GIANT_HOME = new THREE.Vector3(0, 0, -26);
@@ -24,6 +25,14 @@ export interface World {
   colliders: Collider[];
   /** the cracks that glow around the knight */
   cracks: THREE.MeshBasicMaterial;
+  crackMesh: THREE.Mesh;
+  /** the floor, which the blast tears open */
+  ground: Ground;
+  /** the courtyard's pillars, one instance each so the blast can throw them down */
+  pillars: { mesh: THREE.InstancedMesh; items: { x: number; z: number; h: number; collider: Collider }[] };
+  /** the stone and the trees, which the blast chars */
+  stoneMat: THREE.MeshLambertMaterial;
+  treeMat: THREE.MeshLambertMaterial;
   /** the scorched trench the beam leaves */
   trench: THREE.MeshBasicMaterial;
   fog: THREE.FogExp2;
@@ -175,10 +184,8 @@ export function buildWorld(scene: THREE.Scene, low: boolean): World {
 
   // ---- ground ----
   const groundTex = stoneTexture(r, '#4a3c46', true);
-  groundTex.repeat.set(60, 60);
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(340, 340), new THREE.MeshLambertMaterial({ map: groundTex }));
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
+  groundTex.repeat.set(0.176, 0.176); // the floor's coordinates are metres: one flagstone tile every 5.7 m
+  const ground = buildGround(scene, new THREE.MeshLambertMaterial({ map: groundTex }), 170);
 
   const cracks = new THREE.MeshBasicMaterial({
     map: crackTexture(r),
@@ -244,19 +251,23 @@ export function buildWorld(scene: THREE.Scene, low: boolean): World {
     if (r() < 0.6) box(2 + r() * 3, 1 + r() * 2.5, 1.9, x + Math.cos(a) * (r() - 0.5) * 3, h + 0.6, z - Math.sin(a) * (r() - 0.5) * 3, a, (r() - 0.5) * 0.3);
     for (let k = -1; k <= 1; k++) colliders.push({ x: x + Math.cos(a) * k * 2.6, z: z - Math.sin(a) * k * 2.6, r: 1.8, h });
   }
+  const pillarItems: { x: number; z: number; h: number; collider: Collider }[] = [];
   for (let i = 0; i < 16; i++) {
     const a = (i / 16) * Math.PI * 2 + 0.2;
     const x = Math.sin(a) * 29;
     const z = Math.cos(a) * 29 - 4;
     if (Math.abs(x) < 6) continue; // keep the beam's line clear
     const h = 2.5 + r() * 9;
-    const col = new THREE.CylinderGeometry(0.85, 0.95, h, 10);
-    col.translate(x, h / 2 + 0.6, z);
-    parts.push(col);
     box(2.4, 0.6, 2.4, x, 0.3, z);
-    if (h > 7 && r() < 0.5) box(3.5, 0.7, 1.2, x, h + 0.9, z, r() * 3, 0.15);
-    colliders.push({ x, z, r: 1.3, h: h + 0.6 });
+    const collider = { x, z, r: 1.3, h: h + 0.6 };
+    colliders.push(collider);
+    pillarItems.push({ x, z, h, collider });
   }
+  const pillarGeo = new THREE.CylinderGeometry(0.85, 0.95, 1, 10);
+  pillarGeo.translate(0, 0.5, 0);
+  const pillars = new THREE.InstancedMesh(pillarGeo, stoneMat, pillarItems.length);
+  pillarItems.forEach((p, i) => pillars.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(p.x, 0.6, p.z), new THREE.Quaternion(), new THREE.Vector3(1, p.h, 1))));
+  scene.add(pillars);
   // the far keep and a broken tower: silhouettes against the moon
   for (const [x, z, w, h] of [
     [-34, -82, 14, 20],
@@ -302,7 +313,8 @@ export function buildWorld(scene: THREE.Scene, low: boolean): World {
     const a = r() * Math.PI * 2;
     const d = 6 + Math.pow(r(), 0.7) * 50;
     v.set(Math.sin(a) * d, 0, Math.cos(a) * d);
-    if (Math.abs(v.x) < 3 && v.z > -24 && v.z < 18) v.x += 6 * Math.sign(v.x || 1);
+    // the lane where she fights stays clear: nothing for her to run through
+    if (Math.abs(v.x) < 6.5 && v.z > -26 && v.z < 18) v.x += 6.5 * Math.sign(v.x || 1);
     const sc = 0.15 + Math.pow(r(), 2.5) * 1.4;
     v.y = sc * 0.3;
     s.set(sc * (0.8 + r() * 0.6), sc * (0.6 + r() * 0.5), sc * (0.8 + r() * 0.6));
@@ -328,7 +340,8 @@ export function buildWorld(scene: THREE.Scene, low: boolean): World {
   }
   const treeGeo = mergeGeometries(treeParts);
   const treeN = low ? 120 : 220;
-  const trees = new THREE.InstancedMesh(treeGeo, new THREE.MeshLambertMaterial({ color: 0x1e141c }), treeN);
+  const treeMat = new THREE.MeshLambertMaterial({ color: 0x1e141c });
+  const trees = new THREE.InstancedMesh(treeGeo, treeMat, treeN);
   for (let i = 0; i < treeN; i++) {
     const a = r() * Math.PI * 2;
     const d = 54 + r() * 100;
@@ -341,5 +354,18 @@ export function buildWorld(scene: THREE.Scene, low: boolean): World {
   }
   scene.add(trees);
 
-  return { colliders, cracks, trench, fog, sky, skyTint: skyUniforms.uTint.value, skyUniforms };
+  return {
+    colliders,
+    cracks,
+    crackMesh,
+    ground,
+    pillars: { mesh: pillars, items: pillarItems },
+    stoneMat,
+    treeMat,
+    trench,
+    fog,
+    sky,
+    skyTint: skyUniforms.uTint.value,
+    skyUniforms,
+  };
 }

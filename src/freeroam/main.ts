@@ -15,6 +15,7 @@ import { Giant, Knight } from './actors';
 import { SceneAudio } from './audio';
 import { Controls } from './controls';
 import { Fx } from './fx';
+import { Ruin } from './ruin';
 import { Director, LOOP } from './scene';
 import { buildWorld } from './world';
 import { showVersionTag } from '../version';
@@ -42,7 +43,8 @@ const knight = new Knight();
 const giant = new Giant();
 scene.add(knight.root, giant.root);
 const fx = new Fx(scene, { low });
-const director = new Director(knight, giant, fx, world);
+const ruin = new Ruin(scene, world, fx.time, fx.px, low);
+const director = new Director(knight, giant, fx, world, ruin);
 const controls = new Controls(canvas, { base: $('fr-stick'), knob: $('fr-knob') });
 const audio = new SceneAudio();
 
@@ -66,7 +68,8 @@ addEventListener('resize', resize);
 resize();
 
 // ---- state the player changes ----
-let film = false;
+// the film camera is how it opens; leave it to walk or fly
+let film = true;
 let slow = false;
 let timeScale = 1;
 
@@ -76,7 +79,26 @@ const barEl = $('fr-bar');
 const hintEl = $('fr-hint');
 const soundBtn = $<HTMLButtonElement>('fr-sound');
 
+/** Where you were and where you looked when the film took over, so leaving it puts you back there. */
+let roamPose: { pos: THREE.Vector3; yaw: number; pitch: number; fly: boolean } | null = null;
+
 function setFilm(on: boolean): void {
+  if (!film && on) roamPose = { pos: controls.pos.clone(), yaw: controls.yaw, pitch: controls.pitch, fly: controls.fly };
+  if (film && !on) {
+    if (roamPose) {
+      // back to your own spot and view: the film never moves you
+      controls.pos.copy(roamPose.pos);
+      controls.setLook(roamPose.yaw, roamPose.pitch);
+      setFly(roamPose.fly);
+    } else {
+      // the first time out of the opening film you step in where its camera was, looking where it looked
+      const dir = camera.getWorldDirection(new THREE.Vector3());
+      controls.pos.copy(camera.position);
+      controls.pos.y = Math.max(controls.pos.y, 1.7 + world.ground.heightAt(controls.pos.x, controls.pos.z));
+      controls.setLook(Math.atan2(-dir.x, -dir.z), Math.asin(THREE.MathUtils.clamp(dir.y, -1, 1)));
+      if (controls.pos.y > 4) setFly(true);
+    }
+  }
   film = on;
   document.body.classList.toggle('film', on);
   $('fr-btn-film').classList.toggle('on', on);
@@ -86,12 +108,32 @@ function setFilm(on: boolean): void {
   }
   resize();
 }
+function setLoop(on: boolean): void {
+  director.loop = on;
+  $('fr-btn-loop').classList.toggle('on', on);
+  try {
+    localStorage.setItem('ds-freeroam-loop', on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
 function setFly(on: boolean): void {
   controls.fly = on;
   $('fr-btn-fly').classList.toggle('on', on);
   document.body.classList.toggle('flying', on);
 }
-controls.onToggleFly = () => setFly(!controls.fly);
+/** F, FLY or a double-tap of Space: from the film that means "fly from here"; roaming, it switches flying. */
+function toggleFly(): void {
+  if (film) {
+    setFilm(false);
+    setFly(true);
+  } else setFly(!controls.fly);
+}
+controls.onToggleFly = toggleFly;
+// moving or looking means you want to roam: the film camera hands you the view
+controls.onInput = () => {
+  if (film) setFilm(false);
+};
 function setSlow(on: boolean): void {
   slow = on;
   $('fr-btn-slow').classList.toggle('on', on);
@@ -99,10 +141,12 @@ function setSlow(on: boolean): void {
 function replay(): void {
   director.restart();
 }
+const volPanel = $('fr-volume');
+const muteBox = $<HTMLInputElement>('fr-vol-mute');
 function setMuted(m: boolean): void {
   audio.setMuted(m);
   soundBtn.classList.toggle('off', m);
-  soundBtn.setAttribute('aria-label', m ? 'Sound off' : 'Sound on');
+  muteBox.checked = m;
   try {
     localStorage.setItem('ds-freeroam-muted', m ? '1' : '0');
   } catch {
@@ -111,18 +155,17 @@ function setMuted(m: boolean): void {
 }
 try {
   if (localStorage.getItem('ds-freeroam-muted') === '1') setMuted(true);
+  setLoop(localStorage.getItem('ds-freeroam-loop') !== '0');
 } catch {
-  /* private mode */
+  setLoop(true);
 }
+document.body.classList.add('film');
+$('fr-btn-film').classList.add('on');
 
 director.onCue = (c, at) => audio.cue(c, at, camera.position);
 
-// sound starts with the first gesture (and that gesture doesn't also count as a press of the sound button)
-let unlockedAt = -1;
-const unlock = (): void => {
-  if (unlockedAt < 0) unlockedAt = performance.now();
-  audio.unlock();
-};
+// sound starts with the first gesture
+const unlock = (): void => audio.unlock();
 addEventListener('pointerdown', unlock);
 addEventListener('keydown', unlock);
 addEventListener('touchstart', unlock, { passive: true });
@@ -130,9 +173,10 @@ addEventListener('touchstart', unlock, { passive: true });
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
   if (e.code === 'KeyC') setFilm(!film);
-  else if (e.code === 'KeyF') setFly(!controls.fly);
+  else if (e.code === 'KeyF') toggleFly();
   else if (e.code === 'KeyT') setSlow(!slow);
   else if (e.code === 'KeyR') replay();
+  else if (e.code === 'KeyL') setLoop(!director.loop);
   else if (e.code === 'KeyM') setMuted(!audio.muted);
 });
 
@@ -146,20 +190,51 @@ const hold = (id: string, down: () => void, up?: () => void): void => {
   if (up) for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => up());
 };
 hold('fr-btn-jump', () => (controls.up = true), () => (controls.up = false));
-hold('fr-btn-fly', () => setFly(!controls.fly));
+hold('fr-btn-fly', toggleFly);
 hold('fr-btn-film', () => setFilm(!film));
 hold('fr-btn-slow', () => setSlow(!slow));
 hold('fr-btn-replay', replay);
+hold('fr-btn-loop', () => setLoop(!director.loop));
+// the speaker opens the volume panel; levels are remembered
+type Level = keyof typeof audio.volume;
+function saveLevels(): void {
+  try {
+    localStorage.setItem('ds-freeroam-volume', JSON.stringify(audio.volume));
+  } catch {
+    /* private mode */
+  }
+}
+try {
+  const saved = JSON.parse(localStorage.getItem('ds-freeroam-volume') ?? '{}') as Partial<Record<Level, number>>;
+  for (const k of Object.keys(audio.volume) as Level[]) if (typeof saved[k] === 'number') audio.setVolume(k, saved[k]);
+} catch {
+  /* nothing saved */
+}
+for (const input of Array.from(volPanel.querySelectorAll<HTMLInputElement>('input[data-vol]'))) {
+  const k = input.dataset.vol as Level;
+  input.value = String(Math.round(audio.volume[k] * 100));
+  input.addEventListener('input', () => {
+    audio.setVolume(k, Number(input.value) / 100);
+    saveLevels();
+  });
+}
+muteBox.addEventListener('change', () => setMuted(muteBox.checked));
+function showVolume(open: boolean): void {
+  volPanel.hidden = !open;
+  soundBtn.setAttribute('aria-expanded', String(open));
+}
 soundBtn.addEventListener('click', (e) => {
   e.stopPropagation();
-  const first = unlockedAt < 0 || performance.now() - unlockedAt < 600;
   unlock();
-  if (!first) setMuted(!audio.muted);
+  showVolume(volPanel.hidden !== false);
 });
+// keep clicks and drags on the panel from steering the camera; close it when you go back to the scene
+for (const ev of ['pointerdown', 'mousedown', 'touchstart', 'click'] as const) volPanel.addEventListener(ev, (e) => e.stopPropagation());
+canvas.addEventListener('pointerdown', () => showVolume(false));
 
 hintEl.textContent = touch
   ? 'Left thumb: move · drag right side: look'
-  : 'Drag or click to look · WASD move · Shift run · Space jump · F (or Space twice) to fly · C film camera · T slow motion · R replay · M sound';
+  : 'C leaves the film camera to walk · drag or click to look · WASD move · Shift run · Space jump · F (or Space twice) to fly · T slow motion · L loop on/off · R replay · M mute (the speaker sets volumes)';
 setTimeout(() => hintEl.classList.add('gone'), 12000);
 
 // ---- the loop ----
@@ -167,33 +242,54 @@ const clock = new THREE.Clock();
 let elapsed = 0;
 let slowFrames = 0;
 let fastFrames = 0;
+let heldOnce = false;
 const shakeV = new THREE.Vector3();
 
 function frame(): void {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  timeScale += ((slow ? 0.3 : 1) - timeScale) * Math.min(1, dt * 6);
-  const sdt = dt * timeScale;
+  // a slow frame still moves the scene on in real time (up to a tenth of a second), so the score stays in step
+  const dt = Math.min(clock.getDelta(), 0.1);
+  const targetScale = slow ? 0.3 : 1;
+  timeScale += (targetScale - timeScale) * Math.min(1, dt * 6);
+  if (Math.abs(targetScale - timeScale) < 0.005) timeScale = targetScale;
+  let sdt = dt * timeScale;
+  // with the score playing, the scene runs on the score's clock: slow frames catch up instead of drifting
+  const scoreAt = audio.position();
+  if (scoreAt !== null && !director.held) {
+    const lead = scoreAt - director.t;
+    if (lead > -0.5 && lead < 2) sdt = Math.max(0, lead);
+  }
   elapsed += sdt;
 
   director.update(sdt, elapsed);
+  // not looping: when the scene comes to rest, the world is yours to walk
+  if (director.held && film && !heldOnce) {
+    heldOnce = true;
+    setFilm(false);
+  }
+  if (!director.held) heldOnce = false;
 
   if (film) director.film(camera);
   else {
-    controls.update(dt, world.colliders);
+    controls.update(dt, world.colliders, world.ground.heightAt);
     controls.apply(camera);
   }
   // the camera shakes with what happens near it
   const d = camera.position.distanceTo(director.shakeAt);
-  const amp = director.shake * 0.22 * (1 / (1 + d / 30));
+  // (walking, you get a gentler shake: it's your camera)
+  const amp = director.shake * (film ? 0.22 : 0.1) * (1 / (1 + d / 30));
   if (amp > 0.001) camera.position.add(shakeV.set((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp));
   world.sky.position.copy(camera.position);
 
   flashEl.style.opacity = director.flash.toFixed(3);
+  flashEl.classList.toggle('white', director.flashWhite);
   flashEl.classList.toggle('black', director.flashBlack);
+  // after the blast the whole world is blown out, and comes back slowly
+  renderer.toneMappingExposure = 1.05 * director.exposure;
+  bloom.strength = 0.6 + (director.exposure - 1) * 0.12;
   phaseEl.textContent = director.phase();
   barEl.style.transform = `scaleX(${(director.t / LOOP).toFixed(4)})`;
 
-  audio.update(director.t, timeScale, camera.position);
+  audio.update(director.t, timeScale, camera.position, director.held);
 
   if (useBloom) composer.render(dt);
   else renderer.render(scene, camera);
@@ -217,4 +313,4 @@ renderer.setAnimationLoop(frame);
 showVersionTag();
 
 // for the browser checks
-Object.assign(window, { __freeroam: { director, controls, renderer, audio, scene, world, setFilm, setFly, get ratio() { return ratio; }, get bloom() { return useBloom; } } });
+Object.assign(window, { __freeroam: { director, controls, renderer, audio, scene, world, ruin, setFilm, setFly, get ratio() { return ratio; }, get bloom() { return useBloom; } } });

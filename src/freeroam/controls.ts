@@ -17,6 +17,11 @@ export class Controls {
   up = false;
   /** asked to switch flying on or off (a double-tap of Space) */
   onToggleFly: () => void = () => {};
+  /** the player moved or looked (the page leaves the film camera for it) */
+  onInput: () => void = () => {};
+  /** where the view is heading: mouse and touch turn these, and the view eases after them */
+  private aimYaw = 0.33;
+  private aimPitch = 0.02;
   private vy = 0;
   private grounded = true;
   private readonly keys = new Set<string>();
@@ -28,9 +33,11 @@ export class Controls {
     private readonly stick: { base: HTMLElement; knob: HTMLElement },
   ) {
     let lastSpace = 0;
+    const MOVE = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyQ', 'ControlLeft']);
     addEventListener('keydown', (e) => {
       if (e.repeat) return;
       this.keys.add(e.code);
+      if (MOVE.has(e.code)) this.onInput();
       if (e.code === 'Space') {
         e.preventDefault();
         this.up = true;
@@ -51,10 +58,15 @@ export class Controls {
     canvas.addEventListener('click', () => {
       if (matchMedia('(pointer: fine)').matches && document.pointerLockElement !== canvas) canvas.requestPointerLock?.();
     });
-    // mouse-look: pointer lock when the browser allows it, otherwise hold the button and drag
+    // mouse-look: pointer lock when the browser allows it, otherwise hold the button and drag. Browsers now and
+    // then report a huge jump in one event: those are dropped, not turned into a snap of the view.
     addEventListener('mousemove', (e) => {
-      if (document.pointerLockElement === canvas) this.turn(e.movementX * 0.0022, e.movementY * 0.0022);
-      else if (e.buttons & 1 && e.target === canvas) this.turn(e.movementX * 0.004, e.movementY * 0.004);
+      if (Math.abs(e.movementX) > 220 || Math.abs(e.movementY) > 220) return;
+      const locked = document.pointerLockElement === canvas;
+      if (!locked && !(e.buttons & 1 && e.target === canvas)) return;
+      if (e.movementX || e.movementY) this.onInput();
+      const k = locked ? 0.0022 : 0.004;
+      this.turn(e.movementX * k, e.movementY * k);
     });
     canvas.addEventListener('touchstart', (e) => this.touchStart(e), { passive: false });
     canvas.addEventListener('touchmove', (e) => this.touchMove(e), { passive: false });
@@ -63,8 +75,21 @@ export class Controls {
   }
 
   private turn(dx: number, dy: number): void {
-    this.yaw -= dx;
-    this.pitch = THREE.MathUtils.clamp(this.pitch - dy, -1.45, 1.45);
+    this.aimYaw -= dx;
+    this.aimPitch = THREE.MathUtils.clamp(this.aimPitch - dy, -1.45, 1.45);
+  }
+
+  /** Point the view straight at (yaw, pitch), with no easing. */
+  setLook(yaw: number, pitch: number): void {
+    this.yaw = this.aimYaw = yaw;
+    this.pitch = this.aimPitch = THREE.MathUtils.clamp(pitch, -1.45, 1.45);
+  }
+
+  /** Ease the view after the aim: smooth, but quick enough to feel direct. */
+  private ease(dt: number): void {
+    const k = 1 - Math.exp(-dt * 28);
+    this.yaw += (this.aimYaw - this.yaw) * k;
+    this.pitch += (this.aimPitch - this.pitch) * k;
   }
 
   private touchStart(e: TouchEvent): void {
@@ -75,7 +100,9 @@ export class Controls {
         this.stick.base.style.transform = `translate(${t.clientX - 60}px, ${t.clientY - 60}px)`;
         this.stick.knob.style.transform = 'translate(0px, 0px)';
         this.stick.base.classList.add('on');
+        this.onInput();
       } else if (this.look.id < 0) {
+        this.onInput();
         Object.assign(this.look, { id: t.identifier, x: t.clientX, y: t.clientY });
       }
     }
@@ -109,7 +136,8 @@ export class Controls {
     }
   }
 
-  update(dt: number, colliders: Collider[]): void {
+  update(dt: number, colliders: Collider[], heightAt: (x: number, z: number) => number = () => 0): void {
+    this.ease(dt);
     const k = this.keys;
     let fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0) - this.joy.y;
     let side = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0) + this.joy.x;
@@ -126,7 +154,7 @@ export class Controls {
       this.pos.x += (-sy * cp * fwd + cy * side) * speed * dt;
       this.pos.z += (-cy * cp * fwd - sy * side) * speed * dt;
       this.pos.y += (sp * fwd + (this.up ? 1 : 0) - (k.has('ControlLeft') || k.has('KeyQ') ? 1 : 0)) * speed * dt;
-      this.pos.y = THREE.MathUtils.clamp(this.pos.y, EYE, 120);
+      this.pos.y = Math.min(this.pos.y, 120);
       this.vy = 0;
     } else {
       const speed = run ? 10 : 5;
@@ -141,7 +169,7 @@ export class Controls {
     }
 
     // stand on the ground or on top of whatever is underfoot; walls push you out
-    let floor = EYE;
+    let floor = EYE + heightAt(this.pos.x, this.pos.z);
     const feet = this.pos.y - EYE;
     for (const c of colliders) {
       const dx = this.pos.x - c.x;

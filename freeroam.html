@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#07040c" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Excalibur - Free Roam</title>
-    <meta name="description" content="A free-roam film set: a black-armoured knight and a giant play out one scene on a loop - the shadow, the clash, the charge, the blade brought down. Walk or fly anywhere through it." />
+    <meta name="description" content="A free-roam film set: a black-armoured knight and a giant fight it out in a ruined courtyard until she draws on the dark and brings Excalibur down. Watch it as a film, or walk and fly anywhere through it - and through the ruins it leaves." />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://zombies.genxmims.org/freeroam.html" />
   </head>
@@ -19,9 +19,17 @@
       <div class="fr-title">EXCALIBUR <span>FREE ROAM</span></div>
       <div id="fr-hint" class="fr-hint"></div>
     </div>
-    <button id="fr-sound" class="fr-sound" type="button" aria-label="Sound on">
+    <button id="fr-sound" class="fr-sound" type="button" aria-label="Sound" aria-expanded="false" aria-controls="fr-volume">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" /><path class="w" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /><path class="x" d="M16 9l6 6M22 9l-6 6" /></svg>
     </button>
+
+    <div id="fr-volume" class="fr-volume" hidden>
+      <label class="fr-vol-mute"><input id="fr-vol-mute" type="checkbox" /> Mute</label>
+      <label>Master <input data-vol="master" type="range" min="0" max="100" value="100" /></label>
+      <label>Music <input data-vol="music" type="range" min="0" max="100" value="100" /></label>
+      <label>Effects <input data-vol="sfx" type="range" min="0" max="100" value="100" /></label>
+      <label>Voices <input data-vol="voice" type="range" min="0" max="100" value="100" /></label>
+    </div>
 
     <div id="fr-phase">
       <span id="fr-phase-name"></span>
@@ -32,6 +40,7 @@
     <div id="fr-stick" aria-hidden="true"><div id="fr-knob"></div></div>
     <div id="fr-buttons">
       <button id="fr-btn-replay" type="button" aria-label="Replay the scene">↺</button>
+      <button id="fr-btn-loop" type="button">LOOP</button>
       <button id="fr-btn-slow" type="button">SLOW</button>
       <button id="fr-btn-film" type="button">FILM</button>
       <button id="fr-btn-fly" type="button">FLY</button>
