@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.310",
+      "date": "2026-10-28",
+      "title": "Excalibur opens like a film",
+      "notes": [
+        "Excalibur loads everything first on its own loading screen (the game's layout in its violet and red), then opens on a start screen with the camera circling the knight; it plays only when you press PLAY, and the sound and graphics settings work there too.",
+        "No more stutter as the fight begins: every effect is prepared before the film starts. A Graphics setting (AUTO, LOW, MED, HIGH) sits under the volumes; AUTO suits the device and adjusts as it runs.",
+        "On a computer drawing without its graphics card (hardware acceleration off), the loading screen says so and how to turn it on.",
+        "Shared links to Excalibur show their own title, description and a picture from the film; the film ends with its credit, directed by MiMs & QuorX; the phone layout is more compact; and the page no longer flashes unstyled while it loads."
+      ]
+    },
+    {
       "version": "0.4.309",
       "date": "2026-10-28",
       "title": "Visits per page, and Excalibur's starting volumes",

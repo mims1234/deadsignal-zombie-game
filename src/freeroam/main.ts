@@ -21,9 +21,12 @@ import { buildWorld } from './world';
 import { showVersionTag } from '../version';
 import { stayFresh } from '../freshness';
 import { reportVisit } from '../net/account';
+import { readGpuVendor } from '../render/device';
 import './freeroam.css';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
+// the stylesheet is in (imported above): show the page (freeroam.html keeps it hidden until now)
+document.body.classList.add('styled');
 
 const touch = matchMedia('(pointer: coarse)').matches;
 const low = touch || (navigator.hardwareConcurrency ?? 8) <= 4;
@@ -34,7 +37,33 @@ const canvas = $<HTMLCanvasElement>('fr-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-let ratio = Math.min(devicePixelRatio, low ? 1 : 1.5);
+/**
+ * Graphics: AUTO starts at what suits the device and steps the resolution (then the glow) down when frames run long and
+ * back up when there is room; LOW / MEDIUM / HIGH hold a fixed level. Remembered on this browser.
+ */
+type Gfx = 'auto' | 'low' | 'medium' | 'high';
+let gfx: Gfx = 'auto';
+try {
+  const g = localStorage.getItem('ds-freeroam-gfx');
+  if (g === 'low' || g === 'medium' || g === 'high') gfx = g;
+} catch {
+  /* private mode */
+}
+/** The sharpest AUTO goes, and where it starts. */
+const autoTop = (): number => Math.min(devicePixelRatio, low ? 1 : 1.5);
+const GFX_RATIO: Record<Exclude<Gfx, 'auto'>, () => number> = {
+  low: () => Math.min(devicePixelRatio, 0.7),
+  medium: () => Math.min(devicePixelRatio, 1),
+  high: () => Math.min(devicePixelRatio, 1.5),
+};
+/**
+ * Drawn without the graphics card (hardware acceleration switched off: the browser falls back to drawing on the
+ * processor), on a computer: say so on the loading screen, and let AUTO start at its lowest.
+ */
+const software = !touch && readGpuVendor(renderer.getContext()) === 'Software';
+if (software) $('fr-gpu').hidden = false;
+const autoStart = (): number => (software ? 0.6 : Math.min(devicePixelRatio, low ? 1 : 1.25));
+let ratio = gfx === 'auto' ? autoStart() : GFX_RATIO[gfx]();
 const minRatio = 0.55;
 
 const scene = new THREE.Scene();
@@ -50,12 +79,38 @@ const director = new Director(knight, giant, fx, world, ruin);
 const controls = new Controls(canvas, { base: $('fr-stick'), knob: $('fr-knob') });
 const audio = new SceneAudio();
 
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: low ? 0 : 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: gfx === 'high' || (gfx === 'auto' && !low) ? 4 : 0 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.6, 0.5, 1.0);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
-let useBloom = true;
+let useBloom = gfx !== 'low';
+
+function setGfx(g: Gfx): void {
+  gfx = g;
+  ratio = g === 'auto' ? autoStart() : GFX_RATIO[g]();
+  useBloom = g !== 'low';
+  // smoothing the edges is the costliest part: only on HIGH, and on AUTO for a computer
+  const samples = g === 'high' || (g === 'auto' && !low) ? 4 : 0;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) {
+    if (rt.samples !== samples) {
+      rt.samples = samples;
+      rt.dispose();
+    }
+  }
+  slowFrames = fastFrames = 0;
+  resize();
+  for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-gfx]'))) {
+    const on = b.dataset.gfx === g;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
+  try {
+    localStorage.setItem('ds-freeroam-gfx', g);
+  } catch {
+    /* private mode */
+  }
+}
 
 function resize(): void {
   renderer.setPixelRatio(ratio);
@@ -262,7 +317,7 @@ canvas.addEventListener('pointerdown', () => showVolume(false));
 hintEl.textContent = touch
   ? 'Left thumb: move · drag right side: look'
   : 'C leaves the film camera to walk · drag or click to look · WASD move · Shift run · Space jump · F (or Space twice) to fly · T slow motion · L loop on/off · R replay · M mute (the speaker sets volumes) · G full screen';
-setTimeout(() => hintEl.classList.add('gone'), 12000);
+// (the hint shows once the film starts: see play())
 
 // ---- the loop ----
 const clock = new THREE.Clock();
@@ -272,7 +327,29 @@ let fastFrames = 0;
 let heldOnce = false;
 const shakeV = new THREE.Vector3();
 
+const creditEl = $('fr-credit');
+document.body.classList.add('prestart');
+let heldFor = 0;
+
+/** Until PLAY: the scene posed where the film's first shot settles, the camera circling her (nothing else runs or plays). */
+let started = false;
+const STILL_AT = 2.2;
+let orbit = 0.5;
+
 function frame(): void {
+  if (!started) {
+    // the camera circles her slowly, low and close, looking up a little
+    orbit += Math.min(clock.getDelta(), 0.1) * 0.16;
+    // (on a wide screen she stands right of centre, clear of the title on the left)
+    const at = knight.root.position;
+    const side = camera.aspect > 1.2 ? 1.1 : 0.2;
+    camera.position.set(at.x + Math.sin(orbit) * 4.4, 1.55 + Math.sin(orbit * 0.7) * 0.2, at.z + Math.cos(orbit) * 4.4);
+    camera.lookAt(at.x - Math.cos(orbit) * side, at.y + 1.25, at.z + Math.sin(orbit) * side);
+    world.sky.position.copy(camera.position);
+    if (useBloom) composer.render(0);
+    else renderer.render(scene, camera);
+    return;
+  }
   // a slow frame still moves the scene on in real time (up to a tenth of a second), so the score stays in step
   const raw = clock.getDelta();
   const dt = Math.min(raw, 0.1);
@@ -316,6 +393,10 @@ function frame(): void {
   renderer.toneMappingExposure = 1.05 * director.exposure;
   bloom.strength = 0.6 + (director.exposure - 1) * 0.12;
   phaseEl.textContent = director.phase();
+  // the credit: from the ruins' first quiet until the fade to black (left at rest, for a while, then it goes)
+  if (director.held) heldFor += dt;
+  else heldFor = 0;
+  creditEl.classList.toggle('on', director.t >= 76 && director.t < 86.4 && heldFor < 10);
   barEl.style.transform = `scaleX(${(director.t / LOOP).toFixed(4)})`;
 
   audio.update(director.t, timeScale, camera.position, director.held);
@@ -324,6 +405,7 @@ function frame(): void {
   else renderer.render(scene, camera);
 
   // keep the frame rate: step the resolution down when frames run long, back up when there is room
+  if (gfx !== 'auto') return;
   if (dt > 1 / 40) (slowFrames++, (fastFrames = 0));
   else if (dt < 1 / 70) (fastFrames++, (slowFrames = 0));
   if (slowFrames > 45) {
@@ -332,13 +414,98 @@ function frame(): void {
       ratio = Math.max(minRatio, ratio - 0.15);
       resize();
     } else if (useBloom) useBloom = false;
-  } else if (fastFrames > 240 && ratio < Math.min(devicePixelRatio, low ? 1 : 1.5)) {
+  } else if (fastFrames > 240 && (ratio < autoTop() || !useBloom)) {
     fastFrames = 0;
-    ratio = Math.min(Math.min(devicePixelRatio, low ? 1 : 1.5), ratio + 0.1);
+    if (!useBloom) useBloom = true;
+    else ratio = Math.min(autoTop(), ratio + 0.1);
     resize();
   }
 }
-renderer.setAnimationLoop(frame);
+
+for (const b of Array.from(document.querySelectorAll<HTMLElement>('[data-gfx]'))) b.addEventListener('click', () => setGfx(b.dataset.gfx as Gfx));
+setGfx(gfx);
+
+/**
+ * Prepare every effect before the film starts. The browser only builds an effect's shaders the first time it is drawn,
+ * and hidden ones (the sparks, auras, debris, the beam) are skipped, so without this the fight hitches each time one
+ * first appears. Everything is shown for the compile (nothing is drawn), then put back.
+ */
+async function warmUp(): Promise<void> {
+  const hidden: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (!o.visible) {
+      hidden.push(o);
+      o.visible = true;
+    }
+  });
+  try {
+    await renderer.compileAsync(scene, camera);
+  } catch {
+    /* it will compile as it goes instead */
+  }
+  for (const o of hidden) o.visible = false;
+}
+// ---- loading: everything in before PLAY ----
+const startEl = $('fr-start');
+const loadEl = $('fr-load');
+const fillEl = $('fr-load-fill');
+const statusEl = $('fr-load-txt');
+const playBtn = $<HTMLButtonElement>('fr-play');
+let soundShare = 0;
+let effectsReady = false;
+const showProgress = (): void => {
+  fillEl.style.transform = `scaleX(${(0.04 + soundShare * 0.76 + (effectsReady ? 0.2 : 0)).toFixed(3)})`;
+};
+showProgress();
+statusEl.textContent = 'GATHERING THE DARK';
+// the still: the scene posed where the first shot settles, drawn once the effects are prepared
+director.t = STILL_AT;
+director.update(0, 0);
+const effects = warmUp().then(() => {
+  effectsReady = true;
+  showProgress();
+  renderer.setAnimationLoop(frame);
+});
+const sound = audio.preload((done, total) => {
+  soundShare = done / total;
+  if (effectsReady) statusEl.textContent = `TUNING THE SCORE  ${done} / ${total}`;
+  showProgress();
+});
+void Promise.all([effects, sound]).then(() => {
+  statusEl.textContent = 'THE BLADE IS READY';
+  // the loading screen lifts off the start screen, the camera already circling her
+  setTimeout(() => {
+    loadEl.classList.add('gone');
+    playBtn.disabled = false;
+    playBtn.focus({ preventScroll: true });
+  }, 250);
+  setTimeout(() => (loadEl.hidden = true), 1100);
+});
+
+function play(): void {
+  if (started || playBtn.disabled) return;
+  started = true;
+  document.body.classList.remove('prestart');
+  audio.unlock();
+  director.restart();
+  clock.getDelta();
+  startEl.classList.add('gone');
+  setTimeout(() => (startEl.hidden = true), 700);
+  setTimeout(() => hintEl.classList.add('gone'), 12000);
+}
+playBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  play();
+});
+for (const ev of ['pointerdown', 'mousedown', 'touchstart'] as const) startEl.addEventListener(ev, (e) => e.stopPropagation());
+// (a tap on the start screen closes the sound panel, as a tap on the scene does)
+startEl.addEventListener('pointerdown', () => showVolume(false));
+addEventListener('keydown', (e) => {
+  if (!started && (e.code === 'Enter' || e.code === 'Space')) {
+    e.preventDefault();
+    play();
+  }
+});
 showVersionTag();
 stayFresh();
 reportVisit(matchMedia('(pointer: coarse)').matches, 'excalibur');

@@ -126,7 +126,7 @@ export class SceneAudio {
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
 
     this.startWind();
-    void this.load();
+    if (!this.preloaded) void this.load();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) void ctx.suspend();
       else if (!this.muted) void ctx.resume();
@@ -150,8 +150,21 @@ export class SceneAudio {
     // the music level is applied every frame in update()
   }
 
-  private async load(): Promise<void> {
-    const ctx = this.ctx!;
+  private preloaded = false;
+
+  /**
+   * Fetch and decode the score and every line before anything plays (the page's loading screen), so nothing is missing
+   * when it starts. Decoding needs no gesture: an offline context does it, and its buffers play in the real one.
+   * `progress`: files done, of all of them.
+   */
+  async preload(progress?: (done: number, total: number) => void): Promise<void> {
+    await this.load(new OfflineAudioContext(1, 1, 48000), progress);
+    this.preloaded = true;
+  }
+
+  private async load(ctx: BaseAudioContext = this.ctx!, progress?: (done: number, total: number) => void): Promise<void> {
+    const total = 1 + VOICES.length;
+    let done = 0;
     const get = async (path: string): Promise<AudioBuffer | null> => {
       try {
         // (versioned, so an update's new score and lines replace the cached ones at once)
@@ -159,6 +172,8 @@ export class SceneAudio {
         return await ctx.decodeAudioData(await res.arrayBuffer());
       } catch {
         return null; // the scene still plays without it
+      } finally {
+        progress?.(++done, total);
       }
     };
     const [music, ...voices] = await Promise.all([get('music.mp3'), ...VOICES.map((n) => get(`voice/${n}.mp3`))]);

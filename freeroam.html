@@ -9,9 +9,48 @@
     <meta name="description" content="A free-roam film set: a black-armoured knight and a giant fight it out in a ruined courtyard until she draws on the dark and brings Excalibur down. Watch it as a film, or walk and fly anywhere through it - and through the ruins it leaves." />
     <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://zombies.genxmims.org/freeroam.html" />
+    <meta property="og:type" content="video.other" />
+    <meta property="og:site_name" content="DEAD SIGNAL" />
+    <meta property="og:title" content="Excalibur - a DEAD SIGNAL cinematic" />
+    <meta property="og:description" content="A knight, a giant, and the blade that ends it: an 88-second anime battle with its own score and voices. Watch it as a film, or step out and walk through it, in your browser." />
+    <meta property="og:url" content="https://zombies.genxmims.org/freeroam.html" />
+    <meta property="og:image" content="https://zombies.genxmims.org/freeroam/preview.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The knight's mark burning across a ruined courtyard as a column of light rises from it" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Excalibur - a DEAD SIGNAL cinematic" />
+    <meta name="twitter:description" content="A knight, a giant, and the blade that ends it: an 88-second anime battle you can watch or walk through." />
+    <meta name="twitter:image" content="https://zombies.genxmims.org/freeroam/preview.jpg" />
+    <!-- before the page's own styles arrive: dark, nothing but the loading screen, so it never flashes raw -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #07040c;
+      }
+      body:not(.styled) > :not(#fr-load) {
+        visibility: hidden;
+      }
+      #fr-load {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        background: #07040c;
+        color: transparent;
+      }
+    </style>
   </head>
   <body>
     <canvas id="fr-canvas"></canvas>
+    <!-- the loading screen: the game's layout in Excalibur's colours, and what it is doing -->
+    <div id="fr-load">
+      <div class="fr-load-in">
+        <div id="fr-load-txt">RAISING THE RUINS</div>
+        <div class="fr-load-bar"><i id="fr-load-fill"></i></div>
+      </div>
+    </div>
     <div id="fr-flash" aria-hidden="true"></div>
 
     <div id="fr-top">
@@ -19,7 +58,7 @@
       <div class="fr-title">EXCALIBUR <span>FREE ROAM</span></div>
       <div id="fr-hint" class="fr-hint"></div>
     </div>
-    <button id="fr-sound" class="fr-sound" type="button" aria-label="Sound" aria-expanded="false" aria-controls="fr-volume">
+    <button id="fr-sound" class="fr-sound" type="button" aria-label="Sound and graphics" aria-expanded="false" aria-controls="fr-volume">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" /><path class="w" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /><path class="x" d="M16 9l6 6M22 9l-6 6" /></svg>
     </button>
 
@@ -29,7 +68,35 @@
       <label>Music <input data-vol="music" type="range" min="0" max="100" value="70" /></label>
       <label>Effects <input data-vol="sfx" type="range" min="0" max="100" value="70" /></label>
       <label>Voices <input data-vol="voice" type="range" min="0" max="100" value="85" /></label>
+      <div class="fr-gfx">
+        <span>Graphics</span>
+        <div class="fr-gfx-opts" role="radiogroup" aria-label="Graphics">
+          <button type="button" data-gfx="auto" role="radio">AUTO</button>
+          <button type="button" data-gfx="low" role="radio">LOW</button>
+          <button type="button" data-gfx="medium" role="radio">MED</button>
+          <button type="button" data-gfx="high" role="radio">HIGH</button>
+        </div>
+      </div>
     </div>
+
+    <!-- loads everything first, the opening still behind it, and waits for PLAY (like the game's title) -->
+    <div id="fr-start">
+      <div class="fr-start-in">
+        <div class="fr-start-kick">CINEMATICS</div>
+        <h1>EXCALIBUR</h1>
+        <p>A knight, a giant, and the blade that ends it. An 88-second battle with its own score: watch it as a film, or step out and walk through it.</p>
+        <button id="fr-play" type="button" disabled>PLAY</button>
+        <div class="fr-start-note">Best with sound on.</div>
+        <div id="fr-gpu" class="fr-gpu" hidden>
+          <b>Your graphics card is switched off for this browser,</b> so this will run slowly. Turn on hardware
+          acceleration and restart the browser: in Chrome or Edge, Settings &rsaquo; System &rsaquo; <i>Use graphics acceleration when
+          available</i>; in Firefox, Settings &rsaquo; Performance &rsaquo; <i>Use hardware acceleration when available</i>.
+        </div>
+      </div>
+    </div>
+
+    <!-- the film's credit, as each run of it ends -->
+    <div id="fr-credit" aria-hidden="true"><span>DIRECTED BY</span><b>MiMs &amp; <i class="qx">Q</i>uor<i class="qx">X</i></b></div>
 
     <div id="fr-phase">
       <span id="fr-phase-name"></span>

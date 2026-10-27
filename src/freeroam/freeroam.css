@@ -159,8 +159,283 @@ body {
   width: 100%;
   accent-color: var(--violet);
 }
+.fr-gfx {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 6px;
+  border-top: 1px solid var(--edge);
+}
+.fr-gfx-opts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.fr-gfx-opts button {
+  height: 26px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  color: var(--dim);
+  font: 700 9px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.fr-gfx-opts button.on {
+  color: var(--ink);
+  background: rgba(154, 92, 255, 0.45);
+  border-color: rgba(200, 160, 255, 0.6);
+}
 .fr-volume input[type='checkbox'] {
   accent-color: var(--violet);
+}
+
+/* before PLAY: only the start screen and the sound/graphics button over the still */
+body.prestart #fr-buttons,
+body.prestart #fr-phase,
+body.prestart #fr-stick,
+body.prestart #fr-fly-tip {
+  display: none !important;
+}
+body.prestart .fr-sound {
+  z-index: 32;
+}
+/* (the start screen has its own title: only the way back stays up there) */
+body.prestart #fr-top {
+  z-index: 32;
+}
+body.prestart .fr-title,
+body.prestart #fr-hint {
+  display: none;
+}
+body.prestart .fr-volume {
+  z-index: 33;
+}
+
+/* the film's credit, top right under the speaker, as each run of it ends */
+#fr-credit {
+  position: fixed;
+  top: calc(max(12px, env(safe-area-inset-top)) + 50px);
+  right: max(18px, env(safe-area-inset-right));
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 1.6s ease, transform 1.6s ease;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+#fr-credit.on {
+  opacity: 1;
+  transform: none;
+}
+#fr-credit span {
+  font: 600 10px/1 system-ui, sans-serif;
+  letter-spacing: 0.32em;
+  color: var(--dim);
+}
+#fr-credit b {
+  font: 700 18px/1 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+}
+/* QuorX's Q and X in their green, glowing bright so they read over the night */
+#fr-credit .qx {
+  font-style: normal;
+  color: #144d37;
+  -webkit-text-stroke: 0.6px #7dffbf;
+  text-shadow: 0 0 2px #b8ffd9, 0 0 6px #3dff9a, 0 0 12px #1fe07f, 0 0 22px rgba(31, 224, 127, 0.75);
+}
+#fr-volume:not([hidden]) ~ #fr-credit {
+  display: none;
+}
+
+/* loading: the game's layout (a bar low in the middle, what it is doing) in Excalibur's violet and blood red */
+#fr-load {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: radial-gradient(ellipse 70% 55% at 50% 62%, rgba(90, 30, 140, 0.28), transparent 70%), radial-gradient(ellipse 40% 30% at 50% 100%, rgba(150, 20, 40, 0.22), transparent 75%), #07040c;
+  transition: opacity 0.8s ease;
+}
+#fr-load.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+.fr-load-in {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 9vh;
+  margin-inline: auto;
+  width: min(28em, 70vw);
+  text-align: center;
+  font-family: 'Bahnschrift', 'DIN Alternate', 'DIN Condensed', 'Arial Narrow', 'Roboto Condensed', 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(11px, min(calc(6px + 0.5vw), calc(5px + 1.05vh)), 16px);
+  font-weight: 600;
+}
+#fr-load-txt {
+  font-size: max(9px, 0.78em);
+  letter-spacing: 0.3em;
+  color: rgba(214, 190, 255, 0.7);
+  margin-bottom: 0.7em;
+}
+/* the film's name above the bar, glowing violet */
+.fr-load-in::before {
+  content: 'EXCALIBUR';
+  display: block;
+  margin-bottom: 1.6em;
+  font-size: 1.9em;
+  font-weight: 700;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+  color: rgba(244, 236, 255, 0.92);
+  text-shadow: 0 0 18px rgba(154, 92, 255, 0.75), 0 0 42px rgba(154, 92, 255, 0.35);
+}
+.fr-load-bar {
+  height: 0.3em;
+  background: rgba(154, 92, 255, 0.16);
+}
+.fr-load-bar i {
+  display: block;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: linear-gradient(90deg, #6a2cff, #b77cff 55%, #ff4a5a);
+  box-shadow: 0 0 10px rgba(183, 124, 255, 0.75), 0 0 22px rgba(255, 74, 90, 0.35);
+  transition: transform 0.25s;
+}
+
+/* the start screen: the opening's still behind, PLAY when everything is in */
+#fr-start {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: linear-gradient(180deg, rgba(6, 3, 12, 0.15) 0%, rgba(6, 3, 12, 0.35) 45%, rgba(6, 3, 12, 0.88) 100%);
+  transition: opacity 0.6s;
+}
+#fr-start.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+.fr-start-in {
+  max-width: 30em;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fr-start-kick {
+  font: 700 11px/1 system-ui, sans-serif;
+  letter-spacing: 0.3em;
+  color: var(--violet);
+}
+#fr-start h1 {
+  margin: 0;
+  font: 800 clamp(40px, 9vw, 76px)/0.95 system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  text-shadow: 0 0 30px rgba(154, 92, 255, 0.55);
+}
+#fr-start p {
+  margin: 0;
+  font: 500 14px/1.5 system-ui, sans-serif;
+  color: var(--dim);
+}
+.fr-start-note {
+  font: 700 10px/1 system-ui, sans-serif;
+  color: var(--dim);
+}
+#fr-play {
+  align-self: flex-start;
+  margin-top: 6px;
+  min-width: 170px;
+  height: 52px;
+  border-radius: 26px;
+  border: 1px solid rgba(200, 160, 255, 0.6);
+  background: rgba(154, 92, 255, 0.55);
+  color: var(--ink);
+  font: 800 16px/1 system-ui, sans-serif;
+  letter-spacing: 0.3em;
+  cursor: pointer;
+}
+#fr-play:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+#fr-play:not(:disabled):hover,
+#fr-play:focus-visible {
+  background: rgba(154, 92, 255, 0.8);
+}
+.fr-start-note {
+  letter-spacing: 0.12em;
+  font-weight: 500;
+}
+.fr-gpu {
+  margin-top: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 170, 90, 0.45);
+  background: rgba(40, 20, 6, 0.75);
+  font: 500 12px/1.5 system-ui, sans-serif;
+  color: var(--ink);
+}
+.fr-gpu b {
+  color: #ffb070;
+}
+.fr-gpu[hidden] {
+  display: none;
+}
+
+/* phones: a compact start, kept low and out of the middle of the picture */
+body.touch #fr-start {
+  padding-bottom: max(18px, env(safe-area-inset-bottom));
+}
+body.touch .fr-start-in {
+  gap: 7px;
+  max-width: 21em;
+}
+body.touch #fr-start h1 {
+  font-size: clamp(30px, 10vw, 44px);
+}
+body.touch #fr-start p {
+  font-size: 12px;
+  line-height: 1.4;
+}
+body.touch #fr-play {
+  min-width: 132px;
+  height: 42px;
+  font-size: 14px;
+}
+body.touch .fr-start-note {
+  display: none;
+}
+/* phones: the side buttons a little smaller and closer */
+body.touch #fr-buttons {
+  gap: 6px;
+}
+body.touch #fr-buttons button:not(.big) {
+  min-width: 46px;
+  height: 30px;
+}
+body.touch #fr-buttons button.big {
+  width: 64px;
+  height: 64px;
+}
+body.touch #fr-credit b {
+  font-size: 15px;
+}
+@media (max-height: 480px) {
+  body.touch #fr-start p {
+    display: none;
+  }
 }
 
 #fr-phase {
