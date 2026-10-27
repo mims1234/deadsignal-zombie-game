@@ -416,6 +416,7 @@ class Menus implements MenusApi {
     item('FREE ROAM', 'explore', !boards && roam, () => this.goPage('explore'));
     item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
     item('BESTIARY', 'book', false, () => window.open('./bestiary.html', '_blank', 'noopener'));
+    item('EXCALIBUR', 'explore', false, () => window.open('./freeroam.html', '_blank', 'noopener'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
     item('SETTINGS', 'sliders', false, () => showTab('settings'));
 

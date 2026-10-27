@@ -1,0 +1,285 @@
+:root {
+  --ink: #f4ecff;
+  --dim: rgba(244, 236, 255, 0.55);
+  --accent: #c43a5a;
+  --violet: #9a5cff;
+  --glass: rgba(10, 6, 16, 0.42);
+  --edge: rgba(255, 255, 255, 0.12);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #07040c;
+  color: var(--ink);
+  font: 500 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#fr-canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#fr-flash {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: #ffe8f6;
+  opacity: 0;
+  z-index: 5;
+}
+#fr-flash.black {
+  background: #000;
+}
+
+#fr-top {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 10;
+  pointer-events: none;
+}
+.fr-back {
+  pointer-events: auto;
+  display: inline-block;
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  margin-bottom: 4px;
+}
+.fr-back::before {
+  content: '← ';
+}
+.fr-back:hover {
+  color: var(--ink);
+}
+.fr-title {
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  font-size: 15px;
+  text-shadow: 0 0 18px rgba(154, 92, 255, 0.7);
+}
+.fr-title span {
+  font-weight: 500;
+  color: var(--dim);
+  letter-spacing: 0.24em;
+  font-size: 11px;
+  margin-left: 6px;
+}
+.fr-hint {
+  margin-top: 6px;
+  max-width: 340px;
+  font-size: 11px;
+  color: var(--dim);
+  transition: opacity 1.2s;
+}
+.fr-hint.gone {
+  opacity: 0;
+}
+
+.fr-sound {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  padding: 7px;
+  cursor: pointer;
+}
+.fr-sound svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fr-sound .x {
+  display: none;
+}
+.fr-sound.off .w {
+  display: none;
+}
+.fr-sound.off .x {
+  display: inline;
+}
+
+#fr-phase {
+  position: fixed;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 10;
+  pointer-events: none;
+  width: 180px;
+}
+#fr-phase-name {
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.fr-track {
+  margin-top: 5px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.fr-track i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, var(--violet), var(--accent));
+  transform-origin: 0 50%;
+}
+
+/* film mode: letterbox bars, everything else out of the way */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 0;
+  background: #000;
+  z-index: 4;
+  transition: height 0.5s ease;
+  pointer-events: none;
+}
+body::before {
+  top: 0;
+}
+body::after {
+  bottom: 0;
+}
+body.film::before,
+body.film::after {
+  height: 9vh;
+}
+body.film #fr-top,
+body.film #fr-phase {
+  opacity: 0.35;
+}
+
+/* the touch controls: a stick where the left thumb lands, buttons down the right edge */
+#fr-stick {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.05);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 9;
+  transition: opacity 0.15s;
+}
+#fr-stick.on {
+  opacity: 1;
+}
+#fr-knob {
+  position: absolute;
+  left: 38px;
+  top: 38px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(244, 236, 255, 0.35);
+}
+
+#fr-buttons {
+  display: none;
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 10;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+body.touch #fr-buttons {
+  display: flex;
+}
+/* on a computer the same buttons sit on the right edge, without JUMP (that's Space) */
+body:not(.touch) #fr-buttons {
+  display: flex;
+}
+body:not(.touch) #fr-btn-jump {
+  display: none;
+}
+body:not(.touch) #fr-buttons button {
+  cursor: pointer;
+}
+#fr-fly-tip {
+  position: fixed;
+  left: max(16px, env(safe-area-inset-left));
+  bottom: calc(max(16px, env(safe-area-inset-bottom)) + 34px);
+  z-index: 10;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid rgba(200, 160, 255, 0.4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#fr-fly-tip b {
+  color: var(--ink);
+}
+body.flying #fr-fly-tip {
+  opacity: 1;
+}
+/* phones: the fly button is the whole story, keep the bottom clear */
+body.touch #fr-fly-tip {
+  display: none;
+}
+#fr-buttons button {
+  min-width: 52px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 17px;
+  border: 1px solid var(--edge);
+  background: var(--glass);
+  color: var(--ink);
+  font: 700 10px/1 system-ui, sans-serif;
+  letter-spacing: 0.14em;
+  touch-action: none;
+}
+#fr-buttons button.big {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+}
+#fr-buttons button.on {
+  background: rgba(154, 92, 255, 0.45);
+  border-color: rgba(200, 160, 255, 0.6);
+}
+body.touch .fr-hint {
+  max-width: 200px;
+}
+@media (max-height: 420px) {
+  #fr-buttons {
+    flex-direction: row;
+    align-items: flex-end;
+  }
+}

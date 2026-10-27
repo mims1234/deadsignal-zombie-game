@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.303",
+      "date": "2026-10-27",
+      "title": "Excalibur: a free-roam film set",
+      "notes": [
+        "New page, apart from the game: Excalibur (freeroam.html, and EXCALIBUR on the title screen). A black-armoured knight and a giant play out one anime battle scene on a 32-second loop: the shadow rises, the giant charges, four sword clashes, she gathers the dark into her blade under a column of light, brings it down as a wave of black-red light, a cut to black, then the blast and the rings of light rising from the crater.",
+        "Walk anywhere through it, jump onto the ruins or fly over the courtyard (F), or press C for the film camera, which cuts it shot by shot the way the movie would. T plays it in slow motion and R starts it again. On a phone: a thumb stick on the left, look by dragging on the right, and a few buttons down the right edge.",
+        "Its own score, generated for the scene and cut to it so the music drops away under the beam and comes back with the blast; both characters are voiced (the best of several takes from three voice models); every sound effect is synthesised in the browser.",
+        "Built to run fast: a few dozen draw calls, effects animated on the graphics card, bloom only on what glows, and the resolution steps down by itself if frames run long."
+      ]
+    },
+    {
       "version": "0.4.302",
       "date": "2026-10-25",
       "title": "Security updates",

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#07040c" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Excalibur - Free Roam</title>
+    <meta name="description" content="A free-roam film set: a black-armoured knight and a giant play out one scene on a loop - the shadow, the clash, the charge, the blade brought down. Walk or fly anywhere through it." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <link rel="canonical" href="https://zombies.genxmims.org/freeroam.html" />
+  </head>
+  <body>
+    <canvas id="fr-canvas"></canvas>
+    <div id="fr-flash" aria-hidden="true"></div>
+
+    <div id="fr-top">
+      <a class="fr-back" href="./">DEAD SIGNAL</a>
+      <div class="fr-title">EXCALIBUR <span>FREE ROAM</span></div>
+      <div id="fr-hint" class="fr-hint"></div>
+    </div>
+    <button id="fr-sound" class="fr-sound" type="button" aria-label="Sound on">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" /><path class="w" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /><path class="x" d="M16 9l6 6M22 9l-6 6" /></svg>
+    </button>
+
+    <div id="fr-phase">
+      <span id="fr-phase-name"></span>
+      <div class="fr-track"><i id="fr-bar"></i></div>
+    </div>
+
+    <div id="fr-fly-tip" aria-hidden="true">FLYING · <b>Space</b> up · <b>Q</b> down · <b>W</b> goes where you look · <b>F</b> to land</div>
+    <div id="fr-stick" aria-hidden="true"><div id="fr-knob"></div></div>
+    <div id="fr-buttons">
+      <button id="fr-btn-replay" type="button" aria-label="Replay the scene">↺</button>
+      <button id="fr-btn-slow" type="button">SLOW</button>
+      <button id="fr-btn-film" type="button">FILM</button>
+      <button id="fr-btn-fly" type="button">FLY</button>
+      <button id="fr-btn-jump" class="big" type="button">JUMP</button>
+    </div>
+    <script type="module" src="/src/freeroam/main.ts"></script>
+  </body>
+</html>

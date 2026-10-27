@@ -13,8 +13,8 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
-    // the game, and the bestiary (every infected in 3D)
-    rollupOptions: { input: { main: 'index.html', bestiary: 'bestiary.html' } },
+    // the game, the bestiary (every infected in 3D) and the Excalibur free roam (a film set, apart from the game)
+    rollupOptions: { input: { main: 'index.html', bestiary: 'bestiary.html', freeroam: 'freeroam.html' } },
   },
   server: {
     host: '127.0.0.1',
