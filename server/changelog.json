@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.305",
+      "date": "2026-10-27",
+      "title": "Excalibur sound fixes",
+      "notes": [
+        "The Excalibur score no longer drops out before the blast: the quiet heartbeat stretch as she calls the blade is fuller (about 5 dB), with a cleaner hand-off into the final act.",
+        "The music never jumps back after a slow frame: the scene catches up to the score instead, so heavy moments (the slams, the berserk roar, the beam) no longer make it stutter or repeat.",
+        "The giant's roars now land with a low boom and rumble; his roars no longer cut over her lines (\"Is that all you have?\", \"Darkness... answer me.\"), and her whispered lines are lifted so they carry over the score."
+      ]
+    },
+    {
       "version": "0.4.304",
       "date": "2026-10-27",
       "title": "Excalibur v2",

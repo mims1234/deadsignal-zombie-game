@@ -247,7 +247,8 @@ const shakeV = new THREE.Vector3();
 
 function frame(): void {
   // a slow frame still moves the scene on in real time (up to a tenth of a second), so the score stays in step
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const raw = clock.getDelta();
+  const dt = Math.min(raw, 0.1);
   const targetScale = slow ? 0.3 : 1;
   timeScale += (targetScale - timeScale) * Math.min(1, dt * 6);
   if (Math.abs(targetScale - timeScale) < 0.005) timeScale = targetScale;
@@ -256,7 +257,8 @@ function frame(): void {
   const scoreAt = audio.position();
   if (scoreAt !== null && !director.held) {
     const lead = scoreAt - director.t;
-    if (lead > -0.5 && lead < 2) sdt = Math.max(0, lead);
+    // (a long hitch, a first-time shader compile, still catches up: the music never jumps back to wait for it)
+    if (lead > -0.5 && lead < Math.max(2, raw * timeScale + 0.5)) sdt = Math.max(0, lead);
   }
   elapsed += sdt;
 

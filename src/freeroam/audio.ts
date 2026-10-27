@@ -27,6 +27,8 @@ const VOICES = [
 ] as const;
 type Voice = (typeof VOICES)[number];
 const GIANT: Voice[] = ['roar', 'war', 'grunt', 'push', 'berserk', 'struck'];
+/** Her quiet lines (whispers, under a full score) lifted so they still carry. */
+const HUSHED: Voice[] = ['still', 'dark1', 'end', 'after'];
 
 /** When each line is spoken (scene seconds). "Exxx..." builds right up to the swing; "CALIBUR!" rides the beam. */
 const LINES: [number, Voice][] = [
@@ -37,8 +39,8 @@ const LINES: [number, Voice][] = [
   [10.6, 'kiai'],
   [11.8, 'kiai2'],
   [13.0, 'kiai3'],
-  [18.6, 'taunt'],
-  [19.25, 'roar'],
+  [18.2, 'taunt'],
+  [19.65, 'roar'],
   [22.4, 'grunt'],
   [24.3, 'kiai'],
   [25.0, 'grunt'],
@@ -49,7 +51,7 @@ const LINES: [number, Voice][] = [
   [32.6, 'strain'],
   [35.0, 'kiai3'],
   [36.8, 'berserk'],
-  [41.0, 'dark1'],
+  [41.6, 'dark1'],
   [47.5, 'war'],
   [50.8, 'dark2'],
   [54.6, 'end'],
@@ -218,7 +220,7 @@ export class SceneAudio {
 
     // voices - never once the scene has come to rest (the ruins are only the world itself), and never all at once
     // when the clock jumps (a replay, a skip)
-    if (!held && t - this.prevT < 2)
+    if (!held && t - this.prevT < 4)
       for (const [at, v] of LINES) {
         const buf = this.voices.get(v);
         if (this.prevT < at && t >= at && buf) this.voice(v, buf, rate);
@@ -331,6 +333,10 @@ export class SceneAudio {
       node = g;
       // a sub growl under him
       this.growl(buf.duration / 0.74 / rate);
+    } else if (HUSHED.includes(v)) {
+      const g = ctx.createGain();
+      g.gain.value = 1.6;
+      node = node.connect(g);
     }
     node.connect(this.voiceBus);
     src.start();
@@ -354,6 +360,10 @@ export class SceneAudio {
     switch (c) {
       case 'shadow':
         this.riser(3.5, 60, 400, 0.25);
+        break;
+      case 'roar':
+        this.boom(0, 1.8, 42, 0.7 * Math.max(near, 0.5));
+        this.riser(1.4, 40, 110, 0.25);
         break;
       case 'charge-run':
         for (let i = 0; i < 5; i++) this.boom(0.32 * i, 0.35 + i * 0.08, 55, 0.35);
