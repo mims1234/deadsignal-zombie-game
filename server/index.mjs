@@ -11,7 +11,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BOARD_MAPS, BOARD_METRICS, BOARD_MODES, DIFFICULTIES, MODES, boardKey, openDb } from './db.mjs';
 import { createRooms } from './rooms.mjs';
@@ -52,6 +52,27 @@ const lockedMaps = () => Object.keys(MAPS).filter((id) => !mapPublic(id));
 /** Can this player start a run or a session on the map? */
 const mapOpenTo = (u, map) => mapPublic(map in MAPS ? map : 'district') || isAdmin(u); // no map named: the District, as the game reads it
 const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
+
+// Every cinematic is public (anyone can watch it; it shows on the CINEMATICS page and in the bestiary) or admin only,
+// switched from the dashboard; any number can be private. `live`: where it starts before an admin has switched it.
+// `page`: its page (`/<page>.html`) and its folder of sounds and images (`/<page>/`). The game keeps the same list
+// (src/films.ts).
+const FILMS = {
+  excalibur: { name: 'Excalibur', page: 'freeroam', live: true },
+  hollow: { name: 'Slime Hollow', page: 'hollow', live: false },
+};
+const filmPublic = (id) => {
+  const v = db.setting(`film.${id}.public`);
+  return v === null ? !!FILMS[id]?.live : v === '1';
+};
+/** Films only admins can watch right now. */
+const lockedFilms = () => Object.keys(FILMS).filter((id) => !filmPublic(id));
+/** The film a served path belongs to (its page, or a file in its folder), or null. */
+const filmOfPath = (p) => {
+  const s = String(p).replaceAll('\\', '/').toLowerCase();
+  for (const [id, f] of Object.entries(FILMS)) if (s === `/${f.page}.html` || s.startsWith(`/${f.page}/`)) return id;
+  return null;
+};
 
 /** The signed-in user for this request, or null. */
 function userOf(req) {
@@ -166,9 +187,9 @@ app.post('/auth/logout', async (req, reply) => {
 
 app.get('/api/me', async (req) => {
   const u = userOf(req);
-  if (!u) return { user: null, devLogin: DEV_LOGIN, lockedMaps: lockedMaps() };
-  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '', lockedMaps: lockedMaps() };
-  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id), lockedMaps: lockedMaps() };
+  if (!u) return { user: null, devLogin: DEV_LOGIN, lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
+  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '', lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
+  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id), lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
 });
 
 app.post('/api/visit', async (req, reply) => {
@@ -179,7 +200,7 @@ app.post('/api/visit', async (req, reply) => {
     reply.setCookie('ds_anon', anon, cookieOpts(365 * 86400));
   }
   // which page: the game, or one of the pages beside it
-  const page = ['game', 'excalibur', 'bestiary'].includes(req.body?.page) ? req.body.page : 'game';
+  const page = ['game', 'excalibur', 'hollow', 'bestiary'].includes(req.body?.page) ? req.body.page : 'game';
   db.visit(u ? u.id : `anon:${anon}`, u ? u.id : null, !!req.body?.touch, page);
   return { ok: true };
 });
@@ -332,6 +353,19 @@ app.post('/api/admin/maps/:id', { preHandler: admin }, async (req, reply) => {
 });
 
 app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {
+app.get('/api/admin/films', { preHandler: admin }, async () => ({ films: Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, page: `/${f.page}.html`, public: filmPublic(id) })) }));
+
+/** Put a cinematic out for everyone, or take it back to admins only. */
+app.post('/api/admin/films/:id', { preHandler: admin }, async (req, reply) => {
+  const id = String(req.params.id);
+  if (!Object.hasOwn(FILMS, id)) return reply.code(404).send({ error: 'no such film' });
+  if (typeof req.body?.public !== 'boolean') return reply.code(400).send({ error: 'public must be true or false' });
+  const open = req.body.public;
+  db.setSetting(`film.${id}.public`, open ? '1' : '0');
+  db.audit(req.user.id, open ? 'film-public' : 'film-admin-only', id, '');
+  return { id, public: filmPublic(id) };
+});
+
   const id = String(req.params.id);
   if (ADMIN_IDS.has(id)) return reply.code(400).send({ error: 'an admin cannot be banned' });
   if (!db.user(id)) return reply.code(404).send({ error: 'no such player' });
@@ -354,12 +388,31 @@ app.post('/api/admin/reports/:id/resolve', { preHandler: admin }, async (req) =>
 
 const dist = join(root, 'dist');
 // pages are checked with the server on every visit (a cheap 304 when nothing changed), so an update shows at once; the
-// build's hashed files never change and keep for a year; everything else (models, sounds) for an hour
+// build's hashed files never change and keep for a year; everything else (models, sounds) for an hour. A private film's
+// page and files (only admins get them) are never kept by a shared cache.
 const cacheFor = (reply, path) => {
-  if (path.endsWith('.html')) reply.header('cache-control', 'no-cache');
+  const film = filmOfPath(`/${relative(dist, path)}`);
+  const priv = film !== null && !filmPublic(film);
+  if (path.endsWith('.html')) reply.header('cache-control', priv ? 'private, no-cache' : 'no-cache');
   else if (/[\\/]assets[\\/]/.test(path)) reply.header('cache-control', 'public, max-age=31536000, immutable');
 };
-if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1h', immutable: false, setHeaders: cacheFor });
+  else if (priv) reply.header('cache-control', 'private, max-age=3600');
+// a private film's page and files are served to admins only (to anyone else they are not there at all); the path is
+// the one the static server has already decoded and checked
+const allowedPath = (path, _root, req) => {
+  const film = filmOfPath(path);
+  return film === null || filmPublic(film) || isAdmin(userOf(req));
+};
+// the sitemap lists only the films that are public
+app.get('/sitemap.xml', async (_req, reply) => {
+  const file = join(dist, 'sitemap.xml');
+  if (!existsSync(file)) return reply.code(404).send({ error: 'not found' });
+  const hidden = lockedFilms().map((id) => `/${FILMS[id].page}.html<`);
+  const xml = readFileSync(file, 'utf8').split('\n').filter((line) => !hidden.some((h) => line.includes(h))).join('\n');
+  reply.header('cache-control', 'no-cache');
+  return reply.type('application/xml').send(xml);
+});
+if (existsSync(dist)) await app.register(fastifyStatic, { root: dist, maxAge: '1h', immutable: false, setHeaders: cacheFor, allowedPath });
 else app.log.warn('dist/ not found: run "pnpm build" to serve the game from this server');
 
 rooms.attach(app.server);

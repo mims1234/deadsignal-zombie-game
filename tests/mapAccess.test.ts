@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Account, firstOpenMap, mapAccess } from '../src/net/account';
 
-const acct = (over: Partial<Account>): Account => ({ online: true, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: ['sakura'], ...over });
+const acct = (over: Partial<Account>): Account => ({ online: true, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: ['sakura'], lockedFilms: [], ...over });
 
 describe('map access (gated maps the admins open from the dashboard)', () => {
   it('leaves ordinary maps open to everyone', () => {

@@ -1,0 +1,48 @@
+/* SLIME HOLLOW: Excalibur's page layout (freeroam.css) in this film's colours, the Hollow's cyan and Raigen's crimson */
+body.hollow {
+  --ink: #eef8ff;
+  --dim: rgba(226, 240, 255, 0.55);
+  --accent: #d0303a;
+  --violet: #3ec8ff;
+  --glass: rgba(4, 10, 16, 0.45);
+  background: #04070c;
+}
+body.hollow #fr-load {
+  background: radial-gradient(ellipse 70% 55% at 50% 62%, rgba(20, 110, 160, 0.26), transparent 70%), radial-gradient(ellipse 40% 30% at 50% 100%, rgba(160, 20, 30, 0.2), transparent 75%), #04070c;
+}
+body.hollow #fr-load-txt {
+  color: rgba(170, 225, 255, 0.7);
+}
+body.hollow .fr-load-in::before {
+  content: 'SLIME HOLLOW';
+  text-shadow: 0 0 18px rgba(62, 200, 255, 0.75), 0 0 42px rgba(62, 200, 255, 0.35);
+}
+body.hollow .fr-load-bar {
+  background: rgba(62, 200, 255, 0.14);
+}
+body.hollow .fr-load-bar i {
+  background: linear-gradient(90deg, #0a5a8a, #3ec8ff 55%, #e0303a);
+  box-shadow: 0 0 10px rgba(62, 200, 255, 0.75), 0 0 22px rgba(224, 48, 58, 0.35);
+}
+body.hollow #fr-start {
+  background: linear-gradient(180deg, rgba(2, 6, 12, 0.12) 0%, rgba(2, 6, 12, 0.32) 45%, rgba(2, 6, 12, 0.88) 100%);
+}
+body.hollow #fr-start h1 {
+  text-shadow: 0 0 30px rgba(62, 200, 255, 0.55);
+}
+body.hollow #fr-play {
+  border-color: rgba(140, 220, 255, 0.6);
+  background: rgba(30, 140, 200, 0.55);
+}
+body.hollow #fr-play:not(:disabled):hover,
+body.hollow #fr-play:focus-visible {
+  background: rgba(30, 150, 215, 0.85);
+}
+body.hollow .fr-title {
+  text-shadow: 0 0 18px rgba(62, 200, 255, 0.7);
+}
+body.hollow #fr-buttons button.on,
+body.hollow .fr-gfx-opts button.on {
+  background: rgba(30, 140, 200, 0.45);
+  border-color: rgba(140, 220, 255, 0.6);
+}

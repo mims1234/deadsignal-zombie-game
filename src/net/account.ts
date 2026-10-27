@@ -4,6 +4,7 @@
  * on its own) `online` is false and the game runs as a local, signed-out build that reports nothing.
  */
 import { GATED_MAPS, MAP_IDS, asMapId, type MapId } from '../world/layout/data';
+import { GATED_FILMS, lockedFilmsFrom, type FilmId } from '../films';
 import type { GameMode, MissionStats, QualityLevel } from '../types';
 import type { DeviceClass, GpuVendor } from '../render/device';
 
@@ -27,9 +28,11 @@ export interface Account {
   loginUrl: string;
   /** Maps only admins can play right now (any map can be switched; `GATED_MAPS` start that way). */
   lockedMaps: MapId[];
+  /** Cinematics only admins can watch right now (`GATED_FILMS` start that way). */
+  lockedFilms: FilmId[];
 }
 
-const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS] };
+const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS], lockedFilms: [...GATED_FILMS] };
 
 /**
  * What a map is to this player. `open`: live for everyone (always so). `public`: one of `GATED_MAPS`, opened to
@@ -64,15 +67,15 @@ export async function loadAccount(): Promise<Account> {
   try {
     const r = await fetch('/api/me', { headers: { accept: 'application/json' } });
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ...OFFLINE };
-    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; lockedMaps?: unknown };
-    return { online: true, user: d.user, admin: !!d.admin, banned: !!d.banned, banReason: d.banReason ?? '', cards: d.cards ?? {}, loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord', lockedMaps: lockedFrom(d.lockedMaps) };
+    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; lockedMaps?: unknown; lockedFilms?: unknown };
+    return { online: true, user: d.user, admin: !!d.admin, banned: !!d.banned, banReason: d.banReason ?? '', cards: d.cards ?? {}, loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord', lockedMaps: lockedFrom(d.lockedMaps), lockedFilms: lockedFilmsFrom(d.lockedFilms) };
   } catch {
     return { ...OFFLINE };
   }
 }
 
 /** `page`: which page the visit is to (the pages beside the game report their own). */
-export function reportVisit(touch: boolean, page: 'game' | 'excalibur' | 'bestiary' = 'game'): void {
+export function reportVisit(touch: boolean, page: 'game' | 'excalibur' | 'hollow' | 'bestiary' = 'game'): void {
   void post('/api/visit', { touch, page });
 }
 

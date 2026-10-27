@@ -27,8 +27,10 @@ import type { ZombieType } from '../types';
 import { STYLE_SAMPLES } from './styleLab';
 import { showVersionTag } from '../version';
 import { stayFresh } from '../freshness';
-import { reportVisit } from '../net/account';
+import { loadAccount, reportVisit, type Account } from '../net/account';
+import { filmAccess, GATED_FILMS, type FilmId } from '../films';
 import { easePose, Giant, GIANT_POSES, Knight, KNIGHT_POSES, type GiantPose, type KnightPose } from '../freeroam/actors';
+import { Figure, KAEL_HAIR, KAEL_HOLLOW_HAIR, makeCast, POSES as HOLLOW, type Pose as HollowPose } from '../hollow/cast';
 import './bestiary.css';
 
 type Group = 'THE HORDE' | 'ELITES' | 'MAZOKU CARRIERS' | 'BESIDE YOU' | 'VULCAN' | 'SAKURA DISTRICT' | 'CINEMATICS' | 'STYLE LAB';
@@ -79,6 +81,8 @@ interface Entry {
   modeLabels?: Partial<Record<ZombieMode, string>>;
   /** Draw the view at this fraction of the screen's resolution, with hard pixels (the PS1 sample). */
   pixel?: number;
+  /** A cinematic's cast: shown only while that film is open to this viewer (src/films.ts). */
+  film?: FilmId;
 }
 
 /** A figure from a cinematic, posed from its own pose table rather than a rig's animations. */
@@ -505,7 +509,7 @@ const entries: Entry[] = [
   }),
   // the cast of the cinematics (freeroam/actors.ts), outside the game
   {
-    id: 'excalibur-knight', group: 'CINEMATICS', name: 'The Black Knight', height: 1.75, accent: 0x9a5cff,
+    id: 'excalibur-knight', group: 'CINEMATICS', film: 'excalibur', name: 'The Black Knight', height: 1.75, accent: 0x9a5cff,
     tagline: 'A queen in black armour, and the blade of light she carries.',
     lore: 'She fights alone and barely speaks. When the fight turns against her she plants her feet, raises the sword and calls the darkness of the whole courtyard into it, until a blade of light grows out of the steel and she brings it down as Excalibur.',
     where: 'Cinematics: Excalibur', stats: [['Height', '1.75 m'], ['Weapon', 'Excalibur'], ['Signature', 'a beam of light that levels the courtyard']], modes: 'pose',
@@ -530,7 +534,7 @@ const entries: Entry[] = [
     },
   },
   {
-    id: 'excalibur-giant', group: 'CINEMATICS', name: 'The Giant', height: 4.6, accent: 0xff4a3a,
+    id: 'excalibur-giant', group: 'CINEMATICS', film: 'excalibur', name: 'The Giant', height: 4.6, accent: 0xff4a3a,
     tagline: 'Four and a half metres of stone-grey muscle and a slab of a sword.',
     lore: 'He fights like a landslide: every slam throws the ground up around him, and when he is hurt he only gets angrier. His sword is a slab of iron with a glowing edge, and it is the last thing to break.',
     where: 'Cinematics: Excalibur', stats: [['Height', '4.6 m'], ['Weapon', 'a slab of iron'], ['Signature', 'the ground slam']], modes: 'pose',
@@ -550,6 +554,44 @@ const entries: Entry[] = [
       return g.root;
     },
   },
+  // the cast of SLIME HOLLOW (hollow/cast.ts)
+  ...((): Entry[] => {
+    const P = HOLLOW;
+    const one = (id: string, name: string, height: number, accent: number, tagline: string, lore: string, stats: [string, string][], pick: (c: ReturnType<typeof makeCast>) => Figure, cycles: Record<string, PoseCycle<HollowPose>>, extra?: (f: Figure, m: string, t: number) => void): Entry => ({
+      id, group: 'CINEMATICS', film: 'hollow', name, height, accent, tagline, lore, where: 'Cinematics: Slime Hollow', stats, modes: 'pose',
+      build: () => {
+        const f = pick(makeCast());
+        current!.poser = poser(f, cycles, extra ? (m, t) => extra(f, m, t) : undefined);
+        return f.root;
+      },
+    });
+    const hollowHair = new THREE.Color();
+    return [
+      one('hollow-kael', 'Kael', 1.75, 0x3ec8ff, 'The one the Hollow Slime takes.',
+        'He came home to a burned village. What answered his grief was a living black ooze that climbed him, turned his hair long and white, and became his cloak, his spikes and a wall of cold fire. Only one voice could still reach him.',
+        [['Height', '1.75 m'], ['Weapon', 'a plain katana'], ['Signature', 'the Hollow Slime']], (c) => c.kael,
+        { STAND: { poses: [P.stand], hold: 1 }, WALK: { poses: [P.trudge], hold: 1, stride: 0.55 }, ORDER: { poses: [P.stand, P.order], hold: 1.6, rate: 4 }, HOLLOW: { poses: [P.unleash, P.hover], hold: 1.8, rate: 4 }, STRIKE: { poses: [P.overhead, P.strike, P.press], hold: 0.8, rate: 10 }, GRIEF: { poses: [P.grieve, P.spent], hold: 2, rate: 3 } },
+        (f, m) => {
+          const h = m === 'HOLLOW' || m === 'STRIKE' || m === 'ORDER' ? 1 : 0;
+          f.setHair(0.08 + h * 0.97, hollowHair.copy(KAEL_HAIR).lerp(KAEL_HOLLOW_HAIR, h));
+          f.setCape(new THREE.Color(0x020306), h > 0.5);
+        }),
+      one('hollow-raigen', 'Raigen', 1.8, 0xd0303a, 'His sworn brother, and the only one who stops him.',
+        'One black horn, a red sash, a katana and its scabbard. Badly hurt in the raid, he still crossed the whole field in a breath of crimson lightning to catch Kael\'s blade, and brought him back with the scabbard across his head.',
+        [['Height', '1.80 m'], ['Weapon', 'katana and scabbard'], ['Signature', 'crimson lightning']], (c) => c.raigen,
+        { WOUNDED: { poses: [P.propped, P.lookUp], hold: 1.8, rate: 3 }, DASH: { poses: [P.dash], hold: 1, stride: 1 }, CATCH: { poses: [P.catch], hold: 1, rate: 8 }, WHACK: { poses: [P.catch, P.whack, P.slump], hold: 0.9, rate: 10 } }),
+      one('hollow-suzu', 'Suzu', 1.26, 0xffb8a0, 'Raigen\'s little sister.', 'Twin small horns, white hair and a haori too big for her. She stayed by her brother all night.',
+        [['Height', '1.26 m']], (c) => c.suzu, { HUDDLE: { poses: [P.huddle], hold: 1 }, RUN: { poses: [P.run], hold: 1, stride: 1 } }),
+      one('hollow-goro', 'Goro', 2.28, 0xd89030, 'The shield of the clan.', 'Two curled horns, a wolf-fur mantle and a greatsword he plants in the ground in front of the wounded. Nothing gets past him; he was the first to see that the thing walking out of the smoke was not Kael any more.',
+        [['Height', '2.28 m'], ['Weapon', 'greatsword']], (c) => c.goro, { PLANT: { poses: [P.plant], hold: 1 }, SHIELD: { poses: [P.shield], hold: 1, rate: 5 } }),
+      one('hollow-nagi', 'Nagi', 1.66, 0x7a6a98, 'The silent scout.', 'A cloth mask, short white hair and twin knives. She never speaks. When the spikes came she had Suzu out before anyone else moved.',
+        [['Height', '1.66 m'], ['Weapon', 'twin knives']], (c) => c.nagi, { WATCH: { poses: [P.watch], hold: 1 }, GUARD: { poses: [P.guard], hold: 1, rate: 5 }, DASH: { poses: [P.dash], hold: 1, stride: 1 } }),
+      one('hollow-oriha', 'Oriha', 1.68, 0x9adcb0, 'The healer.', 'Glasses, a long braid and a satchel of talismans. Her jade light kept Raigen alive through the night.',
+        [['Height', '1.68 m']], (c) => c.oriha, { HEAL: { poses: [P.heal], hold: 1 }, WALK: { poses: [P.walk], hold: 1, stride: 0.5 } }),
+      one('hollow-auren', 'Captain Auren', 1.72, 0xd8a830, 'The Iron Choir\'s youngest officer.', 'A gorget, a cracked breastplate and a white crest. He marched in to burn what was left, and ended on his knees in front of the Hollow. He lived.',
+        [['Height', '1.72 m'], ['Weapon', 'arming sword']], (c) => c.auren, { STAND: { poses: [P.officer], hold: 1 }, BEG: { poses: [P.stagger, P.beg, P.cower], hold: 1.2, rate: 6 }, CRAWL: { poses: [P.crawl], hold: 1, stride: 0.3 } }),
+    ];
+  })(),
   // art-style experiments, not in the game (styleLab.ts)
   ...STYLE_SAMPLES.map((sm): Entry => {
     const e: Entry = {
@@ -571,6 +613,15 @@ const entries: Entry[] = [
 
 /** Which character a people entry with a cast shows. */
 let castIndex = 0;
+
+/**
+ * Who is looking: a private film's cast is shown only to admins (and in a dev build with no server). Asked of the
+ * server before the guide opens, but never waited on for long: with no answer, private films stay hidden.
+ */
+const viewer: Account | null = await Promise.race([loadAccount(), new Promise<null>((r) => setTimeout(() => r(null), 2500))]);
+const filmShown = (f: FilmId | undefined): boolean => !f || (viewer ? filmAccess(viewer, f) !== 'locked' : !GATED_FILMS.includes(f));
+/** The entries this viewer can open. */
+const shown = entries.filter((e) => filmShown(e.film));
 
 // ---------------------------------------------------------------------------------------------
 // selection, animation
@@ -599,7 +650,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent: 
 function renderList(): void {
   listEl.replaceChildren();
   let group = '';
-  for (const e of entries) {
+  for (const e of shown) {
     if (e.group !== group) {
       group = e.group;
       el('div', 'grp', listEl, group);
@@ -657,6 +708,7 @@ function renderInfo(): void {
     el('dd', '', dl, v);
   }
   el('div', 'where', infoEl, `FOUND IN  //  ${e.where.toUpperCase()}`);
+  if (e.film && viewer && filmAccess(viewer, e.film) === 'admin-only') el('div', 'where', infoEl, 'ADMIN ONLY  //  PLAYERS DO NOT SEE THIS FILM YET');
 }
 
 function setMode(m: ZombieMode): void {
@@ -779,8 +831,8 @@ function step(dt: number): void {
 // ---------------------------------------------------------------------------------------------
 
 renderList();
-const fromHash = entries.find((e) => `#${e.id}` === location.hash);
-select(fromHash ?? entries[0]!);
+const fromHash = shown.find((e) => `#${e.id}` === location.hash);
+select(fromHash ?? shown[0]!);
 let last = performance.now();
 function frame(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -792,7 +844,7 @@ function frame(now: number): void {
 }
 requestAnimationFrame(frame);
 // dev / QA hook
-(window as unknown as { __bestiary: unknown }).__bestiary = { entries: entries.map((e) => e.id), get current() { return current; }, select: (id: string) => select(entries.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
+(window as unknown as { __bestiary: unknown }).__bestiary = { entries: shown.map((e) => e.id), get current() { return current; }, select: (id: string) => select(shown.find((e) => e.id === id)!), setMode, setAvatarMode: (m: string) => { setAvatarMode(m); renderModes(); },
   /** Re-roll the shown infected's look (as NEW LOOK does) with a given seed. */
   look: (seed: number) => current?.rig?.reset(seed),
   /** Look from `yaw` (0 = in front) at `dist` metres, the camera at `height`. */

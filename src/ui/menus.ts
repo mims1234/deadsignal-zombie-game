@@ -11,6 +11,7 @@ import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import { LATE_CHOICES, LATE_NOTE } from '../net/room';
 import { VERSION } from '../version';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession, PauseTab } from './hudTypes';
+import { filmAccess, GATED_FILMS, type FilmAccess, type FilmId } from '../films';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
@@ -29,9 +30,11 @@ const ROAM_NOTE = 'No mission, no clock and no damage: fly anywhere and learn th
 const PLAY_LEAD = 'Fight through the quarantine zone, finish the contracts, and reach the helicopter alive.';
 /**
  * The cinematics: short films set apart from the game, each its own page that opens in a new tab. A new one is a row
- * here (and its page in `vite.config.ts`).
+ * here (and its page in `vite.config.ts`, its id in `src/films.ts` and in `FILMS` in server/index.mjs). A film an admin
+ * keeps private is not shown to players (an admin sees it marked ADMIN ONLY). `cast` and `entry`: its cast's line on the
+ * bestiary's CINEMATICS card, and the entry that card opens on.
  */
-const CINEMATICS: { id: string; name: string; tagline: string; about: string; length: string; href: string }[] = [
+const CINEMATICS: { id: FilmId; name: string; tagline: string; about: string; length: string; href: string; cast: string; entry: string }[] = [
   {
     id: 'excalibur',
     name: 'EXCALIBUR',
@@ -39,10 +42,25 @@ const CINEMATICS: { id: string; name: string; tagline: string; about: string; le
     about: 'An anime battle in five acts with its own score and voices. Watch it as a film, or walk and fly through it while it plays.',
     length: '1 MIN 28',
     href: './freeroam.html',
+    cast: 'The Black Knight and the Giant of Excalibur',
+    entry: 'excalibur-knight',
+  },
+  {
+    id: 'hollow',
+    name: 'SLIME HOLLOW',
+    tagline: 'The night the Hollow takes Kael, and the brother who brings him back.',
+    about: 'A burned village, an army at its gate and a crowd of hundreds, drained to ink when the Hollow Slime wakes. Watch it as a film, or walk and fly through it while it plays.',
+    length: '1 MIN 16',
+    href: './hollow.html',
+    cast: 'Kael, Raigen and the rest of Slime Hollow',
+    entry: 'hollow-kael',
   },
 ];
 
-/** The bestiary's codex on the title: each section of the field guide, opening the 3D page on its first entry. */
+/**
+ * The bestiary's codex on the title: each section of the field guide, opening the 3D page on its first entry (the
+ * CINEMATICS card is made from the films this player can see: see `codex()`).
+ */
 const CODEX: { group: string; about: string; entry: string; tone: string }[] = [
   { group: 'THE HORDE', about: 'Shamblers, runners and the armoured, and what each zone has turned into them.', entry: 'shambler', tone: '#a9bf8e' },
   { group: 'ELITES', about: 'The Warden, the Infernus, the Matron, and a few things better met for yourself.', entry: 'warden', tone: '#ff7a1a' },
@@ -50,8 +68,10 @@ const CODEX: { group: string; about: string; entry: string; tone: string }[] = [
   { group: 'BESIDE YOU', about: 'Co-op operators, trapped survivors and the people who hold out with you.', entry: 'operators', tone: '#6fa8dc' },
   { group: 'VULCAN', about: 'The clan of the Forge: familiar faces, and the rest of the clan.', entry: 'vulcan-leadership', tone: '#ffb060' },
   { group: 'SAKURA DISTRICT', about: 'Hana & Yuzu, the Kurenai Court, and the infected under the blossoms.', entry: 'sakura-squad', tone: '#ff9ec8' },
-  { group: 'CINEMATICS', about: 'The Black Knight and the Giant of Excalibur.', entry: 'excalibur-knight', tone: '#b77cff' },
 ];
+const FILM_TONE = '#b77cff';
+/** An admin's (or a dev build's) badge on a film card: players only ever see public films. */
+const FILM_BADGE: Partial<Record<FilmAccess, [string, 'good' | 'warn']>> = { 'admin-only': ['ADMIN ONLY', 'warn'], 'dev-only': ['DEV ONLY', 'warn'] };
 
 const COOP_LEAD = 'Play this zone with up to two friends: open a lobby, share the link, press ready together. Revive anyone who goes down, then extract together.';
 
@@ -124,7 +144,7 @@ class Menus implements MenusApi {
   private touch = false;
   private info: ModeInfo = { mode: 'standard', map: 'district', cards: [], difficulty: { zombies: 'normal', team: 'regular' } };
   private lastBest: BestRun | null = null;
-  private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false };
+  private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false, lockedFilms: [...GATED_FILMS] };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -175,6 +195,18 @@ class Menus implements MenusApi {
   /** Playing needs a signed-in account whenever there is a server to sign in to. */
   private get locked(): boolean {
     return this.account.online && this.account.name === null;
+  }
+
+  /** The films this player may watch, each with its access (a private film is only an admin's, until it is public). */
+  private visibleFilms(): { film: (typeof CINEMATICS)[number]; access: FilmAccess }[] {
+    return CINEMATICS.map((film) => ({ film, access: filmAccess(this.account, film.id) })).filter((f) => f.access !== 'locked');
+  }
+
+  /** The codex cards: the bestiary's sections, the CINEMATICS one only with the casts of the films this player can see. */
+  private codex(): { group: string; about: string; entry: string; tone: string }[] {
+    const films = this.visibleFilms().map((f) => f.film);
+    if (!films.length) return CODEX;
+    return [...CODEX, { group: 'CINEMATICS', about: `${films.map((f) => f.cast).join('; ')}.`, entry: films[0]!.entry, tone: FILM_TONE }];
   }
 
   /** The maps this player may pick, with an admin's access badge on a gated one (all of them before the account is known). */
@@ -596,11 +628,13 @@ class Menus implements MenusApi {
     el('h1', 'name', page, 'CINEMATICS');
     el('p', 'lead', page, 'Short films set apart from the game. Each opens in a new tab: watch it as a film, or step out of the camera and walk around inside it.');
     const list = el('div', 'list', page);
-    for (const f of CINEMATICS) {
+    for (const { film: f, access } of this.visibleFilms()) {
       const card = this.button(list, '', 'ds-l-zone ds-l-film', () => window.open(f.href, '_blank', 'noopener'));
       card.dataset.film = f.id;
       card.setAttribute('aria-label', `Watch ${f.name} (opens in a new tab)`);
-      el('span', 'zn', card, f.name);
+      const zn = el('span', 'zn', card, f.name);
+      const badge = FILM_BADGE[access] ?? (this.account.admin ? (['PUBLIC', 'good'] as const) : null);
+      if (badge) el('span', `zb ${badge[1]}`, zn, badge[0]);
       el('span', 'zt', card, f.tagline);
       el('span', 'zt about', card, f.about);
       el('span', 'zon', card, `WATCH  ▸  ${f.length}`);
@@ -620,7 +654,7 @@ class Menus implements MenusApi {
     const go = this.button(page, 'OPEN THE BESTIARY  ▸', 'primary ds-l-codex-open', () => open());
     go.setAttribute('aria-label', 'Open the bestiary (opens in a new tab)');
     const list = el('div', 'list', page);
-    for (const c of CODEX) {
+    for (const c of this.codex()) {
       const card = this.button(list, '', 'ds-l-zone ds-l-film', () => open(`#${c.entry}`));
       card.style.setProperty('--zc', c.tone);
       card.setAttribute('aria-label', `${c.group}: open in the bestiary (new tab)`);

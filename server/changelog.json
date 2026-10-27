@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.311",
+      "date": "2026-10-28",
+      "title": "Slime Hollow, and a switch for every cinematic",
+      "notes": [
+        "SLIME HOLLOW (hollow.html), a 76-second anime tragedy, ready for the CINEMATICS page and admin only for now. A burned village, the Iron Choir at its gate, and the night the Hollow Slime takes Kael - the black ooze climbs him, turns his hair long and white and becomes his cloak, his spikes and a wall of cyan crystal fire - until his sworn brother Raigen catches his blade and brings him back. There is no happy ending.",
+        "A cast of seven original characters (Kael, Raigen, Suzu, Goro, Nagi, Oriha, Captain Auren) and crowds of over three hundred: the army marches, halts, mutters, loses its torches row by row, is thrown by the spikes, breaks and runs or kneels; the village's wounded, fighters, children and elders react through it all. The crowds thin out on LOW graphics.",
+        "Its own colour: the world drains to ink and manga screentone when Kael gives the order, with only the Hollow's cyan left alive (and Raigen's crimson lightning at the catch), impact frames on the clink and the whack, speed lines, and a cold grey dawn that gives no colour back.",
+        "A very dark orchestral score cut to the film (Lyria 3), voiced lines for the cast and the army (ElevenLabs v4), synthesised effects; the same controls as Excalibur (film camera, walk, fly, slow motion, loop, volumes, graphics, full screen), its own loading and start screens and link preview. The cast is in the Bestiary's CINEMATICS section.",
+        "Every cinematic can be made public or admin only from the admin page's new Cinematics tab (Excalibur stays public, Slime Hollow starts admin only). A private film is hidden from players on the CINEMATICS page, in the bestiary and in the sitemap, and its page, sounds and images are refused to anyone but an admin; admins see it marked ADMIN ONLY."
+      ]
+    },
+    {
       "version": "0.4.310",
       "date": "2026-10-28",
       "title": "Excalibur opens like a film",

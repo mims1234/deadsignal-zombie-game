@@ -20,7 +20,8 @@ import { Director, LOOP } from './scene';
 import { buildWorld } from './world';
 import { showVersionTag } from '../version';
 import { stayFresh } from '../freshness';
-import { reportVisit } from '../net/account';
+import { loadAccount, reportVisit } from '../net/account';
+import { filmAccess } from '../films';
 import { readGpuVendor } from '../render/device';
 import './freeroam.css';
 
@@ -509,6 +510,10 @@ addEventListener('keydown', (e) => {
 showVersionTag();
 stayFresh();
 reportVisit(matchMedia('(pointer: coarse)').matches, 'excalibur');
+// still private (only admins can open it): say so on the start screen
+void loadAccount().then((a) => {
+  if (filmAccess(a, 'excalibur') === 'admin-only') $('fr-start').querySelector('.fr-start-kick')!.textContent = 'CINEMATICS  ·  ADMIN ONLY';
+});
 
 // for the browser checks
 Object.assign(window, { __freeroam: { director, controls, renderer, audio, scene, world, ruin, setFilm, setFly, get ratio() { return ratio; }, get bloom() { return useBloom; } } });

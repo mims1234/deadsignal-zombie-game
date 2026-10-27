@@ -3,6 +3,7 @@
  * pushes discrete `HudEvent`s; the UI layer (HTML/CSS + canvas maps) renders them. The UI never reads game internals.
  */
 import type { MapId } from '../world/layout/data';
+import type { FilmId } from '../films';
 import type { TeamSkill, ZombieDifficulty } from '../config';
 import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
 
@@ -181,6 +182,8 @@ export interface AccountInfo {
   loginUrl: string;
   /** The last sign-in attempt did not complete. */
   loginFailed: boolean;
+  /** Cinematics only admins can watch right now. */
+  lockedFilms: FilmId[];
 }
 
 export interface ModeInfo {

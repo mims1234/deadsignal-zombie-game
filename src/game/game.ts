@@ -165,7 +165,7 @@ export class Game implements GameCtx {
   roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
-  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [] };
+  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [], lockedFilms: [] };
   private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
@@ -304,6 +304,7 @@ export class Game implements GameCtx {
       admin: this.account.admin,
       loginUrl: this.account.loginUrl,
       loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',
+      lockedFilms: this.account.lockedFilms,
     });
     // a map that is not open to this player (switched to admins only): the first one that is.
     // An invite to a co-op session on it still gets in - the session's owner chose the map.

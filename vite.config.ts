@@ -13,8 +13,8 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
-    // the game, the bestiary (every infected in 3D) and the Excalibur free roam (a film set, apart from the game)
-    rollupOptions: { input: { main: 'index.html', bestiary: 'bestiary.html', freeroam: 'freeroam.html' } },
+    // the game, the bestiary (every infected in 3D) and the cinematics (film sets apart from the game: Excalibur, Slime Hollow)
+    rollupOptions: { input: { main: 'index.html', bestiary: 'bestiary.html', freeroam: 'freeroam.html', hollow: 'hollow.html' } },
   },
   server: {
     host: '127.0.0.1',

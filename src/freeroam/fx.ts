@@ -704,8 +704,8 @@ export class Fx {
 
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** Sparks: a ring buffer of points with a little physics. */
-class Sparks {
+/** Sparks: a ring buffer of points with a little physics (SLIME HOLLOW uses them too). */
+export class Sparks {
   private readonly pos: Float32Array;
   private readonly vel: Float32Array;
   private readonly col: Float32Array;
@@ -820,7 +820,7 @@ class Sparks {
 }
 
 /** Chunks of rubble thrown by the blast. */
-class Debris {
+export class Debris {
   private readonly mesh: THREE.InstancedMesh;
   private readonly p: THREE.Vector3[] = [];
   private readonly v: THREE.Vector3[] = [];

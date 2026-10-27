@@ -102,6 +102,7 @@
         <button data-go="reports">Reports<span class="n" id="openN" hidden></span></button>
         <button data-go="boards">Leaderboards</button>
         <button data-go="maps">Maps</button>
+        <button data-go="films">Cinematics</button>
         <button data-go="versions">Versions</button>
       </nav>
     </header>
@@ -175,6 +176,15 @@
           <h3>Map access</h3>
           <div class="sub">Live: every player can pick the map. Admin only: only admins see and play it (the game shows it to you marked ADMIN ONLY); players on it are moved to the first live map. At least one map always stays live. Players see a change on their next page load.</div>
           <div id="access"></div>
+        </div>
+      </section>
+
+      <!-- CINEMATICS: every film public or admin only -->
+      <section data-tab="films">
+        <div class="card tablewrap">
+          <h3>Cinematics</h3>
+          <div class="sub">Public: anyone can watch the film; it shows on the CINEMATICS page, its cast in the bestiary, and its page in the sitemap. Admin only: only admins see it (marked ADMIN ONLY); to anyone else its page, sounds and images are not there at all. Any number can be admin only. Players see a change on their next page load.</div>
+          <div id="filmAccess"></div>
         </div>
       </section>
 
@@ -332,7 +342,7 @@
         { label: 'Extracted', num: 1, cell: (m) => pct(m.wins, m.runs), sort: (m) => (m.runs ? m.wins / m.runs : 0) },
         { label: 'Avg len', num: 1, cell: (m) => clock(m.avgDuration), sort: (m) => m.avgDuration || 0 },
       ], 'No runs in this range yet.');
-      const PAGE = { game: 'Game', excalibur: 'Excalibur', bestiary: 'Bestiary' };
+      const PAGE = { game: 'Game', excalibur: 'Excalibur', hollow: 'Slime Hollow', bestiary: 'Bestiary' };
       const pages = localTable($('pages'), [
         { label: 'Page', cell: (p) => PAGE[p.page] || p.page, sort: (p) => PAGE[p.page] || p.page },
         { label: 'Visits', num: 1, cell: (p) => num(p.visits), sort: (p) => p.visits },
@@ -577,6 +587,22 @@
         await loadAccess();
       }
 
+      // ---------------------------------------------------------------- cinematics (each public or admin only)
+      const filmTable = localTable($('filmAccess'), [
+        { label: 'Film', cell: (f) => f.name, sort: (f) => f.name },
+        { label: 'Page', cell: (f) => h('a', { href: f.page, target: '_blank', rel: 'noopener' }, f.page) },
+        { label: 'Access', cell: (f) => h('span', { class: f.public ? 'pill victory' : 'pill abandoned' }, f.public ? 'Public' : 'Admin only'), sort: (f) => (f.public ? 1 : 0) },
+        { label: '', cell: (f) => h('button', { class: f.public ? 'danger' : '', on: { click: () => setFilm(f).catch(fail) } }, f.public ? 'Make admin only' : 'Make public') },
+      ], 'No cinematics.', 10);
+      async function loadFilms() {
+        filmTable.set((await api('/api/admin/films')).films);
+      }
+      async function setFilm(f) {
+        if (!confirm(f.public ? `Take ${f.name} off for players (admins only)? Its page stops opening for them, and it leaves the CINEMATICS page and the bestiary on their next page load.` : `Put ${f.name} out for every player?`)) return;
+        await api(`/api/admin/films/${f.id}`, { public: !f.public });
+        await loadFilms();
+      }
+
       // ---------------------------------------------------------------- versions
       let versionRows = [];
       function versionFilter() {
@@ -595,8 +621,8 @@
       $('verQ').addEventListener('input', versionFilter);
 
       // ---------------------------------------------------------------- tabs (the open one is kept in the address: #runs)
-      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'boards', 'maps', 'versions'];
-      const LOAD = { overview: () => Promise.all([loadOverview(), loadCoop()]), runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadOverview, reports: loadReports, boards: loadBoards, maps: loadAccess, versions: loadVersions };
+      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'boards', 'maps', 'films', 'versions'];
+      const LOAD = { overview: () => Promise.all([loadOverview(), loadCoop()]), runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadOverview, reports: loadReports, boards: loadBoards, maps: loadAccess, films: loadFilms, versions: loadVersions };
       const loaded = new Set();
       function show(tab) {
         if (!TABS.includes(tab)) tab = 'overview';
