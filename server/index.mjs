@@ -67,6 +67,54 @@ const filmPublic = (id) => {
 };
 /** Films only admins can watch right now. */
 const lockedFilms = () => Object.keys(FILMS).filter((id) => !filmPublic(id));
+
+// Everything else players can see or pick, each live for everyone or admin only, switched from the admin page's
+// Visibility tab (maps and films have their own lists above). `live`: where it starts before an admin has switched it
+// (how it was before there was a switch). The game keeps the same list (src/switches.ts): it hides what is off, and
+// the server refuses it here and in the co-op sessions (server/rooms.mjs).
+const SWITCHES = {
+  coop: { group: 'modes', name: 'Co-op (WITH FRIENDS)', live: true },
+  roam: { group: 'modes', name: 'Free roam', live: true },
+  cards: { group: 'modes', name: 'Mazoku card hunt (Standard Mazoku)', live: true },
+  'host-server': { group: 'hosting', name: 'Co-op: server hosted', live: true },
+  'host-self': { group: 'hosting', name: 'Co-op: self host', live: true },
+  'story-kaika': { group: 'stories', name: 'KAIKA: The Blooming (Sakura District)', live: true },
+  'story-curtain': { group: 'stories', name: 'The Crimson Curtain (Sakura District)', live: true },
+  'story-lasttrain': { group: 'stories', name: 'Last Train (Sakura District)', live: true },
+  'story-hanami': { group: 'stories', name: 'Hanami (Sakura District)', live: true },
+  'aurelia-npc': { group: 'features', name: 'Aurelia herself, on the AURELIA map', live: true },
+  bestiary: { group: 'pages', name: 'The bestiary', live: true },
+  stylelab: { group: 'pages', name: 'The bestiary: STYLE LAB', live: true },
+};
+const switchOn = (id) => {
+  const v = db.setting(`sw.${id}.public`);
+  return v === null ? !!SWITCHES[id]?.live : v === '1';
+};
+/** Switches only admins get past right now. */
+const lockedSwitches = () => Object.keys(SWITCHES).filter((id) => !switchOn(id));
+/** May this user use what the switch covers (an admin always may; anything without a switch is open)? */
+const switchOpenTo = (u, id) => !Object.hasOwn(SWITCHES, id) || switchOn(id) || isAdmin(u);
+/** The switch a run mode or a co-op session kind falls under, if any. */
+const switchOfKind = (kind) =>
+  kind === 'coop' ? 'coop' : kind === 'roam' ? 'roam' : kind === 'cards' || kind === 'mazoku' ? 'cards' : Object.hasOwn(SWITCHES, `story-${kind}`) ? `story-${kind}` : null;
+/** May this user play `kind` (a run mode, a session kind or a story) on `map`? */
+const playOpenTo = (u, kind) => {
+  const sw = switchOfKind(kind);
+  return sw === null || switchOpenTo(u, sw);
+};
+/**
+ * What this player may see: everyone gets what is open; an admin also gets what is switched off (to badge it). Nothing
+ * a player cannot see is named to them.
+ */
+const visibilityFor = (u) => {
+  const open = {
+    openMaps: Object.keys(MAPS).filter(mapPublic),
+    openFilms: Object.keys(FILMS).filter(filmPublic),
+    openSwitches: Object.keys(SWITCHES).filter(switchOn),
+    boards: boardSwitches().all,
+  };
+  return isAdmin(u) ? { ...open, lockedMaps: lockedMaps(), lockedFilms: lockedFilms(), lockedSwitches: lockedSwitches() } : open;
+};
 /** The film a served path belongs to (its page, or a file in its folder), or null. */
 const filmOfPath = (p) => {
   const s = String(p).replaceAll('\\', '/').toLowerCase();
@@ -89,6 +137,10 @@ const rooms = createRooms({
   },
   isAdmin: (u) => isAdmin(u),
   mapOpenTo: (u, map) => mapOpenTo(u, map),
+  // co-op itself, each way to host, and what a session may play (Free roam, Standard Mazoku, the stories)
+  switchOpenTo: (u, id) => switchOpenTo(u, id),
+  playOpenTo: (u, kind) => playOpenTo(u, kind),
+  aureliaOn: () => switchOn('aurelia-npc'),
   // local development only: the sessions accept the co-op QA script's set-ups (scripts/qa-coop.mjs)
   dev: DEV_LOGIN,
   onEvent(kind, { room, reason, message }) {
@@ -188,9 +240,9 @@ app.post('/auth/logout', async (req, reply) => {
 
 app.get('/api/me', async (req) => {
   const u = userOf(req);
-  if (!u) return { user: null, devLogin: DEV_LOGIN, lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
-  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '', lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
-  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id), lockedMaps: lockedMaps(), lockedFilms: lockedFilms() };
+  if (!u) return { user: null, devLogin: DEV_LOGIN, ...visibilityFor(null) };
+  if (u.banned) return { user: publicUser(u), banned: true, banReason: u.ban_reason || '', ...visibilityFor(null) };
+  return { user: publicUser(u), admin: isAdmin(u), cards: db.cards(u.id), ...visibilityFor(u) };
 });
 
 app.post('/api/visit', async (req, reply) => {
@@ -213,6 +265,8 @@ app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
   if (!mapOpenTo(req.user, req.body?.map)) return reply.code(403).send({ error: 'that map is not open yet' });
+  if (!playOpenTo(req.user, mode)) return reply.code(403).send({ error: 'that mode is not open yet' });
+  if (typeof req.body?.story === 'string' && !playOpenTo(req.user, req.body.story)) return reply.code(403).send({ error: 'that story is not open yet' });
   const b = req.body;
   return { id: db.startRun(req.user.id, mode, !!b?.touch, b?.map, b?.version, b?.difficulty, { device: b?.device, gpu: b?.gpu, quality: b?.quality }, b?.story) };
 });
@@ -223,6 +277,7 @@ app.post('/api/runs/:id/card', { preHandler: player }, async (req, reply) => {
   const run = db.run(Number(req.params.id));
   const card = req.body?.card;
   if (!run || run.user_id !== req.user.id || run.ended_at !== null || run.mode !== 'cards') return reply.code(400).send({ error: 'no such run' });
+  if (!switchOpenTo(req.user, 'cards')) return reply.code(403).send({ error: 'the card hunt is not open' });
   if (typeof card !== 'string' || !/^[a-z0-9_-]{1,24}$/.test(card)) return reply.code(400).send({ error: 'bad card' });
   db.addCard(req.user.id, card);
   return { cards: db.cards(req.user.id) };
@@ -256,15 +311,17 @@ app.get('/api/leaderboards', async (req, reply) => {
   const version = typeof req.query.version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,4}$/.test(req.query.version) ? req.query.version : '';
   const difficulty = DIFFICULTIES.includes(req.query.difficulty) ? req.query.difficulty : '';
   const sw = boardSwitches();
+  // a map that is admin only has no board for players (it is not there at all, like the map); nor co-op, when it is off
+  if ((!mapPublic(map) || (mode === 'coop' && !switchOn('coop'))) && !isAdmin(userOf(req))) return reply.code(404).send({ error: 'unknown board' });
+  if (!sw.all) return { enabled: false, all: false, versions: [], entries: [] };
+  if (sw.off.includes(boardKey(map, mode, metric))) return { enabled: false, all: true, versions: [], entries: [] };
   const versions = db.boardVersions(map, mode);
-  if (!sw.all) return { enabled: false, all: false, versions, entries: [] };
-  if (sw.off.includes(boardKey(map, mode, metric))) return { enabled: false, all: true, versions, entries: [] };
-  reply.header('cache-control', 'public, max-age=20');
+  reply.header('cache-control', mapPublic(map) ? 'public, max-age=20' : 'private, no-cache');
   const exclude = [...ADMIN_IDS];
   return { enabled: true, all: true, versions, perDifficulty: db.boardDifficulties({ map, mode, metric, version, exclude }), entries: db.leaderboard({ map, mode, metric, version, difficulty, exclude }) };
 });
 
-app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code) ?? reply.code(404).send({ error: 'no such session' }));
+app.get('/api/rooms/:code', { preHandler: player }, async (req, reply) => rooms.info(req.params.code, req.user) ?? reply.code(404).send({ error: 'no such session' }));
 
 // Local-only health check for the deploy script: it waits for co-op sessions to finish before restarting.
 app.get('/api/health', async (req, reply) => {
@@ -350,7 +407,55 @@ app.post('/api/admin/maps/:id', { preHandler: admin }, async (req, reply) => {
   if (!open && mapPublic(id) && Object.keys(MAPS).filter((m) => mapPublic(m)).length <= 1) return reply.code(409).send({ error: 'At least one map must stay live.' });
   db.setSetting(`map.${id}.public`, open ? '1' : '0');
   db.audit(req.user.id, open ? 'map-public' : 'map-admin-only', id, '');
+  if (!open) rooms.closeShut();
   return { id, public: mapPublic(id) };
+});
+
+/**
+ * The Visibility tab: every map, film, mode, way to host, story, feature and page, each live for everyone or admin only,
+ * in one list of groups.
+ */
+app.get('/api/admin/visibility', { preHandler: admin }, async () => {
+  const group = (key, title, items) => ({ key, title, items });
+  const sw = (g) => Object.entries(SWITCHES).filter(([, s]) => s.group === g).map(([id, s]) => ({ id, name: s.name, public: switchOn(id) }));
+  return {
+    groups: [
+      group('maps', 'Maps', Object.entries(MAPS).map(([id, m]) => ({ id, name: m.name, public: mapPublic(id) }))),
+      group('films', 'Cinematics', Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, public: filmPublic(id) }))),
+      group('modes', 'Modes', sw('modes')),
+      group('hosting', 'Co-op hosting', sw('hosting')),
+      group('stories', 'Story missions', sw('stories')),
+      group('features', 'Features', sw('features')),
+      group('pages', 'Pages', sw('pages')),
+    ],
+  };
+});
+
+/** Switch one thing live for everyone or back to admins only (maps and films go through their own rules). */
+app.post('/api/admin/visibility/:id', { preHandler: admin }, async (req, reply) => {
+  const id = String(req.params.id);
+  if (typeof req.body?.public !== 'boolean') return reply.code(400).send({ error: 'public must be true or false' });
+  const open = req.body.public;
+  if (Object.hasOwn(MAPS, id)) {
+    if (!open && mapPublic(id) && Object.keys(MAPS).filter((m) => mapPublic(m)).length <= 1) return reply.code(409).send({ error: 'At least one map must stay live.' });
+    db.setSetting(`map.${id}.public`, open ? '1' : '0');
+    db.audit(req.user.id, open ? 'map-public' : 'map-admin-only', id, '');
+    if (!open) rooms.closeShut();
+    return { id, public: mapPublic(id) };
+  }
+  if (Object.hasOwn(FILMS, id)) {
+    db.setSetting(`film.${id}.public`, open ? '1' : '0');
+    db.audit(req.user.id, open ? 'film-public' : 'film-admin-only', id, '');
+    return { id, public: filmPublic(id) };
+  }
+  if (!Object.hasOwn(SWITCHES, id)) return reply.code(404).send({ error: 'no such switch' });
+  // co-op needs a way to host: keep at least one on while co-op is
+  const hosts = ['host-server', 'host-self'];
+  if (!open && hosts.includes(id) && switchOn(id) && hosts.filter(switchOn).length <= 1) return reply.code(409).send({ error: 'Keep one way to host on (or switch co-op off instead).' });
+  db.setSetting(`sw.${id}.public`, open ? '1' : '0');
+  db.audit(req.user.id, open ? 'switch-public' : 'switch-admin-only', id, '');
+  if (!open) rooms.closeShut();
+  return { id, public: switchOn(id) };
 });
 
 app.get('/api/admin/films', { preHandler: admin }, async () => ({ films: Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, page: `/${f.page}.html`, public: filmPublic(id) })) }));
@@ -402,13 +507,19 @@ const cacheFor = (reply, path) => {
 // the one the static server has already decoded and checked
 const allowedPath = (path, _root, req) => {
   const film = filmOfPath(path);
-  return film === null || filmPublic(film) || isAdmin(userOf(req));
+  if (film !== null && !filmPublic(film)) return isAdmin(userOf(req));
+  // the bestiary, when it is switched off; and the notes that came with the models (not for players)
+  const p = String(path).replaceAll('\\', '/').toLowerCase();
+  if (p === '/bestiary.html' && !switchOn('bestiary')) return isAdmin(userOf(req));
+  if (/^\/anime\/[^/]+\.(md|txt)$/.test(p)) return false;
+  return true;
 };
 // the sitemap lists only the films that are public
 app.get('/sitemap.xml', async (_req, reply) => {
   const file = join(dist, 'sitemap.xml');
   if (!existsSync(file)) return reply.code(404).send({ error: 'not found' });
   const hidden = lockedFilms().map((id) => `/${FILMS[id].page}.html<`);
+  if (!switchOn('bestiary')) hidden.push('/bestiary.html<');
   const xml = readFileSync(file, 'utf8').split('\n').filter((line) => !hidden.some((h) => line.includes(h))).join('\n');
   reply.header('cache-control', 'no-cache');
   return reply.type('application/xml').send(xml);

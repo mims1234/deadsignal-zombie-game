@@ -12,6 +12,8 @@ import { LATE_CHOICES, LATE_NOTE } from '../net/room';
 import { VERSION } from '../version';
 import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession, PauseTab } from './hudTypes';
 import { filmAccess, GATED_FILMS, type FilmAccess, type FilmId } from '../films';
+import { GATED_SWITCHES, switchShown, type SwitchId } from '../switches';
+import { GATED_MAPS } from '../world/layout/data';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
@@ -61,13 +63,15 @@ const CINEMATICS: { id: FilmId; name: string; tagline: string; about: string; le
  * The bestiary's codex on the title: each section of the field guide, opening the 3D page on its first entry (the
  * CINEMATICS card is made from the films this player can see: see `codex()`).
  */
-const CODEX: { group: string; about: string; entry: string; tone: string }[] = [
+type CodexCard = { group: string; about: string; entry: string; tone: string; map?: MapId; needs?: SwitchId };
+/** `map` / `needs`: the section belongs to a map or a mode the admin page can switch off (then it is not shown). */
+const CODEX: CodexCard[] = [
   { group: 'THE HORDE', about: 'Shamblers, runners and the armoured, and what each zone has turned into them.', entry: 'shambler', tone: '#a9bf8e' },
-  { group: 'ELITES', about: 'The Warden, the Infernus, the Matron, and a few things better met for yourself.', entry: 'warden', tone: '#ff7a1a' },
-  { group: 'MAZOKU CARRIERS', about: 'The card carriers of the card hunt, each with their own card to collect.', entry: 'card-shiroko', tone: '#ff6fa8' },
+  { group: 'ELITES', about: 'The Warden, and the worst each zone has made: better met for yourself.', entry: 'warden', tone: '#ff7a1a' },
+  { group: 'MAZOKU CARRIERS', about: 'The card carriers of the card hunt, each with their own card to collect.', entry: 'card-shiroko', tone: '#ff6fa8', needs: 'cards' },
   { group: 'BESIDE YOU', about: 'Co-op operators, trapped survivors and the people who hold out with you.', entry: 'operators', tone: '#6fa8dc' },
-  { group: 'VULCAN', about: 'The clan of the Forge: familiar faces, and the rest of the clan.', entry: 'vulcan-leadership', tone: '#ffb060' },
-  { group: 'SAKURA DISTRICT', about: 'Hana & Yuzu, the Kurenai Court, and the infected under the blossoms.', entry: 'sakura-squad', tone: '#ff9ec8' },
+  { group: 'VULCAN', about: 'The clan of the Forge: familiar faces, and the rest of the clan.', entry: 'vulcan-leadership', tone: '#ffb060', map: 'forge' },
+  { group: 'SAKURA DISTRICT', about: 'Hana & Yuzu, the Kurenai Court, and the infected under the blossoms.', entry: 'sakura-squad', tone: '#ff9ec8', map: 'sakura' },
 ];
 const FILM_TONE = '#b77cff';
 /** An admin's (or a dev build's) badge on a film card: players only ever see public films. */
@@ -144,7 +148,7 @@ class Menus implements MenusApi {
   private touch = false;
   private info: ModeInfo = { mode: 'standard', map: 'district', cards: [], difficulty: { zombies: 'normal', team: 'regular' } };
   private lastBest: BestRun | null = null;
-  private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false, lockedFilms: [...GATED_FILMS] };
+  private account: AccountInfo = { online: false, name: null, avatar: null, admin: false, loginUrl: '', loginFailed: false, lockedFilms: [...GATED_FILMS], lockedMaps: [...GATED_MAPS], lockedSwitches: [...GATED_SWITCHES], boards: true };
   private readonly armTimers = new Map<HTMLButtonElement, number>();
 
   constructor(private readonly cb: MenuCallbacks) {}
@@ -202,11 +206,26 @@ class Menus implements MenusApi {
     return CINEMATICS.map((film) => ({ film, access: filmAccess(this.account, film.id) })).filter((f) => f.access !== 'locked');
   }
 
-  /** The codex cards: the bestiary's sections, the CINEMATICS one only with the casts of the films this player can see. */
-  private codex(): { group: string; about: string; entry: string; tone: string }[] {
+  /** Is this switched on for this player (or are they an admin)? */
+  private shown(id: SwitchId): boolean {
+    return switchShown(this.account, id);
+  }
+
+  /** A map this player may see: open, or they are an admin (a dev build with no server sees them all). */
+  private mapShown(map: MapId): boolean {
+    if (!this.account.lockedMaps.includes(map)) return true;
+    return this.account.online ? this.account.admin : import.meta.env.DEV;
+  }
+
+  /**
+   * The codex cards: the bestiary's sections that belong to nothing switched off, and the CINEMATICS one only with the
+   * casts of the films this player can see.
+   */
+  private codex(): CodexCard[] {
+    const cards = CODEX.filter((c) => (!c.map || this.mapShown(c.map)) && (!c.needs || this.shown(c.needs)));
     const films = this.visibleFilms().map((f) => f.film);
-    if (!films.length) return CODEX;
-    return [...CODEX, { group: 'CINEMATICS', about: `${films.map((f) => f.cast).join('; ')}.`, entry: films[0]!.entry, tone: FILM_TONE }];
+    if (!films.length) return cards;
+    return [...cards, { group: 'CINEMATICS', about: `${films.map((f) => f.cast).join('; ')}.`, entry: films[0]!.entry, tone: FILM_TONE }];
   }
 
   /** The maps this player may pick, with an admin's access badge on a gated one (all of them before the account is known). */
@@ -424,6 +443,9 @@ class Menus implements MenusApi {
       this.board.map = this.info.map;
       this.boardMapSet = true;
     }
+    // a board this player can see (an admin-only map has none for them)
+    const boardMaps = this.visibleMaps().map((m) => m.id);
+    if (!boardMaps.includes(this.board.map) && boardMaps.length) this.board.map = boardMaps[0]!;
     const mode = this.info.mode;
     const roam = mode === 'roam';
     const coop = mode === 'coop';
@@ -474,11 +496,12 @@ class Menus implements MenusApi {
       return b;
     };
     item('PLAY', 'play', !elsewhere && !coop && !roam, () => this.goPage('play'));
-    item('WITH FRIENDS', 'friends', !elsewhere && coop, () => this.goPage('friends'));
-    item('FREE ROAM', 'explore', !elsewhere && roam, () => this.goPage('explore'));
-    item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
-    item('CINEMATICS', 'film', films, () => this.goPage('films'));
-    item('BESTIARY', 'book', codex, () => this.goPage('codex'));
+    // what the admin page has switched off is not on the menu at all (an admin still sees it)
+    if (this.shown('coop')) item('WITH FRIENDS', 'friends', !elsewhere && coop, () => this.goPage('friends'));
+    if (this.shown('roam')) item('FREE ROAM', 'explore', !elsewhere && roam, () => this.goPage('explore'));
+    if (this.account.boards || this.account.admin) item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
+    if (this.visibleFilms().length > 0) item('CINEMATICS', 'film', films, () => this.goPage('films'));
+    if (this.shown('bestiary')) item('BESTIARY', 'book', codex, () => this.goPage('codex'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
     item('SETTINGS', 'sliders', false, () => showTab('settings'));
 
@@ -562,7 +585,7 @@ class Menus implements MenusApi {
         const opts = el('div', 'ds-l-more', hero);
         this.picker(opts, 'SQUAD AI', TEAM_SKILLS.map((id) => ({ id, label: TEAM_SKILL[id].label, note: TEAM_SKILL[id].note })), d.team, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
         if (coop) el('span', 'hint', opts, 'These are the defaults for a lobby you open; its owner can change them there.');
-        else {
+        else if (this.shown('cards')) {
           const hunt = mode === 'cards';
           const t = this.button(opts, hunt ? 'MAZOKU CARD HUNT  ON' : 'MAZOKU CARD HUNT  OFF', hunt ? 'toggle on' : 'toggle', () => this.cb.onModeChange(hunt ? 'standard' : 'cards'));
           t.setAttribute('aria-pressed', hunt ? 'true' : 'false');

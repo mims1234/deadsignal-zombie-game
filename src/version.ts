@@ -1,10 +1,11 @@
 /**
- * The build's version, from the changelog (`server/changelog.json`, newest first; the admin page lists it too), and the
- * faint tag in the bottom-right corner of every screen - so a screenshot or a video always says which build it is from.
+ * The build's version, the newest in the changelog (`server/changelog.json`; the admin page lists it), and the faint tag in
+ * the bottom-right corner of every screen - so a screenshot or a video always says which build it is from. Only the
+ * number is built in (`__DS_VERSION__`, vite.config.ts): the changelog's notes never ship to players.
  */
-import changelog from '../server/changelog.json';
+declare const __DS_VERSION__: string;
 
-export const VERSION = `v${changelog.versions[0]?.version ?? '0.0.0'}`;
+export const VERSION = `v${typeof __DS_VERSION__ === 'string' ? __DS_VERSION__ : '0.0.0'}`;
 
 /** Put the version tag on the page (once). It never takes a click or a touch. */
 export function showVersionTag(): void {

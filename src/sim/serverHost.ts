@@ -158,6 +158,8 @@ export interface SessionOptions {
    * co-op QA script's set-ups ('dev': drop a power-up next to them, tear boards off a window). Never on a live server.
    */
   dev?: boolean;
+  /** Aurelia herself on her map (the admin page can switch her off for players; default on). */
+  aurelia?: boolean;
   /** A level the caller already built (a self-hosting browser passes its own); otherwise one is built here. */
   level?: Level;
   send(to: string, d: Record<string, unknown>): void;
@@ -191,6 +193,7 @@ export class SessionSim {
   private allies: SimAlly[] = [];
   /** Aurelia, on her own map (`aurelia/brain.ts`): walks ahead of the nearest player, falls, rises. */
   private aurelia: Aurelia | null = null;
+  private readonly aureliaOn: boolean;
   /** The mystery boxes and kill drops, shared by the squad (`logic/sharedLoot.ts`). */
   private loot: LootState = createLoot(0);
   private shots: number[][] = [];
@@ -223,6 +226,7 @@ export class SessionSim {
   constructor(opts: SessionOptions) {
     this.send = opts.send;
     this.dev = opts.dev === true;
+    this.aureliaOn = opts.aurelia !== false;
     this.map = opts.map ?? 'district';
     this.kind = opts.kind ?? 'mission';
     this.difficulty = sessionDifficulty(opts.difficulty);
@@ -434,7 +438,7 @@ export class SessionSim {
     const caged = this.forge ? [] : survivorRoster(this.map);
     cageSpots(level, rng, caged.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, caged[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
     if (this.kind === 'mazoku') this.placeCarriers();
-    this.aurelia = this.map === 'aurelia' ? aureliaAtStart(level) : null;
+    this.aurelia = this.map === 'aurelia' && this.aureliaOn ? aureliaAtStart(level) : null;
   }
 
   /** The five card carriers at spread-out resident spots, away from the start, the LZ, the boss and the relay. */

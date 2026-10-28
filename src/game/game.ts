@@ -26,6 +26,7 @@ import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
 import { type Account, type RunPerf, RunTracker, firstOpenMap, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
+import { switchOfKind, switchShown } from '../switches';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
 import { enterFullscreenLandscape, isTouchDevice } from '../player/touch';
@@ -157,7 +158,20 @@ export class Game implements GameCtx {
   get tale(): StoryId | null {
     if (this.mapId !== 'sakura') return null;
     if (this.mode === 'coop') return isStory(this.coop.kind) ? this.coop.kind : null;
-    return this.mode === 'standard' ? this.storyPick : null;
+    return this.mode === 'standard' && this.storyPick && switchShown(this.account, `story-${this.storyPick}`) ? this.storyPick : null;
+  }
+
+  /**
+   * May this player pick the mode (the admin page can switch co-op, Free roam and the card hunt off; an admin always
+   * may)?
+   */
+  /** Came in on a link to a live session: co-op is open to this player for it, whatever the switch says. */
+  private coopInvite = false;
+
+  private modeOpen(mode: GameMode): boolean {
+    if (mode === 'coop') return this.coopInvite || switchShown(this.account, 'coop');
+    const sw = switchOfKind(mode);
+    return sw === null || switchShown(this.account, sw);
   }
   /** Which map was built this page load. */
   mapId: MapId = 'district';
@@ -170,7 +184,7 @@ export class Game implements GameCtx {
   roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
-  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [], lockedFilms: [] };
+  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [], lockedFilms: [], lockedSwitches: [], boards: true };
   private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
@@ -292,7 +306,7 @@ export class Game implements GameCtx {
       onDifficultyChange: (d) => this.setDifficulty(d),
       onRoamChange: (on) => this.setRoam(on),
       onStoryChange: (id) => {
-        this.storyPick = isStory(id) ? id : null;
+        this.storyPick = isStory(id) && switchShown(this.account, `story-${id}`) ? id : null;
         this.menus.setModeInfo(this.modeInfo());
       },
     });
@@ -310,7 +324,13 @@ export class Game implements GameCtx {
       loginUrl: this.account.loginUrl,
       loginFailed: new URLSearchParams(window.location.search).get('login') === 'failed',
       lockedFilms: this.account.lockedFilms,
+      lockedMaps: this.account.lockedMaps,
+      lockedSwitches: this.account.lockedSwitches,
+      boards: this.account.boards,
     });
+    // a mode remembered from before it was switched off: back to Standard
+    if (!this.modeOpen(this.roamBase)) this.roamBase = 'standard';
+    if (!this.modeOpen(this.mode)) this.mode = this.mode === 'roam' && this.modeOpen(this.roamBase) ? this.roamBase : 'standard';
     // a map that is not open to this player (switched to admins only): the first one that is.
     // An invite to a co-op session on it still gets in - the session's owner chose the map.
     if (mapAccess(this.account, this.mapId) === 'locked' && !new URLSearchParams(window.location.search).get('room')) {
@@ -530,6 +550,7 @@ export class Game implements GameCtx {
       this.mission.holdExtraction = () => this.forge?.holdExtraction ?? false;
       this.mission.calm = () => this.forge?.burnedOut ?? false;
     }
+    // Aurelia herself: solo only when she is switched on for this player; in co-op whenever the session runs her
     if (this.mapId === 'aurelia') this.aurelia = new AureliaRuntime(this);
     if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
@@ -538,6 +559,7 @@ export class Game implements GameCtx {
       mapId: () => this.mapId,
       difficulty: () => ({ ...this.difficulty }),
       isAdmin: () => this.account.admin,
+      shown: (id) => switchShown(this.account, id),
       canShow: () => this.mode === 'coop' && (this.state === 'title' || this.state === 'results'),
       deploy: () => this.requestStart(this.state === 'results'),
       playing: () => this.coop.live && (this.state === 'playing' || this.state === 'paused'),
@@ -626,6 +648,13 @@ export class Game implements GameCtx {
     // a link to a session that has ended (or never existed) is just the main page, with a word about why
     const info = code && this.account.user ? await roomInfo(code) : null;
     const live = !!info;
+    // a map that is not open to this player: with a live session to go to, the session's map is built next (below);
+    // any other way here (a dead link, or none) goes to the first open map
+    if (mapAccess(this.account, this.mapId) === 'locked' && !info) {
+      saveMap(firstOpenMap(this.account));
+      window.location.assign(window.location.pathname);
+      return true;
+    }
     if (code && this.account.user && !info) {
       window.history.replaceState(null, '', window.location.pathname);
       this.menus.flash(`Session ${code.toUpperCase().slice(0, 6)} has ended or does not exist.`);
@@ -640,6 +669,8 @@ export class Game implements GameCtx {
       window.history.replaceState(null, '', window.location.pathname);
     }
     if (code && live) {
+      // a live session the server let this player see: they were invited (or it is open to them), even with co-op off
+      this.coopInvite = true;
       this.setMode('coop');
       this.coopUi.open(code);
       if (invite.get('watch') === 'admin' && this.account.admin) void this.coop.room.join(code, 'spectator', true);
@@ -799,13 +830,15 @@ export class Game implements GameCtx {
   private modeInfo(): ModeInfo {
     const maps = MAP_IDS.flatMap((id) => {
       const a = mapAccess(this.account, id);
-      if (a === 'locked' && id !== this.mapId) return [];
+      // a map that is not open is not listed - unless it is the one of the co-op session this player was invited into
+      if (a === 'locked' && !(id === this.mapId && this.coop.room.room?.map === id)) return [];
       // the badge is for admins (and dev builds): players just see the map once it is public
       const b = a === 'admin-only' ? (['ADMIN ONLY', 'warn'] as const) : a === 'dev-only' ? (['DEV ONLY', 'warn'] as const) : a === 'public' && this.account.admin ? (['PUBLIC', 'good'] as const) : null;
       return [{ id, badge: b?.[0], badgeTone: b?.[1] }];
     });
     // the Sakura District's story missions, once the Thousand Lanterns has been seen through
-    const stories = this.mapId === 'sakura' ? storiesOpen(loadSakura().egg).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
+    // (each can be switched off from the admin page)
+    const stories = this.mapId === 'sakura' ? storiesOpen(loadSakura().egg).filter((id) => switchShown(this.account, `story-${id}`)).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
     return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '' };
   }
 
@@ -825,6 +858,7 @@ export class Game implements GameCtx {
   /** Title screen only: switch what DEPLOY starts. The backdrop is a pristine run, so only the carriers change. */
   setMode(mode: GameMode): void {
     if (this.state !== 'title') return;
+    if (!this.modeOpen(mode)) return; // switched off from the admin page
     // with free roam on, picking Standard / Standard Mazoku only changes what it returns to
     if (this.mode === 'roam' && (mode === 'standard' || mode === 'cards')) {
       this.roamBase = mode;
@@ -847,6 +881,7 @@ export class Game implements GameCtx {
   /** Title screen: free roam on (from Standard / Standard Mazoku) or off (back to the one it came from). */
   setRoam(on: boolean): void {
     if (this.state !== 'title') return;
+    if (on && !this.modeOpen('roam')) return;
     if (on && (this.mode === 'standard' || this.mode === 'cards')) {
       this.roamBase = this.mode;
       saveRoamBase(this.mode);
@@ -947,6 +982,12 @@ export class Game implements GameCtx {
   /** Deploy / restart button (inside a click). */
   requestStart(restart: boolean): void {
     if (this.account.online && !this.account.user) return; // the title screen offers sign-in instead
+    // a map or a mode that is not open to this player (left over from a session they were invited into): never played
+    if (this.mode !== 'coop' && (mapAccess(this.account, this.mapId) === 'locked' || !this.modeOpen(this.mode))) {
+      this.menus.flash('That is not open yet.');
+      if (mapAccess(this.account, this.mapId) === 'locked') this.setMap(firstOpenMap(this.account));
+      return;
+    }
     if (this.mode === 'coop' && !this.coop.canDeploy) {
       this.coopUi.open(); // nothing to deploy into until the host starts the session
       return;
@@ -1194,7 +1235,7 @@ export class Game implements GameCtx {
     this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team, coopStory ? Math.max(1, this.coop.room.room?.players.length ?? 1) : 1);
     if (forgeSquad && solo) this.squad.deployForge(forgeSquad);
     // Aurelia walks with you (solo); a co-op story run shows the simulation's
-    this.aurelia?.reset(coopStory, solo || coopStory);
+    this.aurelia?.reset(coopStory, (solo && switchShown(this.account, 'aurelia-npc')) || coopStory);
     // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
     this.asylum?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;

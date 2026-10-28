@@ -27,8 +27,10 @@ import type { ZombieType } from '../types';
 import { STYLE_SAMPLES } from './styleLab';
 import { showVersionTag } from '../version';
 import { stayFresh } from '../freshness';
-import { loadAccount, reportVisit, type Account } from '../net/account';
+import { loadAccount, mapAccess, reportVisit, type Account } from '../net/account';
 import { filmAccess, GATED_FILMS, type FilmId } from '../films';
+import { switchAccess, type SwitchId } from '../switches';
+import { GATED_MAPS, type MapId } from '../world/layout/data';
 import { easePose, Giant, GIANT_POSES, Knight, KNIGHT_POSES, type GiantPose, type KnightPose } from '../freeroam/actors';
 import { Figure, KAEL_HAIR, KAEL_HOLLOW_HAIR, makeCast, POSES as HOLLOW, type Pose as HollowPose } from '../hollow/cast';
 import './bestiary.css';
@@ -620,8 +622,29 @@ let castIndex = 0;
  */
 const viewer: Account | null = await Promise.race([loadAccount(), new Promise<null>((r) => setTimeout(() => r(null), 2500))]);
 const filmShown = (f: FilmId | undefined): boolean => !f || (viewer ? filmAccess(viewer, f) !== 'locked' : !GATED_FILMS.includes(f));
+/** The map an entry belongs to (while that map is admin only, so is the entry): by its section, else where it is met. */
+function entryMap(e: Entry): MapId | null {
+  if (e.group === 'SAKURA DISTRICT' || /^Sakura District/.test(e.where)) return 'sakura';
+  if (e.group === 'VULCAN' || /^The Forge/.test(e.where)) return 'forge';
+  if (/^The Asylum/.test(e.where)) return 'asylum';
+  if (/^Aurelia/i.test(e.where)) return 'aurelia';
+  return null;
+}
+/** What else the admin page switches an entry by: the Style Lab, and the card hunt's carriers. */
+const entrySwitch = (e: Entry): SwitchId | null => (e.group === 'STYLE LAB' ? 'stylelab' : e.group === 'MAZOKU CARRIERS' ? 'cards' : null);
+const mapShown = (m: MapId | null): boolean => !m || (viewer ? mapAccess(viewer, m) !== 'locked' : !GATED_MAPS.includes(m));
+/** Not knowing (no answer from the server in time, or it failed outside a dev build): a switched section stays hidden. */
+const unknown = !viewer || (!viewer.online && !import.meta.env.DEV);
+const switchOn = (s: SwitchId | null): boolean => !s || (unknown ? false : switchAccess(viewer!, s) !== 'locked');
+/** Only an admin sees it (players do not yet): the map, the switch or the film it belongs to is admin only. */
+const adminOnly = (e: Entry): boolean => {
+  if (!viewer?.admin) return false;
+  const m = entryMap(e);
+  const s = entrySwitch(e);
+  return (!!m && mapAccess(viewer, m) === 'admin-only') || (!!s && switchAccess(viewer, s) === 'admin-only') || (!!e.film && filmAccess(viewer, e.film) === 'admin-only');
+};
 /** The entries this viewer can open. */
-const shown = entries.filter((e) => filmShown(e.film));
+const shown = entries.filter((e) => filmShown(e.film) && mapShown(entryMap(e)) && switchOn(entrySwitch(e)));
 
 // ---------------------------------------------------------------------------------------------
 // selection, animation
@@ -708,7 +731,7 @@ function renderInfo(): void {
     el('dd', '', dl, v);
   }
   el('div', 'where', infoEl, `FOUND IN  //  ${e.where.toUpperCase()}`);
-  if (e.film && viewer && filmAccess(viewer, e.film) === 'admin-only') el('div', 'where', infoEl, 'ADMIN ONLY  //  PLAYERS DO NOT SEE THIS FILM YET');
+  if (adminOnly(e)) el('div', 'where', infoEl, 'ADMIN ONLY  //  PLAYERS DO NOT SEE THIS YET');
 }
 
 function setMode(m: ZombieMode): void {

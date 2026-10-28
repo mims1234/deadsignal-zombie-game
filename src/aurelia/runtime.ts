@@ -32,6 +32,8 @@ export class AureliaRuntime {
   remote = false;
   /** In this run at all (not in free roam). */
   private active = false;
+  /** A co-op guest has heard of her from the simulation (a session where she is switched off never mentions her). */
+  private heard = false;
 
   constructor(private readonly g: Game) {
     this.body = aureliaAtStart(g.level);
@@ -57,6 +59,7 @@ export class AureliaRuntime {
   reset(remote: boolean, active: boolean): void {
     this.remote = remote;
     this.active = active;
+    this.heard = false;
     Object.assign(this.body, aureliaAtStart(this.g.level));
     this.env = null;
     this.shown = 'lead';
@@ -67,7 +70,7 @@ export class AureliaRuntime {
     this.lilies.length = 0;
     const a = this.body;
     this.avatar.rise();
-    this.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, active);
+    this.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, active && !remote);
     this.pillar.update(0, 0);
   }
 
@@ -84,6 +87,7 @@ export class AureliaRuntime {
   applyWire(row: unknown): void {
     if (!Array.isArray(row) || row.length < 8) return;
     const [x, z, yaw, ph, left, hp, deaths, y] = row.map(Number) as AureliaRow;
+    this.heard = true;
     const a = this.body;
     a.ref.x = x;
     a.ref.z = z;
@@ -99,7 +103,7 @@ export class AureliaRuntime {
   }
 
   update(dt: number): void {
-    if (!this.active) return;
+    if (!this.active || (this.remote && !this.heard)) return;
     this.time += dt;
     const a = this.body;
     const g = this.g;

@@ -4,6 +4,7 @@
  */
 import type { MapId } from '../world/layout/data';
 import type { FilmId } from '../films';
+import type { SwitchId } from '../switches';
 import type { TeamSkill, ZombieDifficulty } from '../config';
 import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
 
@@ -184,6 +185,12 @@ export interface AccountInfo {
   loginFailed: boolean;
   /** Cinematics only admins can watch right now. */
   lockedFilms: FilmId[];
+  /** Maps only admins can play right now (the bestiary's sections for them are hidden too). */
+  lockedMaps: MapId[];
+  /** Everything else the admin page switches off: co-op, Free roam, the card hunt, the stories, the bestiary... */
+  lockedSwitches: SwitchId[];
+  /** The leaderboards are on. */
+  boards: boolean;
 }
 
 export interface ModeInfo {

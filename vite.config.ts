@@ -1,8 +1,12 @@
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
+
+/** The build's version (the newest in the changelog). Only the number goes into the game: the notes stay on the server. */
+const version: string = JSON.parse(readFileSync('server/changelog.json', 'utf8')).versions[0]?.version ?? '0.0.0';
 
 export default defineConfig({
   base: './',
+  define: { __DS_VERSION__: JSON.stringify(version) },
   // three-vrm imports three too: one copy for everyone
   resolve: { dedupe: ['three'] },
   // the local stand-in VRoid model (public/anime/test, git-ignored) is for development only: never ship it

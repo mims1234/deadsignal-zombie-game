@@ -30,6 +30,7 @@ import type { ZombieType } from '../types';
 import type { HudState, MapDynamic, PauseSession } from '../ui/hudTypes';
 import { operatorModel } from '../anime/cast';
 import { isStory } from '../sakura/missions';
+import { switchShown } from '../switches';
 import { AVATAR_WEAPONS, Avatar, avatarWeaponOf } from './avatar';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
@@ -166,7 +167,7 @@ export class CoopSession {
       this.role = you.role === 'spectator' ? 'spectator' : room.hostId === you.id ? 'host' : 'guest';
       // a self-hosted session's owner runs the simulation, on the map they are on
       if (this.role === 'host') {
-        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, difficulty: sessionDifficulty(room), dev: import.meta.env.DEV, send: (to, d) => this.fromSim(to, d) });
+        this.sim ??= new SessionSim({ level: this.g.level, map: this.g.mapId, kind: room.kind, difficulty: sessionDifficulty(room), dev: import.meta.env.DEV, aurelia: switchShown(this.g.account, 'aurelia-npc'), send: (to, d) => this.fromSim(to, d) });
         if (!this.sim.finished && this.sim.stats().elapsed === 0) {
           this.sim.kind = room.kind;
           this.sim.difficulty = sessionDifficulty(room);

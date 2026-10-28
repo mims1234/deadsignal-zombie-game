@@ -10,6 +10,7 @@ import { isStory, STORIES, STORY_IDS, storiesOpen } from '../sakura/missions';
 import { loadSakura } from '../storage';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
+import type { SwitchId } from '../switches';
 
 const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM', aurelia: 'AURELIA' };
 const KIND_NOTE: Record<RoomView['kind'], string> = {
@@ -51,6 +52,8 @@ export interface LobbyHost {
   /** The player's own difficulty picks: a session created here starts with them. */
   difficulty(): { zombies: ZombieDifficulty; team: TeamSkill };
   isAdmin(): boolean;
+  /** Is this switched on for this player on the admin page (or are they an admin)? */
+  shown(id: SwitchId): boolean;
   /** The game is in a state where the lobby may show (title or results). */
   canShow(): boolean;
   /** Deploy into the started session. Called from a click, so pointer lock is allowed. */
@@ -180,14 +183,21 @@ export class CoopUi {
       pingTag(net, this.coop.room.ping === null ? null : Math.round(this.coop.room.ping));
       el('div', 'lbl', body, 'HOSTING');
       const hostRow = el('div', 'row', body);
-      this.button(hostRow, 'SERVER HOSTED', this.hosting === 'server' ? 'on' : '', () => {
-        this.hosting = 'server';
-        this.render();
-      });
-      this.button(hostRow, 'SELF HOST', this.hosting === 'self' ? 'on' : '', () => {
-        this.hosting = 'self';
-        this.render();
-      });
+      // only the ways to host that are switched on (the admin page keeps at least one on)
+      const canServer = this.host.shown('host-server');
+      const canSelf = this.host.shown('host-self');
+      if (this.hosting === 'server' && !canServer && canSelf) this.hosting = 'self';
+      if (this.hosting === 'self' && !canSelf && canServer) this.hosting = 'server';
+      if (canServer)
+        this.button(hostRow, 'SERVER HOSTED', this.hosting === 'server' ? 'on' : '', () => {
+          this.hosting = 'server';
+          this.render();
+        });
+      if (canSelf)
+        this.button(hostRow, 'SELF HOST', this.hosting === 'self' ? 'on' : '', () => {
+          this.hosting = 'self';
+          this.render();
+        });
       el(
         'div',
         'tag',
@@ -275,8 +285,9 @@ export class CoopUi {
     const variant = el('div', 'row choice', body);
     // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
     // the Sakura District's story missions, once the owner has seen the Thousand Lanterns through
-    const tales = room.map === 'sakura' ? (isStory(room.kind) && !storiesOpen(loadSakura().egg).includes(room.kind) ? STORY_IDS : storiesOpen(loadSakura().egg)).map((id) => [id, STORIES[id].title] as const) : [];
-    const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ['mazoku', 'STANDARD MAZOKU'], ...tales];
+    // (each switched on from the admin page: Standard Mazoku, Free roam, every story)
+    const tales = room.map === 'sakura' ? (isStory(room.kind) && !storiesOpen(loadSakura().egg).includes(room.kind) ? STORY_IDS : storiesOpen(loadSakura().egg)).filter((id) => this.host.shown(`story-${id}`)).map((id) => [id, STORIES[id].title] as const) : [];
+    const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ...(this.host.shown('cards') ? [['mazoku', 'STANDARD MAZOKU'] as const] : []), ...tales];
     const roam = room.kind === 'roam';
     if (!roam && !isStory(room.kind)) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';
     const active = roam ? this.roamBase : room.kind;
@@ -289,10 +300,14 @@ export class CoopUi {
           } else this.coop.setKind(kind);
         });
       }
-      const t = this.button(variant, roam ? 'FREE ROAM  ON' : 'FREE ROAM  OFF', roam ? 'toggle on' : 'toggle', () => this.coop.setKind(roam ? this.roamBase : 'roam'));
-      t.setAttribute('aria-pressed', roam ? 'true' : 'false');
+      if (roam || this.host.shown('roam')) {
+        const t = this.button(variant, roam ? 'FREE ROAM  ON' : 'FREE ROAM  OFF', roam ? 'toggle on' : 'toggle', () => this.coop.setKind(roam ? this.roamBase : 'roam'));
+        t.setAttribute('aria-pressed', roam ? 'true' : 'false');
+      }
     } else {
-      el('span', 'name', variant, `${kinds.find((k) => k[0] === active)?.[1] ?? 'STANDARD'}${roam ? '  +  FREE ROAM' : ''}`);
+      // its own name, even when it is something this guest could not pick (they were invited into it)
+      const name = active === 'mazoku' ? 'STANDARD MAZOKU' : isStory(active) ? STORIES[active].title : 'STANDARD';
+      el('span', 'name', variant, `${name}${roam ? '  +  FREE ROAM' : ''}`);
     }
     el('div', 'tag', body, KIND_NOTE[room.kind]);
 

@@ -101,8 +101,7 @@
         <button data-go="coop">Co-op</button>
         <button data-go="reports">Reports<span class="n" id="openN" hidden></span></button>
         <button data-go="boards">Leaderboards</button>
-        <button data-go="maps">Maps</button>
-        <button data-go="films">Cinematics</button>
+        <button data-go="visibility">Visibility</button>
         <button data-go="versions">Versions</button>
       </nav>
     </header>
@@ -170,22 +169,13 @@
         <div class="card tablewrap" id="boardTable"></div>
       </section>
 
-      <!-- MAPS: every map live for everyone or admin only; at least one stays live -->
-      <section data-tab="maps">
-        <div class="card tablewrap">
-          <h3>Map access</h3>
-          <div class="sub">Live: every player can pick the map. Admin only: only admins see and play it (the game shows it to you marked ADMIN ONLY); players on it are moved to the first live map. At least one map always stays live. Players see a change on their next page load.</div>
-          <div id="access"></div>
+      <!-- VISIBILITY: everything players can see or pick, each live for everyone or admin only -->
+      <section data-tab="visibility">
+        <div class="card">
+          <h3>What players can see</h3>
+          <div class="sub">Live: every player sees and can use it. Admin only: only admins see it (the game marks it ADMIN ONLY for you); for players it is not on any menu, not in the bestiary or on the leaderboards, and the server refuses it (a page, a run, a co-op session). Players see a change on their next page load; a co-op session already under way plays on. At least one map always stays live, and so does one way to host co-op.</div>
         </div>
-      </section>
-
-      <!-- CINEMATICS: every film public or admin only -->
-      <section data-tab="films">
-        <div class="card tablewrap">
-          <h3>Cinematics</h3>
-          <div class="sub">Public: anyone can watch the film; it shows on the CINEMATICS page, its cast in the bestiary, and its page in the sitemap. Admin only: only admins see it (marked ADMIN ONLY); to anyone else its page, sounds and images are not there at all. Any number can be admin only. Players see a change on their next page load.</div>
-          <div id="filmAccess"></div>
-        </div>
+        <div id="visibility"></div>
       </section>
 
       <!-- REPORTS -->
@@ -561,46 +551,39 @@
       $('boardMap').addEventListener('change', drawBoards);
       $('boardMode').addEventListener('change', drawBoards);
 
-      // ---------------------------------------------------------------- map access (at least one stays live)
-      let liveMaps = 0;
-      const accessTable = localTable($('access'), [
-        { label: 'Map', cell: (m) => m.name, sort: (m) => m.name },
-        { label: 'Access', cell: (m) => h('span', { class: m.public ? 'pill victory' : 'pill abandoned' }, m.public ? 'Live' : 'Admin only'), sort: (m) => (m.public ? 1 : 0) },
-        {
-          label: '',
-          cell: (m) => {
-            const last = m.public && liveMaps <= 1;
-            const b = h('button', { class: m.public ? 'danger' : '', title: last ? 'At least one map must stay live' : '', on: { click: () => setAccess(m).catch(fail) } }, last ? 'Last live map' : m.public ? 'Make admin only' : 'Make live');
+      // ---------------------------------------------------------------- visibility (every map, film, mode, story, feature and page)
+      /** What each group is, in a line under its title. */
+      const GROUP_NOTE = {
+        maps: 'A map players cannot pick is also gone from the leaderboards and the bestiary; anyone on it is moved to the first live map.',
+        films: 'An admin-only film leaves the CINEMATICS page, the bestiary and the sitemap, and its page and files are not served to players.',
+        modes: 'Co-op hides WITH FRIENDS and refuses new sessions; Free roam and the card hunt leave the title screen and the co-op lobby.',
+        hosting: 'Which ways to host a co-op session the lobby offers.',
+        stories: 'Each Sakura District story mission, solo and in co-op.',
+        features: 'Parts of a map that can be held back while the map itself is live.',
+        pages: 'The bestiary (the page and the BESTIARY menu) and its STYLE LAB section.',
+      };
+      let visGroups = [];
+      async function loadVisibility() {
+        visGroups = (await api('/api/admin/visibility')).groups;
+        drawVisibility();
+      }
+      function drawVisibility() {
+        $('visibility').replaceChildren(...visGroups.map((g) => {
+          const live = g.items.filter((i) => i.public).length;
+          const rows = g.items.map((i) => {
+            // the last live map, and the last way to host, cannot be switched off
+            const last = i.public && live <= 1 && (g.key === 'maps' || g.key === 'hosting');
+            const b = h('button', { class: i.public ? 'danger' : '', title: last ? 'At least one must stay live' : '', on: { click: () => setVisibility(i).catch(fail) } }, last ? 'Last one live' : i.public ? 'Make admin only' : 'Make live');
             b.disabled = last;
-            return b;
-          },
-        },
-      ], 'No maps.', 10);
-      async function loadAccess() {
-        const maps = (await api('/api/admin/maps')).maps;
-        liveMaps = maps.filter((m) => m.public).length;
-        accessTable.set(maps);
+            return h('tr', null, h('td', null, i.name), h('td', null, h('span', { class: i.public ? 'pill victory' : 'pill abandoned' }, i.public ? 'Live' : 'Admin only')), h('td', null, b));
+          });
+          return h('div', { class: 'card tablewrap' }, h('h3', null, g.title), h('div', { class: 'sub' }, GROUP_NOTE[g.key] || ''), h('table', null, h('tbody', null, rows)));
+        }));
       }
-      async function setAccess(m) {
-        if (!confirm(m.public ? `Take ${m.name} off for players (admins only)? Players stop seeing it on their next page load.` : `Make ${m.name} live for every player?`)) return;
-        await api(`/api/admin/maps/${m.id}`, { public: !m.public });
-        await loadAccess();
-      }
-
-      // ---------------------------------------------------------------- cinematics (each public or admin only)
-      const filmTable = localTable($('filmAccess'), [
-        { label: 'Film', cell: (f) => f.name, sort: (f) => f.name },
-        { label: 'Page', cell: (f) => h('a', { href: f.page, target: '_blank', rel: 'noopener' }, f.page) },
-        { label: 'Access', cell: (f) => h('span', { class: f.public ? 'pill victory' : 'pill abandoned' }, f.public ? 'Public' : 'Admin only'), sort: (f) => (f.public ? 1 : 0) },
-        { label: '', cell: (f) => h('button', { class: f.public ? 'danger' : '', on: { click: () => setFilm(f).catch(fail) } }, f.public ? 'Make admin only' : 'Make public') },
-      ], 'No cinematics.', 10);
-      async function loadFilms() {
-        filmTable.set((await api('/api/admin/films')).films);
-      }
-      async function setFilm(f) {
-        if (!confirm(f.public ? `Take ${f.name} off for players (admins only)? Its page stops opening for them, and it leaves the CINEMATICS page and the bestiary on their next page load.` : `Put ${f.name} out for every player?`)) return;
-        await api(`/api/admin/films/${f.id}`, { public: !f.public });
-        await loadFilms();
+      async function setVisibility(i) {
+        if (!confirm(i.public ? `Take ${i.name} off for players (admins only)? Players stop seeing it on their next page load.` : `Make ${i.name} live for every player?`)) return;
+        await api(`/api/admin/visibility/${encodeURIComponent(i.id)}`, { public: !i.public });
+        await loadVisibility();
       }
 
       // ---------------------------------------------------------------- versions
@@ -621,10 +604,12 @@
       $('verQ').addEventListener('input', versionFilter);
 
       // ---------------------------------------------------------------- tabs (the open one is kept in the address: #runs)
-      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'boards', 'maps', 'films', 'versions'];
-      const LOAD = { overview: () => Promise.all([loadOverview(), loadCoop()]), runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadOverview, reports: loadReports, boards: loadBoards, maps: loadAccess, films: loadFilms, versions: loadVersions };
+      const TABS = ['overview', 'runs', 'players', 'coop', 'reports', 'boards', 'visibility', 'versions'];
+      const LOAD = { overview: () => Promise.all([loadOverview(), loadCoop()]), runs: () => runTable.reload(), players: () => userTable.reload(), coop: loadOverview, reports: loadReports, boards: loadBoards, visibility: loadVisibility, versions: loadVersions };
       const loaded = new Set();
       function show(tab) {
+        // the old Maps and Cinematics tabs are part of Visibility now
+        if (tab === 'maps' || tab === 'films') tab = 'visibility';
         if (!TABS.includes(tab)) tab = 'overview';
         for (const s of document.querySelectorAll('section[data-tab]')) s.classList.toggle('on', s.dataset.tab === tab);
         for (const b of document.querySelectorAll('nav.tabs button')) b.classList.toggle('on', b.dataset.go === tab);

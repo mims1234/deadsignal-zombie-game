@@ -48,7 +48,12 @@ const SIM_FILE = new URL('./sim/worker.mjs', import.meta.url);
 /** Server-hosted sessions at once (each is a worker thread holding a map, ~130 MB). */
 const SIM_MAX = Math.max(0, Number(process.env.SIM_MAX_ROOMS ?? 8));
 
-export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent = () => {}, dev = false }) {
+/**
+ * `mapOpenTo(user, map)`, `switchOpenTo(user, id)` and `playOpenTo(user, kind)`: the admin page's switches (server/index.mjs)
+ * - whether co-op, each way to host, a map and a session kind (Free roam, Standard Mazoku, a story) are open to this user.
+ * `aureliaOn()`: Aurelia herself is switched on for players (a server-hosted session on her map runs her or not).
+ */
+export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpenTo = () => true, playOpenTo = () => true, aureliaOn = () => true, onEvent = () => {}, dev = false }) {
   /** @type {Map<string, any>} */
   const rooms = new Map();
   /** user id -> member (a user is in at most one room, on one connection) */
@@ -119,7 +124,9 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
 
   /** Server hosting: a worker thread that runs this room's session. */
   function startSim(room) {
-    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind, zombies: room.zombies, team: room.team, dev }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
+    // Aurelia comes along when she is switched on for players, or when an admin owns the session
+    const aurelia = aureliaOn() || isAdmin({ id: room.ownerId });
+    const w = new Worker(SIM_FILE, { workerData: { map: room.map, kind: room.kind, zombies: room.zombies, team: room.team, aurelia, dev }, resourceLimits: { maxOldGenerationSizeMb: 384 } });
     room.sim = w;
     w.on('message', (msg) => {
       if (!msg || room.sim !== w) return;
@@ -207,6 +214,13 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
     else broadcast(room);
   }
 
+  /** Is everything this room plays open to `u`: co-op, its way to host, its map and its mode? */
+  const roomOpenTo = (r, u) => switchOpenTo(u, 'coop') && switchOpenTo(u, r.hosting === 'self' ? 'host-self' : 'host-server') && mapOpenTo(u, r.map) && playOpenTo(u, r.kind);
+  /**
+   * An invite gets someone past a switch only when an admin owns the session: a player who ends up owning it (the admin
+   * left) cannot hand out what is closed to them.
+   */
+  const invitedPast = (r, id) => r.invites.has(id) && isAdmin({ id: r.ownerId });
   const cleanIds = (list) => [...new Set((Array.isArray(list) ? list : []).map(String).filter((s) => /^\d{5,20}$/.test(s)))].slice(0, 30);
 
   function handle(m, msg) {
@@ -215,17 +229,25 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
       case 'create': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
         m.device = msg.device === 'phone' ? 'phone' : 'pc'; // a phone or a computer, shown beside the name
-        // a gated map the admins have not opened yet: only an admin can start a session on it (anyone they invite joins)
-        if (MAPS.includes(msg.map) && !mapOpenTo({ id: m.id }, msg.map)) return send(m.ws, { t: 'error', msg: 'That map is not open yet' });
+        const who = { id: m.id };
+        if (!switchOpenTo(who, 'coop')) return send(m.ws, { t: 'error', msg: 'Co-op is not open right now' });
+        // a map the admins have not opened: only an admin can start a session on it (anyone they invite joins)
+        const map = MAPS.includes(msg.map) ? msg.map : 'district';
+        if (!mapOpenTo(who, map)) return send(m.ws, { t: 'error', msg: 'That map is not open yet' });
+        const kind = KINDS.includes(msg.kind) ? msg.kind : 'mission';
+        if (!playOpenTo(who, kind)) return send(m.ws, { t: 'error', msg: 'That mode is not open yet' });
         let hosting = msg.hosting === 'self' ? 'self' : 'server';
+        if (!switchOpenTo(who, hosting === 'self' ? 'host-self' : 'host-server')) {
+          return send(m.ws, { t: 'error', msg: hosting === 'self' ? 'Self hosting is not open right now - choose SERVER HOSTED' : 'Server hosting is not open right now - choose SELF HOST' });
+        }
         if (hosting === 'server' && (!existsSync(SIM_FILE) || simRooms() >= SIM_MAX)) {
           return send(m.ws, { t: 'error', msg: 'Server hosting is busy right now - choose SELF HOST to start a session on your own device' });
         }
         const r = {
           code: newCode(),
           hosting,
-          map: MAPS.includes(msg.map) ? msg.map : 'district',
-          kind: KINDS.includes(msg.kind) ? msg.kind : 'mission',
+          map,
+          kind,
           zombies: ZOMBIE_LEVELS.includes(msg.zombies) ? msg.zombies : 'normal',
           team: TEAM_LEVELS.includes(msg.team) ? msg.team : 'regular',
           ownerId: m.id,
@@ -261,6 +283,10 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
           return place(m, r, 'spectator', true);
         }
         if (r.banned.has(m.id)) return send(m.ws, { t: 'error', msg: 'You were removed from this session' });
+        // co-op switched off, or a way to host, a map or a mode that is not open: only the people an admin owner invited
+        if (!roomOpenTo(r, { id: m.id }) && !invitedPast(r, m.id)) {
+          return send(m.ws, { t: 'error', msg: 'That session is not open to you' });
+        }
         if (r.visibility === 'private' && !r.invites.has(m.id) && !m.admin) return send(m.ws, { t: 'error', msg: 'This session is invite-only' });
         const role = msg.as === 'spectator' ? 'spectator' : 'player';
         // a run under way: only a server-hosted session, and only as far as its owner allows (an invite always does)
@@ -327,7 +353,7 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
           room.invites.delete(String(msg.id));
         } else if (msg.op === 'config') {
           // what the session plays and how hard; only between runs
-          if (room.state === 'lobby' && KINDS.includes(msg.value)) {
+          if (room.state === 'lobby' && KINDS.includes(msg.value) && playOpenTo({ id: m.id }, msg.value)) {
             room.kind = msg.value;
             room.sim?.postMessage({ type: 'kind', kind: room.kind });
           }
@@ -337,6 +363,8 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
             room.sim?.postMessage({ type: 'difficulty', zombies: room.zombies, team: room.team });
           }
         } else if (msg.op === 'start') {
+          // switched off since the session opened (and no admin owns it): it ends here
+          if (!isAdmin({ id: room.ownerId }) && !roomOpenTo(room, { id: room.ownerId })) return closeRoom(room, 'What this session plays has been switched off');
           // the ready check: every player ready, then a countdown everyone sees, then live
           if (room.state !== 'lobby') return;
           if (!allReady(room)) return send(m.ws, { t: 'error', msg: 'Not everyone is ready yet' });
@@ -420,9 +448,12 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
       });
     },
     /** Join-link preview: enough to show "X's session, 2/3" before connecting. */
-    info(code) {
+    info(code, user = null) {
       const r = rooms.get(String(code || '').toUpperCase());
       if (!r) return null;
+      // a session on a map or mode that is not open to this player is not there for them (unless they were invited)
+      const who = user ? { id: user.id } : null;
+      if (!roomOpenTo(r, who) && !(who && invitedPast(r, who.id))) return null;
       return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, zombies: r.zombies, team: r.team, visibility: r.visibility, late: r.late, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
     },
     /** Admin view of everything live, hidden watchers included. */
@@ -453,6 +484,10 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, onEvent =
       return { rooms: rooms.size, people, serverHosted: simRooms() };
     },
     /** Shutting down: tell every session why, so nobody just sees a dropped connection. */
+    /** An admin switched something off: end the sessions it closes that no admin owns (an admin's own play on). */
+    closeShut() {
+      for (const r of [...rooms.values()]) if (!isAdmin({ id: r.ownerId }) && !roomOpenTo(r, { id: r.ownerId })) closeRoom(r, 'What this session plays has been switched off');
+    },
     closeAll(reason) {
       for (const r of [...rooms.values()]) closeRoom(r, reason);
     },

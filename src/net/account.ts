@@ -4,7 +4,8 @@
  * on its own) `online` is false and the game runs as a local, signed-out build that reports nothing.
  */
 import { GATED_MAPS, MAP_IDS, asMapId, type MapId } from '../world/layout/data';
-import { GATED_FILMS, lockedFilmsFrom, type FilmId } from '../films';
+import { FILM_IDS, GATED_FILMS, lockedFilmsFrom, type FilmId } from '../films';
+import { GATED_SWITCHES, lockedSwitchesFrom, type SwitchId } from '../switches';
 import type { GameMode, MissionStats, QualityLevel } from '../types';
 import type { DeviceClass, GpuVendor } from '../render/device';
 
@@ -30,9 +31,13 @@ export interface Account {
   lockedMaps: MapId[];
   /** Cinematics only admins can watch right now (`GATED_FILMS` start that way). */
   lockedFilms: FilmId[];
+  /** Everything else the admin page switches (co-op, modes, stories, Aurelia, the bestiary...) that is off right now. */
+  lockedSwitches: SwitchId[];
+  /** The leaderboards are on (an admin can switch them all off). */
+  boards: boolean;
 }
 
-const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS], lockedFilms: [...GATED_FILMS] };
+const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS], lockedFilms: [...GATED_FILMS], lockedSwitches: [...GATED_SWITCHES], boards: true };
 
 /**
  * What a map is to this player. `open`: live for everyone (always so). `public`: one of `GATED_MAPS`, opened to
@@ -52,7 +57,13 @@ export function firstOpenMap(a: Account): MapId {
   return MAP_IDS.find((m) => mapAccess(a, m) !== 'locked') ?? 'district';
 }
 
-const lockedFrom = (v: unknown): MapId[] => (Array.isArray(v) ? MAP_IDS.filter((m) => v.includes(m)) : [...GATED_MAPS]);
+/**
+ * What is off, out of what the server sent: a player is told only what is open (everything else is off); an admin is
+ * also told what is off. Anything unreadable: what starts admin only.
+ */
+const lockedFrom = (open: unknown, locked: unknown): MapId[] =>
+  Array.isArray(open) ? MAP_IDS.filter((m) => !open.includes(m)) : Array.isArray(locked) ? MAP_IDS.filter((m) => locked.includes(m)) : [...GATED_MAPS];
+const lockedFilmsOf = (open: unknown, locked: unknown): FilmId[] => (Array.isArray(open) ? FILM_IDS.filter((f) => !open.includes(f)) : lockedFilmsFrom(locked));
 
 async function post<T>(path: string, body: unknown, keepalive = false): Promise<T | null> {
   try {
@@ -67,8 +78,20 @@ export async function loadAccount(): Promise<Account> {
   try {
     const r = await fetch('/api/me', { headers: { accept: 'application/json' } });
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ...OFFLINE };
-    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; lockedMaps?: unknown; lockedFilms?: unknown };
-    return { online: true, user: d.user, admin: !!d.admin, banned: !!d.banned, banReason: d.banReason ?? '', cards: d.cards ?? {}, loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord', lockedMaps: lockedFrom(d.lockedMaps), lockedFilms: lockedFilmsFrom(d.lockedFilms) };
+    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; openMaps?: unknown; lockedMaps?: unknown; openFilms?: unknown; lockedFilms?: unknown; openSwitches?: unknown; lockedSwitches?: unknown; boards?: unknown };
+    return {
+      online: true,
+      user: d.user,
+      admin: !!d.admin,
+      banned: !!d.banned,
+      banReason: d.banReason ?? '',
+      cards: d.cards ?? {},
+      loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord',
+      lockedMaps: lockedFrom(d.openMaps, d.lockedMaps),
+      lockedFilms: lockedFilmsOf(d.openFilms, d.lockedFilms),
+      lockedSwitches: lockedSwitchesFrom(d.openSwitches, d.lockedSwitches),
+      boards: d.boards !== false,
+    };
   } catch {
     return { ...OFFLINE };
   }

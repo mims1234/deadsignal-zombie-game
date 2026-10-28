@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.315",
+      "date": "2026-10-28",
+      "title": "The admin page controls what players see",
+      "notes": [
+        "A new Visibility tab on the admin page (it takes over Maps and Cinematics): every map, every cinematic, co-op itself, each way to host it, Free roam, the Mazoku card hunt, each Sakura District story mission, Aurelia herself, the bestiary and its Style Lab - each live for everyone or admin only. Everything new starts the way it was, so nothing changed for players until an admin switches it.",
+        "What is switched off is gone for players everywhere: off the title screen and the co-op lobby, out of the bestiary and the leaderboards, and refused by the server (a run, a co-op session, a page). Switching something off ends the co-op sessions it closes that no admin owns. An admin still sees and plays everything, marked ADMIN ONLY.",
+        "A player is only ever told what is open; the names of what is hidden are not sent to them, and the game no longer carries the update notes inside it.",
+        "Fixed: a link with a session code no longer keeps a player on a map that is admin only, and the boards of an admin-only map are no longer readable by players.",
+        "Only an admin who owns a session can invite players past what is switched off; a player who takes over the session cannot."
+      ]
+    },
+    {
       "version": "0.4.314",
       "date": "2026-10-28",
       "title": "Aurelia walks the valley (admin only)",
