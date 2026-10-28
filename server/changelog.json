@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.314",
+      "date": "2026-10-28",
+      "title": "Aurelia walks the valley (admin only)",
+      "notes": [
+        "Aurelia herself is on her map: red hair burning to orange, a white dress and gold wings of flame folded at her back. She walks a few steps ahead of the squad, and the infected hunt her like anyone else.",
+        "She cannot die. Killed, she falls and a red spider lily opens where she lay; she lies in the ash for 8 seconds, longer for every death in a row (12, 18, 27, never more than 30), and infected standing on her ashes hold her down. Then she rises in a column of fire, and the burst throws back and burns everything within 6 metres.",
+        "Solo and co-op: in co-op the server runs her and everyone sees the same Aurelia.",
+        "Until she has a model of her own she wears a stand-in from the cast, dressed in her colours.",
+        "Anyone killed up on a raised floor now falls there instead of dropping through to the ground below."
+      ]
+    },
+    {
       "version": "0.4.313",
       "date": "2026-10-28",
       "title": "AURELIA, a new map (admin only), and phones keep the middle clear",

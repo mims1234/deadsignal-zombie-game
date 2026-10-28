@@ -29,6 +29,7 @@ import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS,
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
+import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
@@ -188,6 +189,8 @@ export class SessionSim {
   private outcome: { won: boolean; reason: string } | null = null;
   private readonly aboard = new Set<string>();
   private allies: SimAlly[] = [];
+  /** Aurelia, on her own map (`aurelia/brain.ts`): walks ahead of the nearest player, falls, rises. */
+  private aurelia: Aurelia | null = null;
   /** The mystery boxes and kill drops, shared by the squad (`logic/sharedLoot.ts`). */
   private loot: LootState = createLoot(0);
   private shots: number[][] = [];
@@ -431,6 +434,7 @@ export class SessionSim {
     const caged = this.forge ? [] : survivorRoster(this.map);
     cageSpots(level, rng, caged.length).forEach((c, i) => this.allies.push({ ...makeAllyBody(level, caged[i]!.name, 'survivor', c.x, c.z, 0, c.slot, true, this.allies.length, this.difficulty.team), leader: null }));
     if (this.kind === 'mazoku') this.placeCarriers();
+    this.aurelia = this.map === 'aurelia' ? aureliaAtStart(level) : null;
   }
 
   /** The five card carriers at spread-out resident spots, away from the start, the LZ, the boss and the relay. */
@@ -803,6 +807,12 @@ export class SessionSim {
       a.env.time = this.time;
       allyEnvs.push(a.env);
     }
+    const au = this.aurelia;
+    if (au) {
+      au.env ??= this.makeEnv(au.ref, au.field, (amount, sx, sz) => void aureliaHurt(au, amount, sx, sz));
+      au.env.time = this.time;
+      if (au.ref.alive) allyEnvs.push(au.env);
+    }
     this.zombies.update(dt, envs[0]!, up > 0, envs.concat(allyEnvs));
 
     // the director keeps the pressure on each player in turn
@@ -864,6 +874,7 @@ export class SessionSim {
     unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt) && (!this.campaign || this.sakura?.view.phase === 'bloom'));
     this.stepExtraction(dt, up);
     this.stepAllies(dt, peers);
+    this.stepAurelia(dt, peers);
     this.stepCarriers(dt);
     for (const u of this.carriers) {
       const z = u.zombie;
@@ -948,6 +959,24 @@ export class SessionSim {
       if (shot.hit && shot.target.alive && a.env) allyHit(a, shot, this.zombies, a.env);
       if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
     });
+  }
+
+  /** Aurelia follows (and so leads, a few steps ahead of) the nearest player who is up. */
+  private stepAurelia(dt: number, peers: Peer[]): void {
+    const a = this.aurelia;
+    if (!a) return;
+    let leader: Peer | undefined;
+    let bd = Infinity;
+    for (const p of peers) {
+      const d = Math.hypot(p.ref.x - a.ref.x, p.ref.z - a.ref.z);
+      if (d < bd) {
+        bd = d;
+        leader = p;
+      }
+    }
+    this.allyLeader = leader ?? null;
+    aureliaStep(a, this.allyWorld, dt, leader ? { x: leader.ref.x, y: leader.ref.y, z: leader.ref.z, yaw: leader.yaw } : null, a.env);
+    this.allyLeader = null;
   }
 
   private hurtAlly(a: SimAlly, amount: number, sx: number, sz: number): void {
@@ -1073,6 +1102,7 @@ export class SessionSim {
       if (this.outcome) out.why = this.outcome.reason;
       out.sq = this.allies.map((a, i) => [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]);
       out.sh = this.shots;
+      if (this.aurelia) out.au = aureliaRow(this.aurelia);
       this.shots = [];
       // power-ups: the timers (insta-kill, double points) and the drops [id, kind, x, z, age]
       const pw = this.powerups;

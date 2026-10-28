@@ -54,6 +54,9 @@ import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
+import { AureliaRuntime } from '../aurelia/runtime';
+import { AURELIA_MODEL } from '../aurelia/look';
+import { loadAnime } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
@@ -141,6 +144,8 @@ export class Game implements GameCtx {
   asylum: AsylumLoopRuntime | null = null;
   /** The Forge's story: the holdouts, the Hearth, the ledger, the Pit, the last carrier (null on other maps). */
   forge: ForgeRuntime | null = null;
+  /** Aurelia, on her own map (`aurelia/runtime.ts`). */
+  aurelia: AureliaRuntime | null = null;
   /** The Sakura District's own runtime (petals, lore, the Easter egg), on that map only. */
   sakura: SakuraRuntime | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
@@ -391,6 +396,11 @@ export class Game implements GameCtx {
       this.menus.showLoading(0.66, 'DRESSING THE CAST');
       await loadAnimeCast();
     }
+    if (this.mapId === 'aurelia') {
+      // Aurelia's model (a stand-in from the cast until she has her own; without it she wears the stock figure)
+      this.menus.showLoading(0.66, 'DRESSING AURELIA');
+      await loadAnime(AURELIA_MODEL).catch(() => null);
+    }
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
@@ -520,6 +530,7 @@ export class Game implements GameCtx {
       this.mission.holdExtraction = () => this.forge?.holdExtraction ?? false;
       this.mission.calm = () => this.forge?.burnedOut ?? false;
     }
+    if (this.mapId === 'aurelia') this.aurelia = new AureliaRuntime(this);
     if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
@@ -1182,6 +1193,8 @@ export class Game implements GameCtx {
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
     this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team, coopStory ? Math.max(1, this.coop.room.room?.players.length ?? 1) : 1);
     if (forgeSquad && solo) this.squad.deployForge(forgeSquad);
+    // Aurelia walks with you (solo); a co-op story run shows the simulation's
+    this.aurelia?.reset(coopStory, solo || coopStory);
     // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
     this.asylum?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
@@ -1453,6 +1466,7 @@ export class Game implements GameCtx {
     this.cards.update(dt);
     this.squad.update(dt);
     this.forge?.update(dt);
+    this.aurelia?.update(dt);
     this.sakura?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
@@ -1663,6 +1677,14 @@ export class Game implements GameCtx {
     this.player.z = Math.max(b.minZ + m, Math.min(b.maxZ - m, this.player.z));
   }
 
+  /** Who the infected hunt besides the player (solo): the squad who are fighting, and Aurelia while she is up. */
+  private targets(z: ZombieEnv): ZombieEnv[] | undefined {
+    const squad = this.squad.envs(z);
+    const her = this.aurelia?.envFor(z);
+    if (!her) return squad;
+    return [...(squad ?? [z]), her];
+  }
+
   private updateEnemies(dt: number, alive: boolean): void {
     const p = this.player;
     const z = this.zenv;
@@ -1709,7 +1731,7 @@ export class Game implements GameCtx {
       return;
     }
     const boarding = this.endingKind === 'board';
-    this.zombies.update(dt, z, alive && !boarding, this.squad.envs(z));
+    this.zombies.update(dt, z, alive && !boarding, this.targets(z));
     if (alive && !boarding) {
       const s = this.session;
       const ex = s.extraction;

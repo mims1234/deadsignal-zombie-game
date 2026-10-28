@@ -1097,6 +1097,31 @@ export const VULCAN_LEADERSHIP = {
   officers: ['Anya'],
 } as const;
 
+/**
+ * Aurelia on her own map (`src/aurelia/`): she walks a little ahead of the squad, the infected hunt her, and she cannot
+ * die. Killed, she falls (`fall` s), lies in the ash (`ashFirst` s, `ashGrowth` times longer for each death in a row,
+ * never more than `ashMax`; a death after `forgiveAfter` s on her feet starts the count again), and rises (`rise` s)
+ * in a burst of fire that throws back everything within `burst.radius` m. Infected standing on her ashes hold her down:
+ * each one within `trample.radius` slows the rising by `trample.per`, up to `trample.max`.
+ */
+export const AURELIA_NPC = {
+  hp: 260,
+  /** Her place in the squad: ahead of whoever she follows (x to the right, z behind, so ahead is negative). */
+  slot: { x: 1.2, z: -3.5 },
+  fall: 1.2,
+  ashFirst: 8,
+  ashGrowth: 1.5,
+  ashMax: 30,
+  forgiveAfter: 90,
+  rise: 1.8,
+  /** Into the rising when the fire bursts out of her. */
+  burstAt: 0.5,
+  burst: { radius: 6, center: 45, edge: 15, knock: 9 },
+  trample: { radius: 1.4, per: 0.12, max: 0.6 },
+  /** Red lilies left where she fell, at most (the oldest go first). */
+  lilies: 12,
+} as const;
+
 /** The Forge map: the co-leaders who deploy with you, and the Seven Flames. */
 export const FORGE_SQUAD = {
   allyHp: 160,

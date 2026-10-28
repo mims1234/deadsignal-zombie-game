@@ -339,6 +339,8 @@ export class Avatar {
   private fvy = 0;
   private fvz = 0;
   private fallDir = 1;
+  /** The height the body lands at: the floor under it when it fell. */
+  private fallFloor = 0;
   // ---- a worn VRoid model ----
   private anime: AnimeBody | null = null;
   /** The figure's own meshes a worn model hides (shown again while the model is off, `animeLod`). */
@@ -666,6 +668,8 @@ export class Avatar {
     if (this.down) return;
     this.down = true;
     this.fallT = 0;
+    // the body comes to rest on the floor it fell from (a deck, a terrace), not the ground below
+    this.fallFloor = this.ty;
     const d = Math.hypot(dx, dz) || 1;
     this.fvx = (dx / d) * speed;
     this.fvz = (dz / d) * speed;
@@ -711,8 +715,8 @@ export class Avatar {
       this.fvy -= 16 * dt;
       p.x += this.fvx * dt;
       p.z += this.fvz * dt;
-      p.y = Math.max(0, p.y + this.fvy * dt);
-      if (p.y === 0) {
+      p.y = Math.max(this.fallFloor, p.y + this.fvy * dt);
+      if (p.y === this.fallFloor) {
         this.fvy = this.fvy < -3 ? -this.fvy * 0.25 : 0;
         const k = Math.exp(-6 * dt);
         this.fvx *= k;

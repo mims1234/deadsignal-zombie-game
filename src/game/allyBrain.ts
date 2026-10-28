@@ -146,7 +146,8 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const dz = tz - a.ref.z;
   const d = Math.hypot(dx, dz);
   const sameFloor = myArea === leaderArea;
-  if (sameFloor && (d < 1.2 || toLeader < 2.6)) {
+  // close enough: at the slot, or (following from behind) on the leader's heels; one who goes ahead (Aurelia) keeps on
+  if (sameFloor && (d < 1.2 || (toLeader < 2.6 && a.slot.z >= 0))) {
     if (!a.target) a.yaw = pyaw;
     return;
   }

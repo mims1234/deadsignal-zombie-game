@@ -496,6 +496,7 @@ export class CoopSession {
       if (g.forge && d.fg !== undefined) g.forge.applyWire(d.fr, d.fg);
       if (g.sakura && d.lq !== undefined) g.sakura.applyWire(d.lq);
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
+      if (g.aurelia && d.au !== undefined) g.aurelia.applyWire(d.au);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;
