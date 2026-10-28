@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.312",
+      "date": "2026-10-28",
+      "title": "The server starts again",
+      "notes": [
+        "0.4.311 never went live: three of the server's lines were committed in the wrong places, so it could not start and the game was down until this update. They are back where they belong, and the admin page's Cinematics switches are registered as their own routes again.",
+        "Everything 0.4.311 brought (Slime Hollow, admin only for now, and a public or admin-only switch for every cinematic) goes live with this update."
+      ]
+    },
+    {
       "version": "0.4.311",
       "date": "2026-10-28",
       "title": "Slime Hollow, and a switch for every cinematic",

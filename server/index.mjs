@@ -51,7 +51,6 @@ const mapPublic = (id) => {
 const lockedMaps = () => Object.keys(MAPS).filter((id) => !mapPublic(id));
 /** Can this player start a run or a session on the map? */
 const mapOpenTo = (u, map) => mapPublic(map in MAPS ? map : 'district') || isAdmin(u); // no map named: the District, as the game reads it
-const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
 
 // Every cinematic is public (anyone can watch it; it shows on the CINEMATICS page and in the bestiary) or admin only,
 // switched from the dashboard; any number can be private. `live`: where it starts before an admin has switched it.
@@ -73,6 +72,7 @@ const filmOfPath = (p) => {
   for (const [id, f] of Object.entries(FILMS)) if (s === `/${f.page}.html` || s.startsWith(`/${f.page}/`)) return id;
   return null;
 };
+const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
 
 /** The signed-in user for this request, or null. */
 function userOf(req) {
@@ -352,7 +352,6 @@ app.post('/api/admin/maps/:id', { preHandler: admin }, async (req, reply) => {
   return { id, public: mapPublic(id) };
 });
 
-app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {
 app.get('/api/admin/films', { preHandler: admin }, async () => ({ films: Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, page: `/${f.page}.html`, public: filmPublic(id) })) }));
 
 /** Put a cinematic out for everyone, or take it back to admins only. */
@@ -366,6 +365,7 @@ app.post('/api/admin/films/:id', { preHandler: admin }, async (req, reply) => {
   return { id, public: filmPublic(id) };
 });
 
+app.post('/api/admin/users/:id/ban', { preHandler: admin }, async (req, reply) => {
   const id = String(req.params.id);
   if (ADMIN_IDS.has(id)) return reply.code(400).send({ error: 'an admin cannot be banned' });
   if (!db.user(id)) return reply.code(404).send({ error: 'no such player' });
@@ -395,8 +395,8 @@ const cacheFor = (reply, path) => {
   const priv = film !== null && !filmPublic(film);
   if (path.endsWith('.html')) reply.header('cache-control', priv ? 'private, no-cache' : 'no-cache');
   else if (/[\\/]assets[\\/]/.test(path)) reply.header('cache-control', 'public, max-age=31536000, immutable');
-};
   else if (priv) reply.header('cache-control', 'private, max-age=3600');
+};
 // a private film's page and files are served to admins only (to anyone else they are not there at all); the path is
 // the one the static server has already decoded and checked
 const allowedPath = (path, _root, req) => {
