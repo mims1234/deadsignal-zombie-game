@@ -127,8 +127,8 @@ function clanBanner(): THREE.MeshStandardMaterial {
   return bannerMat;
 }
 
-/** A banner on a short rod, hung flat against a wall that faces along yaw `rot` (0 = facing +Z). */
-function banner(c: Ctx, x: number, z: number, rot: number, y = 3.4): void {
+/** A Vulcan banner on a short rod, hung flat against a wall that faces along yaw `rot` (0 = facing +Z). */
+export function vulcanBanner(c: Ctx, x: number, z: number, rot: number, y = 3.4): void {
   const { b } = c;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 3.3), clanBanner());
   m.position.set(x, y, z);
@@ -176,17 +176,17 @@ export function vulcanForge(c: Ctx, hq: { x: number; z: number; frontZ: number; 
   addBox(b, neonLabelMaterial('VULCAN HQ', '#ff7a1a'), hq.x, hq.height + 1.2, hq.frontZ - 0.25, 10, 1.5, 0.12, 0, { cast: false });
   addBox(b, neonLabelMaterial('QUARANTINED', '#ff3a2a'), hq.x - 4, 3.6, hq.frontZ - 0.2, 3.2, 0.6, 0.1, 0, { cast: false });
   wallDecal(b, 'stencilKeepOut', hq.x + 3.9, 2.2, hq.frontZ - 0.08, 3, 1.4, Math.PI);
-  banner(c, hq.x - 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
-  banner(c, hq.x + 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
+  vulcanBanner(c, hq.x - 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
+  vulcanBanner(c, hq.x + 7.9, hq.frontZ - 0.12, Math.PI, 3.6);
 
   // clan banners on the inside of the perimeter wall (clear of the buildings along it)
   const N = bounds.minZ + 1.35;
   const S = bounds.maxZ - 1.35;
   const E = bounds.maxX - 1.35;
   const Wx = bounds.minX + 1.35;
-  for (const x of [-66, -10, 24, 58]) banner(c, x, N, 0);
-  for (const x of [-66, -26, 30, 74]) banner(c, x, S, Math.PI);
-  for (const z of [-30, 0, 46]) banner(c, E, z, -HALF_PI);
-  for (const z of [-53, 53]) banner(c, Wx, z, HALF_PI);
+  for (const x of [-66, -10, 24, 58]) vulcanBanner(c, x, N, 0);
+  for (const x of [-66, -26, 30, 74]) vulcanBanner(c, x, S, Math.PI);
+  for (const z of [-30, 0, 46]) vulcanBanner(c, E, z, -HALF_PI);
+  for (const z of [-53, 53]) vulcanBanner(c, Wx, z, HALF_PI);
   return sign;
 }

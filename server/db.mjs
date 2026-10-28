@@ -22,7 +22,7 @@ export const STORIES = ['kaika', 'curtain', 'lasttrain', 'hanami'];
  * roam has none), per thing ranked, each read at one difficulty. Each player's best run counts once. `key` is what
  * an admin switches off (all difficulties of it at once).
  */
-export const BOARD_MAPS = ['district', 'sakura', 'forge', 'asylum'];
+export const BOARD_MAPS = ['district', 'sakura', 'forge', 'asylum', 'aurelia'];
 export const BOARD_MODES = ['solo', 'coop'];
 export const BOARD_METRICS = ['fastest', 'kills'];
 export const boardKey = (map, mode, metric) => `${map}:${mode}:${metric}`;
@@ -226,7 +226,7 @@ export function openDb(file) {
           touch ? 1 : 0,
           now(),
           day(),
-          ['sakura', 'forge', 'asylum'].includes(map) ? map : 'district',
+          ['sakura', 'forge', 'asylum', 'aurelia'].includes(map) ? map : 'district',
           typeof version === 'string' && /^\d{1,3}\.\d{1,3}\.\d{1,4}$/.test(version) ? version : null,
           DIFFICULTIES.includes(difficulty) ? difficulty : null,
           oneOf(device.device, DEVICES),

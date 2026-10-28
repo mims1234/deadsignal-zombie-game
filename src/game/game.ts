@@ -355,6 +355,13 @@ export class Game implements GameCtx {
     } else if (this.mapId === 'sakura') {
       // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill (the bloom turns it to a blood moon)
       SakuraRuntime.applyDusk(this.renderer);
+    } else if (this.mapId === 'aurelia') {
+      // equinox night in the valley: a red moon, a wine-dark haze over the river, lantern-warm fill
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x1c0d14);
+      this.renderer.light.hemi.color.set(0x9a7a9a);
+      this.renderer.light.hemi.groundColor.set(0x1e0a0a);
+      this.renderer.light.fill.color.set(0xff6a52);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -421,8 +428,8 @@ export class Game implements GameCtx {
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
     wireMatronFx(this.zombies.matron, this.renderer.lightPool, { listener: () => this.player, shake: (s) => this.shake(s), hud: (e) => this.hud.event(e), audio: () => this.audio });
-    if (this.mapId === 'forge') {
-      // Vulcan HQ fell: some of the Forge's infected are the clan's own Infernus, each name used once at a time
+    if (this.mapId === 'forge' || this.mapId === 'aurelia') {
+      // Vulcan's own among the infected (the Forge's Infernus, the valley's taken), each name used once at a time
       let bag: string[] = [];
       this.zombies.namer = () => {
         if (this.rng.f() >= VULCAN.namedShare) return null;
@@ -1051,6 +1058,8 @@ export class Game implements GameCtx {
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
+      } else if (this.mapId === 'aurelia' && !roam) {
+        this.banner('AURELIA', 'Equinox night. Power the relay, take the shrine, bring Vulcan home.', 'info', 4.5);
       } else if (this.mapId === 'forge' && !roam) {
         this.banner('THE FORGE', 'Vulcan HQ has fallen. Rekindle the beacon, slay the Infernus, bring the clan home. Rise.', 'info', 5);
       } else if (this.mapId === 'sakura' && !roam) {

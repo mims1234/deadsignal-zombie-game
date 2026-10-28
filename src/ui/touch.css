@@ -363,6 +363,66 @@ html.ds-touch .ds-fps {
   bottom: 0.3em;
 }
 
+/* Banners and radio: one short line along the top edge, over the compass while it shows, never mid-screen
+   (`TopLineView`). Long lines arrive in pieces, one after another. */
+html.ds-touch .ds-topline {
+  position: absolute;
+  top: calc(0.45em + env(safe-area-inset-top, 0px));
+  /* the gap between the vitals (ending 25 em in) and the MAP and pause buttons (two 0.86-unit buttons, touch layer) */
+  left: calc(25.8em + env(safe-area-inset-left, 0px));
+  right: calc(20px + clamp(38px, 13.2vh, 62px) * 1.72 + env(safe-area-inset-right, 0px));
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.7em;
+  padding: 0.35em 1.4em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  --tc: var(--ds-cyan);
+  background: linear-gradient(90deg, transparent, rgba(6, 9, 7, 0.78) 10%, rgba(6, 9, 7, 0.78) 90%, transparent);
+}
+html.ds-touch .ds-topline[hidden] {
+  display: none;
+}
+html.ds-touch .ds-topline[data-tone='good'] {
+  --tc: var(--ds-green);
+}
+html.ds-touch .ds-topline[data-tone='warn'] {
+  --tc: var(--ds-amber);
+}
+html.ds-touch .ds-topline[data-tone='danger'] {
+  --tc: #ff5a48;
+}
+html.ds-touch .ds-topline .tag {
+  flex: none;
+  font-size: 0.9em;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--tc);
+}
+html.ds-touch .ds-topline .text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.05em;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  font-weight: 500;
+  color: #f0f4e6;
+}
+html.ds-touch .ds-hud:has(.ds-topline:not([hidden])) .ds-compass {
+  visibility: hidden;
+}
+/* the old mid-screen places stay empty on a phone */
+html.ds-touch .ds-banner,
+html.ds-touch .ds-radio {
+  display: none;
+}
+html:not(.ds-touch) .ds-topline {
+  display: none;
+}
+
 /* Station menu: lifted out of the corner, enlarged and made opaque so its rows can be read and tapped. */
 html.ds-touch .ds-station {
   position: fixed;

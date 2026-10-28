@@ -1242,6 +1242,8 @@ export interface SquadDef {
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
   forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
+  // Aurelia's valley: two of Vulcan's own cross the river with you (their looks are `forge/looks.ts`)
+  aurelia: { names: ['Athy', 'piryriry'], tag: 'VULCAN', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
   // Lantern team: Rin Vance, a marksman, and Dr. Imani Okafor, who worked the wards before the fall
   asylum: {
     names: ['Vance', 'Okafor'],
@@ -1321,6 +1323,12 @@ export const SURVIVORS = {
   ],
   // the Sakura District: nobody is left to save (seven years on, everyone left has turned, or turned on you)
   sakura: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
+  // Aurelia's valley: Vulcan's own, taken across the river and caged on the bank (looks: `forge/looks.ts`)
+  aurelia: [
+    { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
+    { name: '.maidlover.', tag: 'VULCAN', color: 0xb8202a },
+    { name: 'Anya', tag: 'VULCAN', color: 0x9a3d1c },
+  ],
   // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`)
   asylum: [
     { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },

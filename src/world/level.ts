@@ -16,6 +16,7 @@ import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, t
 import { buildForge, FORGE, FORGE_BOUNDS, type ForgeHandles } from './layout/forge';
 import type { ForgeSites } from '../forge/sites';
 import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
+import { AURELIA, AURELIA_BOUNDS, buildAurelia } from './layout/aurelia';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
@@ -73,14 +74,15 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   const forge = mapId === 'forge';
   const asylum = mapId === 'asylum';
   const sakura = mapId === 'sakura';
-  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : WORLD_BOUNDS;
+  const aurelia = mapId === 'aurelia';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : WORLD_BOUNDS;
   // all the space there is: the street map, plus any underground spaces built beside it
   const SPACE = sakura ? SAKURA_SPACE : WORLD;
   const world = new CollisionWorld(SPACE);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
   const floors = new Floors(WORLD);
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : 20240928), mats, placed: [], floors };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : 20240928), mats, placed: [], floors };
   let sakuraFx: SakuraHandles | null = null;
 
   let transmitter: TransmitterHandle;
@@ -111,6 +113,18 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
       defense: { ...FORGE.beacon },
       hunt: { wardenX: FORGE.infernus.x, wardenZ: FORGE.infernus.z, searchX: FORGE.crucible.x, searchZ: FORGE.crucible.z, searchRadius: 22 },
       hazard: { ...FORGE.spire },
+    };
+  } else if (aurelia) {
+    const r = buildAurelia(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    const A = AURELIA;
+    site = {
+      start: { x: A.start.x, z: A.start.z, yaw: yawFacing(0, -1) }, // on the ferry landing, facing up the valley
+      lz: { ...A.lz, terminalYaw: yawFacing(0.6, 0.8) },
+      defense: { ...A.relay },
+      hunt: { wardenX: A.shrine.x, wardenZ: A.shrine.z + 2, searchX: A.shrine.x, searchZ: A.shrine.z, searchRadius: 14 },
+      hazard: { ...A.bloom },
     };
   } else if (sakura) {
     const r = buildSakura(c);

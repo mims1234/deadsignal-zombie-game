@@ -130,7 +130,7 @@
         <div class="filters">
           <input id="runQ" placeholder="Player name or Discord ID" size="24" />
           <label>Mode <select id="runMode"><option value="">All</option><option value="standard">Standard</option><option value="cards">Standard Mazoku</option><option value="coop">Co-op</option><option value="roam">Free roam</option></select></label>
-          <label>Map <select id="runMap"><option value="">All</option><option value="district">District</option><option value="sakura">Sakura</option><option value="forge">Forge</option><option value="asylum">Asylum</option></select></label>
+          <label>Map <select id="runMap"><option value="">All</option><option value="district">District</option><option value="sakura">Sakura</option><option value="forge">Forge</option><option value="asylum">Asylum</option><option value="aurelia">Aurelia</option></select></label>
           <label>Result <select id="runOutcome"><option value="">All</option><option value="victory">Extracted</option><option value="defeat">Died</option><option value="abandoned">Quit</option><option value="unfinished">No result</option></select></label>
           <label>Device <select id="runDevice"><option value="">All</option><option value="desktop">Desktop</option><option value="touch">Touch</option></select></label>
           <label>When <select id="runDays"><option value="0">All time</option><option value="1">Today</option><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></label>
@@ -162,7 +162,7 @@
           <button id="boardsAllBtn"></button>
         </div>
         <div class="filters" style="margin-top: 10px">
-          <label>Map <select id="boardMap"><option value="">All</option><option value="district">District</option><option value="sakura">Sakura</option><option value="forge">Forge</option><option value="asylum">Asylum</option></select></label>
+          <label>Map <select id="boardMap"><option value="">All</option><option value="district">District</option><option value="sakura">Sakura</option><option value="forge">Forge</option><option value="asylum">Asylum</option><option value="aurelia">Aurelia</option></select></label>
           <label>Played <select id="boardMode"><option value="">All</option><option value="solo">Solo</option><option value="coop">Co-op</option></select></label>
           <button id="boardsOffShown">Switch the shown off</button>
           <button id="boardsOnShown">Switch the shown on</button>
@@ -224,7 +224,7 @@
       const hours = (s) => (s >= 3600 ? `${(s / 3600).toFixed(1)} h` : `${Math.round((s || 0) / 60)} min`);
       const when = (t) => (t ? new Date(t * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '--');
       const MODE = { standard: 'Standard', cards: 'Standard Mazoku', roam: 'Free roam', coop: 'Co-op' };
-      const MAP = (m) => (m === 'forge' ? 'Forge' : m === 'asylum' ? 'Asylum' : m === 'sakura' ? 'Sakura' : 'District');
+      const MAP = (m) => (m === 'forge' ? 'Forge' : m === 'asylum' ? 'Asylum' : m === 'sakura' ? 'Sakura' : m === 'aurelia' ? 'Aurelia' : 'District');
       const SIZES = [10, 25, 50, 100];
 
       async function api(path, body) {
@@ -512,7 +512,7 @@
       $('reportQ').addEventListener('input', reportFilter);
 
       // ---------------------------------------------------------------- leaderboards
-      const MAPN = { district: 'District', sakura: 'Sakura', forge: 'Forge', asylum: 'Asylum' };
+      const MAPN = { district: 'District', sakura: 'Sakura', forge: 'Forge', asylum: 'Asylum', aurelia: 'Aurelia' };
       const MODEN = { solo: 'Solo (Standard and Mazoku)', coop: 'Co-op' };
       const METRICN = { fastest: 'Fastest escape', kills: 'Most kills' };
       let boardRows = [];

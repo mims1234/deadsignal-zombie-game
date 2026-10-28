@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.313",
+      "date": "2026-10-28",
+      "title": "AURELIA, a new map (admin only), and phones keep the middle clear",
+      "notes": [
+        "AURELIA, the first map of a new story: a round river valley under an equinox moon, where three stone terraces climb in rings to the Phoenix Shrine on the summit. Ten flights of stairs, torii, stone lanterns, rest pavilions, red lantern posts and black spider lilies everywhere, and across the river a far shore glowing with lilies that nobody can reach.",
+        "Its mission: power the river relay on the east bank, climb the Lantern Terrace and the Shrine Steps to put down the Shrine Keeper at the summit, then hold the west bank until the bird lands, while the black bloom spreads from the back of the valley late in the night. Athy and piryriry cross with you; Marv03K, .maidlover. and Anya are caged on the riverbank. Solo and co-op, and on the leaderboards.",
+        "AURELIA is admin only until it is opened from the admin page's Maps switches. The story it was built for (Aurelia herself, the lily rites, Undying Grace) comes later.",
+        "On phones, banners and radio lines no longer cover the middle of the screen on any map: they share one short line along the top edge, one piece at a time, split at word breaks so nothing is lost. Desktop is unchanged.",
+        "Every update is now checked for a server that will not start before it goes out (the kind of mistake that kept 0.4.311 offline)."
+      ]
+    },
+    {
       "version": "0.4.312",
       "date": "2026-10-28",
       "title": "The server starts again",

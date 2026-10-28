@@ -19,6 +19,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # nothing below loads the server's own files, so a syntax error there would only show when the deploy restarts it
+      - name: Server files parse
+        run: for f in server/*.mjs; do node --check "$f"; done
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

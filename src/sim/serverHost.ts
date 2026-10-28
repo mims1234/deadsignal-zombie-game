@@ -403,7 +403,7 @@ export class SessionSim {
     this.chapter = -1;
     if (this.level.sakura) this.level.sakura.kisaragi.link.closed = true;
     this.rosterSentAt = -99;
-    if (this.map === 'forge') {
+    if (this.map === 'forge' || this.map === 'aurelia') {
       let bag: string[] = [];
       const alive = this.forge?.reserved;
       this.zombies.namer = () => {

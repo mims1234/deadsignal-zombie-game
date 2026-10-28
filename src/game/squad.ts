@@ -163,12 +163,15 @@ export class SquadRuntime {
       const def = SQUADS[g.mapId];
       const names = squadRoster(g.mapId, this.humans);
       const at = soldierSpots(g.level, g.rng, names.length);
-      names.forEach((name, i) =>
+      // Aurelia's valley: Vulcan's people, who look as they always do
+      const clan = g.mapId === 'aurelia';
+      names.forEach((name, i) => {
+        const vl = clan ? vulcanLook(name) : null;
         this.addAlly(
           makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill),
-          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: def?.colors?.[i], look: def?.looks?.[i], anime: def?.models ? personModel(def.models[i]) : null }),
-        ),
-      );
+          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? personModel(def.models[i]) : null }),
+        );
+      });
     }
     if (!survivors) return;
     const roster = survivorRoster(g.mapId);
@@ -177,9 +180,10 @@ export class SquadRuntime {
     roster.forEach((who, i) => {
       const c = cages[i];
       if (!follow && !c) return;
+      const vl = g.mapId === 'aurelia' ? vulcanLook(who.name) : null;
       const a = this.addAlly(
         makeAllyBody(g.level, who.name, 'survivor', c?.x ?? 0, c?.z ?? 0, 0, c?.slot ?? { x: 0, z: 3 }, true, this.allies.length, skill),
-        new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: g.mapId === 'forge' ? '#ff8a3a' : g.mapId === 'asylum' ? '#d8e6c8' : g.mapId === 'sakura' ? '#ff9ec8' : '#9fd0ff', anime: who.model ? personModel(who.model) : null }),
+        new Avatar(who.name, i, { color: vl?.color ?? who.color, helmet: false, look: vl?.look ?? who.look, tag: who.tag, tagColor: g.mapId === 'forge' || g.mapId === 'aurelia' ? '#ff8a3a' : g.mapId === 'asylum' ? '#d8e6c8' : g.mapId === 'sakura' ? '#ff9ec8' : '#9fd0ff', anime: who.model ? personModel(who.model) : null }),
       );
       a.avatar.cowering = true;
       if (c) this.placeCage(a, c.x, c.z);

@@ -41,13 +41,13 @@ export interface AmbientZombieDef {
 }
 
 /** `sakura` is the District's streets with an anime cast (VRoid models, `anime/`). */
-export type MapId = 'district' | 'sakura' | 'forge' | 'asylum';
-export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum'];
+export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia';
+export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia'];
 /**
  * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
  * them (a local dev build shows them too); everyone else does not see them at all.
  */
-export const GATED_MAPS: readonly MapId[] = ['sakura'];
+export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia'];
 
 /** A valid map id from anything (storage, a URL, a message); unknown means the District. */
 export function asMapId(v: unknown): MapId {
@@ -212,6 +212,37 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'DAY', title: 'RESTORE THE POWER', text: 'Start the boiler house generators and hold the yard while they spin up.' },
       { tag: 'NIGHT', title: 'PUT DOWN THE MATRON', text: 'At lights-out she wakes in the isolation block and begins her round. She has never missed one.' },
       { tag: 'DAWN', title: 'HOLD UNTIL DAWN', text: 'Radio from the lawn and hold it until first light, when the bird can land - before the black fog reaches the gate.' },
+    ],
+  },
+  // Aurelia's valley: a round river valley, terraces climbing to the Phoenix Shrine (layout/aurelia.ts)
+  aurelia: {
+    name: 'AURELIA',
+    tagline: 'Higan, the other shore: a valley of terraces under the equinox moon',
+    defenseTitle: 'POWER THE RIVER RELAY',
+    defenseSite: 'RELAY',
+    defensePrompt: 'POWER THE RELAY',
+    defenseStart: 'RELAY CHARGING',
+    defenseDone: 'RELAY ONLINE',
+    huntTitle: 'PUT DOWN THE SHRINE KEEPER',
+    boss: 'THE SHRINE KEEPER',
+    huntSite: 'the Phoenix Shrine',
+    extractTitle: 'EXTRACT FROM THE WEST BANK',
+    lz: 'WEST BANK',
+    surge: 'BLACK BLOOM',
+    hazardSite: 'BLOOM',
+    sealed: 'THE RIVER CLOSES IN',
+    bossSighted: 'it guards the shrine. Aim for the head.',
+    bossRadio: { from: 'ATHY', text: "That's what's been keeping the shrine. It won't stay down easy - go for the head." },
+    regions: { low: 'The riverbank', medium: 'The terraces - the infected hold the high ground', high: 'The Phoenix Shrine' },
+    brief: "We're across. The infected dragged our people up the terraces. Power the river relay, put down whatever is keeping the shrine, cut ours loose, then call the bird to the west bank.",
+    kicker: 'HIGAN  //  THE OTHER SHORE  //  EQUINOX NIGHT',
+    signal: 'VULCAN CHANNEL OPEN  -  LAST CONTACT: THE PHOENIX SHRINE',
+    premise: 'Black spider lilies have taken the valley, and the infected here will not stay down. Vulcan has crossed the river for its own. Climb the terraces, hold the relay, take the shrine, and bring everyone back across.',
+    foot: 'Three terraces climb to a shrine on the summit: fight up the steps, or hold the high ground and shoot down. Athy and piryriry cross with you. Vulcan people are caged on the riverbank. The black bloom spreads from the back of the valley late in the night.',
+    rows: [
+      { tag: 'RELAY', title: 'POWER THE RIVER RELAY', text: 'Start the relay on the east bank and hold it while it charges.' },
+      { tag: 'SHRINE', title: 'PUT DOWN THE SHRINE KEEPER', text: 'Climb the Lantern Terrace and the Shrine Steps to the Phoenix Shrine on the summit.' },
+      { tag: 'EXTRACT', title: 'THE WEST BANK', text: 'Radio the bird and hold the west bank until it lands.' },
     ],
   },
 };

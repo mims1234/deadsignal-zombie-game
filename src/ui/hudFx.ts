@@ -402,6 +402,116 @@ export class RadioView {
 }
 
 // ---------------------------------------------------------------------------------------------
+// the top line (phones): banners and radio as one short line at the top edge
+// ---------------------------------------------------------------------------------------------
+
+interface TopLineItem {
+  tag: string;
+  text: string;
+  tone: Tone | 'radio';
+  duration: number;
+}
+
+/**
+ * On a phone the middle of the screen stays clear: banners and radio subtitles share one line along the top edge
+ * instead, one at a time. Anything longer than a short line is cut at word breaks into pieces shown one after the
+ * other, so nothing is lost. Banners go ahead of the radio lines waiting.
+ */
+export class TopLineView {
+  /** Characters a line holds, title and text together. */
+  private static readonly LINE = 54;
+  private readonly root: HTMLElement;
+  private readonly tagEl: HTMLElement;
+  private readonly textEl: HTMLElement;
+  private readonly queue: TopLineItem[] = [];
+  private cur: { t: number; dur: number } | null = null;
+
+  constructor(parent: HTMLElement) {
+    this.root = el('div', 'ds-topline', parent);
+    this.root.hidden = true;
+    this.root.setAttribute('role', 'status');
+    this.tagEl = el('span', 'tag', this.root);
+    this.textEl = el('span', 'text', this.root);
+  }
+
+  /** `text` cut into pieces of at most `max` characters, at word breaks. */
+  static pieces(text: string, max: number): string[] {
+    // as many pieces as it takes, evened out, so the last is never one stray word
+    const n = Math.ceil(text.length / max);
+    if (n > 1) max = Math.min(max, Math.ceil(text.length / n) + 6);
+    const out: string[] = [];
+    let line = '';
+    for (const word of text.split(/\s+/).filter(Boolean)) {
+      if (line && line.length + 1 + word.length > max) {
+        out.push(line);
+        line = word;
+      } else line = line ? `${line} ${word}` : word;
+    }
+    if (line) out.push(line);
+    return out;
+  }
+
+  /** Room left for the text beside a title (titles are wide, spaced capitals). */
+  private static room(tag: string): number {
+    return Math.max(20, TopLineView.LINE - Math.round(tag.length * 1.3));
+  }
+
+  private static hold(text: string): number {
+    return clamp(1.4 + text.length * 0.05, 2, 4);
+  }
+
+  banner(title: string, subtitle: string | undefined, tone: Tone, duration = 3.6): void {
+    const sub = TopLineView.pieces(subtitle ?? '', TopLineView.room(title));
+    const items: TopLineItem[] = sub.length === 0 ? [{ tag: title, text: '', tone, duration: Math.min(duration, 3) }] : sub.map((text) => ({ tag: title, text, tone, duration: TopLineView.hold(text) }));
+    // ahead of the radio waiting, behind other banners
+    let at = 0;
+    while (at < this.queue.length && this.queue[at]!.tone !== 'radio') at++;
+    this.queue.splice(at, 0, ...items);
+    this.trim();
+  }
+
+  radio(speaker: string, text: string): void {
+    for (const piece of TopLineView.pieces(text, TopLineView.room(speaker))) this.queue.push({ tag: speaker, text: piece, tone: 'radio', duration: TopLineView.hold(piece) });
+    this.trim();
+  }
+
+  /** A backlog of old radio is dropped first; banners are kept. */
+  private trim(): void {
+    while (this.queue.length > 10) {
+      const i = this.queue.findIndex((q) => q.tone === 'radio');
+      this.queue.splice(i >= 0 ? i : 0, 1);
+    }
+  }
+
+  update(dt: number): void {
+    if (this.cur) {
+      this.cur.t += dt;
+      if (this.cur.t < this.cur.dur) return;
+      this.cur = null;
+      if (this.queue.length === 0) {
+        this.root.hidden = true;
+        return;
+      }
+    }
+    const next = this.queue.shift();
+    if (!next) return;
+    this.cur = { t: 0, dur: next.duration };
+    this.root.dataset.tone = next.tone;
+    this.tagEl.textContent = next.tag;
+    this.textEl.textContent = next.text;
+    this.textEl.hidden = next.text === '';
+    this.root.hidden = false;
+    if (!reducedMotion()) this.root.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'ease-out' });
+  }
+
+  reset(): void {
+    this.queue.length = 0;
+    this.cur = null;
+    this.root.hidden = true;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // cash deltas
 // ---------------------------------------------------------------------------------------------
 

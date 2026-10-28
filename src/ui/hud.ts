@@ -14,12 +14,16 @@ import {
   HitMarker,
   RadioView,
   ScreenFx,
+  TopLineView,
 } from './hudFx';
 import { ObjectivesView, PlateRing, PromptView, StationView, VitalsView, WeaponView } from './hudPanels';
 import { BossView, CardReveal, ClockView, CompassView, HazardView, RegionView } from './hudTop';
 import type { HudApi, HudEvent, HudState, MapData, MapDynamic } from './hudTypes';
 import { Minimap, TacticalMap } from './mapView';
 import { setReducedMotionSetting } from './prefs';
+
+/** A touch device (the phone layout, `touch.css`): the middle of its screen stays clear. */
+const onPhone = (): boolean => document.documentElement.classList.contains('ds-touch');
 
 class Hud implements HudApi {
   private root: HTMLElement | null = null;
@@ -34,6 +38,8 @@ class Hud implements HudApi {
   private banner!: BannerView;
   private feed!: FeedView;
   private radio!: RadioView;
+  /** Phones: banners and radio share one line at the top edge (`TopLineView`). */
+  private topLine!: TopLineView;
   private cashDeltas!: CashDeltas;
   private vitals!: VitalsView;
   private weapon!: WeaponView;
@@ -115,6 +121,7 @@ class Hud implements HudApi {
     // ---- bottom-centre: radio ----
     const bc = el('div', 'ds-bottomcenter', hud);
     this.radio = new RadioView(bc);
+    this.topLine = new TopLineView(hud);
 
     // ---- tactical map overlay ----
     this.tacRoot = el('div', 'ds-tactical', hud);
@@ -178,6 +185,7 @@ class Hud implements HudApi {
     this.card.update(dt);
     this.feed.update(dt);
     this.radio.update(dt);
+    this.topLine.update(dt);
 
     this.minimap.draw(map);
     if (this.tactical) this.tacMap.draw(map, { regionName: s.regionName });
@@ -199,13 +207,15 @@ class Hud implements HudApi {
         }
         break;
       case 'banner':
-        this.banner.push(e.title, e.subtitle, e.tone, e.duration);
+        if (onPhone()) this.topLine.banner(e.title, e.subtitle, e.tone, e.duration);
+        else this.banner.push(e.title, e.subtitle, e.tone, e.duration);
         break;
       case 'feed':
         this.feed.push(e.text, e.tone);
         break;
       case 'radio':
-        this.radio.push(e.speaker, e.text, e.duration);
+        if (onPhone()) this.topLine.radio(e.speaker, e.text);
+        else this.radio.push(e.speaker, e.text, e.duration);
         break;
       case 'flash':
         this.fx.flash(e.color, e.strength);
@@ -255,6 +265,7 @@ class Hud implements HudApi {
     this.card.reset();
     this.feed.reset();
     this.radio.reset();
+    this.topLine.reset();
     this.cashDeltas.reset();
     this.toggleTacticalMap(false);
     this.lastCash = Number.NaN;
