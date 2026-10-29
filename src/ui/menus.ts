@@ -974,6 +974,13 @@ class Menus implements MenusApi {
     } else {
       el('span', 'txt', bestEl, win ? 'First extraction on file.' : 'Only successful extractions are recorded.');
     }
+    // a guest's run never ranks: one click to sign in, so the next one does
+    if (this.guest && this.account.boards) {
+      const nudge = el('div', 'ds-results-signin', panel);
+      el('span', 'txt', nudge, 'Played as a guest: this run is not on the leaderboards. Sign in with Discord and your next runs are.');
+      const inn = this.button(nudge, 'SIGN IN WITH DISCORD', 'ghost', () => this.cb.onSignIn('board'));
+      inn.setAttribute('aria-label', 'Sign in with Discord to put your runs on the leaderboards');
+    }
 
     const actions = el('div', 'actions', panel);
     const again = this.button(actions, 'REDEPLOY', 'primary', () => this.cb.onRestart());

@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.317",
+      "date": "2026-10-29",
+      "title": "Sign in for the boards, and a cleaner admin page",
+      "notes": [
+        "After a run played as a guest, the results screen says the run is not on the leaderboards and offers a Discord sign-in so the next ones are (it counts on the admin Overview's Guests card as a sign-in asked for the leaderboard).",
+        "The admin page looks new: the Inter typeface with monospaced numbers, rounded cards, a pinned header that blurs what scrolls under it, underlined tabs, tinted status pills and calmer buttons. On a phone only the tabs stay pinned, and the Visibility rows stack so every switch is in reach."
+      ]
+    },
+    {
       "version": "0.4.316",
       "date": "2026-10-29",
       "title": "Play without signing in",

@@ -2286,6 +2286,8 @@ export class Game implements GameCtx {
       }
     }
     this.menus.showResults(pr.stats, this.best, isNew);
+    // the results screen asks a guest to sign in for the leaderboards (Menus.showResults)
+    if (this.account.online && !this.account.user && this.account.boards) reportEvent('login_prompt', 'board');
     if (document.pointerLockElement === this.deps.canvas) document.exitPointerLock();
   }
 

@@ -3988,3 +3988,30 @@ html.ds-lobby-open .ds-l-main {
     bottom: auto;
   }
 }
+
+/* a guest's results: one line and a button to sign in for the leaderboards */
+.ds-results-signin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5em 0.9em;
+  margin-top: 0.6em;
+  padding: 0.55em 0.8em;
+  border-left: 3px solid var(--ds-amber);
+  background: rgba(226, 176, 74, 0.08);
+}
+.ds-results-signin .txt {
+  flex: 1 1 16em;
+  font-size: max(10px, 0.78em);
+  line-height: 1.4;
+  color: var(--ds-ink);
+}
+@media (max-height: 500px), (max-width: 600px) {
+  .ds-results-signin {
+    margin-top: 0.3em;
+    padding: 0.3em 0.6em;
+  }
+  .ds-results-signin .txt {
+    font-size: max(10px, 0.7em);
+  }
+}
