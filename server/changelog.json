@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.319",
+      "date": "2026-10-29",
+      "title": "A new share card, and the search details",
+      "notes": [
+        "Links to the game show the new title screen, ZOMBIES GENXMIMS over The District at blue hour.",
+        "Search engines and link previews now say what the game is under its new name: free, in the browser, no download, and The District playable without signing up. The cinematics' tabs carry the game's name, the bestiary has its own preview text, and the sitemap says when each page last changed."
+      ]
+    },
+    {
       "version": "0.4.318",
       "date": "2026-10-29",
       "title": "Zombies GenXmims",
