@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.320",
+      "date": "2026-10-29",
+      "title": "Credits",
+      "notes": [
+        "A CREDITS page on the title screen's menu: the open-source game Zombies GenXmims grew from (BridgeMind's Dead Signal: Exclusion Zone, the Sonnet 5.5 Zombies Game, which had the main map, a short mission brief and some of the zombie models) and its Opus 5.5 sibling, three.js, three-vrm, the VRoid Project and Quaternius models, Vulcan, and the generated music and voices, each with its licence and a link.",
+        "The game now ships its licence notices at /LICENSE.txt: the MIT licence it carries from BridgeMind (now with GenXmims' own line beside it), and three.js's and three-vrm's."
+      ]
+    },
+    {
       "version": "0.4.319",
       "date": "2026-10-29",
       "title": "A new share card, and the search details",

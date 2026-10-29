@@ -115,7 +115,7 @@ const BOARD_METRICS = [
 
 const sentence = (t: string): string => t.charAt(0) + t.slice(1).toLowerCase();
 
-type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'film' | 'keys' | 'sliders';
+type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'film' | 'keys' | 'sliders' | 'heart';
 const NAV_PATHS: Record<NavGlyph, string[]> = {
   play: ['M7 4.5v15l12-7.5z'],
   friends: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c1.2-3.5 3.7-5.2 6.5-5.2s5.3 1.7 6.5 5.2', 'M16.5 11.5a2.8 2.8 0 1 0 0-5.6', 'M17.5 14.8c2 .4 3.4 1.8 4.2 4.2'],
@@ -125,6 +125,7 @@ const NAV_PATHS: Record<NavGlyph, string[]> = {
   film: ['M3 5h18v14H3z', 'M7 5v14', 'M17 5v14', 'M3 9.5h4', 'M3 14.5h4', 'M17 9.5h4', 'M17 14.5h4'],
   keys: ['M3 7h18v10H3z', 'M7 11h.01', 'M11 11h.01', 'M15 11h.01', 'M8 14h8'],
   sliders: ['M4 7h16', 'M4 17h16', 'M9 4.5v5', 'M15 14.5v5'],
+  heart: ['M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z'],
 };
 function navIcon(name: NavGlyph): SVGSVGElement {
   const svg = svgEl('svg', { viewBox: '0 0 24 24', class: 'ds-ic', 'aria-hidden': 'true', focusable: 'false' });
@@ -419,7 +420,7 @@ class Menus implements MenusApi {
   // -------------------------------------------------------------------------------------------
 
   /** The title's page: the side menu's PLAY / WITH FRIENDS / EXPLORE follow the mode; LEADERBOARDS is its own page. */
-  private titlePage: 'play' | 'boards' | 'films' | 'codex' = 'play';
+  private titlePage: 'play' | 'boards' | 'films' | 'codex' | 'credits' = 'play';
   /** The title's extra options (squad skill, the card hunt) stay open across redraws once opened. */
   private moreOpen = false;
   /** What the leaderboards page shows. */
@@ -428,9 +429,9 @@ class Menus implements MenusApi {
   private boardReq = 0;
 
   /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards and Cinematics change nothing. */
-  private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films' | 'codex'): void {
+  private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films' | 'codex' | 'credits'): void {
     const m = this.info.mode;
-    this.titlePage = p === 'boards' || p === 'films' || p === 'codex' ? p : 'play';
+    this.titlePage = p === 'boards' || p === 'films' || p === 'codex' || p === 'credits' ? p : 'play';
     if (p === 'play') {
       if (m === 'roam') this.cb.onRoamChange(false);
       else if (m === 'coop') this.cb.onModeChange(this.info.roamBase ?? 'standard');
@@ -461,7 +462,8 @@ class Menus implements MenusApi {
     const boards = this.titlePage === 'boards';
     const films = this.titlePage === 'films';
     const codex = this.titlePage === 'codex';
-    const elsewhere = boards || films || codex;
+    const credits = this.titlePage === 'credits';
+    const elsewhere = boards || films || codex || credits;
     const text = MAP_TEXT[this.info.map];
     const root = el('div', 'ds-launch');
     el('div', 'ds-shade', root);
@@ -517,6 +519,7 @@ class Menus implements MenusApi {
     if (this.shown('bestiary')) item('BESTIARY', 'book', codex, () => this.goPage('codex'));
     item('CONTROLS', 'keys', false, () => showTab('controls'));
     item('SETTINGS', 'sliders', false, () => showTab('settings'));
+    item('CREDITS', 'heart', credits, () => this.goPage('credits'));
 
     const foot = el('div', 'ds-l-foot', rail);
     const bestEl = el('div', 'ds-l-best', foot);
@@ -565,6 +568,7 @@ class Menus implements MenusApi {
     if (boards) this.buildBoards(main);
     else if (films) this.buildCinematics(main);
     else if (codex) this.buildCodex(main);
+    else if (credits) this.buildCredits(main);
     else {
       const hero = el('section', 'ds-l-hero', main);
       const kick = el('div', 'kicker', hero);
@@ -689,6 +693,55 @@ class Menus implements MenusApi {
       el('span', 'zon', card, `WATCH  ▸  ${f.length}`);
     }
     el('p', 'lead soon', page, 'More are on the way.');
+  }
+
+  // -------------------------------------------------------------------------------------------
+  // credits (a page of the title): the game this one grew from, and what it is built with
+  // -------------------------------------------------------------------------------------------
+
+  private buildCredits(main: HTMLElement): void {
+    const page = el('section', 'ds-l-boards ds-l-films ds-l-credits', main);
+    el('h1', 'name', page, 'CREDITS');
+    el('p', 'lead', page, 'Zombies GenXmims is made by GenXmims. It grew out of an open-source game, and it stands on the work of the people below.');
+    const list = el('div', 'list', page);
+    const entry = (name: string, role: string, about: string, licence: string, link?: { href: string; label: string }): void => {
+      const card = el('div', 'ds-l-zone ds-l-film ds-l-credit', list);
+      el('span', 'zn', card, name);
+      el('span', 'zt', card, role);
+      el('span', 'zt about', card, about);
+      const foot = el('span', 'zon', card, licence);
+      if (link) {
+        const a = el('a', 'lnk', foot, link.label);
+        a.href = link.href;
+        a.target = '_blank';
+        a.rel = 'noopener';
+      }
+    };
+    entry(
+      'BRIDGEMIND',
+      'The original game: Dead Signal: Exclusion Zone',
+      'Zombies GenXmims started from BridgeMind\'s open-source zombie game (the Sonnet 5.5 Zombies Game). The original had the main map, The District, a short mission brief and some of the zombie models; everything else was built on top of it here.',
+      'MIT LICENCE  ·  ',
+      { href: 'https://github.com/bridge-mind/sonnet-5-5-zombies-game', label: 'github.com/bridge-mind/sonnet-5-5-zombies-game' },
+    );
+    entry(
+      'THE CLAUDE OPUS 5.5 ZOMBIES GAME',
+      'Its sibling, also by BridgeMind',
+      'The same game made by Claude Opus 5.5, released alongside it.',
+      'MIT LICENCE  ·  ',
+      { href: 'https://github.com/bridge-mind/claude-opus-5.5-zombies-game', label: 'github.com/bridge-mind/claude-opus-5.5-zombies-game' },
+    );
+    entry('THREE.JS', '3D engine', 'Everything you see is drawn with three.js.', 'MIT LICENCE, © THREE.JS AUTHORS  ·  ', { href: 'https://threejs.org/', label: 'threejs.org' });
+    entry('PIXIV: THREE-VRM', 'Character models', 'Loads and animates the anime cast.', 'MIT LICENCE, © PIXIV INC.  ·  ', { href: 'https://github.com/pixiv/three-vrm', label: 'github.com/pixiv/three-vrm' });
+    entry('VROID PROJECT (PIXIV)', 'The cast\'s base models', 'The VRoid Studio sample characters, slimmed down for the browser.', 'FREE TO USE, CREDIT NOT REQUIRED  ·  ', { href: 'https://opengameart.org/content/vroid-studio-cc0-models', label: 'opengameart.org' });
+    entry('QUATERNIUS', 'Props and a zombie model', 'The zombie, barrels, cones, hydrants, tyres and pallets.', 'CC0 1.0  ·  ', { href: 'https://quaternius.com/', label: 'quaternius.com' });
+    entry('VULCAN', 'The Vulcan logo, the Ignis icon and the community\'s names', 'Used with the community\'s go-ahead.', '', { href: 'https://vulcan.genxmims.org/', label: 'vulcan.genxmims.org' });
+    entry('MUSIC AND VOICES', 'The cinematics\' scores and voices', 'Generated with Google Lyria (music), ElevenLabs and Fish Audio (voices).', '');
+    const notes = el('p', 'lead soon', page, 'The licence texts for the code: ');
+    const a = el('a', 'lnk', notes, 'LICENSE.txt');
+    a.href = '/LICENSE.txt';
+    a.target = '_blank';
+    a.rel = 'noopener';
   }
 
   // -------------------------------------------------------------------------------------------

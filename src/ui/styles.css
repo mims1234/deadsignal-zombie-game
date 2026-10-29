@@ -4015,3 +4015,58 @@ html.ds-lobby-open .ds-l-main {
     font-size: max(10px, 0.7em);
   }
 }
+
+/* the credits page: one card per credit (not buttons: the links inside them are) */
+.ds-l-credits .list {
+  gap: 0.5em;
+  overflow-y: auto;
+  min-height: 0;
+}
+.ds-l-credit {
+  --zc: var(--ds-amber);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3em;
+  padding: 0.9em 1.1em;
+  text-align: left;
+  background: var(--ds-panel);
+  border: 1px solid var(--ds-line);
+  border-left: 3px solid var(--zc);
+}
+.ds-l-credit .zn {
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.ds-l-credit .zt {
+  font-size: 0.82em;
+  color: var(--ds-ink);
+}
+.ds-l-credit .zon {
+  font-size: 0.68em;
+  letter-spacing: 0.1em;
+  color: var(--ds-ink-dim);
+}
+.ds-l-credits .lnk,
+.ds-l-credit .lnk {
+  color: var(--ds-amber);
+  text-transform: none;
+  letter-spacing: 0.02em;
+  pointer-events: auto;
+}
+.ds-l-credits .lnk:hover {
+  text-decoration: underline;
+}
+@media (max-height: 500px), (max-width: 600px) {
+  .ds-l-credit {
+    padding: 0.6em 0.8em;
+  }
+}
+/* the phone rules shrink the zone cards to their names: the credits keep every line (and the licence link) */
+.ds-l-credit .zt,
+.ds-l-credit .zon,
+.ds-l-credits .lead {
+  display: block;
+  text-align: left;
+  align-self: flex-start;
+}
