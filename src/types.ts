@@ -1,5 +1,5 @@
 /**
- * Shared primitive types used across DEAD SIGNAL: EXCLUSION ZONE.
+ * Shared primitive types used across Zombies GenXmims.
  *
  * World conventions (everything in the project follows these):
  *  - Units are metres. +Y is up. +X is east, +Z is south, so -Z is NORTH.

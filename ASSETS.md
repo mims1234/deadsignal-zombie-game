@@ -1,6 +1,6 @@
 # Assets and attribution
 
-**Apart from the card art, the Vulcan logo and the Ignis icon listed below, DEAD SIGNAL: EXCLUSION ZONE ships with no image, model or audio files.**
+**Apart from the card art, the Vulcan logo and the Ignis icon listed below, Zombies GenXmims ships with no image, model or audio files.**
 
 - **Geometry and models** (district, buildings, props, vehicles, weapons, hands, zombies, helicopter, stations) are built from
   Three.js primitives and procedural geometry in code.

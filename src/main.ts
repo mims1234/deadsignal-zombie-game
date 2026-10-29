@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   const canvas = document.getElementById('game-canvas') as HTMLCanvasElement | null;
   const uiRoot = document.getElementById('ui-root');
   if (!canvas || !uiRoot) {
-    showFatal('DEAD SIGNAL', 'The page is missing its canvas or UI root.');
+    showFatal('ZOMBIES GENXMIMS', 'The page is missing its canvas or UI root.');
     return;
   }
   const game = new Game({ canvas, uiRoot });

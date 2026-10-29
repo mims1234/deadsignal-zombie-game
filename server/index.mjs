@@ -1,5 +1,5 @@
 /**
- * DEAD SIGNAL server: serves the built game, signs players in with Discord, records analytics, and gives the admins
+ * Zombies GenXmims server: serves the built game, signs players in with Discord, records analytics, and gives the admins
  * a dashboard with bans and a report queue.
  *
  *   node --env-file=.env server/index.mjs
@@ -601,4 +601,4 @@ for (const sig of ['SIGINT', 'SIGTERM']) {
 }
 const port = Number(env.PORT) || 3061;
 await app.listen({ port, host: env.HOST || '0.0.0.0' });
-console.log(`DEAD SIGNAL server on ${PUBLIC_URL} (port ${port})  admins: ${ADMIN_IDS.size}  discord: ${env.DISCORD_CLIENT_ID ? 'configured' : 'NOT configured'}${DEV_LOGIN ? '  DEV LOGIN ON' : ''}`);
+console.log(`Zombies GenXmims server on ${PUBLIC_URL} (port ${port})  admins: ${ADMIN_IDS.size}  discord: ${env.DISCORD_CLIENT_ID ? 'configured' : 'NOT configured'}${DEV_LOGIN ? '  DEV LOGIN ON' : ''}`);

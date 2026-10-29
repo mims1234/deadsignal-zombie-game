@@ -1,7 +1,7 @@
 Sakura District cast models
 
 hana.vrm
-  "02 Cyberpunk" by mims1234, made for Dead Signal.
+  "02 Cyberpunk" by mims1234, made for Zombies GenXmims.
 
 yuzu.vrm, empress.vrm, bibi.vrm, vita.vrm, victoria.vrm, student-f.vrm, student-m.vrm, kuro.vrm, hoodie.vrm,
 fumiriya.vrm, shino.vrm

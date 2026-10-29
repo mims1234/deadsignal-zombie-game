@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="10" fill="#0b1118"/>
   <path d="M10 14h12l-6 10H4z M26 14h12l-6 10H20z M42 14h12l-6 10H36z" fill="#e2b04a"/>
-  <text x="32" y="54" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="26" fill="#ece6d6">DS</text>
+  <text x="32" y="54" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="30" fill="#ece6d6">Z</text>
 </svg>

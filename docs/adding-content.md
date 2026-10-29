@@ -1,4 +1,4 @@
-# Adding content to Dead Signal
+# Adding content to Zombies GenXmims
 
 Since 0.2 most new content is a file and a line, not new code. This is what to hand over (or do) for each kind.
 

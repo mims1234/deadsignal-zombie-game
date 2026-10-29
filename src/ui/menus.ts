@@ -496,8 +496,8 @@ class Menus implements MenusApi {
     const rail = el('nav', 'ds-l-rail', root);
     rail.setAttribute('aria-label', 'Main menu');
     const brand = el('div', 'ds-l-brand', rail);
-    el('span', 'l1', brand, 'DEAD SIGNAL');
-    el('span', 'l2', brand, 'EXCLUSION ZONE');
+    el('span', 'l1', brand, 'ZOMBIES');
+    el('span', 'l2', brand, 'GENXMIMS');
     const nav = el('div', 'ds-l-nav', rail);
     const item = (label: string, glyph: NavGlyph, on: boolean, go: () => void): HTMLButtonElement => {
       const b = this.button(nav, '', on ? 'ds-l-item on' : 'ds-l-item', go);

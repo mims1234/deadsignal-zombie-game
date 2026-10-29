@@ -143,7 +143,7 @@ const root = document.getElementById('bestiary')!;
 root.innerHTML = `
   <header class="bh">
     <a class="back" href="./">&larr; BACK TO THE GAME</a>
-    <div class="ttl"><span class="kick">DEAD SIGNAL // FIELD GUIDE</span><h1>BESTIARY</h1></div>
+    <div class="ttl"><span class="kick">ZOMBIES GENXMIMS // FIELD GUIDE</span><h1>BESTIARY</h1></div>
   </header>
   <nav class="list" aria-label="Entries"></nav>
   <main class="view"><canvas aria-label="3D model"></canvas><div class="modes" role="toolbar" aria-label="Animation"></div><div class="hint">DRAG TO TURN  //  SCROLL TO ZOOM</div></main>

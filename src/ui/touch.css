@@ -1,5 +1,5 @@
 /* =============================================================================================
-   DEAD SIGNAL - touch controls and the phone layout.
+   Zombies GenXmims - touch controls and the phone layout.
    Everything here applies only when <html> carries .ds-touch (set at boot on touch devices), so the
    desktop game is untouched. The HUD is sized in em, so most of the phone layout is a smaller base
    size plus moving the corner panels out from under the thumbs.

@@ -1,5 +1,5 @@
 /**
- * Central balance and tuning configuration for DEAD SIGNAL: EXCLUSION ZONE.
+ * Central balance and tuning configuration for Zombies GenXmims.
  * Every gameplay number lives here so the game can be balanced in one place.
  * Angles are in degrees unless the field name says otherwise; distances in metres; times in seconds.
  */

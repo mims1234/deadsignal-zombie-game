@@ -1,6 +1,6 @@
 # Sonnet 5.5 Zombies Game
 
-**DEAD SIGNAL: EXCLUSION ZONE** — a single-player, first-person zombie extraction shooter that runs in your browser.
+**ZOMBIES GENXMIMS** — a single-player, first-person zombie extraction shooter that runs in your browser.
 
 Built by Claude Sonnet 5.5 and its sub-agents in Claude Code from a single prompt, using Three.js, TypeScript and Vite.
 Every model, texture and sound is generated in code: no downloaded assets, no backend, no accounts.

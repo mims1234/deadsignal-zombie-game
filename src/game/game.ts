@@ -398,13 +398,13 @@ export class Game implements GameCtx {
       saveMap(this.mapId);
     }
     if (this.account.banned) {
-      this.menus.showError('ACCOUNT BANNED', 'This Discord account has been banned from DEAD SIGNAL.', this.account.banReason || undefined);
+      this.menus.showError('ACCOUNT BANNED', 'This Discord account has been banned from Zombies GenXmims.', this.account.banReason || undefined);
       return false;
     }
 
     const caps = checkCapabilities(this.touchMode);
     if (!caps.ok) {
-      const needs = this.touchMode ? 'DEAD SIGNAL needs WebGL 2.' : 'DEAD SIGNAL needs WebGL 2 and the Pointer Lock API (desktop keyboard and mouse).';
+      const needs = this.touchMode ? 'Zombies GenXmims needs WebGL 2.' : 'Zombies GenXmims needs WebGL 2 and the Pointer Lock API (desktop keyboard and mouse).';
       this.menus.showError('Unsupported browser', caps.problems.join(' '), needs);
       return false;
     }

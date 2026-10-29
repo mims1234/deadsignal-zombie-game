@@ -1,5 +1,5 @@
 /*
- * QA bot: plays DEAD SIGNAL through the same input state a human produces (held keys, look angles, one-shot presses),
+ * QA bot: plays Zombies GenXmims through the same input state a human produces (held keys, look angles, one-shot presses),
  * using the game's own navigation grid to walk between objectives. It is intentionally imperfect (aim error, reaction delay,
  * no dodging of slams) so results resemble a middling player. Injected into the page by scripts/qa-bot.mjs (dev server only).
  */

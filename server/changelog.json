@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.318",
+      "date": "2026-10-29",
+      "title": "Zombies GenXmims",
+      "notes": [
+        "The game has a new name: ZOMBIES, with GENXMIMS under it on the title screen. Every page, link preview, the browser tab (a Z icon now), the bestiary, the cinematics and the admin page carry it.",
+        "Nothing a player has is touched: settings, best runs, cards, the sign-in and the guest id all carry over."
+      ]
+    },
+    {
       "version": "0.4.317",
       "date": "2026-10-29",
       "title": "Sign in for the boards, and a cleaner admin page",
