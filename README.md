@@ -186,8 +186,11 @@ Add `?touch=1` to the URL to try the touch layout on a desktop, or `?touch=0` to
 The game can be hosted two ways.
 
 - **Static** (any file host, or `pnpm dev` on its own): no accounts. Everyone plays signed out and nothing is recorded.
-- **With the game server** (`pnpm server`): players sign in with Discord before they can deploy, runs and visits are
-  recorded, recovered cards are kept on the account, and the admins get a dashboard at `/admin`.
+- **With the game server** (`pnpm server`): players sign in with Discord, runs and visits are recorded, recovered cards
+  are kept on the account, and the admins get a dashboard at `/admin`. The maps an admin opens to guests (the
+  Visibility tab; The District to start with) play without a sign-in, solo only: co-op and the card hunt always need
+  Discord. A guest's runs are recorded against its anonymous browser id (`guest:<id>`) and never rank on the
+  leaderboards.
 
 ```bash
 cp .env.example .env     # fill in PUBLIC_URL, the Discord application id and secret, and ADMIN_IDS
@@ -205,7 +208,8 @@ to anyone who is not in `ADMIN_IDS`. A banned account is signed out and cannot s
 Run statistics come from the player's browser, so treat them as analytics, not as proof: nothing is granted from them.
 
 For local work, `DEV_LOGIN=1 pnpm server` adds `/auth/dev?id=<discord id>&name=<name>`, a sign-in that skips Discord,
-and `pnpm dev` proxies `/api`, `/auth` and `/admin` to it. `scripts/qa-server.mjs` checks the API end to end.
+and `pnpm dev` proxies `/api`, `/auth` and `/admin` to it. `scripts/qa-server.mjs` checks the API end to end, and
+`scripts/qa-guest.mjs` what guests may and may not do.
 
 ### Server-hosted co-op
 

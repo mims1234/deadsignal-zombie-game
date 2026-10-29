@@ -35,7 +35,8 @@ const DIFF_SQL = "COALESCE(r.difficulty, 'normal')";
 function boardWhere({ map, mode, metric, version, difficulty, exclude }) {
   const runModes = BOARD_RUN_MODES[mode] ?? [];
   // a story mission starts with a contract already settled: it never ranks
-  const where = ["COALESCE(r.map, 'district') = ?", `r.mode IN (${runModes.map(() => '?').join(', ')})`, 'u.banned = 0', 'r.ended_at IS NOT NULL', 'r.story IS NULL'];
+  // a guest's run (played without Discord) is kept for the analytics but never ranks
+  const where = ["COALESCE(r.map, 'district') = ?", `r.mode IN (${runModes.map(() => '?').join(', ')})`, 'u.banned = 0', 'u.guest = 0', 'r.ended_at IS NOT NULL', 'r.story IS NULL'];
   const args = [map, ...runModes];
   if (exclude.length) {
     where.push(`r.user_id NOT IN (${exclude.map(() => '?').join(', ')})`);
@@ -163,6 +164,22 @@ export function openDb(file) {
   } catch {
     /* already there */
   }
+  // guests came with 0.4.316: a guest (no Discord) plays the maps open to guests as a user row of its own, `guest:<anon
+  // id>`, so its runs count like anyone's; `from_anon`: the guest id a Discord player played as before signing in
+  for (const col of ['guest INTEGER NOT NULL DEFAULT 0', 'from_anon TEXT']) {
+    try {
+      db.exec(`ALTER TABLE users ADD COLUMN ${col}`);
+    } catch {
+      /* already there */
+    }
+  }
+  // the first-run tour and the sign-in prompts (src/net/account.ts, EVENTS): a few named steps, to see where guests stop
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS events (
+      id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, day TEXT NOT NULL, visitor TEXT NOT NULL, user_id TEXT, name TEXT NOT NULL, detail TEXT
+    );
+    CREATE INDEX IF NOT EXISTS events_day ON events(day, name);
+  `);
 
   const q = {
     upsertUser: db.prepare(`INSERT INTO users (id, username, display_name, avatar, created_at, last_seen) VALUES (@id, @username, @display_name, @avatar, @t, @t)
@@ -189,6 +206,10 @@ export function openDb(file) {
     setBan: db.prepare('UPDATE users SET banned = ?, ban_reason = ?, banned_at = ? WHERE id = ?'),
     resolveReport: db.prepare("UPDATE reports SET status = 'resolved', resolved_by = ?, resolved_at = ?, resolution = ? WHERE id = ? AND status = 'open'"),
     audit: db.prepare('INSERT INTO audit (ts, admin_id, action, target, detail) VALUES (?, ?, ?, ?, ?)'),
+    addGuest: db.prepare("INSERT INTO users (id, username, display_name, avatar, created_at, last_seen, guest) VALUES (?, 'guest', 'Guest', NULL, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET last_seen = excluded.last_seen"),
+    linkAnon: db.prepare('UPDATE users SET from_anon = ? WHERE id = ? AND guest = 0 AND from_anon IS NULL'),
+    runsSince: db.prepare('SELECT COUNT(*) n FROM runs WHERE user_id = ? AND started_at > ?'),
+    addEvent: db.prepare('INSERT INTO events (ts, day, visitor, user_id, name, detail) VALUES (?, ?, ?, ?, ?, ?)'),
   };
 
   const day = (t = now()) => new Date(t * 1000).toISOString().slice(0, 10);
@@ -216,6 +237,16 @@ export function openDb(file) {
       return u ?? null;
     },
     dropSession: (token) => q.dropSession.run(token),
+    /** The user row a guest plays as (made the first time, its last_seen kept fresh). */
+    guestUser(anon) {
+      const id = `guest:${anon}`;
+      q.addGuest.run(id, now(), now());
+      return q.user.get(id);
+    },
+    /** A Discord player who played as this guest before signing in (kept once: the first guest id). */
+    linkAnon: (userId, anon) => q.linkAnon.run(anon, userId),
+    runsSince: (userId, t) => q.runsSince.get(userId, t).n,
+    event: (visitor, userId, name, detail) => q.addEvent.run(now(), day(), visitor, userId, name, detail ?? null),
     visit: (visitor, userId, touch, page = 'game') => q.addVisit.run(now(), day(), visitor, userId, touch ? 1 : 0, page),
     /** `device`: the coarse class from the client ({ device, gpu, quality }); anything not on the lists is dropped. */
     startRun: (userId, mode, touch, map, version, difficulty, device = {}, story = null) =>
@@ -303,7 +334,7 @@ export function openDb(file) {
           `SELECT COALESCE(r.map, 'district') map, CASE WHEN r.mode = 'coop' THEN 'coop' ELSE 'solo' END mode, COUNT(DISTINCT CASE WHEN r.outcome = 'victory' THEN r.user_id END) winners,
              COUNT(DISTINCT r.user_id) players
            FROM runs r JOIN users u ON u.id = r.user_id
-           WHERE r.ended_at IS NOT NULL AND r.outcome IN ('victory', 'defeat') AND r.mode IN ('standard', 'cards', 'coop') AND u.banned = 0 ${ex}
+           WHERE r.ended_at IS NOT NULL AND r.outcome IN ('victory', 'defeat') AND r.mode IN ('standard', 'cards', 'coop') AND u.banned = 0 AND u.guest = 0 ${ex}
            GROUP BY 1, 2`,
         )
         .all(...exclude);
@@ -376,11 +407,12 @@ export function openDb(file) {
       const xv = ex.length ? ` AND (user_id IS NULL OR user_id NOT IN (${ex.map(() => '?').join(', ')}))` : '';
       const one = (sql, ...a) => db.prepare(sql).get(...a);
       const all = (sql, ...a) => db.prepare(sql).all(...a);
+      // `users`, `banned`, `newUsers`: Discord players; `online` counts guests in a game too (`guests` has them apart)
       const totals = {
-        users: one(`SELECT COUNT(*) n FROM users WHERE 1${x('id')}`, ...ex).n,
+        users: one(`SELECT COUNT(*) n FROM users WHERE guest = 0${x('id')}`, ...ex).n,
         banned: one(`SELECT COUNT(*) n FROM users WHERE banned = 1${x('id')}`, ...ex).n,
         online: one(`SELECT COUNT(*) n FROM users WHERE last_seen > ?${x('id')}`, now() - 300, ...ex).n,
-        newUsers: one(`SELECT COUNT(*) n FROM users WHERE created_at >= ?${x('id')}`, now() - days * 86400, ...ex).n,
+        newUsers: one(`SELECT COUNT(*) n FROM users WHERE guest = 0 AND created_at >= ?${x('id')}`, now() - days * 86400, ...ex).n,
         activeUsers: one(`SELECT COUNT(DISTINCT user_id) n FROM runs WHERE day >= ?${x('user_id')}`, since, ...ex).n,
         visits: one(`SELECT COUNT(*) n FROM visits WHERE day >= ?${xv}`, since, ...ex).n,
         visitors: one(`SELECT COUNT(DISTINCT visitor) n FROM visits WHERE day >= ?${xv}`, since, ...ex).n,
@@ -426,7 +458,21 @@ export function openDb(file) {
         ...ex,
       );
       const maps = all(`SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players, SUM(outcome = 'victory') wins, AVG(duration) avgDuration FROM runs WHERE day >= ?${x('user_id')} GROUP BY 1`, since, ...ex);
-      return { days, totals, daily, pages, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop };
+      // guests (played without Discord): who came, who played, and how far along the tour and the sign-in prompts they got
+      const ev = (name) => one(`SELECT COUNT(*) n, COUNT(DISTINCT visitor) visitors FROM events WHERE day >= ? AND name = ?${xv}`, since, name, ...ex);
+      const guests = {
+        visitors: one(`SELECT COUNT(DISTINCT visitor) n FROM visits WHERE day >= ? AND user_id IS NULL`, since).n,
+        players: one("SELECT COUNT(DISTINCT user_id) n FROM runs WHERE day >= ? AND user_id LIKE 'guest:%'", since).n,
+        runs: one("SELECT COUNT(*) n FROM runs WHERE day >= ? AND user_id LIKE 'guest:%'", since).n,
+        playSeconds: one("SELECT COALESCE(SUM(duration), 0) n FROM runs WHERE day >= ? AND user_id LIKE 'guest:%'", since).n,
+        online: one('SELECT COUNT(*) n FROM users WHERE guest = 1 AND last_seen > ?', now() - 300).n,
+        // Discord players made in the range who had played as a guest first
+        signedUp: one(`SELECT COUNT(*) n FROM users WHERE guest = 0 AND from_anon IS NOT NULL AND created_at >= ?${x('id')}`, now() - days * 86400, ...ex).n,
+        maps: all("SELECT COALESCE(map, 'district') map, COUNT(*) runs, COUNT(DISTINCT user_id) players FROM runs WHERE day >= ? AND user_id LIKE 'guest:%' GROUP BY 1 ORDER BY runs DESC", since),
+        funnel: Object.fromEntries(['tour_shown', 'tour_done', 'tour_skip', 'login_prompt', 'login_click'].map((n) => [n, ev(n)])),
+        prompts: all(`SELECT COALESCE(detail, '') reason, COUNT(*) n FROM events WHERE day >= ? AND name = 'login_prompt'${xv} GROUP BY 1 ORDER BY n DESC`, since, ...ex),
+      };
+      return { days, totals, daily, pages, modes, maps, failReasons, topPlayers, cardTotals, recentRuns, coop, guests };
     },
     /**
      * Runs, a page at a time, newest first, with filters (the admin page's Runs tab). `days` 0 = all time. Returns the page
@@ -479,7 +525,8 @@ export function openDb(file) {
       const ban = status === 'banned' ? 'AND u.banned = 1' : status === 'active' ? 'AND u.banned = 0' : '';
       // ids are digits only (Discord), checked by the caller
       const skip = exclude.length ? `AND u.id NOT IN (${exclude.map((id) => `'${String(id).replace(/\D/g, '')}'`).join(', ')})` : '';
-      const w = `WHERE (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ${ban} ${skip}`;
+      // guests are not players to manage: their runs show on the Runs tab, their numbers on the overview
+      const w = `WHERE u.guest = 0 AND (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ${ban} ${skip}`;
       const total = db.prepare(`SELECT COUNT(*) n FROM users u ${w}`).get(like, like, like).n;
       const rows = db
         .prepare(
@@ -498,7 +545,7 @@ export function openDb(file) {
           `SELECT u.id, u.username, u.display_name, u.created_at, u.last_seen, u.banned, u.ban_reason,
              (SELECT COUNT(*) FROM runs r WHERE r.user_id = u.id) runs,
              (SELECT COUNT(*) FROM reports p WHERE p.target_id = u.id) reports
-           FROM users u WHERE u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ? ORDER BY u.last_seen DESC LIMIT 100`,
+           FROM users u WHERE u.guest = 0 AND (u.id LIKE ? OR u.username LIKE ? OR u.display_name LIKE ?) ORDER BY u.last_seen DESC LIMIT 100`,
         )
         .all(like, like, like);
     },

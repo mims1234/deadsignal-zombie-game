@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.316",
+      "date": "2026-10-29",
+      "title": "Play without signing in",
+      "notes": [
+        "New players can try the game straight away: on a server, the zones open to guests play without a Discord sign-in. The District is open to guests from the start; every other zone, co-op and the Mazoku card hunt still ask for Discord.",
+        "The admin page's Visibility tab has a second switch on every map: Guests can play, or Discord login. It only counts while the map is live. Co-op always needs a Discord sign-in, with no switch to open it.",
+        "A guest sees the free zones first, marked FREE, and the rest marked SIGN IN. Picking one of those, WITH FRIENDS or the card hunt asks for the sign-in, with the free zone offered beside it. After signing in you come back to the zone, the mode or the co-op invite you had picked.",
+        "First time here: a short tour of the title screen (the zones, how to play, what a sign-in opens). Skip it at any time, or see it again from CONTROLS. On a phone each step is one line along the edge.",
+        "Guest runs are recorded like anyone's (time played, maps, outcomes, device and frame rate) but never rank on the leaderboards. The admin Overview has a new Guests card: guest visitors and players, the tour and sign-in prompts, and how many guests went on to sign in."
+      ]
+    },
+    {
       "version": "0.4.315",
       "date": "2026-10-28",
       "title": "The admin page controls what players see",

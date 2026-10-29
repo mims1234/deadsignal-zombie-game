@@ -3827,3 +3827,164 @@ html.ds-lobby-open .ds-l-main {
     grid-template-rows: minmax(0, 1fr) auto;
   }
 }
+
+/* ---------------------------------------------------------------------------------------------
+   guests: the sign-in prompt (co-op, the card hunt, a zone that needs Discord) and the first-run tour
+   --------------------------------------------------------------------------------------------- */
+
+.ds-login {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1em;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+}
+.ds-login-box {
+  width: min(30em, 94vw);
+  padding: 1.3em 1.4em 1.1em;
+  background: var(--ds-panel-strong);
+  display: flex;
+  flex-direction: column;
+  gap: 0.7em;
+}
+.ds-login-box h2 {
+  margin: 0;
+  font-family: var(--ds-font-label);
+  letter-spacing: 0.14em;
+  font-size: 1.15em;
+  color: var(--ds-amber);
+}
+.ds-login-box p {
+  margin: 0;
+  line-height: 1.45;
+  color: var(--ds-ink);
+}
+.ds-login-box .acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  align-items: center;
+}
+.ds-login-box .acts .ds-btn.discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+}
+.ds-login-box .acts .ds-btn.discord svg {
+  width: 1.3em;
+  height: 1.3em;
+}
+.ds-login-box .fine {
+  font-size: max(10px, 0.72em);
+  color: var(--ds-ink-faint);
+}
+.ds-l-cta .ds-btn.free {
+  margin-top: 0.4em;
+}
+.ds-l-acct.guest .avatar {
+  color: var(--ds-ink-dim);
+}
+.ds-sidepanel .tour-again {
+  display: none;
+}
+.ds-sidepanel.floating .tour-again {
+  display: block;
+  margin: 0.8em auto 0.4em;
+}
+
+.ds-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 44;
+  pointer-events: none;
+}
+.ds-tour-card {
+  position: fixed;
+  width: min(22em, 90vw);
+  padding: 0.9em 1em 0.8em;
+  background: var(--ds-panel-strong);
+  border-left: 3px solid var(--ds-amber);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+  transition: left 0.2s, top 0.2s;
+}
+.ds-tour-card.mid {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.ds-tour-card .n {
+  font-family: var(--ds-font-num);
+  font-size: max(9px, 0.68em);
+  color: var(--ds-ink-faint);
+}
+.ds-tour-card b {
+  font-family: var(--ds-font-label);
+  letter-spacing: 0.12em;
+  color: var(--ds-amber);
+}
+.ds-tour-card p {
+  margin: 0;
+  line-height: 1.4;
+  color: var(--ds-ink);
+}
+.ds-tour-card .acts {
+  display: flex;
+  gap: 0.5em;
+  margin-top: 0.2em;
+}
+.ds-tour-hl {
+  outline: 2px solid var(--ds-amber) !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 0 6px rgba(226, 176, 74, 0.18);
+}
+
+/* phones: each step is one short line in a strip along the bottom edge, the zones still in view */
+@media (max-height: 500px), (max-width: 600px) {
+  .ds-tour-card,
+  .ds-tour-card.mid {
+    left: 50%;
+    top: auto;
+    bottom: max(0.6em, env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(34em, calc(100vw - 1.2em));
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3em 0.7em;
+    padding: 0.5em 0.7em;
+    transition: none;
+  }
+  .ds-tour-card .n,
+  .ds-tour-card b {
+    display: none;
+  }
+  .ds-tour-card p {
+    flex: 1 1 14em;
+    font-size: max(11px, 0.8em);
+  }
+  .ds-tour-card .acts {
+    margin: 0;
+  }
+  .ds-login-box {
+    padding: 0.9em 1em;
+    gap: 0.5em;
+  }
+  .ds-login-box .fine {
+    display: none;
+  }
+}
+/* held upright the menu is a tab bar along the bottom: the tour strip sits at the top edge instead */
+@media (max-width: 600px) and (min-height: 501px) {
+  .ds-tour-card,
+  .ds-tour-card.mid {
+    top: max(0.6em, env(safe-area-inset-top));
+    bottom: auto;
+  }
+}

@@ -27,7 +27,7 @@ function client() {
 }
 const anon = client(), p1 = client(), p2 = client(), adm = client();
 let r = await anon.get('/api/me'); check('signed out: no user', r.body.user === null && r.body.devLogin === true);
-r = await anon.post('/api/runs', { mode: 'standard' }); check('signed out cannot start a run', r.status === 401);
+r = await anon.post('/api/runs', { mode: 'standard', map: 'forge' }); check('signed out cannot start a run on a map that needs Discord', r.status === 401 && r.body.error === 'login');
 r = await anon.post('/api/visit', { touch: false }, false); check('POST without the guard header is refused', r.status === 403);
 r = await anon.post('/api/visit', { touch: false }); check('visit recorded for an anonymous visitor', r.status === 200);
 await p1.get('/auth/dev?id=2000000001&name=Player%20One'); await p2.get('/auth/dev?id=2000000002&name=%3Cb%3EBob'); await adm.get('/auth/dev?id=9000000009&name=Boss');

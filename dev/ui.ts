@@ -295,6 +295,9 @@ const menus = createMenus({
   onModeChange: (m) => calls.push(`mode:${m}`),
   onLogout: () => calls.push('logout'),
   onMapChange: (m) => calls.push(`map:${m}`),
+  onSignIn: (r) => calls.push(`signin:${r}`),
+  onTour: (e) => calls.push(`tour:${e}`),
+  onTourAgain: () => calls.push('tour-again'),
   onSettingsChange: (s) => {
     settings = s;
     calls.push(`settings:${JSON.stringify(s)}`);

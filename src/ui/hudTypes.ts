@@ -212,6 +212,27 @@ export interface ModeInfo {
    * ONLY / DEV ONLY). Without it, every map.
    */
   maps?: { id: MapId; badge?: string; badgeTone?: 'good' | 'warn' }[];
+  /** A guest needs a Discord sign-in for this pick: the map, co-op or the card hunt (null or absent: they may play). */
+  login?: 'map' | 'coop' | 'cards' | null;
+  /** The first map a guest may play without signing in (offered beside the sign-in). */
+  freeMap?: MapId | null;
+}
+
+/** The sign-in prompt: why it is asked for, and what to offer instead (a map open to guests). */
+export interface LoginPrompt {
+  /** For the analytics: a map id, 'coop', 'cards' or 'board'. */
+  reason: string;
+  title: string;
+  text: string;
+  free?: { label: string; map: MapId } | null;
+}
+
+/** One step of the first-run tour: what it points at (a selector on the title screen; none: the middle) and says. */
+export interface TourStep {
+  id: string;
+  target: string | null;
+  title: string;
+  text: string;
 }
 
 export type MapMarkerKind =
@@ -323,6 +344,12 @@ export interface MenuCallbacks {
   onRoamChange(on: boolean): void;
   /** Title screen: a story mission picked (the Sakura District), or none for the operation. */
   onStoryChange(id: string | null): void;
+  /** Go to the Discord sign-in (`reason` for the analytics: a map id, 'coop', 'cards', 'board', 'foot'). */
+  onSignIn(reason: string): void;
+  /** The first-run tour moved on: shown, a step, done or skipped. */
+  onTour(event: 'tour_shown' | 'tour_step' | 'tour_done' | 'tour_skip', detail: string | null): void;
+  /** The tour asked to be shown again (from the controls / settings overlay). */
+  onTourAgain(): void;
   /** Title screen: the difficulty picks changed. */
   onDifficultyChange(d: { zombies: ZombieDifficulty; team: TeamSkill }): void;
 }
@@ -350,6 +377,10 @@ export interface MenusApi {
   hideLoading(): void;
   /** A short message over whatever screen is showing (fades after a few seconds). */
   flash(text: string): void;
+  /** Ask a guest to sign in with Discord (over the title screen). */
+  showLoginPrompt(p: LoginPrompt): void;
+  /** The first-run tour over the title screen. */
+  startTour(steps: TourStep[]): void;
   showError(title: string, message: string, details?: string): void;
   hide(): void;
   setSettings(settings: Settings): void;

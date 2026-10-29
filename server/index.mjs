@@ -53,6 +53,21 @@ const lockedMaps = () => Object.keys(MAPS).filter((id) => !mapPublic(id));
 /** Can this player start a run or a session on the map? */
 const mapOpenTo = (u, map) => mapPublic(map in MAPS ? map : 'district') || isAdmin(u); // no map named: the District, as the game reads it
 
+// Each live map is open to guests (played without Discord, so first-timers can try the game) or needs a Discord sign-in,
+// switched from the Visibility tab. `guest`: where it starts. A map that is admin only is never open to guests, and
+// co-op and the card hunt (cards are kept per account) always need a sign-in.
+const GUEST_DEFAULT = { district: true };
+/** The map's guest switch as set (whether or not the map is live). */
+const guestSetting = (id) => {
+  const v = db.setting(`map.${id}.guest`);
+  return v === null ? !!GUEST_DEFAULT[id] : v === '1';
+};
+const mapGuest = (id) => Object.hasOwn(MAPS, id) && mapPublic(id) && guestSetting(id);
+/** Maps a guest may play right now. */
+const guestMaps = () => Object.keys(MAPS).filter(mapGuest);
+/** May a guest play `mode` on `map`? Never co-op, never the card hunt. */
+const guestOpen = (map, mode) => mapGuest(map in MAPS ? map : 'district') && mode !== 'coop' && mode !== 'cards';
+
 // Every cinematic is public (anyone can watch it; it shows on the CINEMATICS page and in the bestiary) or admin only,
 // switched from the dashboard; any number can be private. `live`: where it starts before an admin has switched it.
 // `page`: its page (`/<page>.html`) and its folder of sounds and images (`/<page>/`). The game keeps the same list
@@ -111,6 +126,7 @@ const visibilityFor = (u) => {
     openMaps: Object.keys(MAPS).filter(mapPublic),
     openFilms: Object.keys(FILMS).filter(filmPublic),
     openSwitches: Object.keys(SWITCHES).filter(switchOn),
+    guestMaps: guestMaps(),
     boards: boardSwitches().all,
   };
   return isAdmin(u) ? { ...open, lockedMaps: lockedMaps(), lockedFilms: lockedFilms(), lockedSwitches: lockedSwitches() } : open;
@@ -150,8 +166,10 @@ const rooms = createRooms({
   },
 });
 
-function signIn(reply, profile) {
+function signIn(req, reply, profile) {
   const user = db.upsertUser(profile);
+  // the guest this browser played as before: kept on the account, to count the guests who go on to sign in
+  if (req.cookies.ds_anon) db.linkAnon(user.id, `guest:${req.cookies.ds_anon}`);
   const t = token();
   db.createSession(t, user.id, SESSION_TTL);
   reply.setCookie('ds_sess', t, cookieOpts(SESSION_TTL));
@@ -180,6 +198,26 @@ async function player(req, reply) {
   if (!u) return reply.code(401).send({ error: 'sign in first' });
   if (u.banned) return reply.code(403).send({ error: 'banned' });
   req.user = u;
+}
+
+/** This browser's anonymous id (the `ds_anon` cookie, made here the first time). */
+function anonOf(req, reply) {
+  let anon = req.cookies.ds_anon;
+  if (!anon || !/^[\w-]{10,40}$/.test(anon)) {
+    anon = token().slice(0, 22);
+    reply.setCookie('ds_anon', anon, cookieOpts(365 * 86400));
+  }
+  return anon;
+}
+
+/**
+ * Route guard: a signed-in, unbanned player, or a guest (no Discord: the user row of this browser's anonymous id). Only
+ * for what a guest may do: a run on a map open to guests, and the pings that keep "online now" honest.
+ */
+async function playerOrGuest(req, reply) {
+  const u = userOf(req);
+  if (u?.banned) return reply.code(403).send({ error: 'banned' });
+  req.user = u ?? db.guestUser(anonOf(req, reply));
 }
 
 async function admin(req, reply) {
@@ -214,7 +252,7 @@ app.get('/auth/discord/callback', async (req, reply) => {
     const ur = await fetch('https://discord.com/api/users/@me', { headers: { authorization: `Bearer ${access_token}` } });
     if (!ur.ok) throw new Error(`profile ${ur.status}`);
     const d = await ur.json();
-    signIn(reply, { id: String(d.id), username: String(d.username), display_name: String(d.global_name || d.username), avatar: d.avatar });
+    signIn(req, reply, { id: String(d.id), username: String(d.username), display_name: String(d.global_name || d.username), avatar: d.avatar });
     return reply.redirect('/');
   } catch (err) {
     req.log.warn(err);
@@ -225,7 +263,7 @@ app.get('/auth/discord/callback', async (req, reply) => {
 if (DEV_LOGIN) {
   app.get('/auth/dev', async (req, reply) => {
     const id = String(req.query.id || '100000000000000001').replace(/\D/g, '').slice(0, 20) || '1';
-    signIn(reply, { id, username: `dev${id.slice(-4)}`, display_name: String(req.query.name || `Dev ${id.slice(-4)}`).slice(0, 32), avatar: null });
+    signIn(req, reply, { id, username: `dev${id.slice(-4)}`, display_name: String(req.query.name || `Dev ${id.slice(-4)}`).slice(0, 32), avatar: null });
     return reply.redirect('/');
   });
 }
@@ -247,23 +285,37 @@ app.get('/api/me', async (req) => {
 
 app.post('/api/visit', async (req, reply) => {
   const u = userOf(req);
-  let anon = req.cookies.ds_anon;
-  if (!anon) {
-    anon = token().slice(0, 22);
-    reply.setCookie('ds_anon', anon, cookieOpts(365 * 86400));
-  }
+  const anon = anonOf(req, reply);
   // which page: the game, or one of the pages beside it
   const page = ['game', 'excalibur', 'hollow', 'bestiary'].includes(req.body?.page) ? req.body.page : 'game';
   db.visit(u ? u.id : `anon:${anon}`, u ? u.id : null, !!req.body?.touch, page);
   return { ok: true };
 });
 
-// keeps "online now" honest while a tab is open (sessionUser refreshes last_seen)
-app.post('/api/ping', { preHandler: player }, async () => ({ ok: true }));
+// The steps of the first-run tour and the sign-in prompts (the game's EVENTS, src/net/account.ts): anyone may send one.
+// `detail`: why a sign-in was asked for (a map id, 'coop', 'cards', 'board') or which tour step.
+const EVENTS = ['tour_shown', 'tour_step', 'tour_done', 'tour_skip', 'login_prompt', 'login_click'];
+app.post('/api/event', async (req, reply) => {
+  const name = req.body?.name;
+  if (!EVENTS.includes(name)) return reply.code(400).send({ error: 'unknown event' });
+  const detail = typeof req.body?.detail === 'string' && /^[\w-]{1,24}$/.test(req.body.detail) ? req.body.detail : null;
+  const u = userOf(req);
+  db.event(u ? u.id : `anon:${anonOf(req, reply)}`, u ? u.id : null, name, detail);
+  return { ok: true };
+});
 
-app.post('/api/runs', { preHandler: player }, async (req, reply) => {
+// keeps "online now" honest while a tab is open (sessionUser, or a guest's row, refreshes last_seen)
+app.post('/api/ping', { preHandler: playerOrGuest }, async () => ({ ok: true }));
+
+app.post('/api/runs', { preHandler: playerOrGuest }, async (req, reply) => {
   const mode = req.body?.mode;
   if (!MODES.includes(mode)) return reply.code(400).send({ error: 'unknown mode' });
+  if (req.user.guest) {
+    // a guest plays only where guests may: anything else asks the game to offer the sign-in
+    const reason = mode === 'coop' ? 'coop' : mode === 'cards' ? 'cards' : 'map';
+    if (!guestOpen(req.body?.map, mode)) return reply.code(401).send({ error: 'login', reason });
+    if (db.runsSince(req.user.id, db.now() - 3600) >= 30) return reply.code(429).send({ error: 'slow down' });
+  }
   if (!mapOpenTo(req.user, req.body?.map)) return reply.code(403).send({ error: 'that map is not open yet' });
   if (!playOpenTo(req.user, mode)) return reply.code(403).send({ error: 'that mode is not open yet' });
   if (typeof req.body?.story === 'string' && !playOpenTo(req.user, req.body.story)) return reply.code(403).send({ error: 'that story is not open yet' });
@@ -271,7 +323,7 @@ app.post('/api/runs', { preHandler: player }, async (req, reply) => {
   return { id: db.startRun(req.user.id, mode, !!b?.touch, b?.map, b?.version, b?.difficulty, { device: b?.device, gpu: b?.gpu, quality: b?.quality }, b?.story) };
 });
 
-app.post('/api/runs/:id/end', { preHandler: player }, async (req) => ({ ok: db.endRun(req.user.id, Number(req.params.id), req.body ?? {}) }));
+app.post('/api/runs/:id/end', { preHandler: playerOrGuest }, async (req) => ({ ok: db.endRun(req.user.id, Number(req.params.id), req.body ?? {}) }));
 
 app.post('/api/runs/:id/card', { preHandler: player }, async (req, reply) => {
   const run = db.run(Number(req.params.id));
@@ -420,7 +472,8 @@ app.get('/api/admin/visibility', { preHandler: admin }, async () => {
   const sw = (g) => Object.entries(SWITCHES).filter(([, s]) => s.group === g).map(([id, s]) => ({ id, name: s.name, public: switchOn(id) }));
   return {
     groups: [
-      group('maps', 'Maps', Object.entries(MAPS).map(([id, m]) => ({ id, name: m.name, public: mapPublic(id) }))),
+      // `guest`: open to guests (no Discord) as switched; it only takes effect while the map is live
+      group('maps', 'Maps', Object.entries(MAPS).map(([id, m]) => ({ id, name: m.name, public: mapPublic(id), guest: guestSetting(id) }))),
       group('films', 'Cinematics', Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, public: filmPublic(id) }))),
       group('modes', 'Modes', sw('modes')),
       group('hosting', 'Co-op hosting', sw('hosting')),
@@ -456,6 +509,17 @@ app.post('/api/admin/visibility/:id', { preHandler: admin }, async (req, reply) 
   db.audit(req.user.id, open ? 'switch-public' : 'switch-admin-only', id, '');
   if (!open) rooms.closeShut();
   return { id, public: switchOn(id) };
+});
+
+/** Open a map to guests (played without Discord) or make it need a Discord sign-in. Co-op always needs one. */
+app.post('/api/admin/visibility/:id/guest', { preHandler: admin }, async (req, reply) => {
+  const id = String(req.params.id);
+  if (!Object.hasOwn(MAPS, id)) return reply.code(404).send({ error: 'no such map' });
+  if (typeof req.body?.guest !== 'boolean') return reply.code(400).send({ error: 'guest must be true or false' });
+  const open = req.body.guest;
+  db.setSetting(`map.${id}.guest`, open ? '1' : '0');
+  db.audit(req.user.id, open ? 'map-guest' : 'map-login', id, '');
+  return { id, guest: guestSetting(id), open: mapGuest(id) };
 });
 
 app.get('/api/admin/films', { preHandler: admin }, async () => ({ films: Object.entries(FILMS).map(([id, f]) => ({ id, name: f.name, page: `/${f.page}.html`, public: filmPublic(id) })) }));

@@ -10,7 +10,8 @@ import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import { el, fmtClock, fmtInt, fmtMoney, svgEl } from './dom';
 import { LATE_CHOICES, LATE_NOTE } from '../net/room';
 import { VERSION } from '../version';
-import type { AccountInfo, MenuCallbacks, MenusApi, ModeInfo, PauseSession, PauseTab } from './hudTypes';
+import type { AccountInfo, LoginPrompt, MenuCallbacks, MenusApi, ModeInfo, PauseSession, PauseTab, TourStep } from './hudTypes';
+import { runTour } from './tour';
 import { filmAccess, GATED_FILMS, type FilmAccess, type FilmId } from '../films';
 import { GATED_SWITCHES, switchShown, type SwitchId } from '../switches';
 import { GATED_MAPS } from '../world/layout/data';
@@ -196,8 +197,16 @@ class Menus implements MenusApi {
     if (this.kind === 'title') this.showTitle(this.lastBest);
   }
 
-  /** Playing needs a signed-in account whenever there is a server to sign in to. */
+  /**
+   * The pick needs a Discord sign-in: a guest (signed out, with a server to sign in to) plays only the maps open to
+   * guests, never co-op or the card hunt. The game works it out (`ModeInfo.login`).
+   */
   private get locked(): boolean {
+    return this.guest && !!this.info.login;
+  }
+
+  /** Signed out, with a server to sign in to. */
+  private get guest(): boolean {
     return this.account.online && this.account.name === null;
   }
 
@@ -467,6 +476,10 @@ class Menus implements MenusApi {
     const close = this.button(panel, 'CLOSE', 'mini closer', closePanel);
     close.setAttribute('aria-label', 'Close');
     const show = this.tabs(panel, buildControlsPanel(this.touch), this.makeSettingsPanel(), 'controls');
+    this.button(panel, 'SHOW THE TOUR AGAIN', 'ghost tour-again', () => {
+      closePanel();
+      this.cb.onTourAgain();
+    });
     const showTab = (w: 'controls' | 'settings'): void => {
       show(w);
       panel.classList.add('floating');
@@ -519,7 +532,16 @@ class Menus implements MenusApi {
     this.qualityChip = this.button(foot, '', 'quality', () => showTab('settings'));
     this.qualityChip.title = 'Graphics quality - open Settings to change it';
     this.syncQualityChip();
-    if (this.account.online && !this.locked) {
+    if (this.guest) {
+      // a guest: playing the free zones; one click to sign in for the rest
+      const acct = el('div', 'ds-l-acct guest', foot);
+      el('span', 'avatar', acct, '?');
+      const who = el('div', 'who', acct);
+      el('b', '', who, 'GUEST');
+      const tools = el('div', 'tools', who);
+      const inn = this.button(tools, 'Sign in with Discord', 'lnk', () => this.cb.onSignIn('foot'));
+      inn.classList.remove('ds-btn');
+    } else if (this.account.online) {
       const acct = el('div', 'ds-l-acct', foot);
       if (this.account.avatar) {
         const img = el('img', 'avatar', acct);
@@ -554,14 +576,14 @@ class Menus implements MenusApi {
 
       const cta = el('div', 'ds-l-cta', hero);
       if (this.locked) {
-        const b = this.button(cta, '', 'primary big discord', () => window.location.assign(this.account.loginUrl));
-        const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, b);
-        svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
-        el('span', '', b, 'SIGN IN WITH DISCORD TO PLAY');
+        const login = this.info.login ?? 'map';
+        first = this.discordButton(cta, login === 'map' ? 'SIGN IN WITH DISCORD TO PLAY THIS ZONE' : 'SIGN IN WITH DISCORD TO PLAY', login === 'map' ? this.info.map : login);
         const why = el('div', 'why', cta);
         el('b', '', why, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE - TRY AGAIN' : 'FREE, RIGHT HERE IN YOUR BROWSER');
         el('span', '', why, 'One click. Only your Discord name and avatar are read.');
-        first = b;
+        // a zone open to guests, one click away
+        const free = this.info.freeMap;
+        if (free && free !== this.info.map) this.button(cta, `PLAY ${MAP_TEXT[free].name.toUpperCase()} NOW - NO SIGN-IN`, 'ghost free', () => this.cb.onMapChange(free));
       } else {
         const go = this.button(cta, roam ? 'FREE ROAM' : coop ? 'OPEN LOBBY' : 'PLAY', 'primary big', () => this.deploy());
         go.setAttribute('aria-label', roam ? `Free roam ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
@@ -589,14 +611,18 @@ class Menus implements MenusApi {
           const hunt = mode === 'cards';
           const t = this.button(opts, hunt ? 'MAZOKU CARD HUNT  ON' : 'MAZOKU CARD HUNT  OFF', hunt ? 'toggle on' : 'toggle', () => this.cb.onModeChange(hunt ? 'standard' : 'cards'));
           t.setAttribute('aria-pressed', hunt ? 'true' : 'false');
-          el('span', 'hint', opts, 'Adds five card carriers to put down and collect, on top of the mission.');
+          el('span', 'hint', opts, this.guest ? 'Adds five card carriers to put down and collect. Cards are kept on your account: needs a Discord sign-in.' : 'Adds five card carriers to put down and collect, on top of the mission.');
         }
       }
       el(
         'p',
         'ds-l-note',
         hero,
-        this.locked ? 'You can look around the menu first: the zones, the leaderboards and the bestiary are open to everyone.' : this.touch ? 'Play goes fullscreen. Tap II at any time to pause.' : 'Press Enter to play. Esc pauses at any time.',
+        this.locked
+          ? 'Zones marked FREE play without signing in. The leaderboards and the bestiary are open to everyone.'
+          : this.guest
+            ? `Playing as a guest: no sign-in needed here. ${this.touch ? 'Tap II at any time to pause.' : 'Press Enter to play, Esc pauses.'}`
+            : this.touch ? 'Play goes fullscreen. Tap II at any time to pause.' : 'Press Enter to play. Esc pauses at any time.',
       );
 
       // ---- below: the zones, and what you do on this one ----
@@ -987,6 +1013,59 @@ class Menus implements MenusApi {
     }
     this.loadText.textContent = text;
     this.loadFill.style.transform = `scaleX(${Math.max(0, Math.min(1, fraction)).toFixed(3)})`;
+  }
+
+  /** The Discord sign-in button (`reason` goes to the analytics). */
+  private discordButton(parent: HTMLElement, label: string, reason: string): HTMLButtonElement {
+    const b = this.button(parent, '', 'primary big discord', () => this.cb.onSignIn(reason));
+    const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, b);
+    svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
+    el('span', '', b, label);
+    return b;
+  }
+
+  /** Ask a guest to sign in, over the title (outside the screen node: a redraw of the title keeps it). */
+  showLoginPrompt(p: LoginPrompt): void {
+    if (!this.root) return;
+    this.layer.querySelector('.ds-login')?.remove();
+    const back = el('div', 'ds-login', this.layer);
+    const box = el('div', 'ds-login-box ds-panel ds-brk', back);
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', p.title);
+    el('h2', '', box, p.title);
+    el('p', '', box, p.text);
+    const acts = el('div', 'acts', box);
+    const go = this.discordButton(acts, 'SIGN IN WITH DISCORD', p.reason);
+    const close = (): void => {
+      back.remove();
+      this.screen?.querySelector<HTMLElement>('.ds-l-cta .ds-btn')?.focus({ preventScroll: true });
+    };
+    if (p.free) {
+      const map = p.free.map;
+      this.button(acts, p.free.label, 'ghost', () => {
+        back.remove();
+        if (map !== this.info.map) this.cb.onMapChange(map);
+      });
+    }
+    this.button(acts, 'NOT NOW', 'ghost', close);
+    el('span', 'fine', box, 'Free. One click. Only your Discord name and avatar are read.');
+    back.addEventListener('click', (e) => {
+      if (e.target === back) close();
+    });
+    back.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close();
+      }
+    });
+    go.focus({ preventScroll: true });
+  }
+
+  /** The first-run tour over the title screen. */
+  startTour(steps: TourStep[]): void {
+    if (!this.root || this.kind !== 'title' || !steps.length) return;
+    runTour(this.layer, steps, (event, detail) => this.cb.onTour(event, detail));
   }
 
   flash(text: string): void {

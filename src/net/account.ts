@@ -35,9 +35,11 @@ export interface Account {
   lockedSwitches: SwitchId[];
   /** The leaderboards are on (an admin can switch them all off). */
   boards: boolean;
+  /** Maps a guest (no Discord sign-in) may play solo, switched from the admin page; co-op and the card hunt never. */
+  guestMaps: MapId[];
 }
 
-const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS], lockedFilms: [...GATED_FILMS], lockedSwitches: [...GATED_SWITCHES], boards: true };
+const OFFLINE: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [...GATED_MAPS], lockedFilms: [...GATED_FILMS], lockedSwitches: [...GATED_SWITCHES], boards: true, guestMaps: [...MAP_IDS] };
 
 /**
  * What a map is to this player. `open`: live for everyone (always so). `public`: one of `GATED_MAPS`, opened to
@@ -55,6 +57,25 @@ export function mapAccess(a: Account, map: MapId): MapAccess {
 /** The first map this player may pick (the admins keep at least one live). */
 export function firstOpenMap(a: Account): MapId {
   return MAP_IDS.find((m) => mapAccess(a, m) !== 'locked') ?? 'district';
+}
+
+/** Why a sign-in is needed for a run: the map, co-op, or the card hunt (cards are kept per account). */
+export type LoginReason = 'map' | 'coop' | 'cards';
+
+/**
+ * Does this player need to sign in with Discord to play `mode` on `map`? Only a guest on a server: guests play solo on
+ * the maps open to guests; co-op and the card hunt always need a sign-in. Null when they may play.
+ */
+export function needsLogin(a: Account, map: MapId, mode: GameMode): LoginReason | null {
+  if (!a.online || a.user) return null;
+  if (mode === 'coop') return 'coop';
+  if (mode === 'cards') return 'cards';
+  return a.guestMaps.includes(map) ? null : 'map';
+}
+
+/** The first map a guest may play (null when none is open to guests). */
+export function firstGuestMap(a: Account): MapId | null {
+  return MAP_IDS.find((m) => a.guestMaps.includes(m) && mapAccess(a, m) !== 'locked') ?? null;
 }
 
 /**
@@ -78,7 +99,7 @@ export async function loadAccount(): Promise<Account> {
   try {
     const r = await fetch('/api/me', { headers: { accept: 'application/json' } });
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ...OFFLINE };
-    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; openMaps?: unknown; lockedMaps?: unknown; openFilms?: unknown; lockedFilms?: unknown; openSwitches?: unknown; lockedSwitches?: unknown; boards?: unknown };
+    const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; openMaps?: unknown; lockedMaps?: unknown; openFilms?: unknown; lockedFilms?: unknown; openSwitches?: unknown; lockedSwitches?: unknown; boards?: unknown; guestMaps?: unknown };
     return {
       online: true,
       user: d.user,
@@ -91,6 +112,7 @@ export async function loadAccount(): Promise<Account> {
       lockedFilms: lockedFilmsOf(d.openFilms, d.lockedFilms),
       lockedSwitches: lockedSwitchesFrom(d.openSwitches, d.lockedSwitches),
       boards: d.boards !== false,
+      guestMaps: Array.isArray(d.guestMaps) ? MAP_IDS.filter((m) => (d.guestMaps as unknown[]).includes(m)) : [],
     };
   } catch {
     return { ...OFFLINE };
@@ -100,6 +122,52 @@ export async function loadAccount(): Promise<Account> {
 /** `page`: which page the visit is to (the pages beside the game report their own). */
 export function reportVisit(touch: boolean, page: 'game' | 'excalibur' | 'hollow' | 'bestiary' = 'game'): void {
   void post('/api/visit', { touch, page });
+}
+
+/** The first-run tour's steps and the sign-in prompts (the server keeps the same list: EVENTS in server/index.mjs). */
+export type GameEvent = 'tour_shown' | 'tour_step' | 'tour_done' | 'tour_skip' | 'login_prompt' | 'login_click';
+
+/** `detail`: why a sign-in was asked for (a map id, 'coop', 'cards', 'board') or which tour step. */
+export function reportEvent(name: GameEvent, detail: string | null = null): void {
+  void post('/api/event', { name, detail });
+}
+
+const AFTER_LOGIN = 'deadsignal.afterLogin';
+
+/** What the player had picked when they went to sign in (Discord sends them back to the bare page). */
+export interface AfterLogin {
+  map: MapId;
+  mode: GameMode;
+  room: string | null;
+}
+
+/** Remember the pick, then go to the Discord sign-in. */
+export function goSignIn(a: Account, pick: AfterLogin, reason: string): void {
+  reportEvent('login_click', reason);
+  try {
+    sessionStorage.setItem(AFTER_LOGIN, JSON.stringify(pick));
+  } catch {
+    /* storage off: they land on the title as before */
+  }
+  window.location.assign(a.loginUrl);
+}
+
+/** The pick from before the sign-in, once (cleared as it is read). */
+export function takeAfterLogin(): AfterLogin | null {
+  try {
+    const raw = sessionStorage.getItem(AFTER_LOGIN);
+    if (raw === null) return null;
+    sessionStorage.removeItem(AFTER_LOGIN);
+    const v = JSON.parse(raw) as Partial<AfterLogin>;
+    const modes: GameMode[] = ['standard', 'cards', 'roam', 'coop'];
+    return {
+      map: asMapId(v.map),
+      mode: modes.includes(v.mode as GameMode) ? (v.mode as GameMode) : 'standard',
+      room: typeof v.room === 'string' && /^[A-Za-z0-9]{1,12}$/.test(v.room) ? v.room : null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function ping(): void {

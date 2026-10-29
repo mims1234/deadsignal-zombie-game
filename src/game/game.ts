@@ -25,7 +25,7 @@ import { escalationPhase, missionClock } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
-import { type Account, type RunPerf, RunTracker, firstOpenMap, loadAccount, logout, mapAccess, ping, reportPlayer, reportVisit, roomInfo } from '../net/account';
+import { type Account, type LoginReason, type RunPerf, RunTracker, firstGuestMap, firstOpenMap, goSignIn, loadAccount, logout, mapAccess, needsLogin, ping, reportEvent, reportPlayer, reportVisit, roomInfo, takeAfterLogin } from '../net/account';
 import { switchOfKind, switchShown } from '../switches';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
@@ -35,13 +35,13 @@ import { deviceReport } from '../render/device';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
 import { setSkyColors } from '../render/stage';
-import { hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSakura, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
+import { hasStoredMap, hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSakura, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
 import type { BestRun, GameMode, MissionStats, QualityLevel, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
 import { createTouchControls, type TouchControlsApi } from '../ui/touchControls';
-import type { MenusApi, ModeInfo } from '../ui/hudTypes';
+import type { MenusApi, ModeInfo, TourStep } from '../ui/hudTypes';
 import { GrenadeSystem, rocketForPrewarm } from '../weapons/grenades';
 import { createViewmodels } from '../weapons/viewmodels';
 import type { ViewmodelSet } from '../weapons/viewmodelTypes';
@@ -110,6 +110,23 @@ function hintShown(): boolean {
 function markHintShown(): void {
   try {
     localStorage.setItem(QUALITY_HINT, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+/** The first-run tour of the title screen is shown once per browser (again from the controls overlay). */
+const TOUR = 'deadsignal.tour.v1';
+function tourSeen(): boolean {
+  try {
+    return localStorage.getItem(TOUR) === '1';
+  } catch {
+    return true;
+  }
+}
+function markTourSeen(): void {
+  try {
+    localStorage.setItem(TOUR, '1');
   } catch {
     /* ignore */
   }
@@ -184,8 +201,11 @@ export class Game implements GameCtx {
   roamBase: 'standard' | 'cards' = 'standard';
   /** The player's own difficulty picks (solo runs, and the defaults for a co-op session they create). */
   difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' };
-  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [], lockedFilms: [], lockedSwitches: [], boards: true };
-  private readonly tracker = new RunTracker(() => this.account.online && this.account.user !== null);
+  account: Account = { online: false, user: null, admin: false, banned: false, banReason: '', cards: {}, loginUrl: '', lockedMaps: [], lockedFilms: [], lockedSwitches: [], boards: true, guestMaps: [] };
+  // a guest's runs are reported too (on the maps open to guests): the server keeps them for the analytics, off the boards
+  private readonly tracker = new RunTracker(() => this.account.online && !this.account.banned && (this.account.user !== null || needsLogin(this.account, this.mapId, this.mode) === null));
+  /** An invite link a guest followed: kept across the sign-in. */
+  private pendingRoom: string | null = null;
   readonly worldRoot = new THREE.Group();
   rng = new Rng(1337);
   session: Session = newSession();
@@ -309,6 +329,12 @@ export class Game implements GameCtx {
         this.storyPick = isStory(id) && switchShown(this.account, `story-${id}`) ? id : null;
         this.menus.setModeInfo(this.modeInfo());
       },
+      onSignIn: (reason) => this.signIn(reason),
+      onTour: (event, detail) => {
+        reportEvent(event, detail);
+        if (event === 'tour_done' || event === 'tour_skip') markTourSeen();
+      },
+      onTourAgain: () => this.startTour(),
     });
     this.menus.mount(uiRoot);
     this.menus.setTouchMode(this.touchMode);
@@ -331,6 +357,40 @@ export class Game implements GameCtx {
     // a mode remembered from before it was switched off: back to Standard
     if (!this.modeOpen(this.roamBase)) this.roamBase = 'standard';
     if (!this.modeOpen(this.mode)) this.mode = this.mode === 'roam' && this.modeOpen(this.roamBase) ? this.roamBase : 'standard';
+    const guest = this.account.online && !this.account.user;
+    if (guest) {
+      // the card hunt keeps its cards on an account: a guest's remembered one goes back to Standard
+      if (this.mode === 'cards') this.mode = 'standard';
+      if (this.roamBase === 'cards') this.roamBase = 'standard';
+      // a first visit starts on a zone open to guests
+      const free = firstGuestMap(this.account);
+      if (free && !hasStoredMap()) this.mapId = free;
+    }
+    // back from the Discord sign-in: what was picked before it (the map, the mode, an invite)
+    const after = this.account.user ? takeAfterLogin() : null;
+    if (after) {
+      if (after.mode === 'coop') {
+        if (!after.room) {
+          try {
+            sessionStorage.setItem(REOPEN_LOBBY, '1');
+          } catch {
+            /* ignore */
+          }
+        }
+      } else if (this.modeOpen(after.mode)) {
+        this.mode = after.mode;
+        saveMode(after.mode);
+      }
+      if (after.room) {
+        window.location.assign(`${window.location.pathname}?room=${encodeURIComponent(after.room)}`);
+        return true;
+      }
+      if (after.map !== this.mapId && mapAccess(this.account, after.map) !== 'locked') {
+        saveMap(after.map);
+        window.location.assign(window.location.pathname);
+        return true;
+      }
+    }
     // a map that is not open to this player (switched to admins only): the first one that is.
     // An invite to a co-op session on it still gets in - the session's owner chose the map.
     if (mapAccess(this.account, this.mapId) === 'locked' && !new URLSearchParams(window.location.search).get('room')) {
@@ -645,6 +705,8 @@ export class Game implements GameCtx {
     // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
     const invite = new URLSearchParams(window.location.search);
     const code = invite.get('room');
+    // a guest on an invite link: co-op needs Discord (the invite is kept across the sign-in)
+    if (code && this.account.online && !this.account.user) this.askLogin('coop', code.toUpperCase().slice(0, 12));
     // a link to a session that has ended (or never existed) is just the main page, with a word about why
     const info = code && this.account.user ? await roomInfo(code) : null;
     const live = !!info;
@@ -678,6 +740,8 @@ export class Game implements GameCtx {
       // the map was changed with Co-op picked: back to the lobby on the new map
       this.setMode('coop');
     }
+    // first time here (a guest, or a new player): the tour of the title screen
+    if (this.account.online && !code && !tourSeen() && (!this.account.user || !hasStoredSettings())) this.startTour();
     this.lastT = 0;
     this.raf = requestAnimationFrame(this.frame);
     return true;
@@ -692,7 +756,8 @@ export class Game implements GameCtx {
     document.addEventListener('keydown', this.onKeyDownGlobal);
     window.addEventListener('pagehide', () => this.closeRun(true));
     window.setInterval(() => {
-      if (this.account.user && document.visibilityState === 'visible') ping();
+      // a guest only while playing (its row is made by its first run)
+      if (this.account.online && document.visibilityState === 'visible' && (this.account.user || this.tracker.running)) ping();
     }, 60000);
     if (typeof ResizeObserver === 'function') {
       this.resizeObserver = new ResizeObserver(() => this.renderer.resize());
@@ -828,18 +893,71 @@ export class Game implements GameCtx {
 
   /** What the title screen shows as picked. */
   private modeInfo(): ModeInfo {
-    const maps = MAP_IDS.flatMap((id) => {
+    const guest = this.account.online && !this.account.user;
+    const all = MAP_IDS.flatMap((id): { id: MapId; badge?: string; badgeTone?: 'good' | 'warn' }[] => {
       const a = mapAccess(this.account, id);
       // a map that is not open is not listed - unless it is the one of the co-op session this player was invited into
       if (a === 'locked' && !(id === this.mapId && this.coop.room.room?.map === id)) return [];
       // the badge is for admins (and dev builds): players just see the map once it is public
       const b = a === 'admin-only' ? (['ADMIN ONLY', 'warn'] as const) : a === 'dev-only' ? (['DEV ONLY', 'warn'] as const) : a === 'public' && this.account.admin ? (['PUBLIC', 'good'] as const) : null;
+      // a guest: FREE on a zone open to guests, SIGN IN on the rest
+      if (guest) return [this.account.guestMaps.includes(id) ? { id, badge: 'FREE', badgeTone: 'good' as const } : { id, badge: 'SIGN IN', badgeTone: 'warn' as const }];
       return [{ id, badge: b?.[0], badgeTone: b?.[1] }];
     });
+    // a guest sees the free zones first
+    const maps = guest ? [...all.filter((m) => m.badge === 'FREE'), ...all.filter((m) => m.badge !== 'FREE')] : all;
     // the Sakura District's story missions, once the Thousand Lanterns has been seen through
     // (each can be switched off from the admin page)
     const stories = this.mapId === 'sakura' ? storiesOpen(loadSakura().egg).filter((id) => switchShown(this.account, `story-${id}`)).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
-    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '' };
+    return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '', login: needsLogin(this.account, this.mapId, this.mode), freeMap: guest ? firstGuestMap(this.account) : null };
+  }
+
+  /** Ask a guest to sign in with Discord: for co-op, the card hunt or a zone that needs it (`room`: an invite to keep). */
+  private askLogin(reason: LoginReason, room: string | null = null): void {
+    this.pendingRoom = room;
+    const detail = reason === 'map' ? this.mapId : reason;
+    reportEvent('login_prompt', detail);
+    const name = MAP_TEXT[this.mapId].name;
+    const free = firstGuestMap(this.account);
+    const [title, text] =
+      reason === 'coop'
+        ? ['CO-OP NEEDS DISCORD', 'Playing with friends needs a free Discord sign-in, so your friends can find you and the session knows who is who.']
+        : reason === 'cards'
+          ? ['THE CARD HUNT NEEDS DISCORD', 'The cards you recover are kept on your account: sign in with Discord to start collecting them.']
+          : [`${name.toUpperCase()} NEEDS DISCORD`, `${name} opens with a free Discord sign-in, along with co-op, the card hunt and the leaderboards.`];
+    const label = !free ? null : free === this.mapId ? 'PLAY WITHOUT SIGNING IN' : `PLAY ${MAP_TEXT[free].name.toUpperCase()} - NO SIGN-IN`;
+    this.menus.showLoginPrompt({ reason: detail, title, text, free: free && label ? { label, map: free } : null });
+  }
+
+  /** To the Discord sign-in, keeping what was picked (and any invite) for the way back. */
+  private signIn(reason: string): void {
+    const mode: GameMode = reason === 'coop' ? 'coop' : reason === 'cards' ? 'cards' : this.mode;
+    goSignIn(this.account, { map: this.mapId, mode, room: this.pendingRoom }, reason);
+  }
+
+  /** The first-run tour of the title screen: the zones, how to play, and what a Discord sign-in opens. */
+  private startTour(): void {
+    if (this.state !== 'title') return;
+    const guest = this.account.online && !this.account.user;
+    const free = firstGuestMap(this.account);
+    const steps: TourStep[] = [
+      {
+        id: 'zones',
+        target: '.ds-l-zones',
+        title: 'PICK A ZONE',
+        text: guest && free ? `Start with the zones marked FREE: ${MAP_TEXT[free].name} plays right now, no sign-in.` : 'Each zone is its own mission. Pick one here.',
+      },
+      {
+        id: 'play',
+        target: '.ds-l-cta',
+        title: 'DEPLOY',
+        text: this.touchMode ? 'Tap PLAY to deploy: it goes fullscreen. Tap II at any time to pause.' : 'PLAY (or Enter) deploys you. Esc pauses; CONTROLS on the side menu has every key.',
+      },
+      guest
+        ? { id: 'signin', target: '.ds-l-acct', title: 'MORE WITH DISCORD', text: 'The other zones, co-op with friends, the card hunt and the leaderboards open with a free Discord sign-in, whenever you want.' }
+        : { id: 'more', target: '.ds-l-nav', title: 'MORE TO DO', text: 'WITH FRIENDS opens a co-op lobby; the leaderboards and the bestiary are on the side menu.' },
+    ];
+    this.menus.startTour(steps);
   }
 
   /** Title screen: the infected's difficulty and the AI squad's skill for solo runs (and new co-op sessions). */
@@ -859,6 +977,12 @@ export class Game implements GameCtx {
   setMode(mode: GameMode): void {
     if (this.state !== 'title') return;
     if (!this.modeOpen(mode)) return; // switched off from the admin page
+    // a guest: co-op and the card hunt need a Discord sign-in
+    const login = needsLogin(this.account, this.mapId, mode);
+    if (login === 'coop' || login === 'cards') {
+      this.askLogin(login);
+      return;
+    }
     // with free roam on, picking Standard / Standard Mazoku only changes what it returns to
     if (this.mode === 'roam' && (mode === 'standard' || mode === 'cards')) {
       this.roamBase = mode;
@@ -981,7 +1105,12 @@ export class Game implements GameCtx {
 
   /** Deploy / restart button (inside a click). */
   requestStart(restart: boolean): void {
-    if (this.account.online && !this.account.user) return; // the title screen offers sign-in instead
+    // a guest on a pick that needs Discord: the sign-in, with a zone open to guests beside it
+    const login = needsLogin(this.account, this.mapId, this.mode);
+    if (login) {
+      this.askLogin(login);
+      return;
+    }
     // a map or a mode that is not open to this player (left over from a session they were invited into): never played
     if (this.mode !== 'coop' && (mapAccess(this.account, this.mapId) === 'locked' || !this.modeOpen(this.mode))) {
       this.menus.flash('That is not open yet.');

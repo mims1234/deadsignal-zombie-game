@@ -110,6 +110,7 @@
       <section data-tab="overview">
         <div class="card tablewrap live"><h3>Co-op live now <span class="pill" id="liveN">0</span></h3><div class="sub">Every open session, refreshed every 15 seconds. Open the game with the link to watch unseen.</div><div class="filters"><input id="liveQ" placeholder="Code, owner or player" size="22" /></div><div id="live"></div></div>
         <div class="tiles" id="tiles"></div>
+        <div class="card"><h3>Guests</h3><div class="sub">Played without Discord, on the maps open to guests (Visibility). Guest runs count in every number here but never rank on the leaderboards.</div><div class="tiles" id="guestTiles"></div><div class="grid g2"><div class="tablewrap"><h4>Tour and sign-in</h4><div id="guestFunnel"></div></div><div class="tablewrap"><h4>Asked to sign in for</h4><div id="guestPrompts"></div><h4>Guest runs per map</h4><div id="guestMaps"></div></div></div></div>
         <div class="grid g2">
           <div class="card"><h3>Site visits per day</h3><div class="sub" id="visitsSub"></div><div class="chart" id="visits"></div><div class="axis" id="visitsAxis"></div></div>
           <div class="card"><h3>Runs started per day</h3><div class="sub" id="runsSub"></div><div class="chart" id="runs"></div><div class="axis" id="runsAxis"></div></div>
@@ -392,6 +393,24 @@
         fails.set(o.failReasons);
         cards.set(o.cardTotals);
         topPlayers.set(o.topPlayers);
+        const g = o.guests;
+        if (g) {
+          $('guestTiles').replaceChildren(
+            tile(num(g.visitors), 'Guest visitors', 'not signed in'),
+            tile(num(g.players), 'Guests who played', `${num(g.runs)} runs`),
+            tile(hours(g.playSeconds), 'Guest time played', `${num(g.online)} online now`),
+            tile(num(g.signedUp), 'Signed in after', `${pct(g.signedUp, g.players)} of guests who played`),
+          );
+          const f = g.funnel;
+          const step = (label, e) => h('tr', null, h('td', null, label), h('td', { class: 'num' }, num(e.visitors)), h('td', { class: 'num' }, pct(e.visitors, f.tour_shown.visitors || g.visitors)));
+          $('guestFunnel').replaceChildren(h('table', null,
+            h('thead', null, h('tr', null, h('th', null, 'Step'), h('th', { class: 'num' }, 'People'), h('th', { class: 'num' }, 'Of shown'))),
+            h('tbody', null, step('Saw the tour', f.tour_shown), step('Finished it', f.tour_done), step('Skipped it', f.tour_skip), step('Asked to sign in', f.login_prompt), step('Pressed sign in', f.login_click)),
+          ));
+          const REASON = { coop: 'Co-op', cards: 'Card hunt', board: 'The leaderboard' };
+          $('guestPrompts').replaceChildren(g.prompts.length ? h('table', null, h('tbody', null, g.prompts.map((p) => h('tr', null, h('td', null, REASON[p.reason] || MAP(p.reason)), h('td', { class: 'num' }, num(p.n)))))) : h('div', { class: 'empty' }, 'None in this range.'));
+          $('guestMaps').replaceChildren(g.maps.length ? h('table', null, h('tbody', null, g.maps.map((m) => h('tr', null, h('td', null, MAP(m.map)), h('td', { class: 'num' }, `${num(m.runs)} runs`), h('td', { class: 'num' }, `${num(m.players)} guests`))))) : h('div', { class: 'empty' }, 'No guest runs in this range.'));
+        }
         const c = o.coop;
         $('coopTiles').replaceChildren(
           tile(num(c.sessions), 'Sessions created', `${num(c.private)} invite-only`),
@@ -554,7 +573,7 @@
       // ---------------------------------------------------------------- visibility (every map, film, mode, story, feature and page)
       /** What each group is, in a line under its title. */
       const GROUP_NOTE = {
-        maps: 'A map players cannot pick is also gone from the leaderboards and the bestiary; anyone on it is moved to the first live map.',
+        maps: 'A map players cannot pick is also gone from the leaderboards and the bestiary; anyone on it is moved to the first live map. Guests: a live map open to guests can be played without Discord (solo only; their runs count in the stats, never on the boards); the rest ask for a Discord sign-in.',
         films: 'An admin-only film leaves the CINEMATICS page, the bestiary and the sitemap, and its page and files are not served to players.',
         modes: 'Co-op hides WITH FRIENDS and refuses new sessions; Free roam and the card hunt leave the title screen and the co-op lobby.',
         hosting: 'Which ways to host a co-op session the lobby offers.',
@@ -575,7 +594,15 @@
             const last = i.public && live <= 1 && (g.key === 'maps' || g.key === 'hosting');
             const b = h('button', { class: i.public ? 'danger' : '', title: last ? 'At least one must stay live' : '', on: { click: () => setVisibility(i).catch(fail) } }, last ? 'Last one live' : i.public ? 'Make admin only' : 'Make live');
             b.disabled = last;
-            return h('tr', null, h('td', null, i.name), h('td', null, h('span', { class: i.public ? 'pill victory' : 'pill abandoned' }, i.public ? 'Live' : 'Admin only')), h('td', null, b));
+            const cells = [h('td', null, i.name), h('td', null, h('span', { class: i.public ? 'pill victory' : 'pill abandoned' }, i.public ? 'Live' : 'Admin only')), h('td', null, b)];
+            // maps: open to guests (no Discord) or Discord sign-in; only a live map is ever open to guests
+            if (g.key === 'maps') {
+              const pill = !i.public ? h('span', { class: 'pill', title: 'Make it live first' }, i.guest ? 'Guests (once live)' : 'Discord login') : h('span', { class: i.guest ? 'pill victory' : 'pill' }, i.guest ? 'Guests can play' : 'Discord login');
+              cells.push(h('td', null, pill), h('td', null, h('button', { on: { click: () => setGuest(i).catch(fail) } }, i.guest ? 'Require Discord' : 'Open to guests')));
+            }
+            // co-op always needs a Discord sign-in: no switch opens it to guests
+            if (i.id === 'coop') cells.push(h('td', null, h('span', { class: 'pill' }, 'Always needs Discord login')));
+            return h('tr', null, cells);
           });
           return h('div', { class: 'card tablewrap' }, h('h3', null, g.title), h('div', { class: 'sub' }, GROUP_NOTE[g.key] || ''), h('table', null, h('tbody', null, rows)));
         }));
@@ -583,6 +610,11 @@
       async function setVisibility(i) {
         if (!confirm(i.public ? `Take ${i.name} off for players (admins only)? Players stop seeing it on their next page load.` : `Make ${i.name} live for every player?`)) return;
         await api(`/api/admin/visibility/${encodeURIComponent(i.id)}`, { public: !i.public });
+        await loadVisibility();
+      }
+      async function setGuest(i) {
+        if (!confirm(i.guest ? `Make ${i.name} need a Discord sign-in? Guests stop seeing it as free on their next page load.` : `Let guests play ${i.name} without Discord (solo; never co-op or the card hunt)?`)) return;
+        await api(`/api/admin/visibility/${encodeURIComponent(i.id)}/guest`, { guest: !i.guest });
         await loadVisibility();
       }
 

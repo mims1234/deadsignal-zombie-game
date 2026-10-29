@@ -119,6 +119,15 @@ export function loadMap(): MapId {
   }
 }
 
+/** A map was picked on this browser before (a first visit has none). */
+export function hasStoredMap(): boolean {
+  try {
+    return window.localStorage.getItem(KEY_MAP) !== null;
+  } catch {
+    return true;
+  }
+}
+
 export function saveMap(map: MapId): void {
   try {
     window.localStorage.setItem(KEY_MAP, map);
