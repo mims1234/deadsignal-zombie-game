@@ -9,6 +9,8 @@ It is a standalone story: nothing in it continues KAIKA, AURELIA, the Forge or t
 
 ## Status
 
+**Redesigned in v0.4.323 as "The Last Service"**: the change-spotting loop and the echo passengers are gone. Five jobs (wind the clock with the key from the tunnel, power the crossing, return five lost tickets, retie the shrine rope, make the announcement), each lighting a lamp on the board by the bell; the night takes an area whenever its 7-minute clock runs out with no job done (mist that hurts); Ren is an escort after the fifth call. See `src/mujin/jobs.ts`. The sections below describe the first design.
+
 **Built (2026-10-30) as MUJIN**, map id `mujin`, admin only (`GATED_MAPS`). All phases are in:
 
 - **The map** (`src/world/layout/mujin.ts`, `src/mujin/places.ts`): the station, two platforms, the footbridge, the level

@@ -1,17 +1,16 @@
 /**
- * What the station looks like, loop by loop (the screen only; the map's walls and floors are `layout/mujin.ts`): the
- * five lamps on platform 1's canopy, the station's things that can change (each drawn both ways), the people who
- * wait here (passengers on platform 1, on the bench, a body on platform 2), the fog over what the night has taken,
- * the level crossing's lamps, Ren.
+ * What the station looks like as it comes back to life (the screen only; the map's walls and floors are
+ * `layout/mujin.ts`): the lamp board beside the bell, the jobs' things (the winding key in the tunnel mouth, the clock
+ * stopped until it is wound, the breakers by the crossing, the lost tickets, the gates red until they are fed, the
+ * shrine's rope black until it is retied, the PA desk), the station's dressing (the sign, the timetable, the poster,
+ * the map), the level crossing's lamps, the night's mist over what it has taken, and Ren.
  */
 import * as THREE from 'three';
 import { Avatar } from '../coop/avatar';
 import { animeModel } from '../anime/vrm';
 import { ANIMEOPS } from './cast';
-import { ANOMALIES } from './anomalies';
-import { MUJIN, PLATFORM_Y, SEALS, SPOTS, type SpotId } from './places';
-
-const spot = (id: SpotId): (typeof SPOTS)[number] => SPOTS.find((s) => s.id === id)!;
+import { MujinJobs, type JobsView, REN_STATE } from './jobs';
+import { MUJIN, PLACES, PLATFORM_Y, SEALS } from './places';
 
 /** A texture drawn on a canvas. */
 function canvasTex(w: number, h: number, draw: (g: CanvasRenderingContext2D, w: number, h: number) => void): THREE.CanvasTexture {
@@ -30,58 +29,109 @@ function board(tex: THREE.Texture, w: number, h: number, glow = 0): THREE.Mesh {
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, emissive: glow ? 0xffffff : 0, emissiveMap: glow ? tex : null, emissiveIntensity: glow }));
 }
 
-/** A thing drawn two ways: as it should be, and as it is when it is the change. */
-interface Twin {
-  normal: THREE.Object3D[];
-  wrong: THREE.Object3D[];
-}
-
 const std = (color: number, o: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness: 0.75, ...o });
+
+/** The night's mist: dark, drifting, thick at the ground and thinning upward; `edge` makes a wall that frays at its top. */
+function mistMaterial(edge: boolean): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: { time: { value: 0 }, fade: { value: 0 }, height: { value: edge ? 7 : 6 } },
+    vertexShader: `
+      varying vec3 vW;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vW = w.xyz;
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: `
+      uniform float time; uniform float fade; uniform float height;
+      varying vec3 vW;
+      float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float n(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+      float fbm(vec2 p) { float s = 0.0; float a = 0.5; for (int k = 0; k < 4; k++) { s += a * n(p); p *= 2.03; a *= 0.5; } return s; }
+      void main() {
+        vec2 q = vec2(vW.x + vW.z * 0.7, vW.y * 1.6) * 0.22;
+        float m = fbm(q + vec2(time * 0.05, -time * 0.11)) * 0.65 + fbm(q * 2.3 - vec2(time * 0.09, time * 0.04)) * 0.35;
+        float up = clamp(vW.y / height, 0.0, 1.0);
+        float body = (1.0 - smoothstep(0.15, 1.0, up + (m - 0.5) * 0.7));
+        float a = body * (0.55 + 0.45 * m) * fade;
+        vec3 col = mix(vec3(0.012, 0.012, 0.03), vec3(0.11, 0.09, 0.2), m * (1.0 - up));
+        gl_FragColor = vec4(col, a * 0.92);
+      }`,
+  });
+}
 
 export class StationLook {
   readonly root = new THREE.Group();
   private readonly lamps: THREE.Mesh[] = [];
-  private readonly lampLight = new THREE.PointLight(0xffb070, 0, 16, 2);
-  private readonly twins = new Map<string, Twin>();
-  private shown: string | null = null;
+  private readonly lampLight = new THREE.PointLight(0x5cff9a, 0, 10, 2);
   private readonly hands: { h: THREE.Object3D; m: THREE.Object3D; s: THREE.Object3D };
   private readonly crossLamps: THREE.Mesh[] = [];
   private readonly crossMat = std(0x300606, { emissive: 0xff1a10, emissiveIntensity: 0 });
-  private readonly fog: THREE.Mesh[] = [];
-  private readonly fogMat = new THREE.MeshBasicMaterial({ color: 0x020205, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-  /** The people who wait: platform 1's row, the bench, the body; and the ones only some loops have. */
-  readonly rows: Avatar[] = [];
-  readonly bench: Avatar[] = [];
-  readonly body: Avatar;
-  readonly extra: { row: Avatar; bench: Avatar; bridge: Avatar; window: Avatar; you: Avatar };
+  private readonly gateLights: THREE.Mesh[] = [];
+  private readonly key: THREE.Group;
+  private readonly keyLight = new THREE.PointLight(0xffd070, 0, 6, 2);
+  private readonly breakers: { lever: THREE.Object3D; lamp: THREE.Mesh }[] = [];
+  private readonly tickets: THREE.Mesh[] = [];
+  private readonly ropeMat = std(0x0c0a0a, { roughness: 1 });
+  private readonly micLamp: THREE.Mesh;
+  /** Over each area the night has taken: the mist over it, the mist walls across its gaps, the rope barrier. */
+  private readonly nights: { mats: THREE.ShaderMaterial[]; objs: THREE.Object3D[]; fade: number }[] = [];
   readonly ren: Avatar;
-  private readonly tunnelLight = new THREE.PointLight(0xfff0c0, 0, 22, 2);
-  private readonly vendGlow: THREE.Mesh;
   private time = 0;
-  private readonly echoes: Avatar[] = [];
-  /** Each echo stands in a holder of its own: hidden when you come close, or for a flicker (its avatar keeps its own visibility). */
-  private readonly holders = new Map<Avatar, THREE.Group>();
-  private sealedShown = -1;
-  private fogT = 0;
+  private clockRunning = false;
+  private crossingOn = false;
 
   constructor() {
     this.root.name = 'MujinLook';
     const y = PLATFORM_Y;
-    // ---- the lamps on platform 1's canopy (lit by right reads) ----
+
+    // ---- the lamp board beside the bell: one lamp for each job done; unlit dark glass, lit green ----
+    const B = MUJIN.board;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(4.2, 1.5, 0.12), std(0x2a1c14));
+    frame.position.set(B.x, y + 1.95, B.z);
+    const head = board(canvasTex(512, 96, (g, w) => {
+      g.fillStyle = '#efe9dc';
+      g.fillRect(0, 0, w, 96);
+      g.fillStyle = '#16301e';
+      g.textAlign = 'center';
+      g.font = `bold 44px ${JP}`;
+      g.fillText('運行灯   SERVICE LAMPS', w / 2, 62);
+    }), 4.2, 0.4, 0.25);
+    head.position.set(B.x, y + 2.95, B.z + 0.07);
+    this.root.add(frame, head);
+    for (const x of [B.x - 2.05, B.x + 2.05]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.1, y + 1.3, 0.1), std(0x2a1c14));
+      leg.position.set(x, (y + 1.3) / 2, B.z);
+      this.root.add(leg);
+    }
+    const LAMP_SIGNS = ['時計', '踏切', '切符', '注連', '放送'];
     for (let i = 0; i < 5; i++) {
-      const x = -6 + i * 5;
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.42, 12), std(0x3a2414, { emissive: 0xff8a30, emissiveIntensity: 0 }));
-      m.position.set(x, y + 3.25, -6.1);
-      const cord = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.4, 0.02), std(0x111111));
-      cord.position.set(x, y + 3.65, -6.1);
-      this.root.add(m, cord);
+      const x = B.x - 1.6 + i * 0.8;
+      const m = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 12), std(0x1a1e1c, { emissive: 0x18e060, emissiveIntensity: 0, roughness: 0.25, metalness: 0.1 }));
+      m.position.set(x, y + 1.95, B.z + 0.2);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.035, 6, 20), std(0x8a7a5a, { metalness: 0.6, roughness: 0.4 }));
+      ring.position.copy(m.position);
+      const plate = board(canvasTex(96, 64, (g, w, h) => {
+        g.fillStyle = '#efe9dc';
+        g.fillRect(0, 0, w, h);
+        g.fillStyle = '#1a1a1a';
+        g.textAlign = 'center';
+        g.font = `bold 34px ${JP}`;
+        g.fillText(LAMP_SIGNS[i]!, w / 2, 44);
+      }), 0.36, 0.24);
+      plate.position.set(x, y + 1.45, B.z + 0.07);
+      this.root.add(m, ring, plate);
       this.lamps.push(m);
     }
-    this.lampLight.position.set(4, y + 3, -6.1);
+    this.lampLight.position.set(B.x, y + 2.1, B.z + 1.2);
     this.root.add(this.lampLight);
 
-    // ---- the station clock over the gates ----
-    const c = spot('clock');
+    // ---- the station clock over the gates: stopped at 4:57 until it is wound ----
+    const c = PLACES.clock;
     const face = board(canvasTex(256, 256, (g, w, h) => {
       g.fillStyle = '#f4f1e8';
       g.beginPath();
@@ -108,212 +158,152 @@ export class StationLook {
     this.hands = { h: hand(0.28, 0.05, 0x111111), m: hand(0.42, 0.035, 0x111111), s: hand(0.46, 0.012, 0xc01818) };
     this.root.add(face, this.hands.h, this.hands.m, this.hands.s);
 
-    // ---- the timetable ----
-    const tt = (extra: boolean): THREE.Mesh => {
-      const m = board(canvasTex(256, 384, (g, w) => {
-        g.fillStyle = '#10151c';
-        g.fillRect(0, 0, w, 384);
-        g.fillStyle = '#f2ede2';
-        g.font = `bold 30px ${JP}`;
-        g.fillText('時刻表  TIMETABLE', 14, 40);
-        g.font = `24px ${JP}`;
-        const rows = ['04:57  上り  UP', '05:12  下り  DOWN', '05:40  上り  UP', '06:05  下り  DOWN', '06:31  上り  UP'];
-        rows.forEach((r, i) => g.fillText(r, 20, 90 + i * 46));
-        if (extra) {
-          g.fillStyle = '#ff2a2a';
-          g.fillText('04:44  回送  NOT IN SERVICE', 20, 90 + 5 * 46);
-        }
-      }), 0.9, 1.35, 0.25);
-      m.position.set(spot('timetable').x, spot('timetable').y, spot('timetable').z + 0.04);
-      return m;
-    };
-    this.twin('timetable_extra', [tt(false)], [tt(true)]);
+    // ---- the station's dressing: the timetable, the poster, the map, the sign ----
+    const tt = board(canvasTex(256, 384, (g, w) => {
+      g.fillStyle = '#10151c';
+      g.fillRect(0, 0, w, 384);
+      g.fillStyle = '#f2ede2';
+      g.font = `bold 30px ${JP}`;
+      g.fillText('時刻表  TIMETABLE', 14, 40);
+      g.font = `24px ${JP}`;
+      ['04:57  上り  UP', '05:12  下り  DOWN', '05:40  上り  UP', '06:05  下り  DOWN', '06:31  上り  UP'].forEach((r, i) => g.fillText(r, 20, 90 + i * 46));
+      g.fillStyle = '#ff9a40';
+      g.fillText('始発  FIRST TRAIN: AT DAWN', 20, 90 + 5 * 46 + 10);
+    }), 0.9, 1.35, 0.25);
+    tt.position.set(-10.5, 1.8, -8.21);
+    const poster = board(canvasTex(256, 360, (g, w, h) => {
+      const grd = g.createLinearGradient(0, 0, 0, h);
+      grd.addColorStop(0, '#7ab0d8');
+      grd.addColorStop(1, '#e8d8b0');
+      g.fillStyle = grd;
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#3a5a3a';
+      g.beginPath();
+      g.moveTo(0, 250);
+      g.lineTo(90, 170);
+      g.lineTo(170, 230);
+      g.lineTo(256, 160);
+      g.lineTo(256, 360);
+      g.lineTo(0, 360);
+      g.fill();
+      g.fillStyle = '#1a1a1a';
+      g.font = `bold 26px ${JP}`;
+      g.fillText('黒瀬線で、ふるさとへ', 14, 40);
+      g.font = '16px sans-serif';
+      g.fillText('THE KUROSE LINE - TAKE YOU HOME', 14, 66);
+    }), 0.9, 1.26);
+    poster.position.set(-13.52, 1.7, -17.5);
+    poster.rotation.y = Math.PI / 2;
+    const map = board(canvasTex(384, 256, (g, w, h) => {
+      g.fillStyle = '#e8e4d8';
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#555';
+      g.lineWidth = 6;
+      g.beginPath();
+      g.moveTo(0, 140);
+      g.lineTo(w, 140);
+      g.stroke();
+      g.fillStyle = '#9a9a9a';
+      g.fillRect(150, 90, 90, 40);
+      g.font = `bold 22px ${JP}`;
+      g.fillStyle = '#1a1a1a';
+      g.fillText('周辺案内図  AREA MAP', 12, 32);
+      g.fillStyle = '#e01818';
+      g.beginPath();
+      g.arc(195, 110, 10, 0, Math.PI * 2);
+      g.fill();
+    }), 1.5, 1);
+    map.position.set(-7, 1.7, -21.18);
+    const sign = board(canvasTex(512, 160, (g, w, h) => {
+      g.fillStyle = '#f2f0ea';
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#1a3a7a';
+      g.fillRect(0, h - 22, w, 22);
+      g.fillStyle = '#1a1a1a';
+      g.textAlign = 'center';
+      g.font = `bold 78px ${JP}`;
+      g.fillText('むじん', w / 2, 84);
+      g.font = 'bold 28px sans-serif';
+      g.fillText('MUJIN', w / 2, 124);
+    }), 2.6, 0.8, 0.15);
+    sign.position.set(12, 2.5, -4.4);
+    this.root.add(tt, poster, map, sign);
 
-    // ---- the poster in the hall ----
-    const poster = (face: boolean): THREE.Mesh => {
-      const m = board(canvasTex(256, 360, (g, w, h) => {
-        const grd = g.createLinearGradient(0, 0, 0, h);
-        grd.addColorStop(0, '#7ab0d8');
-        grd.addColorStop(1, '#e8d8b0');
-        g.fillStyle = grd;
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#3a5a3a';
-        g.beginPath();
-        g.moveTo(0, 250);
-        g.lineTo(90, 170);
-        g.lineTo(170, 230);
-        g.lineTo(256, 160);
-        g.lineTo(256, 360);
-        g.lineTo(0, 360);
-        g.fill();
-        g.fillStyle = '#1a1a1a';
-        g.font = `bold 26px ${JP}`;
-        g.fillText('黒瀬線で、ふるさとへ', 14, 40);
-        g.font = '16px sans-serif';
-        g.fillText('THE KUROSE LINE - TAKE YOU HOME', 14, 66);
-        if (face) {
-          // a face in the hills, looking out of the poster
-          g.fillStyle = '#e8dcd0';
-          g.beginPath();
-          g.ellipse(128, 200, 56, 72, 0, 0, Math.PI * 2);
-          g.fill();
-          g.fillStyle = '#0a0a0a';
-          for (const ex of [104, 152]) {
-            g.beginPath();
-            g.ellipse(ex, 192, 12, 16, 0, 0, Math.PI * 2);
-            g.fill();
-          }
-          g.fillRect(112, 238, 32, 4);
-        }
-      }), 0.9, 1.26);
-      const s = spot('poster');
-      m.position.set(s.x - 0.12, s.y, s.z);
-      m.rotation.y = Math.PI / 2;
-      return m;
-    };
-    this.twin('poster_face', [poster(false)], [poster(true)]);
-
-    // ---- the area map ----
-    const mapb = (here: 'station' | 'tunnel', named: boolean): THREE.Mesh => {
-      const m = board(canvasTex(384, 256, (g, w, h) => {
-        g.fillStyle = '#e8e4d8';
-        g.fillRect(0, 0, w, h);
-        g.strokeStyle = '#555';
-        g.lineWidth = 6;
-        g.beginPath();
-        g.moveTo(0, 140);
-        g.lineTo(w, 140);
-        g.stroke();
-        g.fillStyle = '#9a9a9a';
-        g.fillRect(150, 90, 90, 40);
-        g.fillStyle = '#333';
-        g.fillRect(0, 118, 28, 44);
-        g.font = `bold 22px ${JP}`;
-        g.fillStyle = '#1a1a1a';
-        g.fillText(named ? 'むじん駅  MUJIN STATION' : '周辺案内図  AREA MAP', 12, 32);
-        const [hx, hy] = here === 'station' ? [195, 110] : [14, 140];
-        g.fillStyle = '#e01818';
-        g.beginPath();
-        g.arc(hx, hy, 10, 0, Math.PI * 2);
-        g.fill();
-        g.font = '14px sans-serif';
-        g.fillText('YOU ARE HERE', Math.min(hx + 14, w - 110), hy - 12);
-      }), 1.5, 1);
-      const s = spot('mapboard');
-      m.position.set(s.x, s.y, s.z + 0.12);
-      return m;
-    };
-    const mapNormal = mapb('station', false);
-    this.twin('mapboard_tunnel', [mapNormal], [mapb('tunnel', false)]);
-    this.twin('mapboard_name', [mapNormal], [mapb('station', true)]);
-
-    // ---- the station sign on platform 1 ----
-    const sign = (text: string, sub: string, color: string): THREE.Mesh => {
-      const m = board(canvasTex(512, 160, (g, w, h) => {
-        g.fillStyle = '#f2f0ea';
-        g.fillRect(0, 0, w, h);
-        g.fillStyle = '#1a3a7a';
-        g.fillRect(0, h - 22, w, 22);
-        g.fillStyle = color;
-        g.textAlign = 'center';
-        g.font = `bold 78px ${JP}`;
-        g.fillText(text, w / 2, 84);
-        g.font = 'bold 28px sans-serif';
-        g.fillText(sub, w / 2, 124);
-      }), 2.6, 0.8, 0.15);
-      const s = spot('sign');
-      m.position.set(s.x, s.y, s.z);
-      return m;
-    };
-    const signNormal = sign('むじん', 'MUJIN', '#1a1a1a');
-    this.twin('sign_red', [signNormal], [sign('むじん', 'MUJIN', '#c81818')]);
-    this.twin('sign_order', [signNormal], [sign('んじむ', 'NIJUM', '#1a1a1a')]);
-    for (const x of [spot('sign').x - 1.32, spot('sign').x + 1.32]) {
-      const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), std(0x333333));
-      post.position.set(x, spot('sign').y + 0.4, spot('sign').z);
-      this.root.add(post);
+    // ---- the ticket gates' lights: red until the tickets are back ----
+    for (const x of [-8, -6, -4, -2]) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.22), std(0x111111, { emissive: 0xff1a1a, emissiveIntensity: 1.6 }));
+      m.position.set(x, 1.05, -10.1);
+      this.gateLights.push(m);
+      this.root.add(m);
     }
 
-    // ---- the vending machine on platform 1 (dead, unless it is the change) ----
-    const v = spot('vending');
-    const vend = new THREE.Mesh(new THREE.BoxGeometry(1, 1.8, 0.8), std(0xc8ccd0, { metalness: 0.3 }));
-    vend.position.set(v.x, y + 0.9, v.z - 0.5);
-    this.vendGlow = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 1.1), std(0x101418, { emissive: 0xbfe4ff, emissiveIntensity: 0 }));
-    this.vendGlow.position.set(v.x, y + 1.15, v.z - 0.09);
-    this.root.add(vend, this.vendGlow);
+    // ---- the winding key, in the tunnel mouth ----
+    this.key = new THREE.Group();
+    const gold = std(0xd8b048, { metalness: 0.8, roughness: 0.3, emissive: 0x6a4a10, emissiveIntensity: 0.8 });
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 8, 16), gold);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.36, 8), gold);
+    shaft.rotation.z = Math.PI / 2;
+    shaft.position.x = 0.28;
+    const bit = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.03), gold);
+    bit.position.set(0.42, -0.05, 0);
+    this.key.add(bow, shaft, bit);
+    this.key.position.set(PLACES.key.x, PLACES.key.y + 0.9, PLACES.key.z);
+    this.keyLight.position.set(PLACES.key.x, PLACES.key.y + 1.2, PLACES.key.z);
+    this.root.add(this.key, this.keyLight);
 
-    // ---- the umbrella stand ----
-    const u = spot('umbrellas');
-    const brolly = (x: number, z: number, color: number): THREE.Object3D => {
-      const g = new THREE.Group();
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.9, 5), std(0x222222));
-      shaft.position.y = 0.45;
-      const fold = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.62, 8), std(color, { roughness: 0.9 }));
-      fold.position.y = 0.42;
-      fold.rotation.x = Math.PI;
-      g.add(shaft, fold);
-      g.position.set(x, 0, z);
-      g.rotation.z = (Math.random() - 0.5) * 0.2;
-      return g;
-    };
-    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.2, 0.5, 12, 1, true), std(0x5a5a5a, { side: THREE.DoubleSide }));
-    stand.position.set(u.x, 0.25, u.z);
-    this.root.add(stand);
-    const black = [0, 1, 2, 3].map((i) => brolly(u.x - 0.1 + (i % 2) * 0.16, u.z - 0.08 + Math.floor(i / 2) * 0.14, 0x111114));
-    const lastBlack = brolly(u.x + 0.02, u.z + 0.12, 0x111114);
-    this.root.add(...black);
-    this.twin('umbrella_red', [lastBlack], [brolly(u.x + 0.02, u.z + 0.12, 0xc0141c)]);
-
-    // ---- the ticket gates' lights ----
-    const gates = (color: number): THREE.Object3D[] =>
-      [-8, -6, -4, -2].map((x) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.22), std(0x111111, { emissive: color, emissiveIntensity: 1.6 }));
-        m.position.set(x, 1.05, -10.1);
-        return m;
-      });
-    this.twin('gates_red', gates(0x2aa0ff), gates(0xff1a1a));
-
-    // ---- the clock shop's shutter (open and dark; down, with something under it) ----
-    const sh = spot('shutter');
-    const down = new THREE.Group();
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(7.8, 2.1, 0.06), std(0x8a8e90, { metalness: 0.5 }));
-    plate.position.set(sh.x, 1.95, sh.z + 0.5);
-    down.add(plate);
-    for (const dx of [-0.14, 0.14]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 6), std(0xe8e4dc));
-      leg.position.set(sh.x + 0.6 + dx, 0.45, sh.z + 0.56);
-      down.add(leg);
+    // ---- the breakers by the crossing: a cabinet, a lever, a lamp (red, then green) ----
+    for (const b of PLACES.breakers) {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.4, 0.45), std(0x5a6a5a, { metalness: 0.4 }));
+      box.position.set(b.x, 0.7, b.z);
+      const lever = new THREE.Group();
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.4, 0.06), std(0x202020));
+      arm.position.y = 0.2;
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), std(0xc81818));
+      knob.position.y = 0.4;
+      lever.add(arm, knob);
+      lever.position.set(b.x, 1.0, b.z + 0.26);
+      lever.rotation.x = 0.7;
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), std(0x300606, { emissive: 0xff2a1a, emissiveIntensity: 2 }));
+      lamp.position.set(b.x, 1.5, b.z + 0.1);
+      this.root.add(box, lever, lamp);
+      this.breakers.push({ lever, lamp });
     }
-    this.twin('shutter_down', [], [down]);
 
-    // ---- the shrine's rope ----
-    const r = spot('rope');
-    const rope = (color: number): THREE.Mesh => {
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.6, 10), std(color, { roughness: 1 }));
-      m.rotation.z = Math.PI / 2;
-      m.position.set(r.x, r.y, r.z);
-      return m;
-    };
-    this.twin('rope_black', [rope(0xe8dcc0)], [rope(0x0c0a0a)]);
-
-    // ---- wet footprints on platform 2 ----
-    const fp = new THREE.Group();
-    const foot = new THREE.CircleGeometry(0.1, 8).scale(0.6, 1, 1).rotateX(-Math.PI / 2);
-    const fpm = new THREE.MeshStandardMaterial({ color: 0x0a0c10, roughness: 0.1, metalness: 0.3, transparent: true, opacity: 0.8 });
-    for (let i = 0; i < 12; i++) {
-      const m = new THREE.Mesh(foot, fpm);
-      m.position.set(spot('footprints').x - 4 + i * 0.5, y + 0.006, 7.6 - i * 0.33 + (i % 2) * 0.16);
-      m.rotation.y = 0.6;
-      fp.add(m);
+    // ---- the lost tickets: glowing paper slips ----
+    const slip = canvasTex(128, 64, (g, w, h) => {
+      g.fillStyle = '#f2e8c8';
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#a02020';
+      g.font = `bold 22px ${JP}`;
+      g.fillText('乗車券', 10, 28);
+      g.fillStyle = '#333';
+      g.font = '14px sans-serif';
+      g.fillText('MUJIN  04:57', 10, 52);
+    });
+    for (const t of PLACES.tickets) {
+      const m = board(slip, 0.36, 0.18, 0.9);
+      m.position.set(t.x, 0.9, t.z);
+      m.visible = false;
+      this.tickets.push(m);
+      this.root.add(m);
     }
-    this.twin('footprints_wall', [], [fp]);
 
-    // ---- a lamp lit inside the tunnel ----
-    this.tunnelLight.position.set(-49, 2.4, 0);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfff0c0 }));
-    bulb.position.set(-48.9, 2.4, 0);
-    this.root.add(this.tunnelLight);
-    this.twin('tunnel_light', [], [bulb]);
+    // ---- the shrine's rope: black, until a new one is tied ----
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 4.6, 10), this.ropeMat);
+    rope.rotation.z = Math.PI / 2;
+    rope.position.set(PLACES.rope.x, PLACES.rope.y, PLACES.rope.z);
+    this.root.add(rope);
+
+    // ---- the PA desk in the ticket hall: a microphone with a red ON AIR lamp ----
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.9, 0.6), std(0x3a2a1c));
+    desk.position.set(PLACES.mic.x, 0.45, PLACES.mic.z);
+    const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.35, 6), std(0x222222, { metalness: 0.7 }));
+    stand.position.set(PLACES.mic.x, 1.07, PLACES.mic.z);
+    const micHead = new THREE.Mesh(new THREE.SphereGeometry(0.06, 10, 8), std(0x333333, { metalness: 0.6 }));
+    micHead.position.set(PLACES.mic.x, 1.27, PLACES.mic.z);
+    this.micLamp = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.04), std(0x300606, { emissive: 0xff2020, emissiveIntensity: 0 }));
+    this.micLamp.position.set(PLACES.mic.x, 1.9, PLACES.mic.z - 0.29);
+    this.root.add(desk, stand, micHead, this.micLamp);
 
     // ---- the level crossing's lamps ----
     for (const [x, z] of [[35.6, -5.5], [42.4, 5.5]] as const) {
@@ -326,179 +316,159 @@ export class StationLook {
       }
     }
 
-    // ---- the fog over what the night has taken ----
+    // ---- the night: mist over each area it can take, mist walls across its gaps, a rope barrier with paper streamers
+    // and a sign at each gap (built hidden; they rise when it takes the area) ----
+    const no = canvasTex(256, 128, (g, w, h) => {
+      g.fillStyle = '#efe9dc';
+      g.fillRect(0, 0, w, h);
+      g.fillStyle = '#a01818';
+      g.textAlign = 'center';
+      g.font = `bold 52px ${JP}`;
+      g.fillText('立入禁止', w / 2, 62);
+      g.fillStyle = '#1a1a1a';
+      g.font = 'bold 22px sans-serif';
+      g.fillText('THE NIGHT HAS TAKEN IT', w / 2, 104);
+    });
     for (const s of SEALS) {
-      const w = s.rect.x1 - s.rect.x0;
-      const d = s.rect.z1 - s.rect.z0;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, 9, d), this.fogMat);
-      m.position.set((s.rect.x0 + s.rect.x1) / 2, 4.5, (s.rect.z0 + s.rect.z1) / 2);
-      m.visible = false;
-      m.renderOrder = 5;
-      this.fog.push(m);
-      this.root.add(m);
+      const mats: THREE.ShaderMaterial[] = [];
+      const objs: THREE.Object3D[] = [];
+      const r = s.rect;
+      const over = mistMaterial(false);
+      const sheet = new THREE.Mesh(new THREE.BoxGeometry(r.x1 - r.x0, 6, r.z1 - r.z0), over);
+      sheet.position.set((r.x0 + r.x1) / 2, 3, (r.z0 + r.z1) / 2);
+      sheet.renderOrder = 5;
+      mats.push(over);
+      objs.push(sheet);
+      for (const g of s.gaps) {
+        const along = g.hx > g.hz;
+        const wide = (along ? g.hx : g.hz) * 2 + 1;
+        const wallMat = mistMaterial(true);
+        const wall = new THREE.Mesh(new THREE.PlaneGeometry(wide, 7, 1, 1), wallMat);
+        wall.position.set(g.x, 3.5, g.z);
+        wall.rotation.y = along ? 0 : Math.PI / 2;
+        wall.renderOrder = 6;
+        mats.push(wallMat);
+        objs.push(wall);
+        // the barrier: two posts, a rope, paper streamers, the sign
+        const barrier = new THREE.Group();
+        const ux = along ? 1 : 0;
+        const uz = along ? 0 : 1;
+        const half = wide / 2 - 0.3;
+        for (const sgn of [-1, 1]) {
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 1.3, 8), std(0x5a3a22));
+          post.position.set(g.x + ux * sgn * half, 0.65, g.z + uz * sgn * half);
+          barrier.add(post);
+        }
+        const line = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, half * 2, 6), std(0xe8dcc0, { roughness: 1 }));
+        line.position.set(g.x, 1.15, g.z);
+        line.rotation.z = along ? Math.PI / 2 : 0;
+        line.rotation.x = along ? 0 : Math.PI / 2;
+        barrier.add(line);
+        const paper = std(0xf4f2ec, { side: THREE.DoubleSide, roughness: 1 });
+        for (let k = 0; k < 6; k++) {
+          const f = -half + ((k + 0.5) / 6) * half * 2;
+          const shide = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.32), paper);
+          shide.position.set(g.x + ux * f, 0.98, g.z + uz * f);
+          shide.rotation.y = along ? 0 : Math.PI / 2;
+          shide.rotation.z = 0.25 * (k % 2 ? 1 : -1);
+          barrier.add(shide);
+        }
+        const tag = board(no, 0.7, 0.35);
+        tag.position.set(g.x, 1.55, g.z);
+        tag.rotation.y = along ? 0 : Math.PI / 2;
+        barrier.add(tag);
+        const back = tag.clone();
+        back.rotation.y += Math.PI;
+        barrier.add(back);
+        objs.push(barrier);
+      }
+      for (const o of objs) {
+        o.visible = false;
+        this.root.add(o);
+      }
+      this.nights.push({ mats, objs, fade: 0 });
     }
 
-    // ---- the people who wait ----
-    // they are echoes of the last train, not people and not infected: pale, flickering, gone when you come close
-    const person = (name: string, i: number, file: string): Avatar => {
-      const a = new Avatar(name, i, { weapon: 'none', helmet: false, tag: '', anime: animeModel(file, ANIMEOPS.fallback), animeTint: { key: 'echo', skin: 0xc8dcff, cloth: 0x9ab4e8, hair: 0xa8bce0, eyes: null, outlines: false } });
-      a.cowering = false;
-      const holder = new THREE.Group();
-      holder.add(a.root);
-      this.root.add(holder);
-      this.holders.set(a, holder);
-      this.echoes.push(a);
-      return a;
-    };
-    for (let i = 0; i < 5; i++) {
-      const a = person('', i, ANIMEOPS.passengers[i % ANIMEOPS.passengers.length]!);
-      a.set(15.5 + i * 1.4, y, -4.7, Math.PI, true);
-      this.rows.push(a);
-    }
-    for (let i = 0; i < 2; i++) {
-      const a = person('', 5 + i, ANIMEOPS.passengers[(i + 2) % ANIMEOPS.passengers.length]!);
-      a.set(MUJIN.bench.x + 1 + i * 1.3, 0.1, MUJIN.bench.z - 0.15, 0, true);
-      this.bench.push(a);
-    }
-    this.body = person('', 7, ANIMEOPS.passengers[1]!);
-    this.body.set(spot('body').x, y, spot('body').z, 0.4, true);
-    this.body.fall(0.3, 0.5, 0);
-    this.extra = {
-      row: person('', 8, ANIMEOPS.passengers[3]!),
-      bench: person('', 9, ANIMEOPS.passengers[0]!),
-      bridge: person('', 10, ANIMEOPS.passengers[2]!),
-      window: person('', 11, ANIMEOPS.you),
-      you: person('', 12, ANIMEOPS.you),
-    };
-    this.extra.row.set(15.5 + 5 * 1.4, y, -4.7, Math.PI, false);
-    this.extra.bench.set(MUJIN.bench.x - 1.5, 0.1, MUJIN.bench.z - 0.15, 0, false);
-    this.extra.bridge.set(-21.8, 5.3, 1.2, -Math.PI / 2, false);
-    this.extra.window.set(spot('window').x, 0, spot('window').z - 1.2, 0, false);
-    this.extra.you.set(spot('body').x, y, spot('body').z, 0.4, false);
-    this.extra.you.fall(0.3, 0.5, 0);
+    // ---- Ren ----
     this.ren = new Avatar('Ren', 13, { weapon: 'none', helmet: false, tag: '', anime: animeModel(ANIMEOPS.ren, ANIMEOPS.fallback) });
     this.root.add(this.ren.root);
     this.ren.set(MUJIN.ren.x, y, MUJIN.ren.z, Math.PI, false);
   }
 
-  private twin(id: string, normal: THREE.Object3D[], wrong: THREE.Object3D[]): void {
-    for (const o of [...normal, ...wrong]) if (!o.parent) this.root.add(o);
-    for (const o of wrong) o.visible = false;
-    this.twins.set(id, { normal, wrong });
-  }
-
-  /** Show this loop's change (an `ANOMALIES` id, or null for none). */
-  setChange(id: string | null): void {
-    if (id === this.shown) return;
-    // everything back as it should be
-    for (const [, t] of this.twins) {
-      for (const o of t.normal) o.visible = true;
-      for (const o of t.wrong) o.visible = false;
-    }
-    const tw = id ? this.twins.get(id) : undefined;
-    if (tw) {
-      for (const o of tw.normal) o.visible = false;
-      for (const o of tw.wrong) o.visible = true;
-    }
-    const e = this.extra;
-    e.row.root.visible = id === 'rows_extra';
-    e.bench.root.visible = id === 'bench_extra';
-    e.bridge.root.visible = id === 'bridge_figure';
-    e.window.root.visible = id === 'window_you';
-    e.you.root.visible = id === 'body_you';
-    this.body.root.visible = id !== 'body_you';
-    // body_up: the body is on its feet where it lay
-    const up = id === 'body_up';
-    if (up !== this.bodyStanding) {
-      if (up) this.body.rise();
-      else this.body.fall(0.3, 0.5, 0);
-    }
-    this.bodyStanding = up;
-    for (const a of this.rows) a.set(a.root.position.x, PLATFORM_Y, -4.7, id === 'rows_turn' ? 0 : Math.PI, true);
-    this.tunnelLight.intensity = id === 'tunnel_light' ? 26 : 0;
-    this.vendLit = id === 'vend_lit';
-    this.shown = id;
-  }
-
-  private bodyStanding = false;
-  private vendLit = false;
-  /** The rows' and the bench's people turn their heads to whoever is near (bench_watch). */
-  private watch = new THREE.Vector3();
-
-  setLamps(n: number): void {
-    this.lamps.forEach((m, i) => ((m.material as THREE.MeshStandardMaterial).emissiveIntensity = i < n ? 2.6 : 0));
-    this.lampLight.intensity = n * 4;
-  }
-
-  setCrossing(on: boolean): void {
-    this.crossing = on;
-  }
-  private crossing = false;
-
-  /** Ren: where she is and whether she can be seen. */
-  setRen(x: number, z: number, yaw: number, visible: boolean): void {
-    this.ren.set(x, x > MUJIN.bench.x - 5 && x < MUJIN.bench.x + 5 && z < -9 && z > -22 ? 0.1 : PLATFORM_Y, z, yaw, visible);
-  }
-
-  /** Every frame: the clock, the lamps' flicker, the crossing, the fog, who turns to watch you. */
-  update(dt: number, viewer: { x: number; z: number }, sealed: number): void {
+  /** Every frame: everything follows the jobs' state; the clock runs once wound; the mist rolls in. */
+  update(dt: number, v: JobsView, viewer: { x: number; z: number }): void {
     this.time += dt;
     const t = this.time;
-    const id = this.shown;
-    // the clock: 04:57 and running, backwards, or stopped and trembling
-    const secs = id === 'clock_stop' ? 0 : id === 'clock_back' ? -t : t;
-    const base = 4 * 3600 + 57 * 60;
-    const now = base + secs;
-    const tremble = id === 'clock_stop' ? Math.sin(t * 40) * 0.03 : 0;
+    // the lamps
+    const lit = MujinJobs.lamps(v);
+    this.lamps.forEach((m, i) => {
+      const mat = m.material as THREE.MeshStandardMaterial;
+      const on = (v.done & (1 << i)) !== 0;
+      mat.emissiveIntensity = on ? 1.5 : 0;
+      mat.color.set(on ? 0x30d070 : 0x1a1e1c);
+    });
+    this.lampLight.intensity = lit * 3;
+    // the clock: stopped at 4:57 until wound
+    if (MujinJobs.isDone(v, 'clock')) this.clockRunning = true;
+    else this.clockRunning = false;
+    const secs = this.clockRunning ? t : 0;
+    const now = 4 * 3600 + 57 * 60 + secs;
+    const tremble = this.clockRunning ? 0 : Math.sin(t * 40) * 0.02;
     this.hands.s.rotation.z = -((now % 60) / 60) * Math.PI * 2 + tremble;
     this.hands.m.rotation.z = -(((now / 60) % 60) / 60) * Math.PI * 2;
     this.hands.h.rotation.z = -(((now / 3600) % 12) / 12) * Math.PI * 2;
-    (this.vendGlow.material as THREE.MeshStandardMaterial).emissiveIntensity = this.vendLit ? 1.4 + Math.sin(t * 13) * 0.08 : 0;
-    // the crossing's lamps: alternate while it rings
-    this.crossLamps.forEach((m, i) => ((m.material as THREE.MeshStandardMaterial).emissiveIntensity = this.crossing && Math.floor(t / 0.36 + i) % 2 === 0 ? 3 : 0));
-    // the fog closes in over a newly taken area
-    if (sealed !== this.sealedShown) {
-      this.sealedShown = sealed;
-      this.fogT = 0;
-    }
-    this.fogT = Math.min(1, this.fogT + dt / 3);
-    this.fog.forEach((m, i) => (m.visible = (sealed & (1 << i)) !== 0));
-    this.fogMat.opacity = 0.94 * this.fogT;
-    // bench_watch: the bench's passengers turn to follow you
-    if (id === 'bench_watch') {
-      for (const a of this.bench) {
-        this.watch.set(viewer.x - a.root.position.x, 0, viewer.z - a.root.position.z);
-        a.set(a.root.position.x, 0.1, a.root.position.z, Math.atan2(-this.watch.x, -this.watch.z), true);
+    // the key: turning in the tunnel mouth until taken
+    this.key.visible = v.key === 0;
+    this.key.rotation.y = t * 1.5;
+    this.key.position.y = PLACES.key.y + 0.9 + Math.sin(t * 2) * 0.08;
+    this.keyLight.intensity = v.key === 0 ? 6 : 0;
+    // the breakers
+    this.breakers.forEach((b, i) => {
+      const on = (v.breakers & (1 << i)) !== 0;
+      b.lever.rotation.x = on ? -0.7 : 0.7;
+      const mat = b.lamp.material as THREE.MeshStandardMaterial;
+      mat.emissive.set(on ? 0x40ff70 : 0xff2a1a);
+      mat.emissiveIntensity = on ? 2.4 : 1 + Math.sin(t * 6) * 0.8;
+    });
+    // the crossing rings while it powers up, then for a while once it runs
+    this.crossingOn = (v.breakers === 0b111 && !MujinJobs.isDone(v, 'crossing')) || (MujinJobs.isDone(v, 'crossing') && Math.floor(t / 20) % 3 === 0);
+    this.crossLamps.forEach((m, i) => ((m.material as THREE.MeshStandardMaterial).emissiveIntensity = this.crossingOn && Math.floor(t / 0.36 + i) % 2 === 0 ? 3 : 0));
+    // the tickets still lying where they fell
+    this.tickets.forEach((m, i) => {
+      m.visible = (v.ticketSet & (1 << i)) !== 0 && !(v.picked & (1 << i));
+      m.rotation.y = t * 1.2 + i;
+      m.position.y = 0.9 + Math.sin(t * 2.2 + i) * 0.07;
+    });
+    // the gates go blue when the tickets are back
+    for (const m of this.gateLights) (m.material as THREE.MeshStandardMaterial).emissive.set(MujinJobs.isDone(v, 'tickets') ? 0x2aa0ff : 0xff1a1a);
+    // the rope
+    this.ropeMat.color.set(MujinJobs.isDone(v, 'rope') ? 0xe8dcc0 : 0x0c0a0a);
+    // ON AIR while the announcement plays
+    (this.micLamp.material as THREE.MeshStandardMaterial).emissiveIntensity = v.announcing && !MujinJobs.isDone(v, 'announce') ? 2 + Math.sin(t * 5) : 0;
+    // the night's mist: rolls in over three seconds when it takes an area
+    this.nights.forEach((n, i) => {
+      const on = (v.sealed & (1 << i)) !== 0;
+      n.fade = on ? Math.min(1, n.fade + dt / 3) : 0;
+      for (const o of n.objs) o.visible = on;
+      for (const m of n.mats) {
+        m.uniforms.time!.value = t;
+        m.uniforms.fade!.value = n.fade;
       }
-    } else for (const a of this.bench) a.set(a.root.position.x, 0.1, a.root.position.z, 0, true);
-    // the people near enough to be seen breathe and shift (the far ones hold still)
-    for (const a of [...this.rows, ...this.bench, this.extra.row, this.extra.bench, this.extra.bridge, this.extra.window, this.ren]) {
-      if (!a.root.visible) continue;
-      const d = Math.hypot(a.root.position.x - viewer.x, a.root.position.z - viewer.z);
-      a.animeLod(d < 22);
-      if (d < 40) a.update(dt);
-    }
-    if (this.body.root.visible || this.extra.you.root.visible) {
-      this.body.update(dt);
-      this.extra.you.update(dt);
-    }
-    // the echoes: they flicker, and are simply not there when you come close
-    for (const a of this.echoes) {
-      const h = this.holders.get(a);
-      if (!h) continue;
-      const d = Math.hypot(a.root.position.x - viewer.x, a.root.position.z - viewer.z);
-      const blink = Math.sin(t * 2.3 + a.root.position.x * 1.7) > 0.992 || Math.sin(t * 17 + a.root.position.z * 5) > 0.997;
-      h.visible = d > 2.8 && !blink;
-    }
+    });
+    // Ren
+    const shown = v.ren === REN_STATE.here || v.ren === REN_STATE.safe;
+    const inRoom = v.renX > MUJIN.bench.x - 6 && v.renX < MUJIN.bench.x + 5 && v.renZ < -9 && v.renZ > -22;
+    this.ren.set(v.renX, inRoom ? 0.1 : PLATFORM_Y, v.renZ, Math.atan2(-(viewer.x - v.renX), -(viewer.z - v.renZ)), shown);
+    if (shown) this.ren.update(dt);
   }
 
-  /** The anomaly ids the look can draw (a check for the tests and the dev tools). */
-  static drawn(): string[] {
-    return ANOMALIES.map((a) => a.id);
+  /** Whether the crossing is ringing (the runtime plays its bells). */
+  get crossingRinging(): boolean {
+    return this.crossingOn;
   }
 
   dispose(): void {
-    for (const a of [...this.rows, ...this.bench, this.body, this.extra.row, this.extra.bench, this.extra.bridge, this.extra.window, this.extra.you, this.ren]) a.dispose();
+    this.ren.dispose();
     this.root.removeFromParent();
   }
 }

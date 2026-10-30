@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.323",
+      "date": "2026-10-30",
+      "title": "MUJIN rebuilt: The Last Service",
+      "notes": [
+        "MUJIN is a new game: the station is dead, and five jobs get it running again, in any order. Wind the station clock (its key lies in the tunnel mouth, and the tunnel answers), power the level crossing (throw three breakers, then hold the road while it powers up), return the five lost tickets to the gates (each one picked up draws the dead), tie a new shrine rope (a long hold, in the Tall Lady's ground) and make the announcement from the PA desk (hold the ticket hall while it plays).",
+        "Every job lights a lamp on the new lamp board beside the platform bell - dark glass until lit, then green. Five lamps and the Stationmaster can be stopped; then the dawn train comes.",
+        "The night does not wait: the clock at the top is how long until it takes part of the station (the shopping street, then the shrine, then the field), and every job done winds it back. A taken area fills with a drifting dark mist that hurts to stand in, behind a rope barrier of paper streamers and a NO ENTRY sign. A fourth time and it takes the station.",
+        "Ren calls the payphone after each job. After the fifth call she is on platform 2: take her hand and walk her to the waiting-room bench before the Tall Lady reaches her, and she leaves on the dawn train with you.",
+        "The Bench Sitter now whispers where to go next. The change-spotting loop, the All Clear and the pale passengers are gone. The same voices and music, used for the new moments.",
+        "Going indoors no longer darkens the screen on MUJIN: the station's rooms keep the night's light and have lamps of their own."
+      ]
+    },
+    {
       "version": "0.4.322",
       "date": "2026-10-30",
       "title": "MUJIN: clearer goals, the echoes, the footbridge",

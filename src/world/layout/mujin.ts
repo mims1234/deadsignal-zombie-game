@@ -22,7 +22,7 @@ import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
 import { HALF_PI, type Ctx } from './util';
 import { MAT, commuterCar, grass, rails, shopFront, shrineHall, stoneLantern, torii } from './sakura/props';
-import { MUJIN, MUJIN_BOUNDS, MUJIN_POCKET, PLATFORM_Y, PLATFORMS, SEALS, TRACK_Z } from '../../mujin/places';
+import { MUJIN, MUJIN_BOUNDS, MUJIN_POCKET, PLACES, PLATFORM_Y, PLATFORMS, SEALS, TRACK_Z } from '../../mujin/places';
 
 export interface MujinHandles {
   /** One collider per gap of each sealable area (`SEALS` order), built open. */
@@ -260,8 +260,9 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   addBox(b, 'wood', MUJIN.bench.x, 0.45, MUJIN.bench.z, 6, 0.1, 0.5);
   addBox(b, 'wood', MUJIN.bench.x, 0.8, MUJIN.bench.z - 0.24, 6, 0.6, 0.06);
   b.collide({ x: MUJIN.bench.x, z: MUJIN.bench.z, hx: 3, hz: 0.28, y1: 0.5, mapKind: 'prop', surface: 'wood', tag: 'bench' });
-  b.light({ x: -6, y: 3.9, z: -15, color: 0xdfe6f0, intensity: 16, distance: 12, mode: 'fail', pool: 3, glow: 0.4, indoor: true, tag: 'hall' });
-  b.light({ x: 8.5, y: 3.9, z: -15, color: 0xffc890, intensity: 12, distance: 10, mode: 'steady', pool: 3, glow: 0.4, indoor: true, tag: 'waiting' });
+  // the rooms are lit as well as the platforms are (going in never plunges the screen into the dark)
+  for (const [x, z] of [[-9.5, -12], [-9.5, -18.5], [-3, -12], [-3, -18.5]] as const) b.light({ x, y: 3.9, z, color: 0xe6ecf4, intensity: 20, distance: 12, mode: 'steady', pool: 3, glow: 0.35, indoor: true, tag: 'hall' });
+  for (const [x, z] of [[6.5, -12.5], [11, -12.5], [8.5, -18.5]] as const) b.light({ x, y: 3.9, z, color: 0xffd4a0, intensity: 18, distance: 11, mode: 'steady', pool: 3, glow: 0.35, indoor: true, tag: 'waiting' });
   d.station({ kind: 'buy', name: 'STATION KIOSK', x: -10.5, z: -18.6, yaw: Math.PI, region: 'low' });
 
   // ---- the plaza, the east lot, the storehouse ----
@@ -422,6 +423,11 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   const bell = MUJIN.bell;
   addBox(b, 'steelDark', bell.x, PLATFORM_Y + 1.2, bell.z - 0.6, 0.12, 2.4, 0.12);
   b.collide({ x: bell.x, z: bell.z - 0.6, hx: 0.12, hz: 0.12, y0: 0, y1: PLATFORM_Y + 2.4, mapKind: 'prop', surface: 'metal', tag: 'bell-post' });
+  // the jobs' things (`mujin/look.ts` draws them): the PA desk, the breaker cabinets
+  b.collide({ x: PLACES.mic.x, z: PLACES.mic.z, hx: 0.55, hz: 0.3, y1: 0.9, mapKind: 'prop', surface: 'wood', tag: 'pa-desk' });
+  for (const k of PLACES.breakers) b.collide({ x: k.x, z: k.z, hx: 0.35, hz: 0.23, y1: 1.4, mapKind: 'prop', surface: 'metal', tag: 'breaker' });
+  // the lamp board beside the bell (`mujin/look.ts` draws it)
+  b.collide({ x: 1, z: -8.15, hx: 2.1, hz: 0.12, y0: 0, y1: PLATFORM_Y + 3.2, mapKind: 'prop', surface: 'wood', tag: 'lamp-board' });
   const transmitter: TransmitterHandle = {
     console: { x: bell.x, y: PLATFORM_Y + 1, z: bell.z },
     consoleYaw: 0,

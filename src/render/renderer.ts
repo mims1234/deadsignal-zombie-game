@@ -121,9 +121,12 @@ export class GameRenderer {
 
   /** Tell the renderer whether the camera is inside a roofed building (blends sky lighting down). */
   setIndoor(indoor: boolean): void {
-    this.indoorTarget = indoor ? 1 : 0;
+    this.indoorTarget = indoor && !this.sameIndoors ? 1 : 0;
     this.lightPool.setFocusIndoor(indoor);
   }
+
+  /** A map whose rooms are lit as the night outside is (MUJIN): stepping under a roof changes nothing on screen. */
+  sameIndoors = false;
 
   /**
    * Sky light levels outdoors (hemisphere, key light, warm fill, environment) and how much brighter interiors are than

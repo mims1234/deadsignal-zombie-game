@@ -1,64 +1,65 @@
 /**
- * MUJIN in the game: the solo game runs the loop and the station's infected here (`loop.ts`, `director.ts`); a co-op
- * player shows the simulation's loop from its reports (`applyWire`) and sends what they do as requests. Either way,
- * everything on screen and in the ears follows the loop's state, compared frame to frame (`react`): the reset and its
- * flash, the lamps, the change of the loop drawn into the station (`look.ts`), the PA, the bell, the score, the
- * payphone, the Tall Lady's "po", the White Shape's stare, the Stationmaster's punch, Ren, and the dawn.
+ * MUJIN in the game: "The Last Service". The solo game runs the jobs and the station's infected here (`jobs.ts`,
+ * `director.ts`); a co-op player shows the simulation's jobs from its reports (`applyWire`) and sends what they do as
+ * requests. Either way everything on screen and in the ears follows the jobs' state, compared frame to frame
+ * (`react`): a lamp for every job done, the PA's thanks, the night's warning and the mist when it takes an area, the
+ * payphone after each job, Ren, the Stationmaster, the dawn and both endings.
  *
- * On phones nothing new sits in the middle: the loop and the bell are the top timer, the lamps are in the world, every
- * line said is one caption along the top (the radio line), and the journal waits in the pause menu.
+ * On phones nothing new sits in the middle: the night's clock is the top timer, the jobs are the objectives, the lamps
+ * are in the world, every line said is one caption along the top (the radio line), and the journal waits in the pause
+ * menu.
  */
 import type { InteractionTarget } from '../game/interaction';
 import type { Game } from '../game/game';
 import type { HudState, MapDynamic } from '../ui/hudTypes';
 import type { Zombie } from '../enemies/zombie';
-import { ANOMALIES } from './anomalies';
-import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from './director';
+import { MujinDirector, inNight, mujinSpawnAllowed, mujinVariantPicker } from './director';
 import { buildJournal, loadMujin, REN_POSTS, saveMujin, type MujinProgress } from './journal';
+import { decodeJobs, JOB_IDS, JOB_NAMES, MujinJobs, MUJIN_JOBS, REN_STATE, type JobId, type JobsView } from './jobs';
 import { LINE } from './lines';
 import { StationLook } from './look';
-import { decodeLoop, MujinLoop, MUJIN_LOOP, READ, REN, REN_STATE, type LoopView } from './loop';
-import { MUJIN, MUJIN_POCKET, PLATFORM_Y, SEALS, SPOTS, sealedAt } from './places';
+import { MUJIN, MUJIN_POCKET, PLACES, PLATFORM_Y, SEALS } from './places';
 import { MujinSound } from './sound';
 
 const SPEAKER = { x: 2, y: 3.6, z: -6.2 };
+/** What the Bench Sitter whispers for each job still to do (and the key, still in the tunnel). */
+const WHISPER: Record<JobId, string> = { clock: 'wh_clock', crossing: 'wh_crossing', tickets: 'wh_gates', rope: 'wh_rope', announce: 'wh_speaker' };
+/** The night's mist hurts (health per second). */
+const MIST_DPS = 4;
 
 export class MujinRuntime {
-  readonly loop = new MujinLoop();
+  readonly jobs = new MujinJobs();
   private readonly dir: MujinDirector;
   readonly look = new StationLook();
   readonly sound: MujinSound;
-  /** A co-op guest: the simulation runs the loop; this shows it and asks. */
+  /** A co-op guest: the simulation runs the jobs; this shows them and asks. */
   remote = false;
   /** Co-op: what this player does goes to the simulation (`coop.ts` sets it). */
   request: ((a: string, i?: number) => void) | null = null;
-  private wire: LoopView | null = null;
-  private prev: LoopView | null = null;
+  private wire: JobsView | null = null;
+  private prev: JobsView | null = null;
   private progress: MujinProgress = loadMujin();
   private active = false;
   private t = 0;
-  /** Timers for the station's recurring sounds. */
-  private next = { pa: 20, ring: 0, crossing: 0, melody: 0, wrongPa: 6, lost: 0, murmur: 6, tall: 4, bell: 0, master: 0 };
-  /** The White Shape's stare on you (0..1+), and the Tall Lady's mark. */
+  private next = { pa: 25, ring: 0, crossing: 0, murmur: 6, tall: 4, bell: 0, chatter: 30 };
   private gaze = 0;
   private marked = false;
-  /** One loop back: in the pocket room since this time (-1: not). */
   private pocketAt = -1;
-  /** Leading Ren by the hand (solo; a co-op player asks). */
+  private punchAt = -1;
   private sm = { said: new Set<string>(), near: false, open: false, dead: false };
   private flash: HTMLDivElement | null = null;
   private veil: HTMLDivElement | null = null;
-  private dawnT = -1;
   private renBoarded = false;
   private sex: 'f' | 'm' = 'f';
+  private whisperedAt = -99;
+  private readonly told = new Set<string>();
 
   constructor(private readonly g: Game) {
     this.sound = new MujinSound(g.audio);
     g.worldRoot.add(this.look.root);
     this.dir = new MujinDirector(g.level, g.zombies);
-    this.dir.onSealsChange = () => g.flow.cancel();
     g.zombies.pickVariant = mujinVariantPicker();
-    g.zombies.spawnAllowed = mujinSpawnAllowed(() => this.view.sealed);
+    g.zombies.spawnAllowed = mujinSpawnAllowed();
     g.zenv.punch = () => this.punched();
     g.interaction.sources.push((t) => this.targets(t));
     g.menus.pauseTab = () => ({ label: 'JOURNAL', build: () => buildJournal(this.progress, this.view) });
@@ -66,9 +67,9 @@ export class MujinRuntime {
     this.sound.onLine = (id) => this.caption(id);
   }
 
-  /** What the loop is now (the simulation's in co-op). */
-  get view(): LoopView {
-    return this.remote ? (this.wire ?? this.loop.view) : this.loop.view;
+  /** What the jobs are now (the simulation's in co-op). */
+  get view(): JobsView {
+    return this.remote ? (this.wire ?? this.jobs.view) : this.jobs.view;
   }
 
   /** Load the voices and the score (the loading screen waits for it). */
@@ -76,7 +77,7 @@ export class MujinRuntime {
     return this.sound.load(progress);
   }
 
-  /** A new run. Solo: the loop starts and the Stationmaster is not on the platform yet (call after `populate`). */
+  /** A new run. Solo: the jobs start; the Stationmaster is not on the platform yet (call after `populate`). */
   reset(coop: boolean): void {
     this.remote = coop;
     this.wire = null;
@@ -86,31 +87,29 @@ export class MujinRuntime {
     this.marked = false;
     this.pocketAt = -1;
     this.punchAt = -1;
-    this.dawnT = -1;
     this.renBoarded = false;
+    this.whisperedAt = -99;
+    this.told.clear();
     this.sm = { said: new Set(), near: false, open: false, dead: false };
-    this.next = { pa: 20, ring: 0, crossing: 0, melody: 0, wrongPa: 6, lost: 0, murmur: 6, tall: 4, bell: 0, master: 0 };
+    this.next = { pa: 25, ring: 0, crossing: 0, murmur: 6, tall: 4, bell: 0, chatter: 30 };
     this.sex = Math.random() < 0.5 ? 'f' : 'm';
-    this.everTaught.clear();
     this.progress = loadMujin();
     const rng = this.g.rng;
-    this.loop.reset(() => rng.f());
-    this.loop.drain();
+    this.jobs.reset(() => rng.f());
+    this.jobs.drain();
     if (!coop) {
-      this.dir.reset();
+      this.dir.reset(rng);
       this.g.session.hunt.status = 'available';
     }
     this.prev = null;
-    this.look.setChange(null);
-    this.look.setLamps(0);
     this.sound.stopAll(0.2);
     this.setFilter(0);
     this.opening();
   }
 
-  /** A co-op report's row (`encodeLoop`). */
+  /** A co-op report's row (`encodeJobs`). */
   applyWire(row: unknown): void {
-    const v = decodeLoop(row);
+    const v = decodeJobs(row);
     if (v) this.wire = v;
   }
 
@@ -125,40 +124,31 @@ export class MujinRuntime {
     const playing = g.state === 'playing';
     if (!this.remote && playing && !g.session.ended) this.authority(dt);
     const v = this.view;
-    if (this.remote) this.dir.syncSeals(v.sealed);
     this.react(this.prev, v);
     this.prev = { ...v };
-    // the station as this loop has it
-    const a = v.anomaly >= 0 ? ANOMALIES[v.anomaly]! : null;
-    this.look.setChange(v.phase === 'dawn' ? null : (a?.id ?? null));
-    this.look.setLamps(v.dawn ? 5 : v.lamps);
-    const renShown = v.ren === REN_STATE.here || v.ren === REN_STATE.safe;
-    const p = g.player;
-    this.look.setRen(v.renX, v.renZ, Math.atan2(-(p.x - v.renX), -(p.z - v.renZ)), renShown && !this.renBoarded);
-    this.look.setCrossing(a?.id === 'crossing_ring' || g.session.extraction.phase === 'landing' || g.session.extraction.phase === 'inbound');
-    this.look.update(dt, p, v.sealed);
-    if (!playing) {
-      this.sound.update();
-      return;
+    this.look.update(dt, v, g.player);
+    if (playing) {
+      this.station(dt, v);
+      this.lessons(v);
+      this.kinds(dt, v);
+      this.mist(dt, v);
+      this.pocket();
+      this.dawn(v);
     }
-    this.station(dt, v);
-    this.lessons(v);
-    this.kinds(dt, v);
-    this.keepOut(v);
-    this.pocket();
-    this.dawn(dt, v);
     this.sound.update();
   }
 
-  /** Solo: the loop, the station's infected, the Stationmaster, the dawn train. */
+  /** Solo: the jobs, the station's infected, the Stationmaster, the dawn train. */
   private authority(dt: number): void {
     const g = this.g;
     const s = g.session;
-    const q = this.loop;
-    q.tick(dt);
+    const q = this.jobs;
+    const p = g.player;
+    const stand = [{ x: p.x, z: p.z, up: g.playerAlive() && this.pocketAt < 0 }];
+    q.tick(dt, stand);
     for (const e of q.drain()) {
-      if (e.kind === 'result' && !e.right) this.dir.wrong();
-      else if (e.kind === 'night') g.endRun('defeat', 'The night took the station');
+      this.dir.onEvent(e, q.view, g.rng);
+      if (e.kind === 'night') g.endRun('defeat', 'The night took the station');
       else if (e.kind === 'dawn' && s.defense.status !== 'complete') {
         s.defense.status = 'complete';
         s.defense.progress = 1;
@@ -166,194 +156,174 @@ export class MujinRuntime {
       }
     }
     if (q.view.renLead >= 0 && !g.playerAlive()) q.dropRen();
-    q.stepRen(dt, q.view.renLead >= 0 && g.playerAlive() ? { x: g.player.x, z: g.player.z, yaw: g.player.yaw } : null);
-    const state = this.dir.step(q.view, g.rng);
-    if (s.hunt.status !== 'complete') s.hunt.status = state === 'away' ? 'available' : 'active';
-    if (state === 'away') g.zombies.vanish((z) => z.isBoss);
+    q.stepRen(dt, q.view.renLead >= 0 && g.playerAlive() ? { x: p.x, z: p.z, yaw: p.yaw } : null);
+    const st = this.dir.step(dt, q.view, stand, g.rng);
+    if (st.renTaken) q.loseRen();
+    if (s.hunt.status !== 'complete') s.hunt.status = st.master === 'away' ? 'available' : 'active';
+    if (st.master === 'away') g.zombies.vanish((z) => z.isBoss);
     if (s.extraction.phase === 'available') g.mission.callNow();
   }
 
   /** What changed since the last frame, said and shown once (solo and co-op alike). */
-  private react(a: LoopView | null, b: LoopView): void {
+  private react(a: JobsView | null, b: JobsView): void {
     const g = this.g;
-    if (!a) {
-      if (b.phase === 'fight') this.loopStart(b);
-      return;
+    if (!a) return;
+    // a job done: its lamp, the PA's thanks, the night wound back
+    for (let i = 0; i < JOB_IDS.length; i++) {
+      if (b.done & (1 << i) && !(a.done & (1 << i))) this.jobDone(JOB_IDS[i]!, b);
     }
-    if (b.loop !== a.loop || (b.phase === 'fight' && a.phase !== 'fight' && a.phase !== 'dawn')) this.loopStart(b);
-    if (b.phase === 'bell' && a.phase === 'fight') {
-      g.banner('THE BELL', b.read === READ.none ? 'Report the change, or ring the All Clear, before it stops' : 'The station has been read - hold on', 'warn', 4);
+    if (b.key === 1 && a.key === 0) {
+      g.banner('THE WINDING KEY', 'Take it to the station clock over the gates', 'good', 4);
+      this.sound.say(`sq${this.sex}_spot`, { story: true });
+    }
+    if (b.breakers !== a.breakers) {
+      const n = countBits(b.breakers);
+      if (b.breakers === 0b111) {
+        g.banner('THE CROSSING IS POWERING UP', 'Hold the road by the crossing until it is running', 'warn', 5);
+        this.sound.say(`sq${this.sex}_report`, { story: true });
+        this.sound.cue('bell', { fade: 0.6, loop: true });
+      } else g.feed(`BREAKER ${n} OF 3 THROWN`, 'good');
+    }
+    if (b.picked !== a.picked) {
+      g.feed(`A LOST TICKET (${b.carried} CARRIED, ${b.returned} RETURNED)`, 'good');
+      if (countBits(a.picked) === 0) this.sound.say(`sq${this.sex}_spot`, { story: true });
+    }
+    if (b.returned > a.returned && b.returned < MUJIN_JOBS.tickets) g.banner('TICKETS RETURNED', `${b.returned} of ${MUJIN_JOBS.tickets} - the rest are still out there`, 'good', 4);
+    if (b.announcing && !a.announcing) {
+      g.banner('ON AIR', 'Hold the ticket hall while the announcement plays', 'warn', 5);
+      this.sound.cue('bell', { fade: 0.6, loop: true });
+      this.sound.chime(SPEAKER);
+      this.sound.say('pa_arrive_ja', { pos: SPEAKER, story: true });
+      this.sound.say('pa_arrive_en', { pos: SPEAKER, story: true });
+    }
+    // the night
+    if (b.night <= MUJIN_JOBS.warnAt && a.night > MUJIN_JOBS.warnAt && !b.dawn) {
+      const i = SEALS.findIndex((_, k) => !(b.sealed & (1 << k)));
+      g.banner('THE NIGHT IS COMING', i >= 0 ? `Finish a job within a minute, or it takes ${SEALS[i]!.name.toLowerCase()}` : 'Finish a job within a minute, or it takes the station', 'danger', 6);
       this.sound.say('pa_bell_ja', { pos: SPEAKER, story: true });
       this.sound.say('pa_bell_en', { pos: SPEAKER, story: true });
-      this.sound.cue('bell', { fade: 0.4 });
     }
-    // a read: who, and where
-    if (b.read !== a.read && b.read !== READ.none) {
-      g.feed(b.read === READ.clear || this.lastClear ? 'THE ALL CLEAR WAS RUNG' : 'THE STATION HAS BEEN READ', 'warn');
-      this.lastClear = false;
-    }
-    // the reset: the result, the lamps, the night
-    if (b.phase !== a.phase && (b.phase === 'reset' || b.phase === 'dawn') && a.phase === 'bell') this.result(a, b);
-    if (b.calls > a.calls) this.call(b.calls);
-    if (b.ren !== a.ren) this.renChanged(a.ren, b.ren);
-    if (b.renLead >= 0 && a.renLead < 0) this.sound.say('ren_hold', { pos: { x: b.renX, y: 1.5, z: b.renZ }, chain: 'close', story: true });
-  }
-
-  private lastClear = false;
-  /** The first loops' lessons, each said once (a text line on the top edge, no voice). */
-  private readonly taught = new Set<string>();
-
-  private teach(id: string, text: string, secs = 9): void {
-    if (this.taught.has(`${this.view.loop}:${id}`) || this.everTaught.has(id)) return;
-    this.taught.add(`${this.view.loop}:${id}`);
-    this.everTaught.add(id);
-    this.g.radio('STATION', text, secs);
-  }
-  private readonly everTaught = new Set<string>();
-
-  /** How the station works, told as the first loops go (once a run). */
-  private lessons(v: LoopView): void {
-    if (v.loop === 1 && v.phase === 'fight') {
-      if (v.t > 6) this.teach('lamps', 'Five lamps hang under the roof of platform 1. Each loop you read the station right, one lights. Five lit and the dawn train comes.');
-      if (v.t > 14) this.teach('echoes', 'The pale people waiting are echoes of the last train - not infected, not alive. They are part of the station. Watch them: they can change too.', 9);
-      if (v.t > 26 && v.read === READ.none) this.teach('clear', 'Nothing changes in the first loop: learn how the station looks. Then go to the platform bell and hold E to ring the All Clear.');
-    }
-    if (v.loop === 2 && v.phase === 'fight' && v.t > 5) this.teach('report', 'From now on one thing may be different. Walk up to it and hold E to report it - the map shows every place that can change. If nothing is different, ring the All Clear.', 10);
-    if (v.loop >= 2 && v.phase === 'fight' && v.t > 30 && v.read === READ.none && v.lamps === 0) this.teach('stuck', 'Reports are final: the first one in a loop counts. Wrong, and every lamp goes out.', 8);
-  }
-
-  /** A loop begins: the station put back, its time said, the music changed a little more. */
-  private loopStart(v: LoopView): void {
-    const g = this.g;
-    const a = v.anomaly >= 0 ? ANOMALIES[v.anomaly] : null;
-    this.next.wrongPa = 6;
-    this.sm.near = false;
-    if (v.loop > 1) g.banner(`LOOP ${v.loop}`, v.lamps > 0 ? `${v.lamps} of 5 lamps lit. Something may have changed.` : 'Something may have changed. Look carefully.', 'info', 3.5);
-    else g.banner('MUJIN', 'Light the five lamps on platform 1 to bring the dawn train. Loop 1: nothing has changed yet.', 'info', 6);
-    this.taught.clear();
-    // the PA's chime and the time
-    this.sound.chime(SPEAKER);
-    window.setTimeout(() => {
-      this.sound.say('pa_time_ja', { pos: SPEAKER, story: true });
-      this.sound.say('pa_time_en', { pos: SPEAKER, story: true });
-    }, 1800);
-    // the loop theme: the same each loop, and a little more broken for every lamp that went out
-    const broken = Math.min(4, v.wrongs);
-    this.sound.cue('loop', { loop: true, fade: 1.2, detune: -broken * 18 + (v.loop % 2 ? 6 : -6), rate: 1 - broken * 0.012, backwards: a?.id === 'music_back' });
-  }
-
-  /** The bell stopped: right or wrong. */
-  private result(a: LoopView, b: LoopView): void {
-    const g = this.g;
-    const right = b.last === 1;
-    const was = a.anomaly >= 0 ? ANOMALIES[a.anomaly]!.was : a.anomaly === REN ? 'The girl on platform 2 was out of place.' : 'Nothing was wrong.';
-    this.sound.reset();
-    window.setTimeout(() => this.whiteFlash(), 1300);
-    if (right) {
-      g.banner('A LAMP IS LIT', `${was}  ${b.lamps} of 5.`, 'good', 5);
-      this.sound.say('pa_order_ja', { pos: SPEAKER, story: true });
-      this.sound.say(`sq${this.sex}_right`, { story: true });
-      // a post of Ren's thread for every right read; the change, remembered
-      this.progress.posts = Math.min(REN_POSTS.length - 1, this.progress.posts + 1);
-      if (a.anomaly >= 0 && !this.progress.found.includes(ANOMALIES[a.anomaly]!.id)) this.progress.found.push(ANOMALIES[a.anomaly]!.id);
-      saveMujin(this.progress);
-    } else {
-      const seal = SEALS.findIndex((_, i) => (b.sealed & (1 << i)) !== 0 && !(a.sealed & (1 << i)));
-      g.banner('THE LAMPS GO OUT', `${was}${seal >= 0 ? `  The night takes ${SEALS[seal]!.name.toLowerCase()}.` : ''}`, 'danger', 6);
-      this.sound.say('pa_disorder_ja', { pos: SPEAKER, story: true });
-      this.sound.say('pa_disorder_en', { pos: SPEAKER, story: true });
+    if (b.sealed !== a.sealed) {
+      const i = SEALS.findIndex((_, k) => b.sealed & (1 << k) && !(a.sealed & (1 << k)));
+      g.banner('THE NIGHT TAKES IT', `${SEALS[i]?.name ?? 'Part of the station'} is lost in the mist. It hurts to stay in it.`, 'danger', 6);
+      this.sound.chime(SPEAKER);
+      this.sound.say('pa_wrong_ja', { pos: SPEAKER, story: true });
+      this.sound.say('pa_wrong_en', { pos: SPEAKER, story: true });
       this.sound.say(`sq${this.sex}_wrong`, { story: true });
-      if (b.wrongRun === MUJIN_LOOP.wrongToLose - 1) g.feed('ONE MORE WRONG READ AND THE NIGHT TAKES THE STATION', 'danger');
+      this.sound.express(6.5, { x: 0, y: 2, z: 1.9 });
+      this.loopMusic(b);
     }
-    if (b.phase === 'dawn' && b.dawn) {
-      g.banner(b.late ? 'THE LAST LOOP' : 'EVERY LAMP IS LIT', b.late ? 'The night has run out. The Stationmaster waits on platform 1.' : 'The station is in order. Stop the Stationmaster - then the dawn train comes.', 'good', 7);
-      this.sound.say('sm_lamps', { story: true });
-      this.sound.cue('master', { loop: true, fade: 2 });
-    }
-    if (b.phase === 'dawn' && !b.dawn) {
+    if (b.lost && !a.lost) {
       this.sound.say('pa_night_ja', { pos: SPEAKER, story: true });
       this.sound.say('pa_night_en', { pos: SPEAKER, story: true });
     }
+    // the payphone, Ren
+    if (b.calls > a.calls) this.call(b.calls);
+    if (b.ren !== a.ren) this.renChanged(a.ren, b.ren, b);
+    if (b.renLead >= 0 && a.renLead < 0) this.sound.say('ren_hold', { pos: { x: b.renX, y: 1.5, z: b.renZ }, chain: 'close', story: true });
+    if (b.dawn && !a.dawn) {
+      g.banner('EVERY LAMP IS LIT', 'The station is running. Stop the Stationmaster - then the dawn train comes.', 'good', 7);
+      this.sound.say('sm_lamps', { story: true });
+      this.sound.cue('master', { loop: true, fade: 2 });
+    }
   }
 
-  /** The payphone answered: Ren on the line (or, the fifth time, live). */
-  private call(n: number): void {
-    const id = `ren_call${Math.min(5, n)}`;
-    this.sound.say(id, { chain: 'phone', story: true });
-    this.g.feed(n >= MUJIN_LOOP.calls ? 'THE CALL WAS LIVE' : `A CALL FROM THE STATION (${n} OF 5)`, n >= MUJIN_LOOP.calls ? 'warn' : 'normal');
+  private jobDone(job: JobId, v: JobsView): void {
+    const g = this.g;
+    const lamps = MujinJobs.lamps(v);
+    g.banner(`${JOB_NAMES[job]}: DONE`, lamps < 5 ? `A lamp lights on the board by the bell: ${lamps} of 5.` : 'The fifth lamp is lit.', 'good', 5);
+    this.sound.chime(SPEAKER);
+    this.sound.say('pa_order_ja', { pos: SPEAKER, story: true });
+    this.sound.say('pa_order_en', { pos: SPEAKER, story: true });
+    this.sound.say(`sq${this.sex}_right`, { story: true });
+    if (!v.dawn) this.loopMusic(v);
     this.progress.posts = Math.min(REN_POSTS.length - 1, this.progress.posts + 1);
     saveMujin(this.progress);
   }
 
-  private renChanged(from: number, to: number): void {
+  /** The station's theme: a little more broken for every area the night has taken. */
+  private loopMusic(v: JobsView): void {
+    const lost = countBits(v.sealed);
+    this.sound.cue('loop', { loop: true, fade: 1.5, detune: -lost * 22, rate: 1 - lost * 0.015 });
+  }
+
+  /** The payphone answered: Ren on the line (the fifth time, live). */
+  private call(n: number): void {
+    this.sound.say(`ren_call${Math.min(5, n)}`, { chain: 'phone', story: true });
+    this.g.feed(n >= MUJIN_JOBS.calls ? 'THE CALL WAS LIVE' : `A CALL FROM THE STATION (${n} OF 5)`, n >= MUJIN_JOBS.calls ? 'warn' : 'normal');
+    this.progress.posts = Math.min(REN_POSTS.length - 1, this.progress.posts + 1);
+    saveMujin(this.progress);
+  }
+
+  private renChanged(from: number, to: number, v: JobsView): void {
     const g = this.g;
-    const v = this.view;
-    if (to === REN_STATE.here) g.banner('SOMEONE ON PLATFORM 2', 'A girl stands on the far platform. The station counts her as out of place.', 'warn', 5);
+    if (to === REN_STATE.here) g.banner('REN IS ON PLATFORM 2', 'Take her hand and bring her to the waiting-room bench - before the Tall Lady reaches her', 'warn', 6);
     else if (to === REN_STATE.safe) {
-      g.banner('REN IS SAFE', 'She waits on the bench. The station counts it against you - bring her the dawn.', 'good', 6);
+      g.banner('REN IS SAFE', 'She waits on the bench. When the dawn train comes, she comes with you.', 'good', 6);
       this.sound.say('ren_safe', { pos: { x: v.renX, y: 1.2, z: v.renZ }, story: true });
-      window.setTimeout(() => this.sound.say('sm_ren', { story: true }), 4500);
+      this.sound.say('sm_ren', { story: true });
     } else if (to === REN_STATE.gone && from === REN_STATE.here) {
       this.sound.say('ren_gone', { pos: { x: v.renX, y: 1.4, z: v.renZ }, chain: 'far', story: true });
-      g.feed('SHE IS GONE', 'danger');
+      g.banner('SHE IS GONE', 'The Tall Lady reached her first.', 'danger', 5);
     }
   }
 
+  /** How the station works, told once as the run goes (a line on the top edge, no voice). */
+  private lessons(v: JobsView): void {
+    const say = (id: string, text: string, secs = 9): void => {
+      if (this.told.has(id)) return;
+      this.told.add(id);
+      this.g.radio('STATION', text, secs);
+    };
+    if (this.t > 7) say('jobs', 'The station is dead. Five jobs get it running - they are your objectives, any order. Each one done lights a lamp on the board by the bell; five lit and the dawn train comes.', 11);
+    if (this.t > 22) say('night', 'The night does not wait: the clock at the top is how long until it takes part of the station. Every job you finish winds it back.', 9);
+    if (MujinJobs.lamps(v) >= 1 && MujinJobs.phoneRinging(v)) say('phone', 'The payphone in the ticket hall is ringing.', 6);
+    if (MujinJobs.lamps(v) >= 1) say('master', 'The Stationmaster walks platform 1 now. Nothing hurts him until every lamp is lit - and his punch sends you somewhere else. Keep away.', 9);
+  }
+
   // ---------------------------------------------------------------------------------------------
-  // the station's sounds through a loop
+  // the station's sounds
   // ---------------------------------------------------------------------------------------------
 
-  private station(dt: number, v: LoopView): void {
+  private station(dt: number, v: JobsView): void {
     const n = this.next;
     for (const k of Object.keys(n) as (keyof typeof n)[]) n[k] -= dt;
-    const a = v.anomaly >= 0 ? ANOMALIES[v.anomaly]!.id : null;
-    const fight = v.phase === 'fight' || v.phase === 'bell';
-    // the bell rings through its last twenty seconds
-    if (v.phase === 'bell' && n.bell <= 0) {
-      n.bell = 0.6;
-      this.sound.bell({ x: MUJIN.bell.x, y: 2.4, z: MUJIN.bell.z });
-    }
     // the PA, now and then: a train that never comes
-    if (fight && n.pa <= 0 && a !== 'pa_wrong') {
-      n.pa = 38 + Math.random() * 20;
-      const which = ['pa_arrive', 'pa_delay', 'pa_name'][Math.floor(Math.random() * 3)]!;
+    if (n.pa <= 0 && !v.announcing && !v.dawn) {
+      n.pa = 45 + Math.random() * 25;
+      const which = ['pa_delay', 'pa_name', 'pa_time'][Math.floor(Math.random() * 3)]!;
       this.sound.chime(SPEAKER);
       window.setTimeout(() => {
         this.sound.say(`${which}_ja`, { pos: SPEAKER, story: true });
         this.sound.say(`${which}_en`, { pos: SPEAKER, story: true });
       }, 1700);
     }
-    if (!fight) return;
-    // the changes that are heard
-    if (a === 'pa_wrong' && n.wrongPa <= 0) {
-      n.wrongPa = 26;
-      this.sound.chime(SPEAKER);
-      window.setTimeout(() => {
-        this.sound.say('pa_wrong_ja', { pos: SPEAKER, story: true });
-        this.sound.say('pa_wrong_en', { pos: SPEAKER, story: true });
-      }, 1700);
+    // the announcement on air: the PA keeps talking while it plays
+    if (v.announcing && !MujinJobs.isDone(v, 'announce') && n.chatter <= 0) {
+      n.chatter = 9;
+      const which = ['pa_arrive', 'pa_time', 'pa_name', 'pa_delay'][Math.floor(Math.random() * 4)]!;
+      this.sound.say(`${which}_en`, { pos: SPEAKER, story: true });
     }
-    if (a === 'crossing_ring' && n.crossing <= 0) {
+    // the bell in the night's last twenty seconds
+    if (!v.dawn && v.night < 20 && n.bell <= 0) {
+      n.bell = 1.2;
+      this.sound.bell({ x: MUJIN.bell.x, y: 2.4, z: MUJIN.bell.z });
+    }
+    if (this.look.crossingRinging && n.crossing <= 0) {
       n.crossing = 6;
       this.sound.crossing({ x: 39, y: 2.4, z: -5.5 }, 5.6);
     }
-    if (a === 'vend_melody' && n.melody <= 0) {
-      n.melody = 7;
-      this.sound.chime({ x: SPOTS[9]!.x, y: 1.2, z: SPOTS[9]!.z });
-    }
-    if (a === 'lostprop_ring' && n.lost <= 0) {
-      n.lost = 3;
-      this.sound.ring({ x: 3.4, y: 1.2, z: -18.5 });
-    }
-    // the payphone, ringing for whoever will answer
-    if (MujinLoop.phoneRinging(v) && n.ring <= 0) {
+    if (MujinJobs.phoneRinging(v) && n.ring <= 0) {
       n.ring = 3;
       this.sound.ring({ x: MUJIN.payphone.x - 0.9, y: 1.3, z: MUJIN.payphone.z });
     }
+    // the bell cue ends with the hold it was for; the station's theme otherwise
+    const holding = (v.breakers === 0b111 && !MujinJobs.isDone(v, 'crossing')) || (v.announcing && !MujinJobs.isDone(v, 'announce'));
+    if (!v.dawn && ((this.sound.cueId === 'bell' && !holding) || (this.sound.cueId === null && this.t > 2))) this.loopMusic(v);
   }
 
   /** The station's own: the Tall Lady's voice and mark, the White Shape's stare, the commuters, the Stationmaster. */
-  private kinds(dt: number, v: LoopView): void {
+  private kinds(dt: number, v: JobsView): void {
     const g = this.g;
     const p = g.player;
     const n = this.next;
@@ -384,7 +354,6 @@ export class MujinRuntime {
         nearCommuter = z;
       } else if (z.variant === 'master') master = z;
     }
-    // the White Shape: looked at, the world goes soft and your aim wanders
     this.gaze = stare ? Math.min(1.6, this.gaze + dt / 2) : Math.max(0, this.gaze - dt / 1.2);
     const k = Math.max(0, this.gaze - 0.25);
     if (k > 0 && g.playerAlive()) {
@@ -393,7 +362,6 @@ export class MujinRuntime {
     }
     this.setFilter(k);
     this.sound.hold('shape', Math.min(1, this.gaze), 1760);
-    // the Tall Lady: her voice from wherever she is, and the mark on whoever she hunts
     if (nearTall && dTall < 50 && n.tall <= 0) {
       n.tall = 6 + Math.random() * 4;
       this.sound.say(`tall_po${1 + Math.floor(Math.random() * 4)}`, { pos: { x: nearTall.x, y: 2.6, z: nearTall.z }, chain: 'monster' });
@@ -401,36 +369,34 @@ export class MujinRuntime {
     if (hunted !== this.marked) {
       this.marked = hunted;
       if (hunted) {
-        g.banner('SHE HEARD YOU', 'The Tall Lady will follow you anywhere - stand in the shrine\'s salt circle to be lost to her', 'danger', 5);
+        g.banner('SHE HEARD YOU', "The Tall Lady will follow you anywhere - stand in the shrine's salt circle to be lost to her", 'danger', 5);
         this.sound.say(`sq${this.sex}_marked`, { story: true });
       }
     }
-    this.setVeil(this.marked);
-    // the commuters mutter as you pass
     if (nearCommuter && dCom < 9 && n.murmur <= 0) {
       n.murmur = 7 + Math.random() * 6;
       this.sound.say(`cm_${1 + Math.floor(Math.random() * 6)}`, { pos: { x: nearCommuter.x, y: 1.6, z: nearCommuter.z }, chain: 'far', volume: 0.8 });
     }
-    // the Stationmaster: his words, his theme while he is near
     if (master) {
       const d = Math.hypot(master.x - p.x, master.z - p.z);
-      const say = (id: string): void => {
+      const at = { x: master.x, y: 1.7, z: master.z };
+      const once = (id: string): void => {
         if (this.sm.said.has(id)) return;
         this.sm.said.add(id);
-        this.sound.say(id, { pos: { x: master!.x, y: 1.7, z: master!.z }, story: true });
+        this.sound.say(id, { pos: at, story: true });
       };
       if (!v.dawn) {
         if (d < 12 && !this.sm.near) {
           this.sm.near = true;
-          this.sound.say(this.sm.said.has('sm_tickets') ? 'sm_place' : 'sm_tickets', { pos: { x: master.x, y: 1.7, z: master.z } });
+          this.sound.say(this.sm.said.has('sm_tickets') ? 'sm_place' : 'sm_tickets', { pos: at });
           this.sm.said.add('sm_tickets');
         }
-        if (d < 20 && v.loop >= MUJIN_LOOP.masterFrom && !this.sm.said.has('sm_early')) say('sm_early');
+        if (d < 20) once('sm_early');
         if (d > 25) this.sm.near = false;
-        if (v.loop >= MUJIN_LOOP.masterFrom + 2) say('sm_kept');
+        if (MujinJobs.lamps(v) >= 3) once('sm_kept');
       } else if (!this.sm.open && d < 18) {
         this.sm.open = true;
-        say('sm_fight');
+        once('sm_fight');
       }
     }
     if (v.dawn && !this.sm.dead && g.session.hunt.status === 'complete') {
@@ -439,20 +405,17 @@ export class MujinRuntime {
     }
   }
 
-  /** Anyone inside an area the night has taken is put back on platform 1. */
-  private keepOut(v: LoopView): void {
+  /** The night's mist hurts whoever stands in it. */
+  private mist(dt: number, v: JobsView): void {
     const g = this.g;
     const p = g.player;
-    if (!v.sealed || this.pocketAt >= 0 || !g.playerAlive()) return;
-    if (!sealedAt(v.sealed, p.x, p.z)) return;
-    const i = SEALS.findIndex((_, k) => (v.sealed & (1 << k)) !== 0 && sealedAt(1 << k, p.x, p.z));
-    this.teleport(MUJIN.start.x, MUJIN.start.z, PLATFORM_Y);
-    this.whiteFlash();
-    g.banner('THE NIGHT TOOK IT', `${SEALS[i]?.name ?? 'That part of the station'} is gone. You are back on platform 1.`, 'danger', 4);
+    const inside = g.playerAlive() && this.pocketAt < 0 && inNight(v.sealed, p.x, p.z);
+    if (inside) g.hurtPlayer(MIST_DPS * dt, null, null, { ignoreArmor: true, toxic: true });
+    this.setVeil(this.marked || inside, inside);
   }
 
   // ---------------------------------------------------------------------------------------------
-  // the Stationmaster's punch: one loop back
+  // the Stationmaster's punch: the pocket room
   // ---------------------------------------------------------------------------------------------
 
   /** His punch landed on this player (solo: his env; co-op: the simulation's word). */
@@ -461,13 +424,9 @@ export class MujinRuntime {
     if (this.pocketAt >= 0 || this.punchAt >= 0 || !g.playerAlive()) return;
     this.sound.punch();
     this.sound.say(Math.random() < 0.5 ? 'sm_punch1' : 'sm_punch2', { chain: 'close', story: true });
-    // whoever she was holding on to has let go
-    if (!this.remote && this.loop.view.renLead >= 0) this.loop.dropRen();
+    if (!this.remote && this.jobs.view.renLead >= 0) this.jobs.dropRen();
     this.punchAt = this.t + 0.65;
   }
-
-  /** When the punch takes them (on the game's clock, so a pause or a background tab never loses it). */
-  private punchAt = -1;
 
   private pocket(): void {
     const g = this.g;
@@ -477,12 +436,11 @@ export class MujinRuntime {
       this.whiteFlash();
       this.teleport(MUJIN.pocketWake.x, MUJIN.pocketWake.z, 0);
       this.pocketAt = this.t;
-      g.banner('ONE LOOP BACK', 'The waiting room, again. Find the door.', 'warn', 4);
+      g.banner('THE WAITING ROOM, AGAIN', 'Somewhere else in the night. Find the door.', 'warn', 4);
       this.sound.say(`sq${this.sex}_punched`, { story: true });
       this.sound.say('sm_pocket', { chain: 'close', story: true });
     }
     if (this.pocketAt < 0) return;
-    // anything that keeps them in (a fall, a stray step) stays inside the room
     if (p.z < MUJIN_POCKET.z0 - 2 && this.t - this.pocketAt > 1) this.pocketAt = -1;
   }
 
@@ -504,17 +462,12 @@ export class MujinRuntime {
   // the dawn and the endings
   // ---------------------------------------------------------------------------------------------
 
-  private dawn(dt: number, v: LoopView): void {
+  private dawn(v: JobsView): void {
     const g = this.g;
     const ex = g.session.extraction;
-    if (v.dawn && this.dawnT < 0) this.dawnT = 0;
-    if (this.dawnT >= 0) this.dawnT += dt;
-    // the sky lightens from the moment the train is called
     const k = ex.phase === 'locked' || ex.phase === 'available' ? 0 : Math.min(1, (ex.calledAt !== null ? g.session.elapsed - ex.calledAt : 0) / 60);
     const fog = g.renderer.scene.fog as { color: { setRGB(r: number, g: number, b: number): void } } | null;
-    fog?.color.setRGB(0.03 + k * 0.42, 0.035 + k * 0.3, 0.07 + k * 0.32);
-    g.renderer.light.hemi.intensity = 0.55 + k * 0.6;
-    // Ren boards with whoever boards (solo: you; co-op: the simulation's word reaches every screen)
+    if (k > 0) fog?.color.setRGB(0.03 + k * 0.42, 0.035 + k * 0.3, 0.07 + k * 0.32);
     if ((ex.phase === 'boarding' || ex.phase === 'extracted') && v.ren === REN_STATE.safe && !this.renBoarded) {
       this.renBoarded = true;
       this.sound.say('ren_board', { story: true });
@@ -550,10 +503,10 @@ export class MujinRuntime {
     }
   }
 
-  /** The run is over (the results): the score of the ending plays on, everything else stops. */
+  /** The run is over (the results). */
   end(): void {
     this.setFilter(0);
-    this.setVeil(false);
+    this.setVeil(false, false);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -564,13 +517,17 @@ export class MujinRuntime {
     const p = this.g.player;
     if (this.remote) {
       this.request?.(a, i);
-      if (a === 'clear') this.lastClear = true;
       return;
     }
-    const q = this.loop;
-    if (a === 'report') q.report(i, p.x, p.z, 'YOU');
-    else if (a === 'clear' && q.allClear(p.x, p.z, 'YOU')) this.lastClear = true;
-    else if (a === 'phone') q.answer(p.x, p.z, 'YOU');
+    const q = this.jobs;
+    if (a === 'key') q.takeKey(p.x, p.z);
+    else if (a === 'wind') q.windClock(p.x, p.z);
+    else if (a === 'breaker') q.throwBreaker(i, p.x, p.z);
+    else if (a === 'ticket') q.takeTicket(i, p.x, p.z);
+    else if (a === 'gates') q.returnTickets(p.x, p.z);
+    else if (a === 'rope') q.tieRope(p.x, p.z);
+    else if (a === 'mic') q.startAnnouncement(p.x, p.z);
+    else if (a === 'phone') q.answer(p.x, p.z);
     else if (a === 'take') q.takeRen(0, p.x, p.z);
     else if (a === 'seat') q.seatRen(0, p.x, p.z);
   }
@@ -580,56 +537,60 @@ export class MujinRuntime {
     if (!this.active || !g.playerAlive()) return;
     const p = g.player;
     const v = this.view;
+    const near = (o: { x: number; z: number }, r: number): number => {
+      const d = Math.hypot(o.x - p.x, o.z - p.z);
+      return d <= r ? d : -1;
+    };
     if (this.pocketAt >= 0) {
-      const d = Math.hypot(MUJIN.pocketDoor.x - p.x, MUJIN.pocketDoor.z - p.z);
-      if (d < 2.2) out.push({ id: 'mj:pocket', dist: d, text: 'GO BACK THROUGH THE DOOR', sub: this.t - this.pocketAt < 6 ? 'It will not open yet' : 'Back to the platform', tone: 'warn', hold: 2, enabled: this.t - this.pocketAt >= 6, onUse: () => this.leavePocket() });
+      const d = near(MUJIN.pocketDoor, 2.2);
+      if (d >= 0) out.push({ id: 'mj:pocket', dist: d, text: 'GO BACK THROUGH THE DOOR', sub: this.t - this.pocketAt < 6 ? 'It will not open yet' : 'Back to the platform', tone: 'warn', hold: 2, enabled: this.t - this.pocketAt >= 6, onUse: () => this.leavePocket() });
       return;
     }
-    const canRead = MujinLoop.canRead(v);
-    if (canRead) {
-      SPOTS.forEach((s, i) => {
-        if (s.id === 'ren' && v.anomaly !== REN) return;
-        const d = Math.hypot(s.x - p.x, s.z - p.z);
-        if (d > s.r || Math.abs(p.y - s.y) > 4) return;
-        out.push({ id: `mj:spot:${s.id}`, dist: d + 0.5, text: `REPORT ${s.name}`, sub: 'Hold: this is what changed (final for the loop)', tone: 'warn', hold: 0.9, enabled: true, onUse: () => this.act('report', i) });
-      });
-      const db = Math.hypot(MUJIN.bell.x - p.x, MUJIN.bell.z - p.z);
-      if (db < MUJIN_LOOP.reach.bell) out.push({ id: 'mj:clear', dist: db, text: 'RING THE ALL CLEAR', sub: 'Hold: nothing has changed this loop (final)', tone: 'good', hold: 1.2, enabled: true, onUse: () => this.act('clear') });
-    }
-    // the Bench Sitter: sit beside it and it whispers where the change is (it never says it twice in a loop)
+    let d: number;
+    // the clock: the key in the tunnel, then the clock itself
+    if (v.key === 0 && (d = near(PLACES.key, PLACES.key.r)) >= 0) out.push({ id: 'mj:key', dist: d, text: 'TAKE THE WINDING KEY', tone: 'good', hold: 0.6, enabled: true, onUse: () => this.act('key') });
+    if (!MujinJobs.isDone(v, 'clock') && (d = near(PLACES.clock, PLACES.clock.r)) >= 0) out.push({ id: 'mj:wind', dist: d, text: v.key === 1 ? 'WIND THE STATION CLOCK' : 'THE CLOCK HAS STOPPED', sub: v.key === 1 ? 'Hold' : 'Its winding key is in the tunnel', tone: 'good', hold: 2.5, enabled: v.key === 1, onUse: () => this.act('wind') });
+    // the breakers
+    PLACES.breakers.forEach((b, i) => {
+      if (v.breakers & (1 << i) || (d = near(b, b.r)) < 0) return;
+      out.push({ id: `mj:breaker:${i}`, dist: d, text: 'THROW THE BREAKER', sub: `${countBits(v.breakers)} of 3 - then hold the road`, tone: 'good', hold: 1.2, enabled: true, onUse: () => this.act('breaker', i) });
+    });
+    // the tickets, and the gates
+    PLACES.tickets.forEach((t, i) => {
+      if (!(v.ticketSet & (1 << i)) || v.picked & (1 << i) || (d = near(t, 2)) < 0) return;
+      out.push({ id: `mj:ticket:${i}`, dist: d, text: 'PICK UP THE LOST TICKET', tone: 'good', hold: 0.4, enabled: true, onUse: () => this.act('ticket', i) });
+    });
+    if (!MujinJobs.isDone(v, 'tickets') && (d = near(PLACES.gates, PLACES.gates.r)) >= 0) out.push({ id: 'mj:gates', dist: d + 0.4, text: v.carried > 0 ? `FEED ${v.carried} TICKET${v.carried > 1 ? 'S' : ''} INTO THE GATES` : 'THE GATES WANT TICKETS', sub: `${v.returned} of ${MUJIN_JOBS.tickets} returned`, tone: 'good', hold: 1, enabled: v.carried > 0, onUse: () => this.act('gates') });
+    // the rope
+    if (!MujinJobs.isDone(v, 'rope') && (d = near(PLACES.rope, PLACES.rope.r)) >= 0) out.push({ id: 'mj:rope', dist: d, text: 'TIE A NEW SHRINE ROPE', sub: 'Hold - it takes a while', tone: 'good', hold: 6, enabled: true, onUse: () => this.act('rope') });
+    // the announcement
+    if (!v.announcing && !MujinJobs.isDone(v, 'announce') && (d = near(PLACES.mic, PLACES.mic.r)) >= 0) out.push({ id: 'mj:mic', dist: d, text: 'START THE ANNOUNCEMENT', sub: 'Then hold the ticket hall', tone: 'good', hold: 1, enabled: true, onUse: () => this.act('mic') });
+    // the Bench Sitter: sit beside it and it whispers what is left to do
     for (const z of g.zombies.zombies) {
       if (z.variant !== 'sitter' || !z.alive || z.state !== 'idle') continue;
-      const d = Math.hypot(z.x - p.x, z.z - p.z);
-      if (d > 2.4) continue;
-      const told = this.whispered === v.loop;
-      out.push({ id: 'mj:sitter', dist: d, text: told ? 'IT HAS NOTHING MORE TO SAY' : 'SIT BESIDE IT', sub: 'The Bench Sitter', tone: 'normal', hold: 1.4, enabled: !told, onUse: () => this.whisper(z) });
+      if ((d = near(z, 2.4)) < 0) continue;
+      const told = this.t - this.whisperedAt < 30;
+      out.push({ id: 'mj:sitter', dist: d, text: told ? 'IT HAS NOTHING MORE TO SAY' : 'SIT BESIDE IT', sub: 'The Bench Sitter - do not shoot it', tone: 'normal', hold: 1.4, enabled: !told, onUse: () => this.whisper(z) });
       break;
     }
-    if (MujinLoop.phoneRinging(v)) {
-      const d = Math.hypot(MUJIN.payphone.x - p.x, MUJIN.payphone.z - p.z);
-      if (d < MUJIN_LOOP.reach.phone) out.push({ id: 'mj:phone', dist: d, text: 'ANSWER THE PHONE', tone: 'normal', hold: 0.3, enabled: true, onUse: () => this.act('phone') });
-    }
+    if (MujinJobs.phoneRinging(v) && (d = near(MUJIN.payphone, MUJIN_JOBS.reach.phone)) >= 0) out.push({ id: 'mj:phone', dist: d, text: 'ANSWER THE PHONE', tone: 'normal', hold: 0.3, enabled: true, onUse: () => this.act('phone') });
     if (v.ren === REN_STATE.here) {
-      const dr = Math.hypot(v.renX - p.x, v.renZ - p.z);
-      if (v.renLead < 0 && dr < MUJIN_LOOP.reach.ren) {
-        out.push({ id: 'mj:ren', dist: dr, text: 'TAKE HER HAND', sub: 'Ren', tone: 'good', hold: 0.6, enabled: true, onUse: () => {
+      if (v.renLead < 0 && (d = near({ x: v.renX, z: v.renZ }, MUJIN_JOBS.reach.ren)) >= 0) {
+        out.push({ id: 'mj:ren', dist: d, text: 'TAKE HER HAND', sub: 'Ren', tone: 'good', hold: 0.6, enabled: true, onUse: () => {
           this.act('take');
           this.sound.say('ren_seen', { chain: 'close', story: true });
         } });
       }
-      const dbn = Math.hypot(MUJIN.bench.x - p.x, MUJIN.bench.z - p.z);
-      if (v.renLead >= 0 && dbn < MUJIN_LOOP.reach.bench) out.push({ id: 'mj:seat', dist: dbn, text: 'SIT HER DOWN ON THE BENCH', sub: 'She will be safe; the loop counts as wrong', tone: 'good', hold: 0.8, enabled: true, onUse: () => this.act('seat') });
+      if (v.renLead >= 0 && (d = near(MUJIN.bench, MUJIN_JOBS.reach.bench)) >= 0) out.push({ id: 'mj:seat', dist: d, text: 'SIT HER DOWN ON THE BENCH', sub: 'She will be safe here', tone: 'good', hold: 0.8, enabled: true, onUse: () => this.act('seat') });
     }
   }
 
-  private whispered = 0;
-
-  /** The Bench Sitter's whisper: the place this loop's change is, or that nothing is wrong. */
+  /** The Bench Sitter's whisper: what is still to do (the key first, if it is still in the tunnel). */
   private whisper(z: Zombie): void {
     const v = this.view;
-    this.whispered = v.loop;
-    const i = MujinLoop.changeSpot(v);
-    const id = i < 0 ? 'wh_none' : `wh_${SPOTS[i]!.id}`;
+    this.whisperedAt = this.t;
+    const job = MujinJobs.nextJob(v);
+    const id = v.ren === REN_STATE.here ? 'wh_ren' : !job ? 'wh_none' : job === 'clock' && v.key === 0 ? 'wh_tunnel' : WHISPER[job];
     this.sound.say(id, { pos: { x: z.x, y: 1.1, z: z.z }, chain: 'close', story: true });
   }
 
@@ -642,48 +603,69 @@ export class MujinRuntime {
     const v = this.view;
     const p = this.g.player;
     const ex = this.g.session.extraction;
-    if (v.phase === 'fight' || v.phase === 'bell') st.timer = { label: `LOOP ${v.loop}  -  ${v.phase === 'bell' ? 'THE BELL STOPS IN' : 'THE BELL IN'}`, seconds: v.phase === 'bell' ? MujinLoop.left(v) : MujinLoop.left(v) - MUJIN_LOOP.bell, urgent: v.phase === 'bell' };
-    else if (v.phase === 'reset') st.timer = { label: 'THE NIGHT BEGINS AGAIN', seconds: Math.max(0, MUJIN_LOOP.reset - v.t), urgent: false };
-    const read = v.read !== READ.none;
-    const lampsLine = `${'●'.repeat(v.dawn ? 5 : v.lamps)}${'○'.repeat(5 - (v.dawn ? 5 : v.lamps))}`;
-    const loopObj = {
-      id: 'mj-loop',
-      title: `PUT THE STATION IN ORDER  ${lampsLine}`,
-      detail: v.dawn
-        ? 'Every lamp is lit'
-        : read
-          ? 'Read for this loop - the lamp lights (or goes out) when the bell stops'
-          : v.loop === 1
-            ? 'Nothing has changed yet: ring the All Clear at the platform bell to light the first lamp'
-            : MujinLoop.canRead(v)
-              ? 'A right read lights a lamp: hold E on what changed, or ring the All Clear at the bell if nothing did'
-              : 'Look round: something may have changed',
-      state: v.dawn ? 'complete' : 'active',
-      progress: (v.dawn ? 5 : v.lamps) / 5,
-      tracked: !v.dawn && !read && MujinLoop.canRead(v),
-      distance: !v.dawn && !read && MujinLoop.canRead(v) ? Math.hypot(MUJIN.bell.x - p.x, MUJIN.bell.z - p.z) : -1,
-    } as const;
-    const list: HudState['objectives'] = [{ ...loopObj }];
-    const hunt = this.g.session.hunt.status;
-    if (v.loop >= MUJIN_LOOP.masterFrom || v.dawn) {
-      list.push({ id: 'mj-master', title: 'STOP THE STATIONMASTER', detail: hunt === 'complete' ? 'He is down' : v.dawn ? 'Now he can be stopped' : 'He cannot be hurt until every lamp is lit - keep away from his punch', state: hunt === 'complete' ? 'complete' : 'active', progress: -1, tracked: v.dawn && hunt !== 'complete', distance: -1 });
+    const dist = (o: { x: number; z: number }): number => Math.hypot(o.x - p.x, o.z - p.z);
+    if (!v.dawn && !v.lost) {
+      const i = SEALS.findIndex((_, k) => !(v.sealed & (1 << k)));
+      st.timer = { label: i >= 0 ? `THE NIGHT TAKES ${SEALS[i]!.name.replace(/^THE /, '')} IN` : 'THE NIGHT TAKES THE STATION IN', seconds: Math.max(0, v.night), urgent: v.night < MUJIN_JOBS.warnAt };
     }
-    if (ex.phase !== 'locked') list.push({ id: 'mj-train', title: 'BOARD THE DAWN TRAIN', detail: ex.phase === 'landed' ? 'The doors are open - get on' : 'It stops at platform 1', state: ex.phase === 'extracted' ? 'complete' : 'active', progress: -1, tracked: true, distance: Math.hypot(MUJIN.trainDoor.x - p.x, MUJIN.trainDoor.z - p.z) });
-    if (v.ren === REN_STATE.here || v.ren === REN_STATE.safe) list.push({ id: 'mj-ren', title: 'REN', detail: v.ren === REN_STATE.safe ? 'Safe on the bench - board the dawn train and she comes too' : v.renLead >= 0 ? 'Bring her to the waiting-room bench' : 'Take her hand, or put her right', state: v.ren === REN_STATE.safe ? 'complete' : 'active', progress: -1, tracked: false, distance: Math.hypot(v.renX - p.x, v.renZ - p.z) });
-    st.objectives = list;
-    // the bell (the All Clear while the loop can be read), and every place that can change: the map shows what can be
-    // reported, never which one it is
-    const open = !read && MujinLoop.canRead(v) && !v.dawn;
-    md.markers.push({ id: 'mj-bell', kind: 'objective', x: MUJIN.bell.x, z: MUJIN.bell.z, label: open ? 'ALL CLEAR' : 'BELL', color: '#9fe0ff', visible: true, compass: open, pulse: v.phase === 'bell' && open, dim: !open });
+    const list: HudState['objectives'] = [];
+    const job = (id: JobId, detail: string, progress: number, at: { x: number; z: number }): void => {
+      const done = MujinJobs.isDone(v, id);
+      list.push({ id: `mj-${id}`, title: JOB_NAMES[id], detail: done ? 'Done - its lamp is lit' : detail, state: done ? 'complete' : 'active', progress: done ? 1 : progress, tracked: false, distance: done ? -1 : dist(at) });
+    };
     if (!v.dawn) {
-      for (const s of SPOTS) {
-        if (s.id === 'ren') continue;
-        md.markers.push({ id: `mj-spot-${s.id}`, kind: 'landmark', x: s.x, z: s.z, label: s.name.replace(/^THE /, ''), color: '#cfd8e6', visible: true, compass: false, dim: !open, mapOnly: true });
+      job('clock', v.key === 0 ? 'The winding key is in the tunnel mouth (west)' : 'Wind the clock over the ticket gates', v.key === 1 ? 0.5 : 0, v.key === 0 ? PLACES.key : PLACES.clock);
+      job('crossing', v.breakers === 0b111 ? `Hold the road by the crossing: ${Math.round(v.charge * 100)}%` : `Throw the breakers by the level crossing (${countBits(v.breakers)} of 3)`, v.breakers === 0b111 ? v.charge : countBits(v.breakers) / 6, v.breakers === 0b111 ? PLACES.crossing : (PLACES.breakers.find((_, i) => !(v.breakers & (1 << i))) ?? PLACES.crossing));
+      job('tickets', v.carried > 0 ? `Feed ${v.carried} into the ticket gates (${v.returned} of 5 returned)` : `Find the lost tickets (${v.returned} of 5 returned)`, v.returned / MUJIN_JOBS.tickets, v.carried > 0 ? PLACES.gates : (this.nearestTicket(v) ?? PLACES.gates));
+      job('rope', 'Tie a new rope at the shrine (south-east)', 0, PLACES.rope);
+      job('announce', v.announcing ? `Hold the ticket hall: ${Math.round(v.played * 100)}%` : 'Start it at the PA desk in the ticket hall', v.announcing ? v.played : 0, v.announcing ? PLACES.hall : PLACES.mic);
+      // track the nearest job not done
+      const open = list.filter((o) => o.state !== 'complete');
+      if (open.length) open.reduce((a, b) => (a.distance <= b.distance ? a : b)).tracked = true;
+    }
+    const hunt = this.g.session.hunt.status;
+    if (MujinJobs.lamps(v) >= 1) list.push({ id: 'mj-master', title: 'STOP THE STATIONMASTER', detail: hunt === 'complete' ? 'He is down' : v.dawn ? 'Now he can be stopped' : 'Nothing hurts him until every lamp is lit - keep away from his punch', state: hunt === 'complete' ? 'complete' : 'active', progress: -1, tracked: v.dawn && hunt !== 'complete', distance: -1 });
+    if (ex.phase !== 'locked') list.push({ id: 'mj-train', title: 'BOARD THE DAWN TRAIN', detail: ex.phase === 'landed' ? 'The doors are open - get on' : 'It stops at platform 1', state: ex.phase === 'extracted' ? 'complete' : 'active', progress: -1, tracked: true, distance: dist(MUJIN.trainDoor) });
+    if (v.ren === REN_STATE.here || v.ren === REN_STATE.safe) list.push({ id: 'mj-ren', title: 'REN', detail: v.ren === REN_STATE.safe ? 'Safe on the bench - she boards with you' : v.renLead >= 0 ? 'Bring her to the waiting-room bench' : 'Take her hand on platform 2', state: v.ren === REN_STATE.safe ? 'complete' : 'active', progress: -1, tracked: false, distance: dist({ x: v.renX, z: v.renZ }) });
+    st.objectives = list;
+    // markers: only what leads somewhere
+    const mk = (id: string, at: { x: number; z: number }, label: string, color = '#9fffc4', pulse = false): void => {
+      md.markers.push({ id, kind: 'objective', x: at.x, z: at.z, label, color, visible: true, compass: true, pulse });
+    };
+    if (!v.dawn) {
+      if (!MujinJobs.isDone(v, 'clock')) mk('mj-clock', v.key === 0 ? PLACES.key : PLACES.clock, v.key === 0 ? 'WINDING KEY' : 'CLOCK');
+      if (!MujinJobs.isDone(v, 'crossing')) {
+        if (v.breakers === 0b111) md.markers.push({ id: 'mj-crossing', kind: 'objective', x: PLACES.crossing.x, z: PLACES.crossing.z, label: 'HOLD THE ROAD', color: '#9fffc4', radius: PLACES.crossing.r, visible: true, compass: true, pulse: true });
+        else PLACES.breakers.forEach((b, i) => !(v.breakers & (1 << i)) && mk(`mj-breaker-${i}`, b, 'BREAKER'));
+      }
+      if (!MujinJobs.isDone(v, 'tickets')) {
+        PLACES.tickets.forEach((t, i) => v.ticketSet & (1 << i) && !(v.picked & (1 << i)) && md.markers.push({ id: `mj-ticket-${i}`, kind: 'objective', x: t.x, z: t.z, label: 'TICKET', color: '#ffe08a', visible: true, compass: dist(t) < 40 }));
+        if (v.carried > 0) mk('mj-gates', PLACES.gates, 'TICKET GATES', '#9fffc4', true);
+      }
+      if (!MujinJobs.isDone(v, 'rope')) mk('mj-rope', PLACES.rope, 'SHRINE ROPE');
+      if (!MujinJobs.isDone(v, 'announce')) {
+        if (v.announcing) md.markers.push({ id: 'mj-hall', kind: 'objective', x: PLACES.hall.x, z: PLACES.hall.z, label: 'HOLD THE HALL', color: '#9fffc4', radius: PLACES.hall.r, visible: true, compass: true, pulse: true });
+        else mk('mj-mic', PLACES.mic, 'PA DESK');
       }
     }
-    if (MujinLoop.phoneRinging(v)) md.markers.push({ id: 'mj-phone', kind: 'objective', x: MUJIN.payphone.x, z: MUJIN.payphone.z, label: 'PAYPHONE', color: '#ffe08a', visible: true, compass: true, pulse: true });
-    if (v.ren === REN_STATE.here) md.markers.push({ id: 'mj-ren', kind: 'objective', x: v.renX, z: v.renZ, label: 'REN', color: '#c8b0ff', visible: true, compass: true, pulse: v.renLead < 0 });
-    if (v.renLead >= 0) md.markers.push({ id: 'mj-benchgoal', kind: 'objective', x: MUJIN.bench.x, z: MUJIN.bench.z, label: 'THE BENCH', color: '#c8b0ff', visible: true, compass: true, pulse: true });
+    if (MujinJobs.phoneRinging(v)) mk('mj-phone', MUJIN.payphone, 'PAYPHONE', '#ffe08a', true);
+    if (v.ren === REN_STATE.here) mk('mj-ren', { x: v.renX, z: v.renZ }, 'REN', '#c8b0ff', v.renLead < 0);
+    if (v.renLead >= 0) mk('mj-bench', MUJIN.bench, 'THE BENCH', '#c8b0ff', true);
+  }
+
+  private nearestTicket(v: JobsView): { x: number; z: number } | null {
+    const p = this.g.player;
+    let best: { x: number; z: number } | null = null;
+    let bd = Infinity;
+    PLACES.tickets.forEach((t, i) => {
+      if (!(v.ticketSet & (1 << i)) || v.picked & (1 << i)) return;
+      const d = Math.hypot(t.x - p.x, t.z - p.z);
+      if (d < bd) {
+        bd = d;
+        best = t;
+      }
+    });
+    return best;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -696,17 +678,16 @@ export class MujinRuntime {
     const d = document.createElement('div');
     d.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:40;opacity:0;transition:opacity .25s';
     if (kind === 'flash') d.style.background = '#fff';
-    else d.style.background = 'radial-gradient(ellipse at center, transparent 55%, rgba(240,236,228,.55) 100%)';
     document.body.appendChild(d);
     if (kind === 'flash') this.flash = d;
     else this.veil = d;
     return d;
   }
 
-  /** Two frames of white: the reset. */
   private whiteFlash(): void {
     const f = this.overlay('flash');
     f.style.transition = 'none';
+    f.style.background = '#fff';
     f.style.opacity = '1';
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -716,13 +697,14 @@ export class MujinRuntime {
     );
   }
 
-  private setVeil(on: boolean): void {
+  /** The edges of the screen: pale while the Tall Lady hunts you, dark violet in the night's mist. */
+  private setVeil(on: boolean, mist: boolean): void {
     if (!on && !this.veil) return;
     const v = this.overlay('veil');
-    v.style.opacity = on ? String(0.55 + 0.35 * Math.sin(this.t * 3)) : '0';
+    v.style.background = mist ? 'radial-gradient(ellipse at center, rgba(20,14,40,.15) 35%, rgba(10,6,24,.85) 100%)' : 'radial-gradient(ellipse at center, transparent 55%, rgba(240,236,228,.55) 100%)';
+    v.style.opacity = on ? String(mist ? 1 : 0.55 + 0.35 * Math.sin(this.t * 3)) : '0';
   }
 
-  /** The world gone soft round the White Shape. */
   private setFilter(k: number): void {
     const c = this.g.renderer.renderer.domElement;
     if (!c) return;
@@ -730,7 +712,7 @@ export class MujinRuntime {
     if (c.style.filter !== f) c.style.filter = f;
   }
 
-  /** The run's first seconds: black, the train's brakes, the PA saying a name, and the station fading up. */
+  /** The run's first seconds: black, the train's brakes, the PA saying the station's name, the station fading up. */
   private opening(): void {
     const f = this.overlay('flash');
     f.style.transition = 'none';
@@ -746,13 +728,14 @@ export class MujinRuntime {
       f.style.opacity = '0';
     }, 1200);
     window.setTimeout(() => (f.style.background = '#fff'), 4400);
+    this.g.banner('MUJIN', 'A dead station on no map. Get it running again before the night takes it.', 'info', 6);
   }
 
   /** A line said: its caption on the top line (the speaker's name; the PA in Japanese with the English after). */
   private caption(id: string): void {
     const l = LINE[id];
     if (!l || l.who === 'TALL') return;
-    if (l.who === 'PA' && id.endsWith('_en')) return; // shown with the Japanese
+    if (l.who === 'PA' && id.endsWith('_en')) return;
     const who = l.who === 'SQUAD-F' || l.who === 'SQUAD-M' ? 'YOU' : l.who === 'WHISPER' ? '...' : l.who;
     const text = l.ja ? `${l.ja}  ${l.text}` : l.text;
     this.g.radio(who, text, Math.min(8, 2.5 + text.length / 22));
@@ -767,4 +750,8 @@ export class MujinRuntime {
   }
 }
 
-export { LINE };
+function countBits(n: number): number {
+  let c = 0;
+  for (let i = 0; i < 8; i++) if (n & (1 << i)) c++;
+  return c;
+}

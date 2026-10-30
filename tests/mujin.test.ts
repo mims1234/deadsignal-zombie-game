@@ -1,182 +1,148 @@
 /**
- * MUJIN, the unmanned station: the loop's rules (`mujin/loop.ts`), the night taking areas without cutting the station
- * apart (`mujin/director.ts`), Ren's way home, and a co-op simulation running the station end to end.
+ * MUJIN, "The Last Service": the five jobs (`mujin/jobs.ts`), the night taking the station when nothing gets done, Ren's
+ * way home, the station's voices on disk, and a co-op simulation running a job end to end.
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
-import { ANOMALIES } from '../src/mujin/anomalies';
-import { MujinSeals } from '../src/mujin/director';
-import { LINES } from '../src/mujin/lines';
-import { decodeLoop, encodeLoop, MujinLoop, MUJIN_LOOP, NONE, READ, REN, REN_STATE } from '../src/mujin/loop';
-import { MUJIN, SEALS, SPOTS, SPOT_INDEX, sealedAt } from '../src/mujin/places';
-import { LIFE, SessionSim } from '../src/sim/serverHost';
-import { FlowField } from '../src/world/nav';
 import { existsSync } from 'node:fs';
+import { LINES } from '../src/mujin/lines';
+import { decodeJobs, encodeJobs, MujinJobs, MUJIN_JOBS, REN_STATE } from '../src/mujin/jobs';
+import { MUJIN, PLACES, SEALS } from '../src/mujin/places';
+import { LIFE, SessionSim } from '../src/sim/serverHost';
 
-/** Run the loop to the moment it can be read. */
-function toRead(q: MujinLoop): void {
-  while (!MujinLoop.canRead(q.view)) q.tick(0.5);
-}
-/** Run the loop through to the next loop (or the dawn). */
-function toNext(q: MujinLoop): void {
-  const n = q.view.loop;
-  for (let i = 0; i < 1000 && q.view.loop === n && q.view.phase !== 'dawn'; i++) q.tick(0.5);
-}
-/** Read the loop right, wherever its change is. */
-function readRight(q: MujinLoop): void {
-  toRead(q);
-  const s = MujinLoop.changeSpot(q.view);
-  if (s < 0) expect(q.allClear(MUJIN.bell.x, MUJIN.bell.z)).toBe(true);
-  else expect(q.report(s, SPOTS[s]!.x, SPOTS[s]!.z)).toBe(true);
-}
+const at = (o: { x: number; z: number }): [number, number] => [o.x, o.z];
+const stand = (o: { x: number; z: number }) => [{ x: o.x, z: o.z, up: true }];
 
-describe('MUJIN: the loop', () => {
-  it('starts with nothing wrong, and the All Clear is a right read', () => {
-    const q = new MujinLoop();
-    q.reset(() => 0.5);
-    expect(q.view.anomaly).toBe(NONE);
-    expect(q.allClear(MUJIN.bell.x, MUJIN.bell.z)).toBe(false); // too soon: nobody reads the station blind
-    toRead(q);
-    expect(q.allClear(MUJIN.bell.x, MUJIN.bell.z)).toBe(true);
-    expect(q.view.read).toBe(READ.clear);
-    toNext(q);
-    expect(q.view.lamps).toBe(1);
-    expect(q.view.sealed).toBe(0);
+/** Every job done, the honest way. */
+function doAll(q: MujinJobs): void {
+  expect(q.takeKey(...at(PLACES.key))).toBe(true);
+  expect(q.windClock(...at(PLACES.clock))).toBe(true);
+  PLACES.breakers.forEach((b, i) => expect(q.throwBreaker(i, b.x, b.z)).toBe(true));
+  for (let t = 0; t < MUJIN_JOBS.charge + 1; t += 0.5) q.tick(0.5, stand(PLACES.crossing));
+  PLACES.tickets.forEach((t, i) => {
+    if (q.view.ticketSet & (1 << i)) expect(q.takeTicket(i, t.x, t.z)).toBe(true);
   });
+  expect(q.returnTickets(...at(PLACES.gates))).toBe(true);
+  expect(q.tieRope(...at(PLACES.rope))).toBe(true);
+  expect(q.startAnnouncement(...at(PLACES.mic))).toBe(true);
+  for (let t = 0; t < MUJIN_JOBS.announce + 1; t += 0.5) q.tick(0.5, stand(PLACES.hall));
+}
 
-  it('a read is final, and only counts close to where it is made', () => {
-    const q = new MujinLoop();
-    q.reset(() => 0.5);
-    toRead(q);
-    expect(q.report(SPOT_INDEX.clock, 40, 30)).toBe(false);
-    expect(q.report(SPOT_INDEX.clock, SPOTS[SPOT_INDEX.clock].x, SPOTS[SPOT_INDEX.clock].z)).toBe(true);
-    expect(q.allClear(MUJIN.bell.x, MUJIN.bell.z)).toBe(false);
-    expect(q.view.read).toBe(READ.wrong); // nothing was wrong in loop 1
-  });
-
-  it('a wrong read puts out every lamp and the night takes the next area; three in a row take the station', () => {
-    const q = new MujinLoop();
-    let r = 0;
-    q.reset(() => ((r = (r * 9301 + 49297) % 233280), r / 233280));
-    readRight(q);
-    toNext(q);
-    readRight(q);
-    toNext(q);
-    expect(q.view.lamps).toBe(2);
-    // nobody reads: wrong
-    toNext(q);
-    expect(q.view.lamps).toBe(0);
-    expect(q.view.sealed).toBe(1);
-    toNext(q);
-    expect(q.view.sealed).toBe(3);
-    const e = q.drain();
-    toNext(q);
-    expect(q.view.phase).toBe('dawn');
-    expect(q.view.dawn).toBe(false);
-    expect([...e, ...q.drain()].some((x) => x.kind === 'night')).toBe(true);
-  });
-
-  it('five right in a row bring the dawn; every change comes once and from its own loop on', () => {
-    const q = new MujinLoop();
-    let r = 7;
-    q.reset(() => ((r = (r * 9301 + 49297) % 233280), r / 233280));
-    const seen: number[] = [];
-    for (let i = 0; i < 5; i++) {
-      if (q.view.anomaly >= 0) {
-        seen.push(q.view.anomaly);
-        expect(ANOMALIES[q.view.anomaly]!.tier).toBeLessThanOrEqual(q.view.loop >= 6 ? 5 : Math.max(1, q.view.loop));
-      }
-      readRight(q);
-      toNext(q);
-    }
+describe('MUJIN: the jobs', () => {
+  it('each job lights a lamp; all five bring the dawn', () => {
+    const q = new MujinJobs();
+    q.reset(() => 0.4);
+    expect(MujinJobs.lamps(q.view)).toBe(0);
+    doAll(q);
+    expect(MujinJobs.lamps(q.view)).toBe(5);
     expect(q.view.dawn).toBe(true);
-    expect(q.view.phase).toBe('dawn');
-    expect(new Set(seen).size).toBe(seen.length);
+    const kinds = q.drain().map((e) => e.kind);
+    expect(kinds.filter((k) => k === 'done').length).toBe(5);
+    expect(kinds).toContain('dawn');
   });
 
-  it('the payphone rings once a loop; the fifth call is Ren, and she can be brought to the bench', () => {
-    const q = new MujinLoop();
-    q.reset(() => 0.99); // never "nothing wrong"... except by the rules
-    for (let n = 1; n <= MUJIN_LOOP.calls; n++) {
-      while (!MujinLoop.phoneRinging(q.view)) q.tick(0.5);
-      expect(q.answer(MUJIN.payphone.x, MUJIN.payphone.z)).toBe(true);
-      expect(q.answer(MUJIN.payphone.x, MUJIN.payphone.z)).toBe(false);
-      if (n === MUJIN_LOOP.calls) break;
-      readRight(q);
-      toNext(q);
+  it('every step checks where you are, and the steps come in order', () => {
+    const q = new MujinJobs();
+    q.reset(() => 0.4);
+    expect(q.windClock(...at(PLACES.clock))).toBe(false); // no key yet
+    expect(q.takeKey(0, 0)).toBe(false); // too far
+    expect(q.takeKey(...at(PLACES.key))).toBe(true);
+    expect(q.takeKey(...at(PLACES.key))).toBe(false); // once
+    expect(q.returnTickets(...at(PLACES.gates))).toBe(false); // none carried
+    expect(q.tieRope(0, 0)).toBe(false);
+    // the crossing only charges with someone on the road, after all three breakers
+    q.tick(5, stand(PLACES.crossing));
+    expect(q.view.charge).toBe(0);
+    PLACES.breakers.forEach((b, i) => q.throwBreaker(i, b.x, b.z));
+    q.tick(5, stand({ x: 0, z: 0 }));
+    expect(q.view.charge).toBe(0);
+    q.tick(5, stand(PLACES.crossing));
+    expect(q.view.charge).toBeGreaterThan(0);
+  });
+
+  it('five of the eight ticket spots get a ticket', () => {
+    const q = new MujinJobs();
+    q.reset(() => 0.7);
+    let n = 0;
+    for (let i = 0; i < PLACES.tickets.length; i++) if (q.view.ticketSet & (1 << i)) n++;
+    expect(n).toBe(MUJIN_JOBS.tickets);
+  });
+
+  it('with nothing done the night takes the street, the shrine, the field, then the station; a job winds it back', () => {
+    const q = new MujinJobs();
+    q.reset(() => 0.4);
+    q.tick(MUJIN_JOBS.nightEvery - 30, []);
+    expect(q.view.sealed).toBe(0);
+    q.takeKey(...at(PLACES.key));
+    q.windClock(...at(PLACES.clock));
+    expect(q.view.night).toBe(MUJIN_JOBS.nightEvery);
+    for (let i = 0; i < SEALS.length; i++) {
+      q.tick(MUJIN_JOBS.nightEvery + 0.1, []);
+      expect(q.view.sealed).toBe((1 << (i + 1)) - 1);
     }
-    expect(q.view.lamps).toBe(4);
+    expect(q.view.lost).toBe(false);
+    q.tick(MUJIN_JOBS.nightEvery + 0.1, []);
+    expect(q.view.lost).toBe(true);
+    expect(q.drain().some((e) => e.kind === 'night')).toBe(true);
+  });
+
+  it('the payphone rings after each job; the fifth call brings Ren, who can be walked to the bench', () => {
+    const q = new MujinJobs();
+    q.reset(() => 0.4);
+    expect(MujinJobs.phoneRinging(q.view)).toBe(false);
+    doAll(q);
+    for (let n = 1; n <= MUJIN_JOBS.calls; n++) {
+      expect(MujinJobs.phoneRinging(q.view)).toBe(true);
+      expect(q.answer(MUJIN.payphone.x, MUJIN.payphone.z)).toBe(true);
+    }
+    expect(MujinJobs.phoneRinging(q.view)).toBe(false);
     expect(q.view.ren).toBe(REN_STATE.here);
-    expect(q.view.anomaly).toBe(REN);
-    // take her hand, walk her to the bench
     expect(q.takeRen(0, q.view.renX, q.view.renZ)).toBe(true);
     for (let i = 0; i < 40; i++) q.stepRen(0.1, { x: MUJIN.bench.x, z: MUJIN.bench.z + 1, yaw: 0 });
     expect(q.seatRen(0, MUJIN.bench.x, MUJIN.bench.z)).toBe(true);
     expect(q.view.ren).toBe(REN_STATE.safe);
-    expect(q.view.read).toBe(READ.wrong);
-    toNext(q);
-    expect(q.view.lamps).toBe(0);
-    expect(q.view.ren).toBe(REN_STATE.safe);
   });
 
-  it('goes over the wire and back unchanged', () => {
-    const q = new MujinLoop();
+  it('goes over the wire and back', () => {
+    const q = new MujinJobs();
     q.reset(() => 0.3);
-    toRead(q);
-    const back = decodeLoop(JSON.parse(JSON.stringify(encodeLoop(q.view))));
-    expect(back).toEqual({ ...q.view, t: Math.round(q.view.t * 10) / 10 });
+    q.takeKey(...at(PLACES.key));
+    q.tick(12.34, []);
+    const back = decodeJobs(JSON.parse(JSON.stringify(encodeJobs(q.view))));
+    expect(back).toEqual({ ...q.view, night: Math.round(q.view.night * 10) / 10 });
   });
 
-  it('has a voice file for every line and a spot for every change', () => {
+  it('has a voice file for every line', () => {
     for (const l of LINES) expect(existsSync(`public/mujin/voice/${l.id}.mp3`), l.id).toBe(true);
-    for (const a of ANOMALIES) expect(SPOT_INDEX[a.spot]).toBeGreaterThanOrEqual(0);
   });
 });
 
-describe('MUJIN: the station', () => {
-  it('the night can take every area and the station stays in one piece', () => {
-    const sim = new SessionSim({ seed: 5, kind: 'mission', map: 'mujin', send() {} });
-    const { world, nav } = sim.level;
-    const seals = new MujinSeals(world, nav, sim.level.mujin!.seals);
-    for (let bits = 0; bits < 1 << SEALS.length; bits++) {
-      seals.sync(bits);
-      const f = new FlowField(nav);
-      f.compute(MUJIN.start.x, MUJIN.start.z);
-      for (const s of SPOTS) {
-        if (s.id === 'bridge' || s.id === 'speaker' || s.id === 'clock' || s.id === 'sign' || s.id === 'tunnel') continue; // up high, or behind a wall
-        if (sealedAt(bits, s.x, s.z)) continue;
-        expect(f.isReachable(s.x, s.z), `${s.id} with ${bits}`).toBe(true);
-      }
-      expect(f.isReachable(MUJIN.bell.x, MUJIN.bell.z + 1)).toBe(true);
-      for (let i = 0; i < SEALS.length; i++) {
-        const r = SEALS[i]!.rect;
-        const inside = { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 + (i === 0 ? 3 : 0) };
-        if (bits & (1 << i)) expect(f.isReachable(inside.x, inside.z), `${SEALS[i]!.id} sealed`).toBe(false);
-      }
-    }
-  });
-
-  it('a co-op night runs: the loop goes round, the station is put back, the Stationmaster waits his turn', () => {
+describe('MUJIN: co-op', () => {
+  it('the simulation runs the jobs: the key brings the crawlers, the clock lights a lamp, the Stationmaster walks', () => {
     const sent: Record<string, unknown>[] = [];
     const sim = new SessionSim({ seed: 9, kind: 'mission', map: 'mujin', send: (_to, d) => sent.push(d) });
     sim.players([{ id: 'a', name: 'A' }]);
     sim.begin();
-    sim.message('a', { k: 'p', x: MUJIN.start.x, y: 0.3, z: MUJIN.start.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, true);
+    const go = (o: { x: number; z: number }, secs: number): void => {
+      for (let i = 0; i < secs * 30; i++) {
+        sim.message('a', { k: 'p', x: o.x, y: 0.3, z: o.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, true);
+        sim.tick(1 / 30);
+      }
+    };
+    go(MUJIN.start, 1);
     expect(sim.zombies.boss).toBeNull();
-    for (let i = 0; i < 30 * 12; i++) {
-      sim.message('a', { k: 'p', x: MUJIN.bell.x, y: 0.3, z: MUJIN.bell.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, true);
-      sim.tick(1 / 30);
-    }
-    sim.message('a', { k: 'mj', a: 'clear' }, true);
-    expect(sim.mujin!.view.read).toBe(READ.clear);
-    for (let i = 0; i < 30 * 120; i++) {
-      sim.message('a', { k: 'p', x: MUJIN.bell.x, y: 0.3, z: MUJIN.bell.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, true);
-      sim.tick(1 / 30);
-      if (sim.mujin!.view.loop > 1) break;
-    }
-    expect(sim.mujin!.view.loop).toBe(2);
-    expect(sim.mujin!.view.lamps).toBe(1);
+    go(PLACES.key, 0.5);
+    const before = sim.zombies.zombies.filter((z) => z.variant === 'crawler').length;
+    sim.message('a', { k: 'mj', a: 'key' }, true);
+    go(PLACES.key, 0.2);
+    expect(sim.mujin!.view.key).toBe(1);
+    expect(sim.zombies.zombies.filter((z) => z.variant === 'crawler').length).toBeGreaterThan(before);
+    go(PLACES.clock, 0.5);
+    sim.message('a', { k: 'mj', a: 'wind' }, true);
+    go(PLACES.clock, 0.5);
+    expect(MujinJobs.lamps(sim.mujin!.view)).toBe(1);
+    expect(sim.zombies.boss?.variant).toBe('master');
+    expect(sim.zombies.boss?.invulnerable).toBe(true);
     expect(sent.some((d) => Array.isArray((d as { mj?: unknown }).mj))).toBe(true);
-    expect(sim.zombies.boss).toBeNull();
   });
 });

@@ -433,6 +433,8 @@ export class Game implements GameCtx {
     await nextFrame();
     this.level = buildLevel(this.mats, this.mapId);
     setSkyColors(this.renderer.sky);
+    // MUJIN's rooms keep the night's light: going indoors never darkens the screen
+    this.renderer.sameIndoors = this.mapId === 'mujin';
     if (this.mapId === 'forge') {
       // ember night: warm haze, firelit ground bounce and an orange horizon fill
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
