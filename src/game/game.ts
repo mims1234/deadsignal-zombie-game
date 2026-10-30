@@ -13,7 +13,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GOVERNOR, GRENADE, PLAYER, QUALITY, QUALITY_TIERS, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
+import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GOVERNOR, GRENADE, MYSTERY_BOX, PLAYER, QUALITY, QUALITY_TIERS, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -433,8 +433,6 @@ export class Game implements GameCtx {
     await nextFrame();
     this.level = buildLevel(this.mats, this.mapId);
     setSkyColors(this.renderer.sky);
-    // MUJIN's rooms keep the night's light: going indoors never darkens the screen
-    this.renderer.sameIndoors = this.mapId === 'mujin';
     if (this.mapId === 'forge') {
       // ember night: warm haze, firelit ground bounce and an orange horizon fill
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -497,7 +495,7 @@ export class Game implements GameCtx {
     await nextFrame();
     this.zombieFactory = createZombieFactory();
     this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
-    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' });
+    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId) });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
     await nextFrame();

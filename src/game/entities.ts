@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { ECONOMY, GRENADE, MYSTERY_BOX, PLAYER, REGIONS, WEAPONS } from '../config';
 import { addReserve, isFull } from '../logic/ammo';
 import { addCash, rollCrateReward } from '../logic/economy';
-import { type BoxPrize, REEL, prizeKey, prizeLabel, rollBox, takePrize } from '../logic/mysteryBox';
+import { type BoxPrize, prizeKey, prizeLabel, reelFor, rollBox, takePrize } from '../logic/mysteryBox';
 import { BOX_PHASE, DROP_KINDS, type DropKind, decodePrize, encodePrize } from '../logic/sharedLoot';
 import type { Region } from '../types';
 import type { CrateDef, StationDef } from '../world/layout/data';
@@ -32,10 +32,14 @@ export class CrateRuntime {
   private reel: THREE.Group | null = null;
   private readonly faces: THREE.Object3D[] = [];
   readonly mark: THREE.Sprite;
+  /** The faces this box's reel shows (the relics too where a box holds them). */
+  private readonly reelFaces: readonly BoxPrize[];
   constructor(
     readonly def: CrateDef,
     readonly model: CrateModel,
+    readonly relics = false,
   ) {
+    this.reelFaces = reelFor(relics);
     this.mark = createBoxMark();
     this.mark.position.set(def.x, 1.55, def.z);
   }
@@ -57,7 +61,7 @@ export class CrateRuntime {
 
   private buildReel(parent: THREE.Object3D, mats: MaterialLib): THREE.Group {
     const g = new THREE.Group();
-    for (const p of REEL) {
+    for (const p of this.reelFaces) {
       let m: THREE.Object3D;
       if (p.kind === 'weapon') {
         m = createGunDisplay(p.id);
@@ -117,7 +121,7 @@ export class CrateRuntime {
       const k = Math.min(1, this.t / MYSTERY_BOX.spin);
       reel.position.y = 0.7 + 0.8 * (1 - (1 - k) * (1 - k));
       if (this.t >= MYSTERY_BOX.spin) {
-        this.show(Math.max(0, REEL.findIndex((p) => prizeKey(p) === prizeKey(this.prize!))));
+        this.show(Math.max(0, this.reelFaces.findIndex((p) => prizeKey(p) === prizeKey(this.prize!))));
         this.phase = 'offer';
         this.t = 0;
         return 'land';
@@ -195,7 +199,7 @@ export class Entities {
       model.root.position.set(def.x, 0, def.z);
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);
-      const c = new CrateRuntime(def, model);
+      const c = new CrateRuntime(def, model, MYSTERY_BOX.relicMaps.includes(ctx.level.data.id));
       this.root.add(c.mark);
       this.crates.push(c);
     }
@@ -436,7 +440,7 @@ export class Entities {
       // co-op: ask the simulation; the first to ask wins the box (the reel shows when it says so)
       if (c.pendingAt > performance.now() - 2000) return false;
       c.pendingAt = performance.now();
-      this.coop.open(this.crates.indexOf(c), encodePrize(rollBox(c.def.region, ctx.session.inv, ctx.rng)));
+      this.coop.open(this.crates.indexOf(c), encodePrize(rollBox(c.def.region, ctx.session.inv, ctx.rng, c.relics)));
       return true;
     }
     c.opened = true;
@@ -444,7 +448,7 @@ export class Entities {
     const inv = ctx.session.inv;
     const cash = rollCrateReward(c.def.region, inv, ctx.rng).cash;
     addCash(inv, cash);
-    c.spin(rollBox(c.def.region, inv, ctx.rng), this.root, ctx.mats);
+    c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics), this.root, ctx.mats);
     ctx.audio.play('crate_open', { pos: { x: c.def.x, y: 0.6, z: c.def.z }, priority: 2 });
     ctx.audio.play('pickup_cash', { priority: 1, volume: 0.7 });
     ctx.fx.sparkle({ x: c.def.x, y: 0.9, z: c.def.z }, 0xffe08a, 16);

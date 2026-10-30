@@ -125,8 +125,8 @@ export class GameRenderer {
     this.lightPool.setFocusIndoor(indoor);
   }
 
-  /** A map whose rooms are lit as the night outside is (MUJIN): stepping under a roof changes nothing on screen. */
-  sameIndoors = false;
+  /** Rooms lit as the night outside is (every map): stepping under a roof changes nothing on screen. */
+  sameIndoors = true;
 
   /**
    * Sky light levels outdoors (hemisphere, key light, warm fill, environment) and how much brighter interiors are than

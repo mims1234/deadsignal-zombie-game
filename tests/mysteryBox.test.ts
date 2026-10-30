@@ -100,3 +100,29 @@ describe('taking a prize', () => {
     expect(prizeLabel({ kind: 'grenades', count: 2 })).toContain('x2');
   });
 });
+
+describe('the relics in the box (MUJIN)', () => {
+  it('rolls the Sakura District relics only where a map lets its boxes hold them', () => {
+    const seen = (relics: boolean): Set<string> => {
+      const rng = new Rng(5);
+      const inv = createInventory();
+      const s = new Set<string>();
+      for (let i = 0; i < 4000; i++) {
+        const p = rollBox('high', inv, rng, relics);
+        if (p.kind === 'weapon') s.add(p.id);
+      }
+      return s;
+    };
+    expect(MYSTERY_BOX.relicMaps).toContain('mujin');
+    expect([...seen(true)]).toEqual(expect.arrayContaining(['hanafubuki', 'raijin']));
+    expect(seen(false).has('hanafubuki') || seen(false).has('raijin')).toBe(false);
+  });
+
+  it('shows the relics on the reel there, and they go over the wire in co-op', async () => {
+    const { reelFor } = await import('../src/logic/mysteryBox');
+    const { decodePrize, encodePrize } = await import('../src/logic/sharedLoot');
+    expect(reelFor(true).map(prizeKey)).toEqual(expect.arrayContaining(['hanafubuki', 'raijin']));
+    expect(reelFor(false)).toBe(REEL);
+    for (const id of ['hanafubuki', 'raijin'] as const) expect(decodePrize(encodePrize({ kind: 'weapon', id }))).toEqual({ kind: 'weapon', id });
+  });
+});

@@ -503,6 +503,23 @@ export class Avatar {
     };
   }
 
+  /** The model worn now (null: the figure's own body). */
+  get worn(): AnimeTemplate | null {
+    return this.anime?.template ?? null;
+  }
+
+  /** Change into another model (one that finished loading after this figure was made). */
+  rewear(t: AnimeTemplate, tint: AnimeTint | null = null): void {
+    if (this.anime) {
+      this.anime.root.removeFromParent();
+      this.anime.dispose();
+      this.anime = null;
+    }
+    for (const m of this.ownMeshes) m.visible = true;
+    this.ownMeshes.length = 0;
+    this.wear(t, tint);
+  }
+
   /**
    * Far away (the Sakura District's Court): the worn model comes off and the figure's own plain body shows (a dozen
    * cheap parts instead of a 13-material model); near, the model goes back on.

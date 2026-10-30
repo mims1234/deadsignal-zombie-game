@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.325",
+      "date": "2026-10-31",
+      "title": "Relics in MUJIN's boxes, rooms lit like outside",
+      "notes": [
+        "MUJIN's mystery boxes can now hold the Sakura District's relics, the Hanafubuki Petal Cannon and Raijin's Drum, beside the usual guns, in solo and co-op alike. They show on the reel too. On the Sakura District itself they are still earned at Kisaragi, never boxed.",
+        "Going indoors no longer darkens the screen on any map: rooms keep the same light as outside, as MUJIN already did.",
+        "Co-op on the anime maps: a teammate who appeared before their model had finished loading stayed in a stand-in for the whole run. They now change into their own model the moment it arrives. On MUJIN every teammate model already loads before the run."
+      ]
+    },
+    {
       "version": "0.4.324",
       "date": "2026-10-30",
       "title": "MUJIN without the stalls",

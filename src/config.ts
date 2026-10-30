@@ -994,8 +994,11 @@ export const MYSTERY_BOX = {
     high: { weapon: 0.52, grenades: 0.2, rpgMul: 1.6 },
   } as Record<Region, { weapon: number; grenades: number; rpgMul: number }>,
   /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
-  /** The Sakura District's relics are never in a box (weight 0). */
+  /** The Sakura District's relics are never in its boxes (weight 0): there they are earned at Kisaragi. */
   guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0 } as Record<WeaponId, number>,
+  /** Maps whose boxes hold the relics too, and how often (MUJIN: the station they came through). */
+  relicMaps: ['mujin'] as readonly MapId[],
+  relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
   grenades: 2,
   /** Magazines of reserve for each carried weapon. */
   ammoMags: 3,

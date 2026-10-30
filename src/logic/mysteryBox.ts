@@ -13,7 +13,7 @@ import type { Rng } from './rng';
 
 export type BoxPrize = { kind: 'ammo' } | { kind: 'grenades'; count: number } | { kind: 'weapon'; id: WeaponId };
 
-/** Every face the reel can flick past. */
+/** Every face the reel can flick past (`reelFor`: with the relics where a box holds them). */
 export const REEL: readonly BoxPrize[] = [
   { kind: 'ammo' },
   { kind: 'weapon', id: 'rifle' },
@@ -22,6 +22,12 @@ export const REEL: readonly BoxPrize[] = [
   { kind: 'weapon', id: 'pistol' },
   { kind: 'weapon', id: 'rpg' },
 ];
+
+const RELIC_REEL: readonly BoxPrize[] = [...REEL, { kind: 'weapon', id: 'hanafubuki' }, { kind: 'weapon', id: 'raijin' }];
+
+export function reelFor(relics: boolean): readonly BoxPrize[] {
+  return relics ? RELIC_REEL : REEL;
+}
 
 export function prizeKey(p: BoxPrize): string {
   return p.kind === 'weapon' ? p.id : p.kind;
@@ -33,13 +39,14 @@ export function prizeLabel(p: BoxPrize): string {
   return 'AMMUNITION';
 }
 
-/** Roll a box in `region` for this inventory. Never offers a gun you already carry. */
-export function rollBox(region: Region, inv: Inventory, rng: Rng): BoxPrize {
+/** Roll a box in `region` for this inventory. Never offers a gun you already carry; `relics`: the relics can come up. */
+export function rollBox(region: Region, inv: Inventory, rng: Rng, relics = false): BoxPrize {
   const odds = MYSTERY_BOX.odds[region];
-  const pool = (Object.keys(MYSTERY_BOX.guns) as WeaponId[]).filter((id) => MYSTERY_BOX.guns[id] > 0 && !carries(inv, id));
+  const weight = (id: WeaponId): number => MYSTERY_BOX.guns[id] || (relics ? (MYSTERY_BOX.relics[id] ?? 0) : 0);
+  const pool = (Object.keys(MYSTERY_BOX.guns) as WeaponId[]).filter((id) => weight(id) > 0 && !carries(inv, id));
   const roll = rng.f();
   if (pool.length > 0 && roll < odds.weapon) {
-    const weights = pool.map((id) => MYSTERY_BOX.guns[id] * (id === 'rpg' ? odds.rpgMul : 1));
+    const weights = pool.map((id) => weight(id) * (id === 'rpg' ? odds.rpgMul : 1));
     let r = rng.f() * weights.reduce((a, b) => a + b, 0);
     for (let i = 0; i < pool.length; i++) {
       r -= weights[i]!;

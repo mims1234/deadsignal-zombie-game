@@ -94,6 +94,8 @@ export class CoopSession {
   private endedGen = -1;
   private readonly peers = new Map<string, Peer>();
   private readonly avatars = new Map<string, Avatar>();
+  /** Each teammate's seat (the model they wear on the anime maps goes by it). */
+  private readonly seats = new Map<string, number>();
   private me = { kills: 0, downs: 0 };
   private sendT = 0;
   /** A self-hosted session's simulation (owner's browser only). */
@@ -258,6 +260,7 @@ export class CoopSession {
     this.peers.delete(id);
     this.avatars.get(id)?.dispose();
     this.avatars.delete(id);
+    this.seats.delete(id);
   }
 
   /** Everything this client says to the simulation (a self-host's own goes straight in). */
@@ -385,11 +388,18 @@ export class CoopSession {
 
   private showAvatar(p: Peer, fired = false): void {
     let a = this.avatars.get(p.id);
+    const anime = this.g.mapId === 'sakura' || this.g.mapId === 'mujin';
     if (!a) {
       // the Sakura District: everyone wears a VRoid model, teammates too
-      a = new Avatar(p.name, this.avatars.size, this.g.mapId === 'sakura' || this.g.mapId === 'mujin' ? { anime: operatorModel(this.avatars.size) } : undefined);
+      const seat = this.avatars.size;
+      a = new Avatar(p.name, seat, anime ? { anime: operatorModel(seat) } : undefined);
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
+      this.seats.set(p.id, seat);
+    } else if (anime) {
+      // their own model may have finished loading after they appeared (in a stand-in): change into it
+      const want = operatorModel(this.seats.get(p.id) ?? 0);
+      if (want && want !== a.worn) a.rewear(want);
     }
     // a teammate who goes down falls where they stood (and gets up again when revived); aboard means gone
     const down = p.life === LIFE.down || p.life === LIFE.out;
