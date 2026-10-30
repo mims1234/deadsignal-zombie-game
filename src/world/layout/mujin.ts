@@ -180,13 +180,25 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   };
   // the hills the station sits in: low rounded mounds all round, wooded
   const hillMat = new THREE.MeshStandardMaterial({ color: 0x1c2420, roughness: 1 });
+  // never into the station's grounds (the shrine is near its edge) or the pocket room built out in the south
+  const keepOut = [
+    { x0: B.minX - 4, x1: B.maxX + 4, z0: B.minZ - 4, z1: B.maxZ + 4 },
+    { x0: MUJIN_POCKET.x0 - 4, x1: MUJIN_POCKET.x1 + 4, z0: MUJIN_POCKET.z0 - 4, z1: MUJIN_POCKET.z1 + 4 },
+  ];
+  const clearOf = (x: number, z: number): number => Math.min(...keepOut.map((q) => Math.hypot(Math.max(q.x0 - x, 0, x - q.x1), Math.max(q.z0 - z, 0, z - q.z1))));
   for (let i = 0; i < 22; i++) {
     const a = (i / 22) * Math.PI * 2 + rand() * 0.2;
     const r = 30 + rand() * 16;
     const h = 14 + rand() * 14;
     const hill = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), hillMat);
     hill.scale.set(1, h / r, 1);
-    hill.position.set(Math.cos(a) * (96 + rand() * 10), -1, Math.sin(a) * (78 + rand() * 8));
+    let x = Math.cos(a) * (96 + rand() * 10);
+    let z = Math.sin(a) * (78 + rand() * 8);
+    while (clearOf(x, z) < r) {
+      x *= 1.04;
+      z *= 1.04;
+    }
+    hill.position.set(x, -1, z);
     b.add(hill, { cast: false });
   }
   for (let i = 0; i < 90; i++) {

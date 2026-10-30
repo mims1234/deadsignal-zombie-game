@@ -27,6 +27,7 @@ import {
 } from './synth/registry';
 import { getPrewarmed, getPrewarmedImpulse, layerKey, soundKey, startPrewarm, stopPrewarm } from './synth/prewarm';
 import { INDOOR_IR, OUTDOOR_IR, makeImpulse } from './synth/reverb';
+import type { SynthDone, SynthJob } from './synth/worker';
 
 // -------------------------------------------------------------------------------------------------
 // Public extras (tests / harness)
@@ -267,6 +268,10 @@ class Engine implements AudioEngineDebug {
   private readonly lastVariant = new Map<SoundId, number>();
   private readonly pending: { id: SoundId; v: number }[] = [];
   private readonly pendingLoops: Exclude<LoopId, 'ambience'>[] = [];
+  /** The background synthesis's worker (`synth/worker.ts`): undefined until first needed, null where there is none. */
+  private synthWorker: Worker | null | undefined;
+  /** Jobs handed to the worker and not back yet (put back on the queue if the worker fails). */
+  private readonly offThread: SynthJob[] = [];
   private readonly idIndex = new Map<SoundId, number>();
   private readonly lastStartTime: Float64Array;
   private readonly burstCount: Uint8Array;
@@ -341,7 +346,7 @@ class Engine implements AudioEngineDebug {
   }
 
   get pendingSynthesis(): number {
-    return this.pending.length + this.pendingLoops.length;
+    return this.pending.length + this.pendingLoops.length + this.offThread.length;
   }
 
   get voiceCount(): number {
@@ -625,6 +630,7 @@ class Engine implements AudioEngineDebug {
     for (let i = 0; i < AMBIENCE_LAYERS.length; i++) this.ensureAmbienceLayer(i);
     this.pending.length = 0;
     this.pendingLoops.length = 0;
+    this.offThread.length = 0;
   }
 
   // ---- playback ----
@@ -909,6 +915,53 @@ class Engine implements AudioEngineDebug {
     return loop;
   }
 
+  /** Hands the background queue to the worker (false: there is none, synthesise here). */
+  private toWorker(): boolean {
+    if (this.synthWorker === undefined) {
+      this.synthWorker = null;
+      if (typeof Worker === 'undefined') return false;
+      try {
+        const w = new Worker(new URL('./synth/worker.ts', import.meta.url), { type: 'module' });
+        w.onmessage = (e: MessageEvent<SynthDone>) => this.fromWorker(e.data);
+        w.onerror = () => this.dropWorker();
+        this.synthWorker = w;
+      } catch {
+        return false;
+      }
+    }
+    const w = this.synthWorker;
+    if (!w) return false;
+    const rate = this.hiRate;
+    const jobs: SynthJob[] = [...this.pending.map((j) => ({ kind: 'sound' as const, id: j.id, v: j.v, rate })), ...this.pendingLoops.map((id) => ({ kind: 'loop' as const, id, rate }))];
+    this.pending.length = 0;
+    this.pendingLoops.length = 0;
+    for (const j of jobs) {
+      this.offThread.push(j);
+      w.postMessage(j);
+    }
+    return true;
+  }
+
+  private fromWorker(d: SynthDone): void {
+    const i = this.offThread.findIndex((j) => j.kind === d.kind && j.id === d.id && (j.kind === 'loop' || (d.kind === 'sound' && j.v === d.v)));
+    if (i >= 0) this.offThread.splice(i, 1);
+    if (!this.ctx || this.disposed) return;
+    if (d.kind === 'sound') {
+      const arr = this.sounds.get(d.id);
+      if (arr && !arr[d.v]) arr[d.v] = this.makeBuffer(d.data, d.sampleRate);
+    } else if (!this.loopBufs.has(`loop:${d.id}`)) this.loopBufs.set(`loop:${d.id}`, this.makeBuffer(d.data, d.sampleRate));
+  }
+
+  /** The worker failed: what it had not sent back goes back on the queue, synthesised here from now on. */
+  private dropWorker(): void {
+    this.synthWorker?.terminate();
+    this.synthWorker = null;
+    for (const j of this.offThread.splice(0)) {
+      if (j.kind === 'sound') this.pending.push({ id: j.id, v: j.v });
+      else this.pendingLoops.push(j.id);
+    }
+  }
+
   /** Called by a loop when it stops. */
   loopStopped(id: LoopId): void {
     this.loops.delete(id);
@@ -920,8 +973,11 @@ class Engine implements AudioEngineDebug {
   update(dt: number): void {
     if (!this.ready || !this.ctx) return;
     const ctx = this.ctx;
-    // background synthesis under a small time budget
-    if (this.pending.length > 0 || this.pendingLoops.length > 0) {
+    // background synthesis: in the worker where there is one (a long sound takes a few hundred ms, too long for any
+    // frame), else here under a small time budget
+    if ((this.pending.length > 0 || this.pendingLoops.length > 0) && this.toWorker()) {
+      // handed over
+    } else if (this.pending.length > 0 || this.pendingLoops.length > 0) {
       const t0 = performance.now();
       do {
         const job = this.pending.shift();
@@ -1006,6 +1062,9 @@ class Engine implements AudioEngineDebug {
     this.loopBufs.clear();
     this.pending.length = 0;
     this.pendingLoops.length = 0;
+    this.offThread.length = 0;
+    this.synthWorker?.terminate();
+    this.synthWorker = null;
   }
 }
 

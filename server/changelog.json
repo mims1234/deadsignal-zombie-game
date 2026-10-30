@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.324",
+      "date": "2026-10-30",
+      "title": "MUJIN without the stalls",
+      "notes": [
+        "No more freezes on MUJIN when the clock is wound, when the express rushes through, or when the dawn train pulls in. Those moments could stall the game for a third of a second, long enough for the infected to land hits.",
+        "The game's sounds that are not needed at the start (some take a quarter of a second to make) are now made in the background, off the game's own thread, on every map, so the first minutes of a run no longer hitch.",
+        "MUJIN's trains and the anime cast's models are sent to the graphics card while the map loads, and the station is drawn once all round, so the first time you turn round or meet a new infected does not stall.",
+        "The dawn train's headlight no longer makes every surface rebuild its lighting the moment the train comes into sight.",
+        "MUJIN loads only the models it uses, before the run, instead of parsing others in the middle of play.",
+        "The hills round MUJIN no longer push through the shrine or the waiting room the Stationmaster sends you to."
+      ]
+    },
+    {
       "version": "0.4.323",
       "date": "2026-10-30",
       "title": "MUJIN rebuilt: The Last Service",

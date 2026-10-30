@@ -131,6 +131,11 @@ export function animeModel(file: string | undefined, fallbacks: readonly string[
   return standIn();
 }
 
+/** Every model loaded so far (for the game to send to the GPU with the level, `Game.compileShaders`). */
+export function loadedAnimeScenes(): THREE.Object3D[] {
+  return [...templates.values()].filter((t): t is AnimeTemplate => !!t).map((t) => t.scene);
+}
+
 /** Whether a slot shows its own file, a stand-in, or nothing. */
 export function animeSlotState(file: string): 'own' | 'stand-in' | 'none' {
   if (templates.get(file)) return 'own';

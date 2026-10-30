@@ -48,7 +48,7 @@ import type { GameCtx } from './ctx';
 import type { Entities } from './entities';
 import type { MissionApi } from './interaction';
 import { bumpRegion } from './session';
-import { createDawnTrain, createExpress } from '../mujin/train';
+import { createDawnTrain, createExpress, TRAIN_HEADLIGHT } from '../mujin/train';
 import { TRACK_Z } from '../mujin/places';
 
 const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
@@ -722,7 +722,16 @@ export class MissionRuntime implements MissionApi {
     this.heli.root.position.copy(this.heliPos);
     this.heli.root.rotation.y = 0;
     this.heli.update(dt, { rotor: 0, lights: true, doorOpen: this.heliDoor, pitch: 0, roll: 0 });
-    this.heliLight.intensity = 0;
+    // its headlight (the helicopter's light, always in the scene: a light appearing would rebuild every shader)
+    this.heliLight.position.copy(this.heliPos).add(TRAIN_HEADLIGHT);
+    this.heliLight.color.setHex(0xfff0d0);
+    this.heliLight.distance = 40;
+    this.heliLight.intensity = visible ? 30 : 0;
+  }
+
+  /** What only appears late in a run (MUJIN's trains), for the game to compile and upload with the level. */
+  lateObjects(): THREE.Object3D[] {
+    return this.train ? [this.heli.root, ...(this.express ? [this.express] : [])] : [];
   }
 
   private animateHelicopter(dt: number, time: number, camera: THREE.Camera): void {

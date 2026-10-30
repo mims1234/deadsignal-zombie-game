@@ -4,7 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import { loadAnimeCast } from '../anime/cast';
+import { loadAnimeCast, MUJIN_CAST } from '../anime/cast';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
@@ -58,7 +58,7 @@ import { ForgeRuntime } from '../forge/runtime';
 import { AureliaRuntime } from '../aurelia/runtime';
 import { AURELIA_MODEL } from '../aurelia/look';
 import { MujinRuntime } from '../mujin/runtime';
-import { loadAnime } from '../anime/vrm';
+import { loadAnime, loadedAnimeScenes } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
@@ -486,7 +486,7 @@ export class Game implements GameCtx {
     if (this.mapId === 'sakura' || this.mapId === 'mujin') {
       // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
       this.menus.showLoading(0.66, this.mapId === 'mujin' ? 'THE PASSENGERS ARE WAITING' : 'DRESSING THE CAST');
-      await loadAnimeCast();
+      await loadAnimeCast(this.mapId === 'mujin' ? MUJIN_CAST : undefined);
     }
     if (this.mapId === 'aurelia') {
       // Aurelia's model (a stand-in from the cast until she has her own; without it she wears the stock figure)
@@ -803,6 +803,7 @@ export class Game implements GameCtx {
   /** Compile the world's and the weapons' shaders without blocking (all weapons shown for the moment it takes). */
   private async compileShaders(): Promise<void> {
     const r = this.renderer;
+    let giveBack = (): void => {};
     try {
       // a failed shader still reports through three's own checks the first time it is drawn
       if (import.meta.env.PROD) r.renderer.debug.checkShaderErrors = false;
@@ -813,6 +814,23 @@ export class Game implements GameCtx {
       warm.add(rocketForPrewarm());
       const forgeWarm = this.forge?.prewarmObjects() ?? [];
       for (const o of forgeWarm) warm.add(o);
+      // MUJIN's trains and the anime cast's models (their textures and shapes, first sent to the GPU the moment one is
+      // first seen otherwise): borrowed for the moment, then put back where they were
+      const anime = this.mapId === 'sakura' || this.mapId === 'mujin' ? loadedAnimeScenes() : [];
+      const late = [...this.mission.lateObjects(), ...anime].map((o) => ({ o, parent: o.parent, at: o.position.clone(), visible: o.visible }));
+      for (const l of late) {
+        warm.add(l.o);
+        l.o.position.set(0, 0, 0);
+        l.o.visible = true;
+      }
+      giveBack = (): void => {
+        for (const l of late) {
+          if (l.parent) l.parent.add(l.o);
+          else l.o.removeFromParent();
+          l.o.position.copy(l.at);
+          l.o.visible = l.visible;
+        }
+      };
       r.scene.add(warm);
       try {
         await r.renderer.compileAsync(r.scene, r.camera);
@@ -829,6 +847,15 @@ export class Game implements GameCtx {
       const before = r.renderer.getRenderTarget();
       r.renderer.setRenderTarget(target);
       r.renderer.render(stage, eye);
+      // the level itself, all round from the start, so turning round for the first time sends nothing either
+      const round = new THREE.PerspectiveCamera(100, 1, 0.1, r.camera.far);
+      const st = this.level.data.playerStart;
+      round.position.set(st.x, 1.7, st.z);
+      for (let i = 0; i < 4; i++) {
+        round.rotation.set(0, (i * Math.PI) / 2, 0);
+        round.updateMatrixWorld();
+        r.renderer.render(r.scene, round);
+      }
       r.renderer.setRenderTarget(before);
       target.dispose();
       stage.remove(warm);
@@ -841,6 +868,8 @@ export class Game implements GameCtx {
       }
     } catch {
       // older browsers: the first frame compiles them instead
+    } finally {
+      giveBack();
     }
   }
 

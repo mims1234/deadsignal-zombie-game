@@ -6,6 +6,9 @@ import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { LINES } from '../src/mujin/lines';
+import { MUJIN_CAST } from '../src/anime/cast';
+import { ANIME_CAST } from '../src/config';
+import { MUJIN_KINDS } from '../src/enemies/variants';
 import { decodeJobs, encodeJobs, MujinJobs, MUJIN_JOBS, REN_STATE } from '../src/mujin/jobs';
 import { MUJIN, PLACES, SEALS } from '../src/mujin/places';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
@@ -110,6 +113,11 @@ describe('MUJIN: the jobs', () => {
     q.tick(12.34, []);
     const back = decodeJobs(JSON.parse(JSON.stringify(encodeJobs(q.view))));
     expect(back).toEqual({ ...q.view, night: Math.round(q.view.night * 10) / 10 });
+  });
+
+  it('loads every model the station wears before the run (nothing parsed in the middle of play)', () => {
+    for (const k of MUJIN_KINDS) expect(MUJIN_CAST, k).toContain(ANIME_CAST.kinds[k]);
+    for (const f of ANIME_CAST.horde) expect(MUJIN_CAST).toContain(f);
   });
 
   it('has a voice file for every line', () => {

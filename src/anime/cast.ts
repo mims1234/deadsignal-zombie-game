@@ -21,11 +21,16 @@ const ALL = [...new Set<string>([...PEOPLE, ...ANIME_CAST.horde, ...Object.value
  * Load the cast: the core (the squad, the horde, the Court) before the run, the rest streaming in behind it (`rest`
  * resolves when every file is in; nothing waits on it).
  */
-export function loadAnimeCast(): Promise<void> & { rest?: Promise<void> } {
+export function loadAnimeCast(only?: readonly string[]): Promise<void> & { rest?: Promise<void> } {
+  // a map that wears only some of the cast loads just those, all before the run (nothing parsed in the middle of play)
+  if (only) return loadAnimeFiles(only);
   const core = loadAnimeFiles(ANIME_CAST.core);
   const rest = core.then(() => Promise.all(ALL.filter((f) => !(ANIME_CAST.core as readonly string[]).includes(f)).map((f) => loadAnime(f)))).then(() => undefined);
   return Object.assign(core, { rest });
 }
+
+/** MUJIN's cast: the core (the station's own kinds all wear core files) and the co-op teammates' models. */
+export const MUJIN_CAST: readonly string[] = [...new Set([...ANIME_CAST.core, ...ANIME_CAST.operators])];
 
 /** Load every file at once (the bestiary). */
 export function loadWholeCast(): Promise<void> {
