@@ -57,6 +57,7 @@ import { SquadRuntime } from './squad';
 import { ForgeRuntime } from '../forge/runtime';
 import { AureliaRuntime } from '../aurelia/runtime';
 import { AURELIA_MODEL } from '../aurelia/look';
+import { MujinRuntime } from '../mujin/runtime';
 import { loadAnime } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
@@ -166,6 +167,8 @@ export class Game implements GameCtx {
   aurelia: AureliaRuntime | null = null;
   /** The Sakura District's own runtime (petals, lore, the Easter egg), on that map only. */
   sakura: SakuraRuntime | null = null;
+  /** MUJIN, the unmanned station (`mujin/runtime.ts`). */
+  mujin: MujinRuntime | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
   private storyPick: StoryId | null = null;
   /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
@@ -447,6 +450,13 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.color.set(0x9a7a9a);
       this.renderer.light.hemi.groundColor.set(0x1e0a0a);
       this.renderer.light.fill.color.set(0xff6a52);
+    } else if (this.mapId === 'mujin') {
+      // three minutes before dawn: a deep blue night, sodium-orange under the canopies, no moon
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x080a14);
+      this.renderer.light.hemi.color.set(0x5a6a9a);
+      this.renderer.light.hemi.groundColor.set(0x0a0a10);
+      this.renderer.light.fill.color.set(0xffa860);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -471,9 +481,9 @@ export class Game implements GameCtx {
     this.audio = createAudioEngine();
     this.audio.setMasterVolume(this.settings.masterVolume);
 
-    if (this.mapId === 'sakura') {
+    if (this.mapId === 'sakura' || this.mapId === 'mujin') {
       // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
-      this.menus.showLoading(0.66, 'DRESSING THE CAST');
+      this.menus.showLoading(0.66, this.mapId === 'mujin' ? 'THE PASSENGERS ARE WAITING' : 'DRESSING THE CAST');
       await loadAnimeCast();
     }
     if (this.mapId === 'aurelia') {
@@ -484,7 +494,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
+    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
     this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
@@ -514,6 +524,8 @@ export class Game implements GameCtx {
       this.zombies.courtRig = (seed) => new CourtRig(seed);
       this.zombies.beforeUpdate = () => farCrowd().begin();
     }
+    // MUJIN's infected wear the anime cast too: the far ones are drawn in the far crowd
+    if (this.mapId === 'mujin') this.zombies.beforeUpdate = () => farCrowd().begin();
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
@@ -613,6 +625,11 @@ export class Game implements GameCtx {
     // Aurelia herself: solo only when she is switched on for this player; in co-op whenever the session runs her
     if (this.mapId === 'aurelia') this.aurelia = new AureliaRuntime(this);
     if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
+    if (this.mapId === 'mujin') {
+      // the station's voices and score, every one before the first loop (the loading screen counts them in)
+      this.mujin = new MujinRuntime(this);
+      await this.mujin.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `CHECKING TICKETS ${n} / ${of}`));
+    }
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
@@ -1239,6 +1256,8 @@ export class Game implements GameCtx {
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
+      } else if (this.mapId === 'mujin' && !roam) {
+        // the station says its own name (`mujin/runtime.ts`)
       } else if (this.mapId === 'aurelia' && !roam) {
         this.banner('AURELIA', 'Equinox night. Power the relay, take the shrine, bring Vulcan home.', 'info', 4.5);
       } else if (this.mapId === 'forge' && !roam) {
@@ -1367,6 +1386,8 @@ export class Game implements GameCtx {
     this.aurelia?.reset(coopStory, (solo && switchShown(this.account, 'aurelia-npc')) || coopStory);
     // Asylum loop: doors shut and the power off for a new run (after the squad's cages were placed with them open)
     this.asylum?.reset(this.mode === 'coop');
+    // MUJIN: the first loop (after the residents, so the Stationmaster `populate` placed can be sent away)
+    if (!this.flying) this.mujin?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
     this.flow.cancel();
     this.flowGoalX = this.flowGoalZ = 1e9;
@@ -1638,6 +1659,7 @@ export class Game implements GameCtx {
     this.forge?.update(dt);
     this.aurelia?.update(dt);
     this.sakura?.update(dt);
+    this.mujin?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -2031,7 +2053,7 @@ export class Game implements GameCtx {
       this.coop.onLocalDeath(); // not the end: a teammate can pick them up
       return;
     }
-    this.endRun('defeat', this.session.extraction.phase === 'landed' ? 'Killed before boarding the helicopter' : 'Killed in action');
+    this.endRun('defeat', this.session.extraction.phase === 'landed' ? (this.mapId === 'mujin' ? 'Killed before boarding the dawn train' : 'Killed before boarding the helicopter') : 'Killed in action');
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {
@@ -2119,6 +2141,7 @@ export class Game implements GameCtx {
     const s = this.session;
     if (s.ended) return;
     if (outcome === 'victory') this.squad.onExtracted();
+    this.mujin?.end();
     if (outcome === 'victory' && this.tale) this.sakura?.completeStory(this.tale);
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
@@ -2435,6 +2458,7 @@ export class Game implements GameCtx {
     this.forge?.decorateHud(st, md);
     this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps
     this.sakura?.decorateHud(st, md); // the Sakura District: the Thousand Lanterns, the ghost train, the altar's blessing
+    this.mujin?.decorateHud(st, md); // MUJIN: the loop, the lamps, the bell, Ren
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

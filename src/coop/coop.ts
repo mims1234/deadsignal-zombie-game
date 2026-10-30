@@ -325,6 +325,8 @@ export class CoopSession {
     if (g.sakura) {
       g.sakura.request = (a, i) => this.toHost({ k: 'sq', a, i });
     }
+    // MUJIN's loop is the simulation's: a report, the All Clear, the payphone, Ren's hand, the bench
+    if (g.mujin) g.mujin.request = (a, i) => this.toHost({ k: 'mj', a, i });
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
     this.life = LIFE.up;
@@ -385,7 +387,7 @@ export class CoopSession {
     let a = this.avatars.get(p.id);
     if (!a) {
       // the Sakura District: everyone wears a VRoid model, teammates too
-      a = new Avatar(p.name, this.avatars.size, this.g.mapId === 'sakura' ? { anime: operatorModel(this.avatars.size) } : undefined);
+      a = new Avatar(p.name, this.avatars.size, this.g.mapId === 'sakura' || this.g.mapId === 'mujin' ? { anime: operatorModel(this.avatars.size) } : undefined);
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
     }
@@ -425,6 +427,10 @@ export class CoopSession {
     }
     if (this.role === 'spectator') return;
     switch (d.k) {
+      case 'mjpunch':
+        // MUJIN: the Stationmaster punched our ticket - one loop back
+        if (this.life === LIFE.up) g.mujin?.punched();
+        return;
       case 'hurt':
         if (this.life === LIFE.up) g.takeRemoteHit(Number(d.a) || 0, Number(d.sx) || 0, Number(d.sz) || 0, Number(d.kn) || 0);
         return;
@@ -498,6 +504,7 @@ export class CoopSession {
       if (g.sakura && d.lq !== undefined) g.sakura.applyWire(d.lq);
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
       if (g.aurelia && d.au !== undefined) g.aurelia.applyWire(d.au);
+      if (g.mujin && d.mj !== undefined) g.mujin.applyWire(d.mj);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;

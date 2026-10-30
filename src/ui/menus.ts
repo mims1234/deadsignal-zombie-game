@@ -576,7 +576,7 @@ class Menus implements MenusApi {
       el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'FREE ROAM  //  NO MISSION, NO DAMAGE' : text.kicker);
       el('h1', 'name', hero, text.name);
       el('p', 'tag', hero, text.tagline);
-      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : PLAY_LEAD);
+      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : text.name === 'MUJIN' ? 'Survive each loop, put the station in order, and catch the dawn train.' : PLAY_LEAD);
 
       const cta = el('div', 'ds-l-cta', hero);
       if (this.locked) {

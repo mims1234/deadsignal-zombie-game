@@ -222,5 +222,10 @@ export interface AudioEngineApi {
   stopAll(): void;
   /** Number of currently sounding voices (for debugging / tests). */
   readonly voiceCount: number;
+  /** The live AudioContext and the node a map's own sound joins (MUJIN's voices and score), once initialised. */
+  readonly context?: BaseAudioContext | null;
+  readonly input?: AudioNode | null;
+  /** Where the listener stands and faces (a map's own positional sound follows it). */
+  readonly listener?: { x: number; y: number; z: number; fx: number; fz: number };
   dispose(): void;
 }

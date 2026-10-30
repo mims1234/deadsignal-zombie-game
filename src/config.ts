@@ -1324,6 +1324,12 @@ export const ANIME_CAST = {
     idol: 'victoria.vrm',
     oni: 'vita.vrm',
     empress: 'empress.vrm',
+    // MUJIN's own (`anime/looks.ts` dresses them)
+    tall: 'fumiriya.vrm',
+    crawler: 'student-f.vrm',
+    shape: 'student-f.vrm',
+    sitter: 'shino.vrm',
+    master: 'student-m.vrm',
   },
   /** The boss (the Warden's part). */
   boss: 'empress.vrm',
@@ -1348,6 +1354,8 @@ export const SURVIVORS = {
   ],
   // the Sakura District: nobody is left to save (seven years on, everyone left has turned, or turned on you)
   sakura: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
+  // MUJIN: nobody to free; the only passenger you can save is the one the station keeps (`mujin/runtime.ts`)
+  mujin: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // Aurelia's valley: Vulcan's own, taken across the river and caged on the bank (looks: `forge/looks.ts`)
   aurelia: [
     { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
@@ -1427,6 +1435,12 @@ export const FREE_ROAM = {
  * The Sakura District's clocks: the biggest map (a street grid, a metro and a lab under it, a shrine on its hill) needs
  * more time than `MISSION`; KAIKA, its whole story in twelve chapters across all of it, far more.
  */
+/**
+ * MUJIN's clock: the longest night in the game, so there is time for the loops and the station's secret. The night
+ * only comes out of the tunnel at the very end (the surge); each loop is ~2 minutes (`MUJIN_LOOP`).
+ */
+export const MUJIN_CLOCK = { deadline: 3300, surgeStart: 3000, phases: [240, 900, 1800] as readonly number[] };
+
 export const SAKURA_CLOCK = {
   operation: { deadline: 1200, surgeStart: 860, phases: [150, 420, 860] as readonly number[] },
   kaika: { deadline: 2700, surgeStart: 2280, phases: [180, 900, 1800] as readonly number[] },

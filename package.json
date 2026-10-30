@@ -1,7 +1,7 @@
 {
   "name": "zombies-genxmims",
   "private": true,
-  "version": "0.4.320",
+  "version": "0.4.321",
   "description": "Zombies GenXmims - the Sonnet 5.5 Zombies Game, a single-player extraction-survival FPS built with Three.js",
   "license": "MIT",
   "repository": {

@@ -46,7 +46,7 @@ describe('the account, from /api/me', () => {
   it('a player: everything not said to be open is off (nothing hidden is named)', async () => {
     serverSays({ user: { id: '1', name: 'P', username: 'p', avatar: null }, openMaps: ['district', 'forge', 'asylum'], openFilms: ['excalibur'], openSwitches: SWITCH_IDS.filter((s) => s !== 'coop'), boards: false });
     const a = await loadAccount();
-    expect(a.lockedMaps).toEqual(['sakura', 'aurelia']);
+    expect(a.lockedMaps).toEqual(['sakura', 'aurelia', 'mujin']);
     expect(a.lockedFilms).toEqual(['hollow']);
     expect(a.lockedSwitches).toEqual(['coop']);
     expect(a.boards).toBe(false);

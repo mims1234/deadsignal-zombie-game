@@ -21,6 +21,8 @@ export interface MissionApi {
   heliDoorPos(): { x: number; z: number } | null;
   canBoard(): boolean;
   board(): boolean;
+  /** What boarding is called on this map (MUJIN's dawn train). */
+  readonly train?: boolean;
 }
 
 /** Trapped survivors: opening a cage. Co-op: picking up a downed teammate. */
@@ -308,7 +310,7 @@ export class Interaction {
     const door = this.mission.heliDoorPos();
     if (door && this.mission.canBoard()) {
       const d = Math.hypot(door.x - px, door.z - pz);
-      targets.push({ id: 'board', dist: d, text: 'BOARD HELICOPTER', sub: 'Extract now', tone: 'good', hold: 0, enabled: true, onUse: () => this.mission.board() });
+      targets.push({ id: 'board', dist: d, text: this.mission.train ? 'BOARD THE DAWN TRAIN' : 'BOARD HELICOPTER', sub: this.mission.train ? 'Leave the station' : 'Extract now', tone: 'good', hold: 0, enabled: true, onUse: () => this.mission.board() });
     }
     for (const provide of this.providers) {
       const t = provide();

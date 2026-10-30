@@ -190,7 +190,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' ? 'sakura' : undefined;
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' || level.data.id === 'mujin' ? 'sakura' : undefined; // MUJIN wears the anime cast too
     const b = level.data.worldBounds ?? level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -334,6 +334,24 @@ export class ZombieManager {
   /** Take one enemy out of the world immediately (a purged carrier). */
   remove(z: Zombie): void {
     this.releaseZombie(z);
+  }
+
+  /** Take infected away at once, unseen (MUJIN's reset): their rigs go back to the pools. */
+  vanish(which: (z: Zombie) => boolean): void {
+    for (const z of [...this.zombies]) {
+      if (!which(z)) continue;
+      if (this.byNet.get(z.netId) === z) this.byNet.delete(z.netId);
+      this.releaseZombie(z);
+    }
+  }
+
+  /** The level's ambient population again, without the Warden (MUJIN's reset); `where` keeps only some spots. */
+  repopulate(rng: Rng, where: (x: number, z: number) => boolean = () => true): void {
+    for (const a of this.level.data.ambient) {
+      if (!where(a.x, a.z)) continue;
+      if (this.tuning.count < 1 && rng.f() > this.tuning.count) continue;
+      this.spawn(a.type, a.x, a.z, rng, { ambient: true });
+    }
   }
 
   /** Remove everything (restart). Rigs go back to the pools. */

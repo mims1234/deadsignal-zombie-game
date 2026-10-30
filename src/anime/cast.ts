@@ -187,6 +187,7 @@ export class AnimeZombieRig implements ZombieRig {
     }
     if (far) {
       this.fig.update(s, dt);
+      this.posture(s);
       this.root.updateMatrixWorld(true);
       const c = this.look?.far ?? this.tint;
       farCrowd().write(this.fig, c.skin, c.cloth, this.root.parent);
@@ -198,6 +199,7 @@ export class AnimeZombieRig implements ZombieRig {
     if (every > 1 && s.mode !== 'death' && s.hitKick <= 0 && this.skip++ % every !== 0) return;
     this.fig.update(s, dt);
     if (this.look?.sway && s.mode !== 'death') this.look.sway(this.gear, s.time);
+    this.posture(s);
     // bring the stand-in's joints up to date without walking the model's whole skeleton twice
     this.body.root.matrixWorldAutoUpdate = false;
     this.root.updateMatrixWorld(true);
@@ -209,6 +211,19 @@ export class AnimeZombieRig implements ZombieRig {
     const strike = s.mode === 'attack' || s.mode === 'slam' || s.mode === 'roar' ? Math.sin(Math.PI * Math.min(1, s.actionT * 1.4)) : 0;
     this.body.setExpression('aa', dead ? 0.2 : Math.max(0.25 + 0.1 * Math.sin(s.time * 2.3), strike));
     this.body.setExpression('blink', dead ? Math.min(1, s.deathT * 2) : 0);
+  }
+
+  /** MUJIN's crawler lies forward on its arms; the White Shape wriggles (both about the feet, after the yaw). */
+  private posture(s: ZombieAnimState): void {
+    const L = this.look;
+    if (!L?.lie && !L?.wriggle) return;
+    const r = this.root.rotation;
+    r.order = 'YXZ';
+    if (L.lie) r.x = s.mode === 'death' ? -L.lie * 0.9 : -L.lie + 0.08 * Math.sin(s.time * 9);
+    if (L.wriggle) {
+      r.z = 0.32 * Math.sin(s.time * 6.5) + 0.12 * Math.sin(s.time * 17);
+      r.x = 0.1 * Math.sin(s.time * 4.1);
+    }
   }
 
   getHeadWorld(out: THREE.Vector3): THREE.Vector3 {

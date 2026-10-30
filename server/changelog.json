@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.321",
+      "date": "2026-10-30",
+      "title": "MUJIN, the unmanned station (admin only)",
+      "notes": [
+        "MUJIN, a new map: a small rural station on no map, three minutes before dawn. Two platforms, a footbridge, the station house with its ticket hall and waiting room, a level crossing, the tunnel the trains come out of, a grass field, a shuttered shopping street and a shrine on the hill.",
+        "The night repeats. Each loop (about two minutes) the station is put back with one thing changed - or nothing. Find it and report it (hold E there), or ring the All Clear at the platform bell. A right read lights a lamp on the canopy; a wrong one puts every lamp out and the night takes part of the station (the shopping street, then the shrine, then the field). Three wrong in a row and the night takes it all. 28 changes in five tiers, from the clock running backwards to someone in the window wearing your clothes.",
+        "Its own infected: the Tall Lady (whoever she hears is hers until they stand in the shrine's salt circle), the Rail Crawler on the tracks, the White Shape in the field (look at it and the world blurs and your aim drifts), the Bench Sitter (sit beside it and it whispers where the change is) and the Stationmaster, who walks platform 1 punching tickets - a punch sends you one loop back to an empty waiting room - and cannot be stopped until all five lamps are lit.",
+        "No helicopter: once the Stationmaster is down the dawn train comes on its own, a through express rushing past first, and leaves with whoever is aboard.",
+        "Fully voiced: the station PA in Japanese and English, the Stationmaster, Ren on the payphone, whispers, commuters and the squad - 98 generated lines (ElevenLabs v4, Fish Audio Drama 3) and seven Lyria music cues; the loop music drifts further out of tune with every wrong read. Every line is captioned on the top line.",
+        "A secret: answer the payphone in five loops and the fifth call is Ren. Bring her to the waiting-room bench and she leaves on the dawn train with you. Her posts from that night fill the pause menu's JOURNAL.",
+        "A 55-minute clock, solo and co-op (the server runs the loop for everyone), and on the leaderboards. Admin only until it is opened from the admin page."
+      ]
+    },
+    {
       "version": "0.4.320",
       "date": "2026-10-29",
       "title": "Credits",

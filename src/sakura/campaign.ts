@@ -13,7 +13,7 @@
  * rules (no THREE, no DOM): the co-op simulation reads it too.
  */
 import type { ZombieManager } from '../enemies/zombieManager';
-import type { ZombieVariant } from '../enemies/variants';
+import type { MujinKind, ZombieVariant } from '../enemies/variants';
 import type { Rng } from '../logic/rng';
 import type { Level } from '../world/level';
 import { ZONES } from '../world/layout/sakura/consts';
@@ -54,7 +54,7 @@ export const OUTBREAK: readonly { title: string; text: string }[] = [
 // the infected, kind by kind
 // ---------------------------------------------------------------------------------------------
 
-export type FieldKind = Exclude<ZombieVariant, ''>;
+export type FieldKind = Exclude<ZombieVariant, '' | MujinKind>;
 
 export interface FieldEntry {
   name: string;

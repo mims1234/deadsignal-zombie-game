@@ -12,6 +12,7 @@ import type { FloorLink, Floors } from '../world/floors';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
 import type { ZombieVariant } from './variants';
+import { MUJIN } from '../mujin/places';
 
 /** A woman's voice for each of the horde's noises; the boss gets the Matron's shriek for her roar. */
 const FEMALE_VOICE: Partial<Record<SoundId, SoundId>> = {
@@ -106,6 +107,8 @@ export interface ZombieEnv {
   shake(strength: number): void;
   /** Floors above and below the street, and the stairs between them (`floors.ts`); absent on single-level maps. */
   floors?: Floors | null;
+  /** MUJIN: the Stationmaster punches this env's player's ticket (sends them one loop back). */
+  punch?(z: Zombie): void;
 }
 
 /**
@@ -167,6 +170,8 @@ export class Zombie {
   variant: ZombieVariant = '';
   /** Rooted: lying in wait under the petals until someone comes close. */
   buried = false;
+  /** MUJIN's Stationmaster until every lamp is lit: blows land, nothing hurts him, he only punches tickets. */
+  invulnerable = false;
   /** Jorogumo: up on the ceiling (drawn there; drops when close). */
   ceiling = false;
   /** Infected it calls up (the miko, the Empress): the manager spawns them after the update. */
@@ -548,6 +553,34 @@ export class Zombie {
       }
       case 'court':
         return this.courtStep(dt, env, dist, dx, dz);
+      case 'tall':
+        return this.tallStep(dt, env, dist);
+      case 'shape': {
+        // never comes closer: it wriggles where it stands and turns to whoever is nearest
+        this.vx = this.vz = 0;
+        if (this.state === 'attack' || this.state === 'chase' || this.state === 'alert') this.enterState('idle');
+        if (p.alive && dist < 60) this.turnToward(Math.atan2(-dx, -dz), 1.5, dt);
+        return 0;
+      }
+      case 'sitter': {
+        // sits until it is hurt; then it screams and the whole station wakes
+        if (this.varT === 0 && this.hp >= this.maxHp) {
+          this.vx = this.vz = 0;
+          if (this.state !== 'idle' && this.state !== 'stagger') this.enterState('idle');
+          return 0;
+        }
+        if (this.varT === 0) {
+          this.varT = 1;
+          this.say(env, 'zombie_screech', { pos, volume: 1.3, priority: 3, rate: 0.8 });
+          env.alertNear(this.x, this.z, 140, this.id);
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+        }
+        return -1;
+      }
+      case 'master':
+        return this.masterStep(dt, env, dist, dx, dz);
       case 'empress': {
         // the Empress calls her bloomed to her; enraged, twice as many
         this.varT -= dt;
@@ -600,6 +633,82 @@ export class Zombie {
       return 0;
     }
     return -1;
+  }
+
+  /**
+   * MUJIN's Tall Lady: she walks, never runs. Whoever she hears (sprinting near her; shots alert her as they alert
+   * everyone) is hers: she always knows where they are, until they stand in the shrine's salt circle. Then she stands
+   * where she is for a while, and forgets them.
+   */
+  private tallStep(dt: number, env: ZombieEnv, dist: number): number {
+    const p = env.player;
+    if (this.varT > 0) {
+      this.varT = Math.max(0, this.varT - dt);
+      this.vx *= Math.max(0, 1 - 6 * dt);
+      this.vz *= Math.max(0, 1 - 6 * dt);
+      if (this.state !== 'idle') this.enterState('idle');
+      this.memory = 99;
+      return 0;
+    }
+    const s = MUJIN.salt;
+    if (p.alive && this.state !== 'idle' && Math.hypot(p.x - s.x, p.z - s.z) < s.r) {
+      this.varT = 25;
+      this.enterState('idle');
+      return 0;
+    }
+    if (p.alive && this.state === 'idle' && p.sprinting && dist < 30) {
+      this.lastKnownX = p.x;
+      this.lastKnownZ = p.z;
+      this.enterState('chase');
+    }
+    if (this.state === 'chase' && p.alive) {
+      this.memory = 0;
+      this.lastKnownX = p.x;
+      this.lastKnownZ = p.z;
+    }
+    return -1;
+  }
+
+  /**
+   * MUJIN's Stationmaster. While the station is out of order (`invulnerable`) he walks his beat along platform 1 and
+   * goes to anyone who comes near; close enough, he punches their ticket (`env.punch`) and walks on. Never a blow.
+   * With every lamp lit he can be hurt, and he fights as the boss.
+   */
+  private masterStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
+    if (!this.invulnerable) return -1;
+    const p = env.player;
+    this.varT = Math.max(0, this.varT - dt);
+    if (this.state === 'attack' || this.state === 'alert') this.enterState('chase');
+    if (p.alive && dist < 2.1 && Math.abs(p.y - this.y) < 1.6 && this.varT <= 0) {
+      this.varT = 7;
+      this.vx = this.vz = 0;
+      this.turnToward(Math.atan2(-dx, -dz), 20, 1);
+      this.hitKick = 1;
+      env.punch?.(this);
+      return 0;
+    }
+    if (p.alive && dist < 14 && this.varT < 4 && Math.abs(p.y - this.y) < 3) {
+      if (this.state !== 'chase') this.enterState('chase');
+      const nav = env.floors?.hasFloors && this.area !== 0 ? env.floors.navOf(this.area) : env.nav;
+      return this.steerTo(p.x, p.z, dt, env, nav, env.field, dist, 1.6);
+    }
+    // the beat: from one end of the platform to the other, a slow walk with the lamp
+    if (this.state !== 'idle') this.enterState('idle');
+    const [a, b] = MUJIN.beat;
+    let t = this.wanderX > 0 ? b : a;
+    if (Math.hypot(t.x - this.x, t.z - this.z) < 1.2) {
+      t = t === b ? a : b;
+      this.wanderX = t.x;
+      this.wanderZ = t.z;
+    }
+    const ddx = t.x - this.x;
+    const ddz = t.z - this.z;
+    const d = Math.max(1e-3, Math.hypot(ddx, ddz));
+    const v = 1.1;
+    this.vx = (ddx / d) * v;
+    this.vz = (ddz / d) * v;
+    this.turnToward(Math.atan2(-ddx, -ddz), 3, dt);
+    return v;
   }
 
   /** The Court: within range and in sight, stand and shoot; else close the distance. */
@@ -871,6 +980,11 @@ export class Zombie {
   /** Apply already-computed damage. Returns true if this killed the zombie. */
   takeDamage(amount: number, head: boolean, env: ZombieEnv, hitDirYaw: number, impulse = 1): boolean {
     if (!this.active || amount <= 0) return false;
+    if (this.invulnerable) {
+      // MUJIN's Stationmaster: he only flinches
+      this.hitKick = 1;
+      return false;
+    }
     this.hp -= amount;
     this.hitKick = 1;
     if (this.state === 'idle') {
@@ -1183,6 +1297,8 @@ export class Zombie {
 
   private voice(dt: number, env: ZombieEnv, dist: number): void {
     if (this.variant === 'court' || this.buried) return; // living people, and the ones lying in wait, keep quiet
+    // MUJIN's own: the station gives them their voices (`mujin/runtime.ts`), the shape and the sitter say nothing
+    if (this.variant === 'tall' || this.variant === 'shape' || this.variant === 'sitter' || this.variant === 'master') return;
     this.voiceTimer -= dt;
     if (this.voiceTimer > 0 || dist > 38) return;
     const pos = { x: this.x, y: 1.5, z: this.z };

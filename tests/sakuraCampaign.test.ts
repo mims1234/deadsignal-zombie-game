@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { CHAPTERS, CHECKPOINT, FIELD, MARK, PLACE_RADIO, chapterIndex, placeAt } from '../src/sakura/campaign';
 import { STORIES, storiesOpen } from '../src/sakura/missions';
 import { FUSE_BIT, FUSES_ALL, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
-import { VARIANTS } from '../src/enemies/variants';
+import { MUJIN_KINDS, VARIANTS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import { missionClock } from '../src/logic/mission';
 
@@ -43,7 +43,8 @@ describe('KAIKA', { timeout: 30000 }, () => {
   });
 
   it('has a field file for every kind and a transmission for every place', () => {
-    for (const v of VARIANTS) if (v) expect(FIELD[v].does.length).toBeGreaterThan(20);
+    // MUJIN's kinds are the station's, not the field file's
+    for (const v of VARIANTS) if (v && !(MUJIN_KINDS as readonly string[]).includes(v)) expect(FIELD[v as keyof typeof FIELD].does.length).toBeGreaterThan(20);
     for (const lines of Object.values(PLACE_RADIO)) expect(lines.length).toBeGreaterThan(0);
     expect(placeAt(-100, 30, false, false, false)).toBe('station');
     expect(placeAt(100, 50, false, false, false)).toBe('shrine');

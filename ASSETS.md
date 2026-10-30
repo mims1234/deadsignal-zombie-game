@@ -1,6 +1,6 @@
 # Assets and attribution
 
-**Most of Zombies GenXmims is drawn and synthesised in code.** It also ships: the card art, the Vulcan logo and the Ignis icon listed below; the anime cast's VRoid models (`public/anime/`, VRoid Project / pixiv sample models, credit not required); Quaternius models (`public/models/quaternius/`, CC0 1.0); and the cinematics' generated music and voices (`public/freeroam/`, `public/hollow/`). The game's CREDITS page lists them all, and `public/LICENSE.txt` carries the code's licence notices (the game's MIT licence from BridgeMind, three.js and three-vrm).
+**Most of Zombies GenXmims is drawn and synthesised in code.** It also ships: the card art, the Vulcan logo and the Ignis icon listed below; the anime cast's VRoid models (`public/anime/`, VRoid Project / pixiv sample models, credit not required); Quaternius models (`public/models/quaternius/`, CC0 1.0); and the generated music and voices of the cinematics (`public/freeroam/`, `public/hollow/`) and of the MUJIN map (`public/mujin/`: ElevenLabs v4 and Fish Audio Drama 3 voices, Lyria 3 music, made by `scripts/mujin-audio.mjs`). The game's CREDITS page lists them all, and `public/LICENSE.txt` carries the code's licence notices (the game's MIT licence from BridgeMind, three.js and three-vrm).
 
 - **Geometry and models** (district, buildings, props, vehicles, weapons, hands, zombies, helicopter, stations) are built from
   Three.js primitives and procedural geometry in code.

@@ -17,6 +17,8 @@ import { buildForge, FORGE, FORGE_BOUNDS, type ForgeHandles } from './layout/for
 import type { ForgeSites } from '../forge/sites';
 import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
 import { AURELIA, AURELIA_BOUNDS, buildAurelia } from './layout/aurelia';
+import { buildMujin, type MujinHandles } from './layout/mujin';
+import { MUJIN, MUJIN_BOUNDS, MUJIN_SPACE } from '../mujin/places';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
@@ -54,6 +56,8 @@ export interface Level {
   forgeFx: ForgeHandles | null;
   /** The Sakura District: what its story and its Easter egg use (the lanterns, the bell, the tree, the stage...). */
   sakura: SakuraHandles | null;
+  /** MUJIN: the gaps the night closes and the pocket room (`layout/mujin.ts`). */
+  mujin: MujinHandles | null;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -75,15 +79,17 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   const asylum = mapId === 'asylum';
   const sakura = mapId === 'sakura';
   const aurelia = mapId === 'aurelia';
-  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : WORLD_BOUNDS;
+  const mujin = mapId === 'mujin';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : mujin ? MUJIN_BOUNDS : WORLD_BOUNDS;
   // all the space there is: the street map, plus any underground spaces built beside it
-  const SPACE = sakura ? SAKURA_SPACE : WORLD;
+  const SPACE = sakura ? SAKURA_SPACE : mujin ? MUJIN_SPACE : WORLD;
   const world = new CollisionWorld(SPACE);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
   const floors = new Floors(WORLD);
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : 20240928), mats, placed: [], floors };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : mujin ? 457 : 20240928), mats, placed: [], floors };
   let sakuraFx: SakuraHandles | null = null;
+  let mujinFx: MujinHandles | null = null;
 
   let transmitter: TransmitterHandle;
   let spireHandle: SpireHandle;
@@ -125,6 +131,19 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
       defense: { ...A.relay },
       hunt: { wardenX: A.shrine.x, wardenZ: A.shrine.z + 2, searchX: A.shrine.x, searchZ: A.shrine.z, searchRadius: 14 },
       hazard: { ...A.bloom },
+    };
+  } else if (mujin) {
+    const r = buildMujin(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    mujinFx = r.handles;
+    const M = MUJIN;
+    site = {
+      start: { x: M.start.x, z: M.start.z, yaw: yawFacing(0, 1) }, // on platform 1, facing the tracks
+      lz: { x: 0, z: -6, radius: 9, terminalX: M.bell.x, terminalZ: M.bell.z, terminalYaw: 0 },
+      defense: { x: M.bell.x, z: M.bell.z, radius: 6 },
+      hunt: { wardenX: M.beat[1].x, wardenZ: M.beat[1].z, searchX: 0, searchZ: -6, searchRadius: 34 },
+      hazard: { x: -46, z: 0 },
     };
   } else if (sakura) {
     const r = buildSakura(c);
@@ -379,6 +398,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     doors,
     forgeFx,
     sakura: sakuraFx,
+    mujin: mujinFx,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

@@ -48,6 +48,8 @@ import type { GameCtx } from './ctx';
 import type { Entities } from './entities';
 import type { MissionApi } from './interaction';
 import { bumpRegion } from './session';
+import { createDawnTrain, createExpress } from '../mujin/train';
+import { TRACK_Z } from '../mujin/places';
 
 const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
@@ -111,6 +113,15 @@ export class MissionRuntime implements MissionApi {
   extractGate: () => boolean = () => true;
   /** The Forge after the burnout: the firestorm dies down and stops hurting. */
   calm: () => boolean = () => false;
+  /**
+   * MUJIN: no helicopter. The dawn train is the extraction (`mujin/train.ts`): nobody calls it (the station does,
+   * `callNow`), a through express rushes past on track 2 first, then it pulls in on track 1 and opens its doors.
+   * `onTrain` lets the station play each moment's sound and voice.
+   */
+  readonly train: boolean;
+  private readonly express: THREE.Group | null;
+  private readonly trainSaid = new Set<string>();
+  onTrain: ((ev: 'express' | 'arrive' | 'doors' | 'depart') => void) | null = null;
 
   constructor(
     private readonly ctx: GameCtx,
@@ -118,6 +129,7 @@ export class MissionRuntime implements MissionApi {
   ) {
     void this.entities;
     const data = ctx.level.data;
+    this.train = data.id === 'mujin';
     this.clock = missionClock(data.id);
     this.night = data.id === 'asylum' ? new AsylumNight(ctx) : null;
     this.lz = data.extraction;
@@ -148,9 +160,16 @@ export class MissionRuntime implements MissionApi {
     this.flareModel.visible = false;
     this.root.add(this.flareModel);
 
-    this.heli = createHelicopter(ctx.mats);
+    this.heli = this.train ? createDawnTrain() : createHelicopter(ctx.mats);
     this.heli.root.visible = false;
     this.root.add(this.heli.root);
+    this.express = this.train ? createExpress() : null;
+    if (this.express) this.root.add(this.express);
+    if (this.train) {
+      // the station's bell stands where the relay would be, and nobody radios a train
+      this.areaMarker.root.visible = false;
+      this.terminal.root.visible = false;
+    }
     this.heliLight = new THREE.PointLight(0xdfe9ff, 0, 42, 2);
     this.root.add(this.heliLight);
   }
@@ -165,7 +184,7 @@ export class MissionRuntime implements MissionApi {
   }
 
   canActivateTransmitter(): boolean {
-    return this.ctx.session.defense.status === 'available';
+    return !this.train && this.ctx.session.defense.status === 'available';
   }
 
   activateTransmitter(): void {
@@ -195,6 +214,7 @@ export class MissionRuntime implements MissionApi {
 
   terminalState(): 'locked' | 'available' | 'busy' {
     if (this.shared && !this.follow) return 'busy'; // co-op free roam: no extraction to call
+    if (this.train) return 'busy'; // MUJIN: the station calls the dawn train itself
     const ph = this.ctx.session.extraction.phase;
     if (ph === 'locked') return 'locked';
     if (ph === 'available') return 'available';
@@ -216,9 +236,21 @@ export class MissionRuntime implements MissionApi {
     return true;
   }
 
+  /** MUJIN: the station calls the dawn train itself (nobody stands at a radio). */
+  callNow(): void {
+    const s = this.ctx.session;
+    if (this.follow) return;
+    if (callExtraction(s.extraction, s.elapsed, true, true)) this.onCalled();
+  }
+
   /** The flare is lit at the radio and the bird is on its way. */
   private onCalled(): void {
     const ctx = this.ctx;
+    if (this.train) {
+      ctx.banner('THE DAWN TRAIN', 'The first train of the morning is coming - hold platform 1', 'warn', 5);
+      ctx.feed('THE DAWN TRAIN IS COMING', 'warn');
+      return;
+    }
     this.terminal.setState('called');
     const f = this.terminal.flareLocal.clone();
     this.terminal.root.localToWorld(f);
@@ -281,7 +313,7 @@ export class MissionRuntime implements MissionApi {
     const ctx = this.ctx;
     this.shared = false;
     this.follow = false;
-    this.areaMarker.root.visible = true;
+    this.areaMarker.root.visible = !this.train;
     this.areaMarker.setProgress(0);
     this.areaMarker.setActive(false);
     this.wall.setIntensity(0);
@@ -291,6 +323,8 @@ export class MissionRuntime implements MissionApi {
     this.flareModel.visible = false;
     this.heli.root.visible = false;
     this.heliVisible = false;
+    if (this.express) this.express.visible = false;
+    this.trainSaid.clear();
     this.heliRotor = 0;
     this.heliDoor = 0;
     this.departT = -1;
@@ -430,16 +464,16 @@ export class MissionRuntime implements MissionApi {
       // nothing
     } else if (!extractionInProgress(ex) && ex.phase !== 'extracted' && ex.phase !== 'failed') {
       const left = deadlineRemaining(s.elapsed, this.clock);
-      if (left <= 60 && !s.flags.has('deadline60')) {
+      if (left <= 60 && !s.flags.has('deadline60') && !this.train) {
         s.flags.add('deadline60');
         ctx.banner('LAST CALL', 'The district seals in 60 seconds - call extraction', 'danger', 4);
         ctx.radio('COMMAND', 'One minute until the district is sealed. Call extraction now.');
         ctx.audio.play('klaxon', { priority: 3 });
       }
-      if (left <= 0) ctx.endRun('defeat', 'The district was sealed before extraction was called');
+      if (left <= 0) ctx.endRun('defeat', this.train ? 'The night never ended' : 'The district was sealed before extraction was called');
     }
-    if (!this.follow && ex.phase === 'failed' && !s.ended) ctx.endRun('defeat', ex.failReason ?? 'Extraction failed');
-    if (!this.follow && ex.phase === 'extracted' && !s.ended) ctx.endRun('victory', 'Extracted');
+    if (!this.follow && ex.phase === 'failed' && !s.ended) ctx.endRun('defeat', this.train ? 'The dawn train left without you' : (ex.failReason ?? 'Extraction failed'));
+    if (!this.follow && ex.phase === 'extracted' && !s.ended) ctx.endRun('victory', this.train ? 'Left on the dawn train' : 'Extracted');
 
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
@@ -481,6 +515,7 @@ export class MissionRuntime implements MissionApi {
   /** Both contracts are done: the LZ opens. */
   private onUnlocked(): void {
     const ctx = this.ctx;
+    if (this.train) return; // the station says it (`mujin/runtime.ts`)
     const data = ctx.level.data;
     ctx.banner('EXTRACTION AVAILABLE', `Proceed to ${data.text.lz} and signal the helicopter`, 'good', 5);
     ctx.radio('COMMAND', `Both contracts complete. Move to ${data.text.lz} and radio the bird.`);
@@ -594,6 +629,11 @@ export class MissionRuntime implements MissionApi {
     const ctx = this.ctx;
     switch (ev) {
       case 'heliVisible': {
+        if (this.train) {
+          this.heliVisible = true;
+          ctx.banner('A THROUGH TRAIN', 'Stand back from the edge', 'warn', 3);
+          break;
+        }
         this.heliVisible = true;
         this.heli.root.visible = true;
         this.heliRotor = 0.6;
@@ -605,9 +645,13 @@ export class MissionRuntime implements MissionApi {
         break;
       }
       case 'landingStart':
-        ctx.radio('PILOT', 'Coming in hot - clear the pad!');
+        if (!this.train) ctx.radio('PILOT', 'Coming in hot - clear the pad!');
         break;
       case 'touchdown':
+        if (this.train) {
+          ctx.banner('THE DOORS ARE OPEN', 'Get on the dawn train - platform 1', 'good', 5);
+          break;
+        }
         ctx.audio.play('heli_land', { pos: { x: this.lz.heliX, y: 0.3, z: this.lz.heliZ }, priority: 3 });
         ctx.banner('HELICOPTER LANDED', 'Reach the open door and BOARD NOW', 'good', 5);
         ctx.radio('PILOT', "We're on the ground - get aboard, now!");
@@ -615,17 +659,80 @@ export class MissionRuntime implements MissionApi {
         break;
       case 'departed':
         this.departT = 0;
-        ctx.banner('HELICOPTER DEPARTED', 'You missed the extraction', 'danger', 4);
+        ctx.banner(this.train ? 'THE DOORS CLOSED' : 'HELICOPTER DEPARTED', this.train ? 'The dawn train left without you' : 'You missed the extraction', 'danger', 4);
         break;
       case 'extracted':
         break;
     }
   }
 
+  /** MUJIN's dawn train (and the express before it), instead of the helicopter. */
+  private animateTrain(dt: number): void {
+    const ex = this.ctx.session.extraction;
+    const E = MISSION.extraction;
+    const cd = ex.countdown;
+    const stop = 4.5; // its door (the second car's) level with the platform's middle
+    const z = TRACK_Z[0];
+    const say = (ev: 'express' | 'arrive' | 'doors' | 'depart'): void => {
+      if (this.trainSaid.has(ev)) return;
+      this.trainSaid.add(ev);
+      this.onTrain?.(ev);
+    };
+    let x = -400;
+    let visible = false;
+    const xp = this.express;
+    if (xp) {
+      // the express: the moment it is heard, until it is through
+      const into = E.visibleAt - cd;
+      const on = (ex.phase === 'inbound' || ex.phase === 'called') && into > 0 && into < 6.5;
+      xp.visible = on;
+      if (on) {
+        say('express');
+        xp.position.set(-190 + (into / 6.5) * 380, 0, TRACK_Z[1]);
+      }
+    }
+    if (ex.phase === 'landing') {
+      visible = true;
+      say('arrive');
+      const p = Math.min(1, Math.max(0, 1 - cd / E.landingDuration));
+      const ease = 1 - (1 - p) * (1 - p);
+      x = stop - (1 - ease) * 180;
+    } else if (ex.phase === 'landed') {
+      visible = true;
+      x = stop;
+      this.heliDoor = Math.min(1, this.heliDoor + dt / 1.2);
+      say('doors');
+    } else if (!this.follow && (ex.phase === 'boarding' || ex.phase === 'extracted')) {
+      visible = true;
+      const t = E.boardingCinematic - ex.boardLeft;
+      this.heliDoor = Math.max(0, 1 - Math.max(0, t - 0.4) / 0.6);
+      x = stop + Math.max(0, t - 1) ** 2 * 4;
+      say('depart');
+    } else if (ex.phase === 'failed' || ex.phase === 'extracted') {
+      if (this.departT >= 0) {
+        this.departT += dt;
+        visible = this.departT < 12;
+        this.heliDoor = Math.max(0, this.heliDoor - dt);
+        x = stop + this.departT ** 2 * 4;
+        say('depart');
+      }
+    }
+    this.heli.root.visible = visible;
+    this.heliPos.set(x, 0, z);
+    this.heli.root.position.copy(this.heliPos);
+    this.heli.root.rotation.y = 0;
+    this.heli.update(dt, { rotor: 0, lights: true, doorOpen: this.heliDoor, pitch: 0, roll: 0 });
+    this.heliLight.intensity = 0;
+  }
+
   private animateHelicopter(dt: number, time: number, camera: THREE.Camera): void {
     const ctx = this.ctx;
     const ex = ctx.session.extraction;
     if (!this.heliVisible) return;
+    if (this.train) {
+      this.animateTrain(dt);
+      return;
+    }
     const from = this.lz.heliFrom;
     const hoverY = 20;
     const hover = new THREE.Vector3(this.lz.heliX + 6, hoverY, this.lz.heliZ + 4);
@@ -695,6 +802,11 @@ export class MissionRuntime implements MissionApi {
 
   private updateHazard(dt: number, camera: THREE.Camera, time: number, alive: boolean): void {
     const ctx = this.ctx;
+    // MUJIN has no toxic front: its night takes the station area by area (`mujin/director.ts`)
+    if (this.train) {
+      this.hazardR = 0;
+      return;
+    }
     const s = ctx.session;
     const ex = s.extraction;
     const p = ctx.player;
@@ -766,8 +878,8 @@ export class MissionRuntime implements MissionApi {
     const s = this.ctx.session;
     const ex = s.extraction;
     let timer: HudTimer;
-    if (ex.phase === 'landed') timer = { label: 'BOARD - HELICOPTER LEAVES IN', seconds: ex.windowLeft, urgent: ex.windowLeft < 15 };
-    else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') timer = { label: 'HELICOPTER ETA', seconds: Math.max(0, ex.countdown), urgent: ex.countdown < 15 };
+    if (ex.phase === 'landed') timer = { label: this.train ? 'BOARD - THE DOORS CLOSE IN' : 'BOARD - HELICOPTER LEAVES IN', seconds: ex.windowLeft, urgent: ex.windowLeft < 15 };
+    else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') timer = { label: this.train ? 'THE DAWN TRAIN' : 'HELICOPTER ETA', seconds: Math.max(0, ex.countdown), urgent: ex.countdown < 15 };
     else if (ex.phase === 'boarding' || ex.phase === 'extracted') timer = { label: 'EXTRACTING', seconds: Math.max(0, ex.boardLeft), urgent: false };
     else if (this.night?.timer()) timer = this.night.timer()!;
     else {
@@ -826,10 +938,10 @@ export class MissionRuntime implements MissionApi {
       edetail = `Signal the helicopter at ${data.text.lz} (${Math.round(lzDist)} m)`;
       estate = 'available';
     } else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') {
-      edetail = 'Hold the landing zone until touchdown';
+      edetail = this.train ? 'Hold platform 1 until the train is in' : 'Hold the landing zone until touchdown';
       estate = 'active';
     } else if (ex.phase === 'landed') {
-      edetail = 'BOARD THE HELICOPTER';
+      edetail = this.train ? 'BOARD THE TRAIN' : 'BOARD THE HELICOPTER';
       estate = 'active';
     } else if (ex.phase === 'boarding' || ex.phase === 'extracted') {
       edetail = 'Extracted';
@@ -901,7 +1013,7 @@ export class MissionRuntime implements MissionApi {
       dim: !lzShown,
     });
     if (this.heliVisible && this.heli.root.visible) {
-      out.push({ id: 'heli', kind: 'helicopter', x: this.heliPos.x, z: this.heliPos.z, label: 'HELICOPTER', color: '#ffe08a', visible: true, compass: false, pulse: ex.phase === 'landed' });
+      out.push({ id: 'heli', kind: 'helicopter', x: this.heliPos.x, z: this.heliPos.z, label: this.train ? 'DAWN TRAIN' : 'HELICOPTER', color: '#ffe08a', visible: true, compass: false, pulse: ex.phase === 'landed' });
     }
     out.push({ id: 'start', kind: 'start', x: data.playerStart.x, z: data.playerStart.z, label: 'INSERTION', visible: true, dim: true });
     for (const st of data.stations) {

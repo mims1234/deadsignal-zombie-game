@@ -12,12 +12,23 @@
  *   oni        huge and slow, and it hits like a car
  *   court      the Kurenai Court: living people with the checkpoint's rifles, who keep their distance and shoot
  *   empress    the Crimson Empress (the boss): calls bloomed to her, more when enraged
+ *
+ * MUJIN, the unmanned station, has its own (`mujinVariant`):
+ *
+ *   tall       the Tall Lady: walks, never runs; whoever she hears is hers until they stand in the shrine's salt
+ *   crawler    the Rail Crawler: drags itself along the tracks on its arms, fast in a straight line
+ *   shape      the White Shape: wriggles far off in the field and never comes closer; looking at it hurts (`mujin/runtime.ts`)
+ *   sitter     the Bench Sitter: sits in the waiting room and whispers where the change is; shoot it and the station wakes
+ *   master     the Stationmaster (the boss): walks platform 1, punches tickets; nothing stops him until the lamps are lit
  */
 import type { ZombieDef } from '../config';
 import type { ZombieType } from '../types';
 
-export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress'] as const;
+export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master'] as const;
 export type ZombieVariant = (typeof VARIANTS)[number];
+/** MUJIN's own kinds (the station, `mujin/`), not the Sakura District's field file's. */
+export const MUJIN_KINDS = ['tall', 'crawler', 'shape', 'sitter', 'master'] as const;
+export type MujinKind = (typeof MUJIN_KINDS)[number];
 
 interface VariantInfo {
   name: string;
@@ -49,6 +60,11 @@ export const VARIANT_INFO: Record<Exclude<ZombieVariant, ''>, VariantInfo> = {
     def: { damage: 7, attackRange: 22, attackWindup: 0.45, attackStrike: 0.08, attackRecovery: 0.35, sightRange: 34, reward: 160, headshotBonus: 60 },
   },
   empress: { name: 'The Crimson Empress', hp: 1.2, speed: 1, damage: 1, scale: 1 },
+  tall: { name: 'The Tall Lady', hp: 6, speed: 0.42, damage: 2.2, scale: 1.38, def: { poise: 500, staggerTime: 0.25, sightRange: 40 } },
+  crawler: { name: 'Rail Crawler', hp: 0.8, speed: 1.45, damage: 1.2, scale: 1, def: { attackRange: 1.9 } },
+  shape: { name: 'The White Shape', hp: 1.4, speed: 0, damage: 0, scale: 1.05, def: { poise: 9999, reward: 220, headshotBonus: 60 } },
+  sitter: { name: 'The Bench Sitter', hp: 1.2, speed: 1.2, damage: 1.2, scale: 1 },
+  master: { name: 'The Stationmaster', hp: 1, speed: 0.55, damage: 1, scale: 1 },
 };
 
 /** The definition a variant of `base` fights with. */
@@ -70,6 +86,11 @@ export const VARIANT_BASE: Record<Exclude<ZombieVariant, ''>, ZombieType> = {
   oni: 'armored',
   court: 'shambler',
   empress: 'warden',
+  tall: 'runner',
+  crawler: 'runner',
+  shape: 'shambler',
+  sitter: 'shambler',
+  master: 'warden',
 };
 
 /** Where an infected is spawned, for `sakuraVariant`. */
@@ -97,4 +118,18 @@ export function sakuraVariant(type: ZombieType, at: VariantSpot, r: () => number
   if (z === 'station') return r() < 0.35 ? 'commuter' : r() < 0.2 ? 'bloomed' : '';
   if (z.startsWith('shotengai')) return r() < 0.06 ? 'idol' : r() < 0.25 ? 'bloomed' : r() < 0.2 ? 'commuter' : '';
   return r() < 0.2 ? 'bloomed' : '';
+}
+
+/**
+ * MUJIN: what an infected of `type` spawned at (x, z) becomes. The Stationmaster is the boss; on the tracks the runners
+ * crawl; the platforms and the station house are the commuters'. The Tall Lady, the White Shape and the Bench Sitter
+ * are placed by the station itself (`mujin/director.ts`), never picked here.
+ */
+export function mujinVariant(type: ZombieType, x: number, z: number, r: () => number): ZombieVariant {
+  if (type === 'warden') return 'master';
+  const onTracks = Math.abs(z) < 3.6 && x > -46;
+  if (type === 'runner') return onTracks || r() < 0.3 ? 'crawler' : '';
+  if (type === 'armored') return '';
+  const station = z > -23 && z < 9 && x > -33 && x < 33;
+  return station ? (r() < 0.75 ? 'commuter' : '') : r() < 0.3 ? 'commuter' : '';
 }

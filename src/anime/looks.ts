@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { ZombieVariant } from '../enemies/variants';
+import type { MujinKind, ZombieVariant } from '../enemies/variants';
 import type { Dims, JointName } from './figure';
 import type { AnimeTint } from './vrm';
 
@@ -23,6 +23,10 @@ export interface KindLook {
   gear?: (put: GearPut, D: Dims) => void;
   /** A per-frame touch on the gear (the Jorogumo's legs creep). */
   sway?: (gear: THREE.Object3D[], t: number) => void;
+  /** MUJIN's Rail Crawler: the whole figure lies forward this far (rad), dragging itself on its arms. */
+  lie?: number;
+  /** MUJIN's White Shape: the whole figure wriggles from side to side. */
+  wriggle?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -263,6 +267,26 @@ function parasol(put: GearPut, D: Dims): void {
   put('foreL', g, 0, -D.fore, 0.02);
 }
 
+/** The Tall Lady's wide summer hat. */
+function sunHat(put: GearPut, D: Dims): void {
+  const g = baked('sunHat', () => [new THREE.CylinderGeometry(0.3, 0.3, 0.012, 18), at(new THREE.CylinderGeometry(0.11, 0.12, 0.1, 14), 0, 0.05, 0)]);
+  put('head', mesh(g, mat('sunHat', 0xf4efe2, { rough: 0.95 })), 0, D.head * 0.82, 0);
+}
+
+/** The Stationmaster's peaked cap, and the hand lamp he carries down the platform. */
+function stationCap(put: GearPut, D: Dims): void {
+  const g = baked('stationCap', () => [new THREE.CylinderGeometry(0.105, 0.1, 0.07, 14), at(new THREE.BoxGeometry(0.16, 0.012, 0.08), 0, -0.03, -0.1, 0.25)]);
+  put('head', mesh(g, mat('capNavy', 0x141a2c, { rough: 0.6 })), 0, D.head * 0.78, 0);
+  const band = geo('capBand', () => new THREE.CylinderGeometry(0.107, 0.107, 0.018, 14, 1, true));
+  put('head', mesh(band, mat('capGold', 0xc8a040, { metal: 0.7, rough: 0.35 })), 0, D.head * 0.72, 0);
+}
+function handLamp(put: GearPut, D: Dims): void {
+  const lamp = new THREE.Group();
+  lamp.add(mesh(geo('lampBody', () => new THREE.BoxGeometry(0.1, 0.14, 0.1).translate(0, -0.12, 0)), mat('lampTin', 0x2a2a2a, { metal: 0.6 })));
+  lamp.add(mesh(geo('lampGlass', () => new THREE.BoxGeometry(0.07, 0.08, 0.07).translate(0, -0.12, 0)), mat('lampGlow', 0xffc060, { glow: 2.4 })));
+  inHand(put, D, 'L', lamp, 0);
+}
+
 function crown(put: GearPut, D: Dims): void {
   const g = blossoms();
   const m = mat('crimsonBloom', 0xff2850, { glow: 0.9 });
@@ -281,7 +305,7 @@ function crown(put: GearPut, D: Dims): void {
 const TOPS = /Tops|Onepice|Onepiece/i;
 const BOTTOMS = /Bottoms/i;
 
-export const KIND_LOOKS: Record<SakuraKind, KindLook> = {
+const SAKURA_LOOKS: Record<Exclude<SakuraKind, MujinKind>, KindLook> = {
   // the 07:12 to the city every morning for twenty years: still in the suit, still carrying the case, eyes gone milky
   commuter: {
     tint: { key: 'commuter', skin: 0x9aa494, cloth: 0x9098a4, hair: 0x7c7c80, eyes: 0xc8d4dc, outlines: false, parts: [{ match: TOPS, color: 0x8a9098 }, { match: /Tie/i, color: 0x6a1a24, flat: true }] },
@@ -362,6 +386,44 @@ export const KIND_LOOKS: Record<SakuraKind, KindLook> = {
     },
   },
 };
+
+/** MUJIN's kinds (`enemies/variants.ts`): the station's own. */
+const MUJIN_LOOKS: Record<MujinKind, KindLook> = {
+  // a white summer dress, a wide hat, long black hair; taller than the doorways
+  tall: {
+    tint: { key: 'tall', skin: 0xeee8e4, cloth: 0xf4f1ea, hair: 0x0e0c0e, eyes: 0x101010, outlines: false, parts: [{ match: TOPS, color: 0xf4f1ea, flat: true }, { match: BOTTOMS, color: 0xf4f1ea, flat: true }] },
+    far: { skin: 0xeee8e4, cloth: 0xf4f1ea },
+    gear: sunHat,
+  },
+  // what is left of a passenger: grey, lying forward on the sleepers, arms out
+  crawler: {
+    tint: { key: 'crawler', skin: 0x7a8278, cloth: 0x50545a, hair: 0x30302e, eyes: 0xff4020, outlines: false },
+    far: { skin: 0x7a8278, cloth: 0x40444a },
+    lie: 1.25,
+  },
+  // white all over, faceless, wriggling
+  shape: {
+    tint: { key: 'shape', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: 0xffffff, outlines: false, parts: [{ match: /./, color: 0xffffff, flat: true }] },
+    far: { skin: 0xffffff, cloth: 0xffffff },
+    wriggle: true,
+  },
+  // grey as the bench it sits on, its face turned to the window
+  sitter: {
+    tint: { key: 'sitter', skin: 0xa8aaa6, cloth: 0x6a6c70, hair: 0x2a2a2c, eyes: 0xd8e0e4, outlines: false },
+    far: { skin: 0xa8aaa6, cloth: 0x5a5c60 },
+  },
+  // navy uniform, the cap and the lamp
+  master: {
+    tint: { key: 'master', skin: 0xc8c0b8, cloth: 0x1c2440, hair: 0xb8b8b8, eyes: 0xffd060, outlines: true, parts: [{ match: TOPS, color: 0x1c2440, flat: true }, { match: BOTTOMS, color: 0x141a2c, flat: true }] },
+    far: { skin: 0xc8c0b8, cloth: 0x1c2440 },
+    gear: (put: GearPut, D: Dims) => {
+      stationCap(put, D);
+      handLamp(put, D);
+    },
+  },
+};
+
+export const KIND_LOOKS: Record<SakuraKind, KindLook> = { ...SAKURA_LOOKS, ...MUJIN_LOOKS };
 
 /** The Kurenai Court: living people in the theatre's crimson (no infected look, no gear). */
 export const COURT_TINT: AnimeTint = {

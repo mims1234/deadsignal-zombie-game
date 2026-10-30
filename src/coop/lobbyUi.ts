@@ -12,7 +12,7 @@ import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 import type { SwitchId } from '../switches';
 
-const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM', aurelia: 'AURELIA' };
+const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM', aurelia: 'AURELIA', mujin: 'MUJIN' };
 const KIND_NOTE: Record<RoomView['kind'], string> = {
   mission: 'The map\'s operation: both contracts, then extract together. The relay, the squad and the survivors are shared.',
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',

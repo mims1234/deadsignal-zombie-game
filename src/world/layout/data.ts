@@ -41,13 +41,13 @@ export interface AmbientZombieDef {
 }
 
 /** `sakura` is the District's streets with an anime cast (VRoid models, `anime/`). */
-export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia';
-export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia'];
+export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia' | 'mujin';
+export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin'];
 /**
  * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
  * them (a local dev build shows them too); everyone else does not see them at all.
  */
-export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia'];
+export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia', 'mujin'];
 
 /** A valid map id from anything (storage, a URL, a message); unknown means the District. */
 export function asMapId(v: unknown): MapId {
@@ -243,6 +243,37 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'RELAY', title: 'POWER THE RIVER RELAY', text: 'Start the relay on the east bank and hold it while it charges.' },
       { tag: 'SHRINE', title: 'PUT DOWN THE SHRINE KEEPER', text: 'Climb the Lantern Terrace and the Shrine Steps to the Phoenix Shrine on the summit.' },
       { tag: 'EXTRACT', title: 'THE WEST BANK', text: 'Radio the bird and hold the west bank until it lands.' },
+    ],
+  },
+  // MUJIN, the unmanned station: a night that repeats until the station is in order (layout/mujin.ts, src/mujin/)
+  mujin: {
+    name: 'MUJIN',
+    tagline: 'The unmanned station: a stop on no map, three minutes before dawn',
+    defenseTitle: 'PUT THE STATION IN ORDER',
+    defenseSite: 'BELL',
+    defensePrompt: 'THE PLATFORM BELL',
+    defenseStart: 'THE NIGHT BEGINS AGAIN',
+    defenseDone: 'THE STATION IS IN ORDER',
+    huntTitle: 'STOP THE STATIONMASTER',
+    boss: 'THE STATIONMASTER',
+    huntSite: 'platform 1',
+    extractTitle: 'BOARD THE DAWN TRAIN',
+    lz: 'PLATFORM 1',
+    surge: 'THE NIGHT',
+    hazardSite: 'TUNNEL',
+    sealed: 'THE NIGHT TAKES THE STATION',
+    bossSighted: 'he keeps the station. With every lamp lit he can be stopped.',
+    bossRadio: { from: 'PA', text: 'Tickets, please. The dawn service will not depart until the station is in order.' },
+    regions: { low: 'The station', medium: 'Outside the station - the dark is closer here', high: 'The shrine on the hill' },
+    brief: 'We fell asleep on the last train and woke at a station that is not on the map. Every loop something changes. Find it and put it right, or ring the All Clear if nothing is wrong. Five right in a row and the dawn train comes.',
+    kicker: 'MUJIN  //  THE UNMANNED STATION  //  04:57',
+    signal: 'NO SERVICE  -  NEXT TRAIN: AT DAWN',
+    premise: 'A rural stop taken off the maps when its tunnel fell in. The night here repeats, and each time the station is a little different. Fight through each loop, find what changed, and the dawn train will come for you.',
+    foot: 'Each loop: survive, find the one thing that changed and report it (hold E there), or pull the All Clear at the platform bell. A right read lights a lamp on the canopy; a wrong one puts them all out, and the night takes part of the station. Five lamps lit and the Stationmaster can be stopped. Then the dawn train comes.',
+    rows: [
+      { tag: 'LOOP', title: 'PUT THE STATION IN ORDER', text: 'Find the change each loop, or ring the All Clear. Five right in a row.' },
+      { tag: 'NIGHT', title: 'STOP THE STATIONMASTER', text: 'He walks platform 1. Until every lamp is lit, nothing stops him.' },
+      { tag: 'DAWN', title: 'BOARD THE DAWN TRAIN', text: 'It stops at platform 1. Get on before the doors close.' },
     ],
   },
 };

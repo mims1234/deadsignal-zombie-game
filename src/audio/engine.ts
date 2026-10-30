@@ -316,6 +316,18 @@ class Engine implements AudioEngineDebug {
 
   // ---- state ----
 
+  get context(): BaseAudioContext | null {
+    return this.ready ? this.ctx : null;
+  }
+
+  get input(): AudioNode | null {
+    return this.ready ? this.masterIn : null;
+  }
+
+  get listener(): { x: number; y: number; z: number; fx: number; fz: number } {
+    return { x: this.lx, y: this.ly, z: this.lz, fx: this.fx, fz: this.fz };
+  }
+
   get available(): boolean {
     return this.ready && !this.failed && !this.disposed;
   }

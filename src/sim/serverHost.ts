@@ -57,6 +57,8 @@ import { ForgeStory, type StoryTick } from '../forge/story';
 import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
 import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
+import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/director';
+import { encodeLoop, MujinLoop } from '../mujin/loop';
 import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
 import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex } from '../sakura/campaign';
@@ -222,6 +224,9 @@ export class SessionSim {
   readonly sakura: SakuraQuest | null = null;
   /** The Sakura District's stalker, who comes once a run (`sakura/director.ts`). */
   private readonly stalker = new Stalker();
+  /** MUJIN: the loop everyone is in (`mujin/loop.ts`), and the station's infected and walls (`mujin/director.ts`). */
+  readonly mujin: MujinLoop | null = null;
+  private readonly mujinDir: MujinDirector | null = null;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -277,6 +282,36 @@ export class SessionSim {
       };
     }
     if (this.map === 'sakura' && this.level.sakura) this.sakura = new SakuraQuest(questSpots(this.level.sakura));
+    if (this.map === 'mujin') {
+      this.mujin = new MujinLoop();
+      this.mujinDir = new MujinDirector(this.level, this.zombies);
+      this.zombies.pickVariant = mujinVariantPicker();
+      const loop = this.mujin;
+      this.zombies.spawnAllowed = mujinSpawnAllowed(() => loop.view.sealed);
+    }
+  }
+
+  /** MUJIN's loop, one frame: its events, the station's infected and walls, the Stationmaster, the dawn train. */
+  private stepMujin(dt: number): void {
+    const q = this.mujin;
+    const dir = this.mujinDir;
+    if (!q || !dir || !this.story) return;
+    q.tick(dt);
+    for (const e of q.drain()) {
+      if (e.kind === 'result' && !e.right) dir.wrong();
+      else if (e.kind === 'night') this.finish(false, 'The night took the station');
+      else if (e.kind === 'dawn') this.defense.status = 'complete';
+    }
+    // Ren follows whoever leads her (a step behind); down or gone, she waits where she is
+    const seats = [...this.peers.values()];
+    const lead = q.view.renLead >= 0 ? seats[q.view.renLead] : undefined;
+    if (q.view.renLead >= 0 && (!lead || !lead.ref.alive)) q.dropRen();
+    q.stepRen(dt, lead && lead.ref.alive ? { x: lead.ref.x, z: lead.ref.z, yaw: lead.yaw } : null);
+    const state = dir.step(q.view, this.rng);
+    if (this.hunt.status !== 'complete') this.hunt.status = state === 'away' ? 'available' : 'active';
+    if (state === 'away') this.zombies.vanish((z) => z.isBoss);
+    // the dawn train is never called: it comes when the Stationmaster is stopped
+    if (this.extraction.phase === 'available') callExtraction(this.extraction, this.elapsed, true, true);
   }
 
   /** The Thousand Lanterns' consequences: the dead at the shrine for a wrong lantern; the ghost train at the bloom. */
@@ -363,6 +398,12 @@ export class SessionSim {
     this.level.doors?.setAll(true);
     if (this.story) this.setUpStory();
     this.level.doors?.sync(this.loop.doors);
+    if (this.mujin && this.mujinDir) {
+      const rng = this.rng;
+      this.mujin.reset(() => rng.f());
+      this.mujinDir.reset();
+      this.hunt.status = 'available';
+    }
     if (this.asylum && this.story) {
       // by day there is nobody to hunt: the Matron wakes at nightfall
       gateHunt(this.hunt, 0);
@@ -601,6 +642,18 @@ export class SessionSim {
         this.sakuraEvents();
         return;
       }
+      case 'mj': {
+        // MUJIN: a report, the All Clear, the payphone, Ren's hand, the bench (the loop checks they are within reach)
+        const q = this.mujin;
+        if (!q || !this.story || !up) return;
+        const seat = [...this.peers.keys()].indexOf(from);
+        if (d.a === 'report') q.report(Math.floor(Number(d.i)), p.ref.x, p.ref.z, name);
+        else if (d.a === 'clear') q.allClear(p.ref.x, p.ref.z, name);
+        else if (d.a === 'phone') q.answer(p.ref.x, p.ref.z, name);
+        else if (d.a === 'take') q.takeRen(seat, p.ref.x, p.ref.z);
+        else if (d.a === 'seat') q.seatRen(seat, p.ref.x, p.ref.z);
+        return;
+      }
       case 'ledger': {
         if (!this.forge || !this.story || !up) return;
         this.forge.takeLedger(Number(d.i), p.ref.x, p.ref.z);
@@ -693,6 +746,8 @@ export class SessionSim {
     const field = new FlowField(this.level.nav);
     p = { id, name, ref, yaw: 0, hp: 100, kills: 0, downs: 0, seen: -99, life: LIFE.up, gear: [0, 0, 0], info: [0, 0, 0], env: null as never, field, fieldT: 0 };
     p.env = this.makeEnv(ref, field, (amount, sx, sz, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }));
+    // MUJIN: the Stationmaster punches this player's ticket (their own game sends them one loop back)
+    p.env.punch = () => this.send(id, { k: 'mjpunch' });
     this.peers.set(id, p);
     return p;
   }
@@ -836,11 +891,12 @@ export class SessionSim {
         // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
         extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null && !this.forge ? this.elapsed - ex.calledAt : null,
         // the Forge after the burnout: the virus is over, nothing more comes
-        paused: this.forge?.quietDirector ?? false,
+        paused: (this.forge?.quietDirector ?? false) || (!!this.mujin && (this.mujin.view.phase === 'reset' || (this.mujin.view.phase === 'fight' && this.mujin.view.t < (this.mujin.view.last === 1 ? 20 : 6)))),
       };
       this.zombies.director(dt, ctx, p.env, this.rng);
     }
     if (this.forge) this.forge.tick(dt, this.fillForgeTick(), this.rng);
+    this.stepMujin(dt);
     if (this.sakura) {
       this.sakura.tick(dt);
       this.sakuraEvents();
@@ -904,14 +960,14 @@ export class SessionSim {
         // the boarding window ran out: whoever is aboard leaves with it
         if (this.aboard.size > 0) {
           ex.phase = 'extracted';
-          this.finish(true, 'Extracted');
-        } else this.finish(false, 'The helicopter departed without the squad');
+          this.finish(true, this.mujin ? 'Left on the dawn train' : 'Extracted');
+        } else this.finish(false, this.mujin ? 'The dawn train left without the squad' : 'The helicopter departed without the squad');
       }
     }
     // everyone still standing is aboard: the bird leaves now
     if (ex.phase === 'landed' && this.aboard.size > 0 && up === 0) {
       ex.phase = 'extracted';
-      this.finish(true, 'Extracted');
+      this.finish(true, this.mujin ? 'Left on the dawn train' : 'Extracted');
     }
   }
 
@@ -1120,6 +1176,7 @@ export class SessionSim {
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
       }
       if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
+      if (this.mujin) out.mj = encodeLoop(this.mujin.view); // MUJIN's loop
       if (this.forge) {
         // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
         out.fg = encodeState(this.forge.view);
