@@ -266,6 +266,8 @@ export interface MapMarker {
   pulse?: boolean;
   /** Dim (completed / inactive). */
   dim?: boolean;
+  /** Only on the full tactical map, never the minimap (MUJIN's many places that can change). */
+  mapOnly?: boolean;
 }
 
 export type MapFootprintKind = 'building' | 'wall' | 'container' | 'vehicle' | 'prop' | 'fence' | 'tank';

@@ -79,7 +79,8 @@ function stairsX(c: Ctx, xTop: number, xBottom: number, z: number, w: number, yT
     const zz = z + s * (w / 2 + 0.06);
     const L = Math.abs(xBottom - xTop);
     const mid = (xTop + xBottom) / 2;
-    const rot = Math.atan2(yTop - yBottom, xBottom - xTop);
+    // the rail falls as the steps do (toward xBottom)
+    const rot = Math.atan2(yTop - yBottom, xBottom - xTop) * (xBottom > xTop ? -1 : 1);
     const rail = addBox(b, 'steelDark', mid, (yTop + yBottom) / 2 + 0.9, zz, Math.hypot(L, yTop - yBottom), 0.06, 0.06, 0, { cast: false });
     rail.rotation.set(0, 0, rot);
     rail.updateMatrixWorld(true);
@@ -97,11 +98,11 @@ function footbridge(c: Ctx): void {
   const zB = 7.6;
   b.collide({ x: (x0 + x1) / 2, z: 0, hx: (x1 - x0) / 2, hz: (zB - zA) / 2, y0: y - 0.3, y1: y, floor: true, surface: 'metal', mapKind: 'none', tag: 'bridge-deck' });
   addBox(b, 'grating', (x0 + x1) / 2, y - 0.15, 0, x1 - x0, 0.3, zB - zA, 0, { cast: false });
-  // its glass sides and roof
-  for (const x of [x0, x1]) {
-    addBox(b, 'steelDark', x, y + 0.55, 0, 0.08, 1.1, zB - zA, 0, { cast: false });
-    b.collide({ x, z: 0, hx: 0.08, hz: (zB - zA) / 2, y0: y, y1: y + 1.2, mapKind: 'none', blocksShots: false, tag: 'bridge-side' });
-  }
+  // its sides: the west one closed end to end; the east one open where each flight comes up (|z| from 5.5 to 7.6)
+  addBox(b, 'steelDark', x0, y + 0.55, 0, 0.08, 1.1, zB - zA, 0, { cast: false });
+  b.collide({ x: x0, z: 0, hx: 0.08, hz: (zB - zA) / 2, y0: y, y1: y + 1.2, mapKind: 'none', blocksShots: false, tag: 'bridge-side' });
+  addBox(b, 'steelDark', x1, y + 0.55, 0, 0.08, 1.1, 11, 0, { cast: false });
+  b.collide({ x: x1, z: 0, hx: 0.08, hz: 5.5, y0: y, y1: y + 1.2, mapKind: 'none', blocksShots: false, tag: 'bridge-side' });
   // the west side is closed (it looks out over the tunnel), the east side opens onto each flight
   addBox(b, 'roof', (x0 + x1) / 2, y + 2.6, 0, x1 - x0 + 0.6, 0.12, zB - zA + 0.6, 0, { cast: false });
   for (const z of [zA, zB]) {
@@ -177,10 +178,16 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
     s = (s * 1664525 + 1013904223) >>> 0;
     return s / 4294967296;
   };
-  for (let i = 0; i < 26; i++) {
-    const a = (i / 26) * Math.PI * 2;
-    const hill = addBox(b, MAT.stoneDark(), Math.cos(a) * 92, 7 + rand() * 6, Math.sin(a) * 70, 46, 18 + rand() * 10, 26, a, { cast: false });
-    hill.updateMatrixWorld(true);
+  // the hills the station sits in: low rounded mounds all round, wooded
+  const hillMat = new THREE.MeshStandardMaterial({ color: 0x1c2420, roughness: 1 });
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * Math.PI * 2 + rand() * 0.2;
+    const r = 30 + rand() * 16;
+    const h = 14 + rand() * 14;
+    const hill = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), hillMat);
+    hill.scale.set(1, h / r, 1);
+    hill.position.set(Math.cos(a) * (96 + rand() * 10), -1, Math.sin(a) * (78 + rand() * 8));
+    b.add(hill, { cast: false });
   }
   for (let i = 0; i < 90; i++) {
     const a = rand() * Math.PI * 2;
@@ -333,6 +340,16 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
     stoneLantern(b, { x: 41.4, z, lit: true, scale: 0.8 });
   }
   shrineHall(b, { x: 39, z: 31.5, rot: 0, w: 7, d: 6 });
+  // the salt circle on the shrine path (the Tall Lady loses whoever stands in it)
+  const salt = new THREE.Mesh(new THREE.RingGeometry(MUJIN.salt.r - 0.18, MUJIN.salt.r, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 1, emissive: 0x302c28 }));
+  salt.position.set(MUJIN.salt.x, 0.02, MUJIN.salt.z);
+  b.add(salt, { cast: false });
+  for (let k = 0; k < 4; k++) {
+    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+    const pile = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.22, 8), new THREE.MeshStandardMaterial({ color: 0xf4f2ec, roughness: 1 }));
+    pile.position.set(MUJIN.salt.x + Math.cos(a) * (MUJIN.salt.r + 0.25), 0.11, MUJIN.salt.z + Math.sin(a) * (MUJIN.salt.r + 0.25));
+    b.add(pile, { cast: false });
+  }
   b.light({ x: 39, y: 2.6, z: 28, color: 0xff9a50, intensity: 16, distance: 10, mode: 'flicker', pool: 3, glow: 0.6, tag: 'shrine' });
   for (const [x, z] of [[28, 20], [30, 32], [46, 18], [47, 30]] as const) cedar(b, x, z, 10);
   for (const [x, z] of [[28, 20], [30, 32], [46, 18], [47, 30]] as const) b.collide({ x, z, hx: 0.6, hz: 0.6, y1: 6, mapKind: 'prop', surface: 'wood', tag: 'cedar' });
@@ -390,7 +407,7 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   d.road(37, -36, 41, 12, 'CROSSING ROAD');
 
   // ---- crates, spawn points, the people still waiting ----
-  for (const [x, z, r] of [[-16, -6, 0], [24, 6, 0.4], [-30, -16, 0.2], [30, -30, 1], [-44, 30, 0.6], [12, 22, 0.3], [46, 34, 0.8], [-26, 16.5, 0]] as const) d.crate(x, z, r, x > 21 && z > 12 ? 'high' : z > 10 || (x < -18 && z < -12) ? 'medium' : 'low');
+  for (const [x, z, r] of [[-17, -10.5, 0], [24, 6, 0.4], [-30, -16, 0.2], [30, -30, 1], [-44, 30, 0.6], [12, 22, 0.3], [46, 34, 0.8], [-26, 16.5, 0]] as const) d.crate(x, z, r, x > 21 && z > 12 ? 'high' : z > 10 || (x < -18 && z < -12) ? 'medium' : 'low');
   d.spawn('low', 'general', [[-42, -2], [-42, 2], [0, -34], [-12, -34], [28, -33], [39, -34], [46, -12]], 1);
   d.spawn('medium', 'general', [[-46, 23], [-30, 24], [0, 24], [14, 24], [-44, -30], [-30, -33], [-24, -18]], 1);
   d.spawn('high', 'general', [[46, 33], [26, 34], [47, 16]], 1);

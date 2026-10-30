@@ -593,7 +593,7 @@ export class Minimap {
     // marker icons (unrotated)
     const edge = R - 9;
     for (const m of dyn.markers) {
-      if (!m.visible) continue;
+      if (!m.visible || m.mapOnly) continue;
       const dx = m.x - p.x;
       const dz = m.z - p.z;
       let rx = (dx * cosY - dz * sinY) * s;

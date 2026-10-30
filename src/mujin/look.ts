@@ -58,6 +58,9 @@ export class StationLook {
   private readonly tunnelLight = new THREE.PointLight(0xfff0c0, 0, 22, 2);
   private readonly vendGlow: THREE.Mesh;
   private time = 0;
+  private readonly echoes: Avatar[] = [];
+  /** Each echo stands in a holder of its own: hidden when you come close, or for a flicker (its avatar keeps its own visibility). */
+  private readonly holders = new Map<Avatar, THREE.Group>();
   private sealedShown = -1;
   private fogT = 0;
 
@@ -336,10 +339,15 @@ export class StationLook {
     }
 
     // ---- the people who wait ----
+    // they are echoes of the last train, not people and not infected: pale, flickering, gone when you come close
     const person = (name: string, i: number, file: string): Avatar => {
-      const a = new Avatar(name, i, { weapon: 'none', helmet: false, tag: '', anime: animeModel(file, ANIMEOPS.fallback) });
+      const a = new Avatar(name, i, { weapon: 'none', helmet: false, tag: '', anime: animeModel(file, ANIMEOPS.fallback), animeTint: { key: 'echo', skin: 0xc8dcff, cloth: 0x9ab4e8, hair: 0xa8bce0, eyes: null, outlines: false } });
       a.cowering = false;
-      this.root.add(a.root);
+      const holder = new THREE.Group();
+      holder.add(a.root);
+      this.root.add(holder);
+      this.holders.set(a, holder);
+      this.echoes.push(a);
       return a;
     };
     for (let i = 0; i < 5; i++) {
@@ -473,6 +481,14 @@ export class StationLook {
     if (this.body.root.visible || this.extra.you.root.visible) {
       this.body.update(dt);
       this.extra.you.update(dt);
+    }
+    // the echoes: they flicker, and are simply not there when you come close
+    for (const a of this.echoes) {
+      const h = this.holders.get(a);
+      if (!h) continue;
+      const d = Math.hypot(a.root.position.x - viewer.x, a.root.position.z - viewer.z);
+      const blink = Math.sin(t * 2.3 + a.root.position.x * 1.7) > 0.992 || Math.sin(t * 17 + a.root.position.z * 5) > 0.997;
+      h.visible = d > 2.8 && !blink;
     }
   }
 

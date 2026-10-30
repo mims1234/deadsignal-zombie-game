@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.322",
+      "date": "2026-10-30",
+      "title": "MUJIN: clearer goals, the echoes, the footbridge",
+      "notes": [
+        "MUJIN's map and compass only show what leads somewhere: the platform bell (marked ALL CLEAR while the loop can be read), the payphone when it rings, Ren, the Stationmaster once he walks, platform 1 once the dawn train is coming. The relay, search area, landing zone and tunnel markers that led nowhere are gone.",
+        "Every place that can change is now named on the full map (not the minimap), so you know what can be reported - never which one it is.",
+        "How to light a lamp is said on the first loops: nothing changes in loop 1, so ring the All Clear at the platform bell; from loop 2, report what changed or ring the All Clear. The objective says the same.",
+        "The people waiting on the platforms and the bench are echoes of the last train: pale, flickering, and gone when you walk up to them. They never fight and nothing hunts them - they are part of the station (and they can change).",
+        "The footbridge can be climbed from both platforms (its side closed off the tops of the stairs); its rails follow the steps. The shrine's salt circle is drawn on the path. Rounded hills round the station, a crate moved off the tracks, and a test that walks every route through the station."
+      ]
+    },
+    {
       "version": "0.4.321",
       "date": "2026-10-30",
       "title": "MUJIN, the unmanned station (admin only)",

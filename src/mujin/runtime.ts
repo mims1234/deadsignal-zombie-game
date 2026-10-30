@@ -91,6 +91,7 @@ export class MujinRuntime {
     this.sm = { said: new Set(), near: false, open: false, dead: false };
     this.next = { pa: 20, ring: 0, crossing: 0, melody: 0, wrongPa: 6, lost: 0, murmur: 6, tall: 4, bell: 0, master: 0 };
     this.sex = Math.random() < 0.5 ? 'f' : 'm';
+    this.everTaught.clear();
     this.progress = loadMujin();
     const rng = this.g.rng;
     this.loop.reset(() => rng.f());
@@ -141,6 +142,7 @@ export class MujinRuntime {
       return;
     }
     this.station(dt, v);
+    this.lessons(v);
     this.kinds(dt, v);
     this.keepOut(v);
     this.pocket();
@@ -198,6 +200,27 @@ export class MujinRuntime {
   }
 
   private lastClear = false;
+  /** The first loops' lessons, each said once (a text line on the top edge, no voice). */
+  private readonly taught = new Set<string>();
+
+  private teach(id: string, text: string, secs = 9): void {
+    if (this.taught.has(`${this.view.loop}:${id}`) || this.everTaught.has(id)) return;
+    this.taught.add(`${this.view.loop}:${id}`);
+    this.everTaught.add(id);
+    this.g.radio('STATION', text, secs);
+  }
+  private readonly everTaught = new Set<string>();
+
+  /** How the station works, told as the first loops go (once a run). */
+  private lessons(v: LoopView): void {
+    if (v.loop === 1 && v.phase === 'fight') {
+      if (v.t > 6) this.teach('lamps', 'Five lamps hang under the roof of platform 1. Each loop you read the station right, one lights. Five lit and the dawn train comes.');
+      if (v.t > 14) this.teach('echoes', 'The pale people waiting are echoes of the last train - not infected, not alive. They are part of the station. Watch them: they can change too.', 9);
+      if (v.t > 26 && v.read === READ.none) this.teach('clear', 'Nothing changes in the first loop: learn how the station looks. Then go to the platform bell and hold E to ring the All Clear.');
+    }
+    if (v.loop === 2 && v.phase === 'fight' && v.t > 5) this.teach('report', 'From now on one thing may be different. Walk up to it and hold E to report it - the map shows every place that can change. If nothing is different, ring the All Clear.', 10);
+    if (v.loop >= 2 && v.phase === 'fight' && v.t > 30 && v.read === READ.none && v.lamps === 0) this.teach('stuck', 'Reports are final: the first one in a loop counts. Wrong, and every lamp goes out.', 8);
+  }
 
   /** A loop begins: the station put back, its time said, the music changed a little more. */
   private loopStart(v: LoopView): void {
@@ -206,7 +229,8 @@ export class MujinRuntime {
     this.next.wrongPa = 6;
     this.sm.near = false;
     if (v.loop > 1) g.banner(`LOOP ${v.loop}`, v.lamps > 0 ? `${v.lamps} of 5 lamps lit. Something may have changed.` : 'Something may have changed. Look carefully.', 'info', 3.5);
-    else g.banner('MUJIN', 'A station on no map. Find what changes each loop, or ring the All Clear.', 'info', 5);
+    else g.banner('MUJIN', 'Light the five lamps on platform 1 to bring the dawn train. Loop 1: nothing has changed yet.', 'info', 6);
+    this.taught.clear();
     // the PA's chime and the time
     this.sound.chime(SPEAKER);
     window.setTimeout(() => {
@@ -625,11 +649,19 @@ export class MujinRuntime {
     const loopObj = {
       id: 'mj-loop',
       title: `PUT THE STATION IN ORDER  ${lampsLine}`,
-      detail: v.dawn ? 'Every lamp is lit' : read ? 'Read this loop - wait for the bell' : MujinLoop.canRead(v) ? 'Report what changed (hold E there), or ring the All Clear at the bell' : 'Look round the station',
+      detail: v.dawn
+        ? 'Every lamp is lit'
+        : read
+          ? 'Read for this loop - the lamp lights (or goes out) when the bell stops'
+          : v.loop === 1
+            ? 'Nothing has changed yet: ring the All Clear at the platform bell to light the first lamp'
+            : MujinLoop.canRead(v)
+              ? 'A right read lights a lamp: hold E on what changed, or ring the All Clear at the bell if nothing did'
+              : 'Look round: something may have changed',
       state: v.dawn ? 'complete' : 'active',
       progress: (v.dawn ? 5 : v.lamps) / 5,
-      tracked: !v.dawn,
-      distance: Math.hypot(MUJIN.bell.x - p.x, MUJIN.bell.z - p.z),
+      tracked: !v.dawn && !read && MujinLoop.canRead(v),
+      distance: !v.dawn && !read && MujinLoop.canRead(v) ? Math.hypot(MUJIN.bell.x - p.x, MUJIN.bell.z - p.z) : -1,
     } as const;
     const list: HudState['objectives'] = [{ ...loopObj }];
     const hunt = this.g.session.hunt.status;
@@ -639,7 +671,16 @@ export class MujinRuntime {
     if (ex.phase !== 'locked') list.push({ id: 'mj-train', title: 'BOARD THE DAWN TRAIN', detail: ex.phase === 'landed' ? 'The doors are open - get on' : 'It stops at platform 1', state: ex.phase === 'extracted' ? 'complete' : 'active', progress: -1, tracked: true, distance: Math.hypot(MUJIN.trainDoor.x - p.x, MUJIN.trainDoor.z - p.z) });
     if (v.ren === REN_STATE.here || v.ren === REN_STATE.safe) list.push({ id: 'mj-ren', title: 'REN', detail: v.ren === REN_STATE.safe ? 'Safe on the bench - board the dawn train and she comes too' : v.renLead >= 0 ? 'Bring her to the waiting-room bench' : 'Take her hand, or put her right', state: v.ren === REN_STATE.safe ? 'complete' : 'active', progress: -1, tracked: false, distance: Math.hypot(v.renX - p.x, v.renZ - p.z) });
     st.objectives = list;
-    md.markers.push({ id: 'mj-bell', kind: 'objective', x: MUJIN.bell.x, z: MUJIN.bell.z, label: 'ALL CLEAR', color: '#9fe0ff', visible: true, compass: !read && MujinLoop.canRead(v), pulse: v.phase === 'bell' && !read });
+    // the bell (the All Clear while the loop can be read), and every place that can change: the map shows what can be
+    // reported, never which one it is
+    const open = !read && MujinLoop.canRead(v) && !v.dawn;
+    md.markers.push({ id: 'mj-bell', kind: 'objective', x: MUJIN.bell.x, z: MUJIN.bell.z, label: open ? 'ALL CLEAR' : 'BELL', color: '#9fe0ff', visible: true, compass: open, pulse: v.phase === 'bell' && open, dim: !open });
+    if (!v.dawn) {
+      for (const s of SPOTS) {
+        if (s.id === 'ren') continue;
+        md.markers.push({ id: `mj-spot-${s.id}`, kind: 'landmark', x: s.x, z: s.z, label: s.name.replace(/^THE /, ''), color: '#cfd8e6', visible: true, compass: false, dim: !open, mapOnly: true });
+      }
+    }
     if (MujinLoop.phoneRinging(v)) md.markers.push({ id: 'mj-phone', kind: 'objective', x: MUJIN.payphone.x, z: MUJIN.payphone.z, label: 'PAYPHONE', color: '#ffe08a', visible: true, compass: true, pulse: true });
     if (v.ren === REN_STATE.here) md.markers.push({ id: 'mj-ren', kind: 'objective', x: v.renX, z: v.renZ, label: 'REN', color: '#c8b0ff', visible: true, compass: true, pulse: v.renLead < 0 });
     if (v.renLead >= 0) md.markers.push({ id: 'mj-benchgoal', kind: 'objective', x: MUJIN.bench.x, z: MUJIN.bench.z, label: 'THE BENCH', color: '#c8b0ff', visible: true, compass: true, pulse: true });

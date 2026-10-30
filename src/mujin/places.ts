@@ -36,7 +36,7 @@ export const MUJIN = {
   /** The waiting-room bench (the Bench Sitter's seat, where Ren is brought). */
   bench: { x: 9, z: -15.5 },
   /** The shrine's salt circle: a marked player clears the Tall Lady's mark standing in it. */
-  salt: { x: 39, z: 23, r: 2.4 },
+  salt: { x: 39, z: 22.6, r: 1.8 },
   /** Where the dawn train's door opens (track 1, beside platform 1). */
   trainDoor: { x: 0, z: -3.4 },
   /** The far platform, where Ren stands when she is the change. */

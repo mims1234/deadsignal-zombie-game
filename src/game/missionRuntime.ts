@@ -478,7 +478,7 @@ export class MissionRuntime implements MissionApi {
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
       s.flags.add('brief');
-      ctx.radio('COMMAND', this.brief?.() ?? data.text.brief, 8);
+      ctx.radio(this.train ? 'YOU' : 'COMMAND', this.brief?.() ?? data.text.brief, 8);
       ctx.audio.play('contract_new', { priority: 3 });
     }
     void escalationPhase;
@@ -976,6 +976,18 @@ export class MissionRuntime implements MissionApi {
     const data = ctx.level.data;
     out.length = 0;
     const ex = s.extraction;
+    if (this.train) {
+      // MUJIN: only what leads somewhere. The station's own (the bell, the payphone, Ren, the places that can change)
+      // are `mujin/runtime.ts`'s; here the Stationmaster once he walks, the platform once the train is coming, the train
+      const boss = ctx.zombies.boss;
+      if (s.hunt.status === 'active' && boss?.alive) out.push({ id: 'hunt', kind: 'hunt', x: boss.x, z: boss.z, label: data.text.boss, color: '#ff5a4d', visible: true, compass: s.defense.status === 'complete', pulse: s.defense.status === 'complete' });
+      if (ex.phase !== 'locked') out.push({ id: 'lz', kind: 'lz', x: this.lz.lzX, z: this.lz.lzZ, label: data.text.lz, color: '#ffc040', radius: this.lz.lzRadius, visible: true, compass: ex.phase !== 'extracted', pulse: ex.phase === 'landed' });
+      if (this.heliVisible && this.heli.root.visible) out.push({ id: 'heli', kind: 'helicopter', x: this.heliPos.x, z: this.heliPos.z, label: 'DAWN TRAIN', color: '#ffe08a', visible: true, compass: false, pulse: ex.phase === 'landed' });
+      for (const st of data.stations) out.push({ id: st.id, kind: st.kind, x: st.x, z: st.z, label: st.kind === 'buy' ? 'SUPPLY' : 'ARMORY', visible: true });
+      const player = ctx.player;
+      for (const c of this.entities.crates) out.push({ id: c.def.id, kind: 'crate', x: c.def.x, z: c.def.z, visible: (c.discovered && !c.opened) || (!c.opened && Math.hypot(c.def.x - player.x, c.def.z - player.z) < 30) });
+      return;
+    }
     const tracked = this.objectives().find((o) => o.tracked)?.id;
     out.push({
       id: 'defense',
