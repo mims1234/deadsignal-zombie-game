@@ -15,6 +15,7 @@
  * Stationmaster's punch (a closed floors link, like the Sakura District's Kisaragi).
  */
 import * as THREE from 'three';
+import { MYSTERY_BOX } from '../../config';
 import type { SpireHandle, TransmitterHandle } from '../landmarks';
 import { bench, crateGroup, debris } from '../props';
 import { addBox, building, groundRect, type Opening } from '../structures';
@@ -419,8 +420,10 @@ export function buildMujin(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   d.label('SHRINE', 39, 24, 0.75);
   d.road(37, -36, 41, 12, 'CROSSING ROAD');
 
-  // ---- crates, spawn points, the people still waiting ----
-  for (const [x, z, r] of [[-17, -10.5, 0], [24, 6, 0.4], [-30, -16, 0.2], [30, -30, 1], [-44, 30, 0.6], [12, 22, 0.3], [46, 34, 0.8], [-26, 16.5, 0]] as const) d.crate(x, z, r, x > 21 && z > 12 ? 'high' : z > 10 || (x < -18 && z < -12) ? 'medium' : 'low');
+  // ---- the boxes (one paid, by the station house, opened as often as you can pay; three free ones out in the
+  // night), spawn points, the people still waiting ----
+  d.crate(-17, -10.5, 0, 'medium', MYSTERY_BOX.paidCost);
+  for (const [x, z, r] of [[-30, -16, 0.2], [12, 22, 0.3], [46, 34, 0.8]] as const) d.crate(x, z, r, x > 21 && z > 12 ? 'high' : 'medium');
   d.spawn('low', 'general', [[-42, -2], [-42, 2], [0, -34], [-12, -34], [28, -33], [39, -34], [46, -12]], 1);
   d.spawn('medium', 'general', [[-46, 23], [-30, 24], [0, 24], [14, 24], [-44, -30], [-30, -33], [-24, -18]], 1);
   d.spawn('high', 'general', [[46, 33], [26, 34], [47, 16]], 1);

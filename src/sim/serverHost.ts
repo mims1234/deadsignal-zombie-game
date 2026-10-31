@@ -25,7 +25,7 @@
  * Out: `send(to, d)` - to 'all' or one player id.
  */
 import * as THREE from 'three';
-import { CARD_MODE, COOP, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
+import { CARD_MODE, COOP, ECONOMY, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
@@ -383,7 +383,7 @@ export class SessionSim {
     this.aboard.clear();
     this.allies = [];
     this.shots = [];
-    this.loot = createLoot(this.level.data.crates.length);
+    this.loot = createLoot(this.level.data.crates.length, this.level.data.crates.map((c) => !!c.cost));
     this.records = createRecords();
     this.barricades?.reset();
     this.purses.clear();
@@ -1133,7 +1133,7 @@ export class SessionSim {
     const cash = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)); // double points
     // the drop is the squad's (shared below), so the killer's client does not roll its own
     this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: cash, x: r1(z.x), zz: r1(z.z), dc: 0 });
-    if (this.story && !z.isBoss) rollKillDrop(this.loot, r1(z.x), r1(z.z), z.def.dropChance * REGIONS[this.level.regionAt(z.x, z.z)].dropMul, this.rng);
+    if (this.story && !z.isBoss) rollKillDrop(this.loot, r1(z.x), r1(z.z), z.def.dropChance * REGIONS[this.level.regionAt(z.x, z.z)].dropMul * (ECONOMY.mapDropMul[this.level.data.id] ?? 1), this.rng);
     if (this.story) rollDrop(this.powerups, this.rng, z.x, z.z, { eligible: !z.isBoss && !z.curable, carpenter: !!this.barricades && anyDamaged(this.barricades.state) });
   }
 

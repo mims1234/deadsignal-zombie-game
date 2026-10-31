@@ -22,6 +22,24 @@ describe('co-op loot rules', () => {
     expect(s.boxes[1]!.phase).toBe(BOX_PHASE.gone);
   });
 
+  it('a paid box is one player at a time, and closes again for the next turn', () => {
+    const s = createLoot(2, [true, false]);
+    expect(openBox(s, 0, 'a', 'ammo')).toBe(true);
+    expect(openBox(s, 0, 'b', 'ammo')).toBe(false); // a's turn: b waits
+    tickLoot(s, MYSTERY_BOX.spin + 0.01);
+    expect(takeBox(s, 0, 'a')).toBe(true);
+    expect(openBox(s, 0, 'b', 'ammo')).toBe(false); // still closing
+    tickLoot(s, MYSTERY_BOX.paidRearm + 0.01);
+    expect(s.boxes[0]).toMatchObject({ phase: BOX_PHASE.closed, owner: null });
+    expect(openBox(s, 0, 'b', 'g2')).toBe(true); // b's turn
+    // a free box stays gone
+    openBox(s, 1, 'a', 'ammo');
+    tickLoot(s, MYSTERY_BOX.spin + 0.01);
+    takeBox(s, 1, 'a');
+    tickLoot(s, 60);
+    expect(s.boxes[1]!.phase).toBe(BOX_PHASE.gone);
+  });
+
   it('prizes survive the trip as text', () => {
     for (const p of [{ kind: 'ammo' } as const, { kind: 'grenades', count: 2 } as const, { kind: 'weapon', id: 'rpg' } as const]) expect(decodePrize(encodePrize(p))).toEqual(p);
     expect(decodePrize('w:laser')).toBeNull();

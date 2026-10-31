@@ -190,18 +190,20 @@ export class Interaction {
       const d = Math.hypot(c.def.x - px, c.def.z - pz);
       if (d > PLAYER.interactReach + (c.phase === 'offer' ? 0.6 : 0) || !facing(c.def.x, c.def.z, d)) continue;
       if (c.phase === 'closed') {
+        const afford = !c.cost || ctx.session.inv.cash >= c.cost;
         targets.push({
           id: `crate:${c.def.id}`,
           dist: d,
-          text: 'OPEN MYSTERY BOX',
-          sub: 'Ammunition, grenades or a gun - and a little cash',
-          tone: 'normal',
+          text: c.cost ? `OPEN MYSTERY BOX  $${c.cost}` : 'OPEN MYSTERY BOX',
+          sub: c.cost ? (afford ? 'Ammunition, grenades or a gun - open it as often as you can pay' : `You need $${c.cost}`) : 'Ammunition, grenades or a gun - and a little cash',
+          tone: afford ? 'normal' : 'warn',
           hold: ECONOMY.crateOpenTime,
-          enabled: true,
+          enabled: afford,
           onUse: () => this.entities.openCrate(c),
         });
       } else if (c.phase === 'spin') {
-        targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: 'MYSTERY BOX', sub: 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
+        const other = this.entities.othersTurn(c);
+        targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: 'MYSTERY BOX', sub: other ? `${other}'s turn - wait for the box` : 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
       } else {
         const t = this.entities.offerText(c);
         targets.push({ id: `crate-take:${c.def.id}`, dist: d, text: t.text, sub: t.sub, tone: t.mine ? 'good' : 'normal', hold: 0, enabled: t.mine, onUse: () => this.entities.takeBoxPrize(c) });

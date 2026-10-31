@@ -977,6 +977,8 @@ export const ECONOMY = {
   maxPickups: 10,
   crateOpenTime: 0.8,
   stationRange: 3.4,
+  /** Maps where infected leave fewer drops (MUJIN: its paid box is the supply). */
+  mapDropMul: { mujin: 0.5 } as Partial<Record<MapId, number>>,
 } as const;
 
 /**
@@ -999,6 +1001,9 @@ export const MYSTERY_BOX = {
   /** Maps whose boxes hold the relics too, and how often (MUJIN: the station they came through). */
   relicMaps: ['mujin'] as readonly MapId[],
   relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
+  /** A paid box (MUJIN's): what a turn costs, and the seconds after its prize is gone before the next turn. */
+  paidCost: 150,
+  paidRearm: 1.2,
   grenades: 2,
   /** Magazines of reserve for each carried weapon. */
   ammoMags: 3,

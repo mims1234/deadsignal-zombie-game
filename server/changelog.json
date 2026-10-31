@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.326",
+      "date": "2026-10-31",
+      "title": "MUJIN's paid mystery box",
+      "notes": [
+        "MUJIN has a mystery box at the west end of the station house that costs $150 a turn. Open it as often as you like: once its prize is taken or sinks back, it closes again for the next turn.",
+        "One player at a time in co-op: while it is someone's turn the box shows their name, and everyone else waits until it closes again. Only the player who paid can take the prize.",
+        "Fewer supplies on MUJIN: three free boxes instead of eight, and the infected drop half as much ammunition, armor and grenades."
+      ]
+    },
+    {
       "version": "0.4.325",
       "date": "2026-10-31",
       "title": "Relics in MUJIN's boxes, rooms lit like outside",

@@ -13,7 +13,7 @@ import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
 import { CoopUi } from '../coop/lobbyUi';
-import { COOP, DEFAULT_SETTINGS, FREE_ROAM, GOVERNOR, GRENADE, MYSTERY_BOX, PLAYER, QUALITY, QUALITY_TIERS, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
+import { COOP, DEFAULT_SETTINGS, ECONOMY, FREE_ROAM, GOVERNOR, GRENADE, MYSTERY_BOX, PLAYER, QUALITY, QUALITY_TIERS, RAGDOLL, REGIONS, RENDER, VULCAN, ZOMBIE_AI, ZOMBIE_DIFFICULTY, type TeamSkill, type ZombieDifficulty } from '../config';
 import { Zombie, type AttackKind, type ZombieEnv } from '../enemies/zombie';
 import { ZombieManager } from '../enemies/zombieManager';
 import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig';
@@ -2103,7 +2103,7 @@ export class Game implements GameCtx {
     this.feed(`+$${cash}  ${z.tag ? `${z.tag.toUpperCase()} (INFECTED)` : z.def.name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
     // supply drops
     const def = z.def;
-    if (!z.isBoss && this.rng.chance(def.dropChance * REGIONS[region].dropMul)) {
+    if (!z.isBoss && this.rng.chance(def.dropChance * REGIONS[region].dropMul * (ECONOMY.mapDropMul[this.level.data.id] ?? 1))) {
       const r = this.rng.f();
       const kind = r < 0.65 ? 'ammo' : r < 0.78 ? 'plate' : 'grenade';
       this.entities.spawnPickup(kind, z.x, z.z);
@@ -2297,7 +2297,7 @@ export class Game implements GameCtx {
     this.hud.event({ type: 'cash', amount: cash });
     this.hud.event({ type: 'hit', head, kill: true });
     this.feed(`+$${cash}  ${name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
-    if (Number.isFinite(x) && Number.isFinite(z) && this.rng.chance(dropChance * REGIONS[this.level.regionAt(x, z)].dropMul)) {
+    if (Number.isFinite(x) && Number.isFinite(z) && this.rng.chance(dropChance * REGIONS[this.level.regionAt(x, z)].dropMul * (ECONOMY.mapDropMul[this.level.data.id] ?? 1))) {
       const r = this.rng.f();
       this.entities.spawnPickup(r < 0.65 ? 'ammo' : r < 0.78 ? 'plate' : 'grenade', x, z);
     }

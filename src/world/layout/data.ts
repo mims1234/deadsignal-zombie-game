@@ -20,6 +20,8 @@ export interface CrateDef {
   z: number;
   yaw: number;
   region: Region;
+  /** A paid box: costs this much to open, and closes again for the next turn once its prize is gone. */
+  cost?: number;
 }
 
 export type SpawnGroup = 'general' | 'lz' | 'defense';
@@ -343,8 +345,8 @@ export class LevelDataBuilder {
     return s;
   }
 
-  crate(x: number, z: number, yaw: number, region: Region): void {
-    this.crates.push({ id: `crate-${this.crates.length + 1}`, x, z, yaw, region });
+  crate(x: number, z: number, yaw: number, region: Region, cost?: number): void {
+    this.crates.push({ id: `crate-${this.crates.length + 1}`, x, z, yaw, region, ...(cost ? { cost } : {}) });
   }
 
   spawn(region: Region, group: SpawnGroup, pts: [number, number][], weight = 1): void {

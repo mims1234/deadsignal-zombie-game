@@ -1,7 +1,7 @@
 /**
  * Co-op loot (pure): the mystery boxes and the drops infected leave behind, owned by the session's simulation so every
  * player sees the same ones. A box is won by whoever opens it first (the reel spins for everyone; only the opener can
- * take the prize); a drop goes to the first player who walks over it, and is gone for everyone.
+ * take the prize); a paid box closes again once its prize is gone, for the next player's turn; a drop goes to the first player who walks over it, and is gone for everyone.
  *
  * Solo play keeps its own boxes and drops (`game/entities.ts`); this is only the shared copy.
  */
@@ -23,6 +23,8 @@ export interface SharedBox {
   prize: string;
   /** Seconds into the current phase. */
   t: number;
+  /** A paid box: it closes again after its prize is gone (one player's turn at a time). */
+  paid: boolean;
 }
 
 export interface SharedDrop {
@@ -39,8 +41,8 @@ export interface LootState {
   nextId: number;
 }
 
-export function createLoot(boxCount: number): LootState {
-  return { boxes: Array.from({ length: boxCount }, () => ({ phase: 0 as const, owner: null, prize: '', t: 0 })), drops: [], nextId: 1 };
+export function createLoot(boxCount: number, paid: readonly boolean[] = []): LootState {
+  return { boxes: Array.from({ length: boxCount }, (_, i) => ({ phase: 0 as const, owner: null, prize: '', t: 0, paid: !!paid[i] })), drops: [], nextId: 1 };
 }
 
 /** A prize as a short string: `ammo`, `g2` (grenades x2), `w:rifle`. */
@@ -99,7 +101,7 @@ export function pickDrop(s: LootState, id: number, x: number, z: number, slack =
   return DROP_KINDS[d.kind] ?? null;
 }
 
-/** Time passes: the reels land, unclaimed prizes sink back, old drops fade. */
+/** Time passes: the reels land, unclaimed prizes sink back, paid boxes close for the next turn, old drops fade. */
 export function tickLoot(s: LootState, dt: number): void {
   for (const b of s.boxes) {
     if (b.phase === BOX_PHASE.closed) continue;
@@ -109,6 +111,11 @@ export function tickLoot(s: LootState, dt: number): void {
       b.t = 0;
     } else if (b.phase === BOX_PHASE.offer && b.t >= MYSTERY_BOX.offer) {
       b.phase = BOX_PHASE.gone;
+      b.t = 0;
+    } else if (b.phase === BOX_PHASE.gone && b.paid && b.t >= MYSTERY_BOX.paidRearm) {
+      b.phase = BOX_PHASE.closed;
+      b.owner = null;
+      b.prize = '';
       b.t = 0;
     }
   }
