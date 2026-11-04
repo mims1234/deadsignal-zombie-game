@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.327",
+      "date": "2026-11-04",
+      "title": "HIRASAKA, the island that sealed its mine",
+      "notes": [
+        "A new map, HIRASAKA (admins only until it is opened from the dashboard): a concrete coal island in a typhoon on Obon night, five tiers stacked up from the seawall to the summit and joined by the Hundred Steps, Block 65's outside stair to a rooftop room, and the school roof where the island danced. Below the sea: the mine's galleries, a whole drowned village in a cavern, and the Root Hall.",
+        "No helicopter. Act I: three jobs in any order get the cage running (Genzō's key in his room on Block 65's roof, the lighthouse generator held on the summit, the three sea gates on the seawall while the waves come over it). Act II: ride the cage down, take the white peaches in the Old Village (every door opens at once), take Mio's hairpin from the roots and put down Kurogane, the overseer. Act III: the cable snaps, so you climb the Slope out of the old adit and up the island while the storm surge floods it tier by tier behind you, and push the Sealing Stone home at the summit.",
+        "Don't look back: Mio follows you up and nothing hurts her. Every time you look back at her she comes on faster, and if she reaches the stone it won't move while she leans on it. A white peach thrown with the grenade key makes a ring the dead won't cross for a few seconds, and that includes her.",
+        "A story told in full: Natsuki Hirata, the foreman's granddaughter, comes with you in her grandfather's helmet (co-op players take her place, each in their own jacket colour). Genzō's five cassette tapes and five photographs are hidden round the island and the mine and kept in the JOURNAL. Find every photograph and a telephone rings in the galleries. Answer it and the summit offers a second ending.",
+        "Eight new kinds of infected, each with its own anime look: islanders, the drowned who rise off the seawall, miners still working the seam, lamp-eaters whose hit puts your headlamp out, burning slag, the Hags of the Slope crawling up behind you, Mio, and Kurogane, who orders his miners back to work.",
+        "Fully voiced and scored: 99 generated lines (Natsuki, Genzō's tapes, Mio, Kurogane, Captain Sakuma on the boat radio, the island's loudspeakers in Japanese and English, the miners, the hags) and ten Lyria cues. There's rain, thunder and lightning, the waves, the cage, the cable and the stone. Every voice, cue and model loads before the run starts, and everything that appears later is compiled with the level.",
+        "Solo and co-op. The co-op simulation runs the whole story, including the peaches' wards, the looks back and the stone (two pushers roll it faster)."
+      ]
+    },
+    {
       "version": "0.4.326",
       "date": "2026-10-31",
       "title": "MUJIN's paid mystery box",

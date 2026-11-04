@@ -119,6 +119,11 @@ export class MissionRuntime implements MissionApi {
    * `onTrain` lets the station play each moment's sound and voice.
    */
   readonly train: boolean;
+  /**
+   * HIRASAKA: no helicopter and no train. The run ends when the Sealing Stone is home (`hirasaka/runtime.ts`); the
+   * extraction is never called, the relay never shown.
+   */
+  readonly island: boolean;
   private readonly express: THREE.Group | null;
   private readonly trainSaid = new Set<string>();
   onTrain: ((ev: 'express' | 'arrive' | 'doors' | 'depart') => void) | null = null;
@@ -130,6 +135,7 @@ export class MissionRuntime implements MissionApi {
     void this.entities;
     const data = ctx.level.data;
     this.train = data.id === 'mujin';
+    this.island = data.id === 'hirasaka';
     this.clock = missionClock(data.id);
     this.night = data.id === 'asylum' ? new AsylumNight(ctx) : null;
     this.lz = data.extraction;
@@ -165,8 +171,8 @@ export class MissionRuntime implements MissionApi {
     this.root.add(this.heli.root);
     this.express = this.train ? createExpress() : null;
     if (this.express) this.root.add(this.express);
-    if (this.train) {
-      // the station's bell stands where the relay would be, and nobody radios a train
+    if (this.train || this.island) {
+      // the station's bell (the island's generator) stands where the relay would be, and nobody radios a bird
       this.areaMarker.root.visible = false;
       this.terminal.root.visible = false;
     }
@@ -184,7 +190,7 @@ export class MissionRuntime implements MissionApi {
   }
 
   canActivateTransmitter(): boolean {
-    return !this.train && this.ctx.session.defense.status === 'available';
+    return !this.train && !this.island && this.ctx.session.defense.status === 'available';
   }
 
   activateTransmitter(): void {
@@ -214,7 +220,7 @@ export class MissionRuntime implements MissionApi {
 
   terminalState(): 'locked' | 'available' | 'busy' {
     if (this.shared && !this.follow) return 'busy'; // co-op free roam: no extraction to call
-    if (this.train) return 'busy'; // MUJIN: the station calls the dawn train itself
+    if (this.train || this.island) return 'busy'; // MUJIN: the station calls the dawn train itself; HIRASAKA: none
     const ph = this.ctx.session.extraction.phase;
     if (ph === 'locked') return 'locked';
     if (ph === 'available') return 'available';
@@ -313,7 +319,7 @@ export class MissionRuntime implements MissionApi {
     const ctx = this.ctx;
     this.shared = false;
     this.follow = false;
-    this.areaMarker.root.visible = !this.train;
+    this.areaMarker.root.visible = !this.train && !this.island;
     this.areaMarker.setProgress(0);
     this.areaMarker.setActive(false);
     this.wall.setIntensity(0);
@@ -464,13 +470,13 @@ export class MissionRuntime implements MissionApi {
       // nothing
     } else if (!extractionInProgress(ex) && ex.phase !== 'extracted' && ex.phase !== 'failed') {
       const left = deadlineRemaining(s.elapsed, this.clock);
-      if (left <= 60 && !s.flags.has('deadline60') && !this.train) {
+      if (left <= 60 && !s.flags.has('deadline60') && !this.train && !this.island) {
         s.flags.add('deadline60');
         ctx.banner('LAST CALL', 'The district seals in 60 seconds - call extraction', 'danger', 4);
         ctx.radio('COMMAND', 'One minute until the district is sealed. Call extraction now.');
         ctx.audio.play('klaxon', { priority: 3 });
       }
-      if (left <= 0) ctx.endRun('defeat', this.train ? 'The night never ended' : 'The district was sealed before extraction was called');
+      if (left <= 0) ctx.endRun('defeat', this.train ? 'The night never ended' : this.island ? 'The typhoon took the island' : 'The district was sealed before extraction was called');
     }
     if (!this.follow && ex.phase === 'failed' && !s.ended) ctx.endRun('defeat', this.train ? 'The dawn train left without you' : (ex.failReason ?? 'Extraction failed'));
     if (!this.follow && ex.phase === 'extracted' && !s.ended) ctx.endRun('victory', this.train ? 'Left on the dawn train' : 'Extracted');
@@ -478,7 +484,7 @@ export class MissionRuntime implements MissionApi {
     // ---- staged narrative beats ----
     if (s.elapsed > 4 && !s.flags.has('brief')) {
       s.flags.add('brief');
-      ctx.radio(this.train ? 'YOU' : 'COMMAND', this.brief?.() ?? data.text.brief, 8);
+      if (!this.island) ctx.radio(this.train ? 'YOU' : 'COMMAND', this.brief?.() ?? data.text.brief, 8);
       ctx.audio.play('contract_new', { priority: 3 });
     }
     void escalationPhase;
@@ -515,7 +521,7 @@ export class MissionRuntime implements MissionApi {
   /** Both contracts are done: the LZ opens. */
   private onUnlocked(): void {
     const ctx = this.ctx;
-    if (this.train) return; // the station says it (`mujin/runtime.ts`)
+    if (this.train || this.island) return; // the station (the island) says it (`mujin/runtime.ts`, `hirasaka/runtime.ts`)
     const data = ctx.level.data;
     ctx.banner('EXTRACTION AVAILABLE', `Proceed to ${data.text.lz} and signal the helicopter`, 'good', 5);
     ctx.radio('COMMAND', `Both contracts complete. Move to ${data.text.lz} and radio the bird.`);
@@ -602,7 +608,7 @@ export class MissionRuntime implements MissionApi {
       ctx.banner(ctx.level.data.text.defenseDone, `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}`, 'good', 5);
       ctx.feed(`CONTRACT COMPLETE  +$${a.cash}`, 'good');
       if (a.plates) ctx.feed(`+${a.plates} ARMOR PLATES`, 'good');
-      ctx.radio('COMMAND', 'Relay restored. Nice work.');
+      if (!this.island) ctx.radio('COMMAND', 'Relay restored. Nice work.');
     }
     this.areaMarker.setProgress(1);
     this.onPowerRestored?.();
@@ -621,7 +627,7 @@ export class MissionRuntime implements MissionApi {
       ctx.hudEvent({ type: 'cash', amount: a.cash });
       ctx.banner(`${ctx.level.data.text.boss} IS DOWN`, `+$${a.cash.toLocaleString('en-US')}${a.plates ? `   +${a.plates} ARMOR PLATES` : ''}${a.grenades ? `   +${a.grenades} GRENADES` : ''}`, 'good', 5.5);
       ctx.feed(`CONTRACT COMPLETE  +$${a.cash}`, 'good');
-      ctx.radio('COMMAND', `Confirmed kill. ${ctx.level.data.text.boss.toLowerCase().replace(/^the /, 'The ')} is down.`);
+      if (!this.island) ctx.radio('COMMAND', `Confirmed kill. ${ctx.level.data.text.boss.toLowerCase().replace(/^the /, 'The ')} is down.`);
     }
   }
 
@@ -811,8 +817,8 @@ export class MissionRuntime implements MissionApi {
 
   private updateHazard(dt: number, camera: THREE.Camera, time: number, alive: boolean): void {
     const ctx = this.ctx;
-    // MUJIN has no toxic front: its night takes the station area by area (`mujin/director.ts`)
-    if (this.train) {
+    // MUJIN has no toxic front: its night takes the station area by area (`mujin/director.ts`); HIRASAKA's is the surge
+    if (this.train || this.island) {
       this.hazardR = 0;
       return;
     }
@@ -985,6 +991,14 @@ export class MissionRuntime implements MissionApi {
     const data = ctx.level.data;
     out.length = 0;
     const ex = s.extraction;
+    if (this.island) {
+      // HIRASAKA: the island's own markers are `hirasaka/runtime.ts`'s; here only the stores and the boxes
+      const player = ctx.player;
+      for (const st of data.stations) out.push({ id: st.id, kind: st.kind, x: st.x, z: st.z, label: st.kind === 'buy' ? 'SUPPLY' : 'ARMORY', visible: true });
+      for (const c of this.entities.crates) out.push({ id: c.def.id, kind: 'crate', x: c.def.x, z: c.def.z, visible: (c.discovered && !c.opened) || (!c.opened && Math.hypot(c.def.x - player.x, c.def.z - player.z) < 30) });
+      void ex;
+      return;
+    }
     if (this.train) {
       // MUJIN: only what leads somewhere. The station's own (the bell, the payphone, Ren, the places that can change)
       // are `mujin/runtime.ts`'s; here the Stationmaster once he walks, the platform once the train is coming, the train

@@ -59,6 +59,8 @@ import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
 import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/director';
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
+import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
+import { encodeStory, HirasakaStory } from '../hirasaka/story';
 import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
 import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex } from '../sakura/campaign';
@@ -227,6 +229,11 @@ export class SessionSim {
   /** MUJIN: the station's jobs everyone shares (`mujin/jobs.ts`), and its infected (`mujin/director.ts`). */
   readonly mujin: MujinJobs | null = null;
   private readonly mujinDir: MujinDirector | null = null;
+  /** HIRASAKA: the island's story everyone shares (`hirasaka/story.ts`), and its infected (`hirasaka/director.ts`). */
+  readonly hirasaka: HirasakaStory | null = null;
+  private readonly hirasakaDir: HirasakaDirector | null = null;
+  /** HIRASAKA: when the stone went home (the results follow the ending's last seconds). */
+  private sealedAt = -1;
 
   constructor(opts: SessionOptions) {
     this.send = opts.send;
@@ -287,6 +294,51 @@ export class SessionSim {
       this.mujinDir = new MujinDirector(this.level, this.zombies);
       this.zombies.pickVariant = mujinVariantPicker();
       this.zombies.spawnAllowed = mujinSpawnAllowed();
+    }
+    if (this.map === 'hirasaka') {
+      this.hirasaka = new HirasakaStory();
+      this.hirasakaDir = new HirasakaDirector(this.level, this.zombies);
+      this.zombies.pickVariant = hirasakaVariantPicker();
+      this.zombies.spawnAllowed = this.hirasakaDir.spawnAllowed();
+    }
+  }
+
+  /** HIRASAKA's story, one frame: its events, the island's infected, Kurogane, the climb, the stone, the ending. */
+  private stepHirasaka(dt: number): void {
+    const q = this.hirasaka;
+    const dir = this.hirasakaDir;
+    if (!q || !dir || !this.story) return;
+    const stand = [...this.peers.values()].map((p) => ({ x: p.ref.x, y: p.ref.y, z: p.ref.z, up: p.ref.alive }));
+    const st = dir.step(dt, q.view, stand, this.rng);
+    q.tick(dt, stand, st.mioAtStone);
+    if (q.view.hairpin && !q.view.bossDown && this.hunt.status === 'complete') q.overseerDown();
+    if (!q.view.hairpin && this.hunt.status !== 'complete') {
+      this.hunt.status = 'available';
+      this.zombies.vanish((z) => z.isBoss);
+    } else if (q.view.hairpin && this.hunt.status === 'available') this.hunt.status = 'active';
+    for (const e of q.drain()) {
+      dir.onEvent(e, q.view, this.rng);
+      if (e.kind === 'ready') this.defense.status = 'complete';
+      else if (e.kind === 'cable' && this.level.hirasaka) this.level.hirasaka.aditLink.closed = false;
+      else if (e.kind === 'sealed' || e.kind === 'home') {
+        this.sealedAt = this.elapsed;
+        // the dead fall where they stand (she goes behind the stone, or home)
+        for (const z of [...this.zombies.zombies]) {
+          if (!z.alive) continue;
+          if (z.variant === 'follower') {
+            if (e.kind === 'sealed') this.zombies.remove(z);
+            continue;
+          }
+          z.invulnerable = false;
+          const env = [...this.peers.values()][0]?.env;
+          if (env) this.zombies.damage(z, 1e6, false, env, 0);
+        }
+      }
+    }
+    // the ending's last seconds play on every screen, then the results
+    if (this.sealedAt >= 0 && this.elapsed - this.sealedAt > (q.view.ending === 2 ? 12 : 10)) {
+      for (const p of this.peers.values()) if (p.ref.alive) this.aboard.add(p.id);
+      this.finish(true, q.view.ending === 2 ? 'Let her go home' : 'Sealed the slope');
     }
   }
 
@@ -404,6 +456,14 @@ export class SessionSim {
       this.mujin.reset(() => rng.f());
       this.mujinDir.reset(rng);
       this.hunt.status = 'available';
+    }
+    if (this.hirasaka && this.hirasakaDir) {
+      const rng = this.rng;
+      this.hirasaka.reset(() => rng.f());
+      this.hirasakaDir.reset();
+      this.hunt.status = 'available';
+      this.sealedAt = -1;
+      if (this.level.hirasaka) this.level.hirasaka.aditLink.closed = true;
     }
     if (this.asylum && this.story) {
       // by day there is nobody to hunt: the Matron wakes at nightfall
@@ -662,6 +722,33 @@ export class SessionSim {
         else if (d.a === 'seat') q.seatRen(seat, x, z);
         return;
       }
+      case 'hs': {
+        // HIRASAKA: a job's step, the cage, the deep, a look back, a peach's ward, the stone (the story checks reach)
+        const q = this.hirasaka;
+        if (!q || !this.story || !up) return;
+        const seat = [...this.peers.keys()].indexOf(from);
+        const i = Math.floor(Number(d.i)) || 0;
+        const { x, y, z } = p.ref;
+        if (d.a === 'key') q.takeKey(x, y, z);
+        else if (d.a === 'gen') q.startGenerator(x, y, z);
+        else if (d.a === 'valve') q.openValve(i, x, y, z);
+        else if (d.a === 'cage') q.rideCage(x, z);
+        else if (d.a === 'peaches') q.takePeaches(x, z);
+        else if (d.a === 'hairpin') q.takeHairpin(x, z);
+        else if (d.a === 'surface') q.surface(x, z);
+        else if (d.a === 'tape') q.takeTape(i, x, y, z);
+        else if (d.a === 'photo') q.takePhoto(i, x, y, z);
+        else if (d.a === 'phone') q.answer(x, z);
+        else if (d.a === 'look') q.look(seat);
+        else if (d.a === 'home') q.turnAround(x, y, z);
+        else if (d.a === 'peach') {
+          // a ward where their peach landed (no farther from them than a throw)
+          const wx = Number(d.x);
+          const wz = Number(d.z);
+          if (Number.isFinite(wx) && Number.isFinite(wz) && Math.hypot(wx - x, wz - z) < 40) this.hirasakaDir?.peach(wx, wz);
+        }
+        return;
+      }
       case 'ledger': {
         if (!this.forge || !this.story || !up) return;
         this.forge.takeLedger(Number(d.i), p.ref.x, p.ref.z);
@@ -756,6 +843,8 @@ export class SessionSim {
     p.env = this.makeEnv(ref, field, (amount, sx, sz, knock) => this.send(id, { k: 'hurt', a: r1(amount), sx: r1(sx), sz: r1(sz), kn: knock }));
     // MUJIN: the Stationmaster punches this player's ticket (their own game sends them one loop back)
     p.env.punch = () => this.send(id, { k: 'mjpunch' });
+    // HIRASAKA: a lamp-eater's hit puts this player's light out (their own game does it)
+    p.env.blind = () => this.send(id, { k: 'hsblind' });
     this.peers.set(id, p);
     return p;
   }
@@ -896,7 +985,7 @@ export class SessionSim {
         phase: escalationPhase(this.elapsed, this.clock),
         quality: 'medium',
         // MUJIN: the crossing powering up and the announcement on air draw them like a relay does
-        defenseActive: this.defense.status === 'active' || (!!this.mujin && ((this.mujin.view.breakers === 0b111 && this.mujin.view.charge < 1) || (this.mujin.view.announcing && this.mujin.view.played < 1))),
+        defenseActive: this.defense.status === 'active' || (!!this.hirasaka && this.hirasaka.view.generating && this.hirasaka.view.charge < 1) || (!!this.mujin && ((this.mujin.view.breakers === 0b111 && this.mujin.view.charge < 1) || (this.mujin.view.announcing && this.mujin.view.played < 1))),
         // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
         extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null && !this.forge ? this.elapsed - ex.calledAt : null,
         // the Forge after the burnout: the virus is over, nothing more comes
@@ -906,6 +995,7 @@ export class SessionSim {
     }
     if (this.forge) this.forge.tick(dt, this.fillForgeTick(), this.rng);
     this.stepMujin(dt);
+    this.stepHirasaka(dt);
     if (this.sakura) {
       this.sakura.tick(dt);
       this.sakuraEvents();
@@ -1186,6 +1276,7 @@ export class SessionSim {
       }
       if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
       if (this.mujin) out.mj = encodeJobs(this.mujin.view); // MUJIN's jobs
+      if (this.hirasaka) out.hs = encodeStory(this.hirasaka.view); // HIRASAKA's story
       if (this.forge) {
         // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
         out.fg = encodeState(this.forge.view);

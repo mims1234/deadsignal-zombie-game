@@ -43,13 +43,13 @@ export interface AmbientZombieDef {
 }
 
 /** `sakura` is the District's streets with an anime cast (VRoid models, `anime/`). */
-export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia' | 'mujin';
-export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin'];
+export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia' | 'mujin' | 'hirasaka';
+export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka'];
 /**
  * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
  * them (a local dev build shows them too); everyone else does not see them at all.
  */
-export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia', 'mujin'];
+export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia', 'mujin', 'hirasaka'];
 
 /** A valid map id from anything (storage, a URL, a message); unknown means the District. */
 export function asMapId(v: unknown): MapId {
@@ -276,6 +276,38 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'JOBS', title: 'GET THE STATION RUNNING', text: 'Five jobs, any order. Each lights a lamp on the board by the bell.' },
       { tag: 'NIGHT', title: 'STOP THE STATIONMASTER', text: 'He walks platform 1. Until every lamp is lit, nothing stops him.' },
       { tag: 'DAWN', title: 'BOARD THE DAWN TRAIN', text: 'It stops at platform 1. Get on before the doors close.' },
+    ],
+  },
+  // HIRASAKA, the island that sealed its mine: up the island, down the mine, and back up the slope (layout/hirasaka.ts,
+  // src/hirasaka/)
+  hirasaka: {
+    name: 'HIRASAKA',
+    tagline: 'The island that sealed its mine with its own people inside, fifty-two years ago tonight',
+    defenseTitle: 'GET THE CAGE RUNNING',
+    defenseSite: 'MINE HEAD',
+    defensePrompt: 'THE CAGE',
+    defenseStart: 'THE ISLAND STIRS',
+    defenseDone: 'THE CAGE RUNS',
+    huntTitle: 'PUT DOWN KUROGANE',
+    boss: 'KUROGANE',
+    huntSite: 'the Root Hall',
+    extractTitle: 'SEAL THE SLOPE',
+    lz: 'THE SEALING STONE',
+    surge: 'THE STORM SURGE',
+    hazardSite: 'SEA',
+    sealed: 'THE TYPHOON PASSES IN',
+    bossSighted: 'the overseer, still giving orders. Aim for the lamp on his helmet.',
+    bossRadio: { from: 'NATSUKI', text: 'That is him. Kurogane. He sealed them in. Aim for his head.' },
+    regions: { low: 'The seawall and Market Lane', medium: 'The school and Block 65 - the islanders are thick here', high: 'The summit, and the mine below the sea' },
+    brief: "Grandpa's tapes are on this island somewhere. The cage down to Shaft Three needs his key from Block Sixty-five, the lighthouse running and the sea gates open. Then we go down - and whatever we bring up, we do not look at it.",
+    kicker: 'HIRASAKA-JIMA  //  TYPHOON NO. 13  //  OBON NIGHT',
+    signal: 'ISLAND LIGHTS ON  -  ABANDONED SINCE 1974',
+    premise: "In 1974 the island's last overseer rolled a stone across its mine with forty-two people still inside. Three nights ago a typhoon cracked the seawall, the island's lights came on by themselves, and the dead began climbing home. Land with Natsuki Hirata, the foreman's granddaughter, get the cage running, go down to the Root Hall - and climb back up without looking back.",
+    foot: "A vertical island: five tiers of concrete joined by the Hundred Steps, Block 65's outside stair, the school's roof. Below the sea: the galleries, a drowned village, the Root Hall. Natsuki walks with you (co-op players take her place). Find Genzō's five tapes and five photographs. On the climb, the storm surge comes up the island behind you - and so does she.",
+    rows: [
+      { tag: 'ACT I', title: 'GET THE CAGE RUNNING', text: "Three jobs, any order: Genzō's key on Block 65's roof, the lighthouse on the summit, the three sea gates on the seawall." },
+      { tag: 'ACT II', title: 'THE DEEP', text: 'Ride the cage down. The galleries, the Old Village and its white peaches, and the Root Hall, where Kurogane still gives orders.' },
+      { tag: 'ACT III', title: 'SEAL THE SLOPE', text: 'Climb out by the old adit and up the island ahead of the surge. Do not look back at her. Push the Sealing Stone home.' },
     ],
   },
 };

@@ -576,7 +576,7 @@ class Menus implements MenusApi {
       el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'FREE ROAM  //  NO MISSION, NO DAMAGE' : text.kicker);
       el('h1', 'name', hero, text.name);
       el('p', 'tag', hero, text.tagline);
-      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : text.name === 'MUJIN' ? 'Get the dead station running before the night takes it, and catch the dawn train.' : PLAY_LEAD);
+      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : text.name === 'MUJIN' ? 'Get the dead station running before the night takes it, and catch the dawn train.' : text.name === 'HIRASAKA' ? 'Go down into the mine under the sea, and climb back up without looking back.' : PLAY_LEAD);
 
       const cta = el('div', 'ds-l-cta', hero);
       if (this.locked) {
@@ -736,7 +736,7 @@ class Menus implements MenusApi {
     entry('VROID PROJECT (PIXIV)', 'The cast\'s base models', 'The VRoid Studio sample characters, slimmed down for the browser.', 'FREE TO USE, CREDIT NOT REQUIRED  ·  ', { href: 'https://opengameart.org/content/vroid-studio-cc0-models', label: 'opengameart.org' });
     entry('QUATERNIUS', 'Props and a zombie model', 'The zombie, barrels, cones, hydrants, tyres and pallets.', 'CC0 1.0  ·  ', { href: 'https://quaternius.com/', label: 'quaternius.com' });
     entry('VULCAN', 'The Vulcan logo, the Ignis icon and the community\'s names', 'Used with the community\'s go-ahead.', '', { href: 'https://vulcan.genxmims.org/', label: 'vulcan.genxmims.org' });
-    entry('MUSIC AND VOICES', 'The cinematics\' scores and voices', 'Generated with Google Lyria (music), ElevenLabs and Fish Audio (voices).', '');
+    entry('MUSIC AND VOICES', 'The cinematics\', MUJIN\'s and HIRASAKA\'s scores and voices','Generated with Google Lyria (music), ElevenLabs and Fish Audio (voices).', '');
     const notes = el('p', 'lead soon', page, 'The licence texts for the code: ');
     const a = el('a', 'lnk', notes, 'LICENSE.txt');
     a.href = '/LICENSE.txt';

@@ -109,6 +109,8 @@ export interface ZombieEnv {
   floors?: Floors | null;
   /** MUJIN: the Stationmaster punches this env's player's ticket (sends them one loop back). */
   punch?(z: Zombie): void;
+  /** HIRASAKA: a lamp-eater's hit put this env's player's light out. */
+  blind?(z: Zombie): void;
 }
 
 /**
@@ -307,9 +309,9 @@ export class Zombie {
     this.isBoss = opts.boss ?? false;
     this.isAmbient = opts.ambient ?? false;
     this.enraged = false;
-    this.buried = this.variant === 'rooted' && (opts.state ?? 'idle') === 'idle';
+    this.buried = (this.variant === 'rooted' || this.variant === 'drowned') && (opts.state ?? 'idle') === 'idle';
     this.ceiling = false;
-    this.varT = this.variant === 'empress' ? 12 : 0;
+    this.varT = this.variant === 'empress' || this.variant === 'overseer' ? 12 : 0;
     this.shotPrevT = 0;
     this.summons.length = 0;
     this.speedScale = 1 + (rng.f() * 2 - 1) * this.def.speedVariance;
@@ -581,6 +583,45 @@ export class Zombie {
       }
       case 'master':
         return this.masterStep(dt, env, dist, dx, dz);
+      case 'drowned': {
+        // under the water at the seawall until someone comes close (or shoots it), then up out of it
+        if (!this.buried) return -1;
+        this.vx = this.vz = 0;
+        if ((p.alive && dist < 5 && Math.abs(p.y - this.y) < 2) || this.hp < this.maxHp) {
+          this.buried = false;
+          this.memory = 0;
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+          this.say(env, 'zombie_alert', { pos, volume: 1, priority: 2, rate: 0.8 });
+          env.fx.sparkle({ x: this.x, y: 0.4, z: this.z }, 0x9ad0e0, 26);
+        }
+        return 0;
+      }
+      case 'hag':
+      case 'follower': {
+        // the slope's own: they always know where you are
+        if (!p.alive || this.state === 'attack' || this.state === 'stagger') return -1;
+        this.memory = 0;
+        this.lastKnownX = p.x;
+        this.lastKnownZ = p.z;
+        if (this.state !== 'chase') this.enterState('chase');
+        return -1;
+      }
+      case 'overseer': {
+        // Kurogane orders the miners back to work, and they come
+        this.varT -= dt;
+        if (this.state === 'chase' && this.varT <= 0) {
+          this.varT = this.enraged ? 16 : 22;
+          const n = this.enraged ? 3 : 2;
+          for (let i = 0; i < n; i++) {
+            const a = (i / n) * Math.PI * 2 + env.rng.f();
+            this.summons.push({ type: 'shambler', x: this.x + Math.cos(a) * 5, z: this.z + Math.sin(a) * 5, variant: 'miner' });
+          }
+          env.fx.sparkle({ x: this.x, y: 2, z: this.z }, 0xffa040, 30);
+        }
+        return -1;
+      }
       case 'empress': {
         // the Empress calls her bloomed to her; enraged, twice as many
         this.varT -= dt;
@@ -968,6 +1009,11 @@ export class Zombie {
     return this.def.roar ?? 'warden_roar';
   }
 
+  /** Put it in a state from outside (a map's own story: HIRASAKA's dead stop where they stand). */
+  setState(s: ZombieState): void {
+    this.enterState(s);
+  }
+
   private enterState(s: ZombieState): void {
     this.state = s;
     this.stateTime = 0;
@@ -1271,7 +1317,7 @@ export class Zombie {
       let range = this.def.sightRange * this.sightScale;
       if (this.state !== 'idle') range *= 1.8;
       // the commuters keep their routine: walk past quietly and they never look up
-      if (this.variant === 'commuter' && !p.sprinting) range *= 0.3;
+      if ((this.variant === 'commuter' || this.variant === 'miner') && !p.sprinting) range *= 0.3;
       if (p.sprinting) range = Math.max(range, ZOMBIE_AI.sprintHearing);
       if (dist < range) {
         // idle zombies have a limited field of view; awake ones see all around
@@ -1283,7 +1329,7 @@ export class Zombie {
         if (inView && !env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.15, p.z, 'shots')) sees = true;
       }
       // very close: they smell/hear you regardless
-      if (dist < ZOMBIE_AI.footstepHearing * (this.variant === 'commuter' ? 0.12 : 0.5) && this.state === 'idle') sees = true;
+      if (dist < ZOMBIE_AI.footstepHearing * (this.variant === 'commuter' || this.variant === 'miner' ? 0.12 : 0.5) && this.state === 'idle') sees = true;
     }
     this.seesPlayer = sees;
     if (sees) {
@@ -1299,6 +1345,8 @@ export class Zombie {
     if (this.variant === 'court' || this.buried) return; // living people, and the ones lying in wait, keep quiet
     // MUJIN's own: the station gives them their voices (`mujin/runtime.ts`), the shape and the sitter say nothing
     if (this.variant === 'tall' || this.variant === 'shape' || this.variant === 'sitter' || this.variant === 'master') return;
+    // HIRASAKA's Mio: the island gives her her voice (`hirasaka/runtime.ts`)
+    if (this.variant === 'follower') return;
     this.voiceTimer -= dt;
     if (this.voiceTimer > 0 || dist > 38) return;
     const pos = { x: this.x, y: 1.5, z: this.z };
@@ -1634,6 +1682,7 @@ export class Zombie {
     if (Math.abs(wrap(facing - this.yaw)) > (ZOMBIE_AI.attackCone * Math.PI) / 180) return;
     if (env.world.segmentBlocked(this.x, this.y + 1.1, this.z, p.x, Math.max(p.y + 0.6, p.eyeY - 0.5), p.z, 'move')) return;
     env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
+    if (this.variant === 'lampeater') env.blind?.(this);
   }
 
   private turnToward(target: number, rate: number, dt: number): void {

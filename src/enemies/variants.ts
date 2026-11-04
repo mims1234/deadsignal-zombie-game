@@ -24,11 +24,25 @@
 import type { ZombieDef } from '../config';
 import type { ZombieType } from '../types';
 
-export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master'] as const;
+export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master', 'miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const;
 export type ZombieVariant = (typeof VARIANTS)[number];
 /** MUJIN's own kinds (the station, `mujin/`), not the Sakura District's field file's. */
 export const MUJIN_KINDS = ['tall', 'crawler', 'shape', 'sitter', 'master'] as const;
 export type MujinKind = (typeof MUJIN_KINDS)[number];
+/**
+ * HIRASAKA's own kinds (the island and its mine, `hirasaka/`):
+ *
+ *   miner      still working the seam: swings at the coal, half deaf to anything but a sprint or a shot
+ *   lampeater  thin as a pit prop, goes for your light: its hit blinds you for a few seconds
+ *   drowned    lies under the water at the seawall until someone comes close, then rises
+ *   hag        a Hag of the Slope: crawls on all fours, fast, and always knows where you are (the climb only)
+ *   slag       a miner crusted in burning coal: slow, huge, heavy blows
+ *   resident   the islanders as they were in 1974, the lane's and the school's
+ *   follower   Mio: she follows you up the slope; nothing hurts her; every look back brings her closer
+ *   overseer   Kurogane, the overseer (the boss): orders the miners back to work, and they come
+ */
+export const HIRASAKA_KINDS = ['miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const;
+export type HirasakaKind = (typeof HIRASAKA_KINDS)[number];
 
 interface VariantInfo {
   name: string;
@@ -65,6 +79,14 @@ export const VARIANT_INFO: Record<Exclude<ZombieVariant, ''>, VariantInfo> = {
   shape: { name: 'The White Shape', hp: 1.4, speed: 0, damage: 0, scale: 1.05, def: { poise: 9999, reward: 220, headshotBonus: 60 } },
   sitter: { name: 'The Bench Sitter', hp: 1.2, speed: 1.2, damage: 1.2, scale: 1 },
   master: { name: 'The Stationmaster', hp: 1, speed: 0.55, damage: 1, scale: 1 },
+  miner: { name: 'Miner', hp: 1.25, speed: 0.92, damage: 1.15, scale: 1 },
+  lampeater: { name: 'Lamp-eater', hp: 0.9, speed: 1.22, damage: 0.9, scale: 0.97, def: { attackRange: 1.7 } },
+  drowned: { name: 'The Drowned', hp: 1.5, speed: 0.86, damage: 1.2, scale: 1.04 },
+  hag: { name: 'Hag of the Slope', hp: 0.75, speed: 1.55, damage: 1.1, scale: 1, def: { attackRange: 1.9, sightRange: 90 } },
+  slag: { name: 'Slag', hp: 2.4, speed: 0.78, damage: 1.9, scale: 1.32, def: { poise: 320 } },
+  resident: { name: 'Islander', hp: 1, speed: 1, damage: 1, scale: 1 },
+  follower: { name: 'Mio', hp: 40, speed: 1.05, damage: 2.4, scale: 1, def: { poise: 9999, staggerTime: 0.05, sightRange: 240, reward: 0, headshotBonus: 0, dropChance: 0 } },
+  overseer: { name: 'Kurogane', hp: 1.25, speed: 1, damage: 1.1, scale: 1 },
 };
 
 /** The definition a variant of `base` fights with. */
@@ -91,6 +113,14 @@ export const VARIANT_BASE: Record<Exclude<ZombieVariant, ''>, ZombieType> = {
   shape: 'shambler',
   sitter: 'shambler',
   master: 'warden',
+  miner: 'shambler',
+  lampeater: 'runner',
+  drowned: 'shambler',
+  hag: 'runner',
+  slag: 'armored',
+  resident: 'shambler',
+  follower: 'shambler',
+  overseer: 'warden',
 };
 
 /** Where an infected is spawned, for `sakuraVariant`. */
@@ -132,4 +162,22 @@ export function mujinVariant(type: ZombieType, x: number, z: number, r: () => nu
   if (type === 'armored') return '';
   const station = z > -23 && z < 9 && x > -33 && x < 33;
   return station ? (r() < 0.75 ? 'commuter' : '') : r() < 0.3 ? 'commuter' : '';
+}
+
+/**
+ * HIRASAKA: what an infected of `type` spawned at (x, z) becomes. Kurogane is the boss. In the mine (east of x 110) the
+ * miners and the lamp-eaters, and the slag; on the seawall the drowned; up the island the islanders. The hags and Mio
+ * are placed by the island itself (`hirasaka/director.ts`), never picked here.
+ */
+export function hirasakaVariant(type: ZombieType, x: number, z: number, r: () => number): ZombieVariant {
+  if (type === 'warden') return 'overseer';
+  if (x > 110) {
+    if (type === 'runner') return r() < 0.75 ? 'lampeater' : '';
+    if (type === 'armored') return 'slag';
+    return r() < 0.8 ? 'miner' : '';
+  }
+  if (type === 'armored') return r() < 0.6 ? 'slag' : '';
+  if (type === 'runner') return r() < 0.5 ? 'resident' : '';
+  if (z > 36) return r() < 0.6 ? 'drowned' : 'resident';
+  return r() < 0.65 ? 'resident' : '';
 }

@@ -503,6 +503,22 @@ export class Avatar {
     };
   }
 
+  /**
+   * Wear something on the head (a helmet): on the worn model's own head bone, at the top of its head (the model's head
+   * is not where the figure's is); without a model, on the figure's head. Returns the height it was put at.
+   */
+  onHead(o: THREE.Object3D): void {
+    const bone = this.anime?.boneNode('head');
+    if (bone && this.anime) {
+      const m = this.anime.template.measure;
+      o.position.set(0, (m.height - m.headBone) * 0.62, 0);
+      bone.add(o);
+    } else {
+      o.position.y += 0.135;
+      this.head.add(o);
+    }
+  }
+
   /** The model worn now (null: the figure's own body). */
   get worn(): AnimeTemplate | null {
     return this.anime?.template ?? null;

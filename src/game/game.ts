@@ -4,7 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import { loadAnimeCast, MUJIN_CAST } from '../anime/cast';
+import { HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } from '../anime/cast';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
@@ -58,6 +58,7 @@ import { ForgeRuntime } from '../forge/runtime';
 import { AureliaRuntime } from '../aurelia/runtime';
 import { AURELIA_MODEL } from '../aurelia/look';
 import { MujinRuntime } from '../mujin/runtime';
+import { HirasakaRuntime } from '../hirasaka/runtime';
 import { loadAnime, loadedAnimeScenes } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
@@ -169,6 +170,8 @@ export class Game implements GameCtx {
   sakura: SakuraRuntime | null = null;
   /** MUJIN, the unmanned station (`mujin/runtime.ts`). */
   mujin: MujinRuntime | null = null;
+  /** HIRASAKA, the island that sealed its mine (`hirasaka/runtime.ts`). */
+  hirasaka: HirasakaRuntime | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
   private storyPick: StoryId | null = null;
   /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
@@ -457,6 +460,15 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.color.set(0x5a6a9a);
       this.renderer.light.hemi.groundColor.set(0x0a0a10);
       this.renderer.light.fill.color.set(0xffa860);
+    } else if (this.mapId === 'hirasaka') {
+      // Obon night in a typhoon: a sea-green murk, cold concrete, sodium lamps in the rain; no moon, no stars
+      setSkyColors(this.renderer.sky, { zenith: 0x06090c, mid: 0x111a1e, horizon: 0x1e2c30, glow: 0x24302c, haze: 0x0a1214, stars: 0 });
+      (this.renderer.sky.userData.uniforms.uMoonColor!.value as THREE.Color).set(0x000000);
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x0a1214);
+      this.renderer.light.hemi.color.set(0x6a8a9a);
+      this.renderer.light.hemi.groundColor.set(0x0a1010);
+      this.renderer.light.fill.color.set(0xffa060);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -481,10 +493,10 @@ export class Game implements GameCtx {
     this.audio = createAudioEngine();
     this.audio.setMasterVolume(this.settings.masterVolume);
 
-    if (this.mapId === 'sakura' || this.mapId === 'mujin') {
+    if (this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka') {
       // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
-      this.menus.showLoading(0.66, this.mapId === 'mujin' ? 'THE PASSENGERS ARE WAITING' : 'DRESSING THE CAST');
-      await loadAnimeCast(this.mapId === 'mujin' ? MUJIN_CAST : undefined);
+      this.menus.showLoading(0.66, this.mapId === 'mujin' ? 'THE PASSENGERS ARE WAITING' : this.mapId === 'hirasaka' ? 'THE NIGHT SHIFT IS WAITING' : 'DRESSING THE CAST');
+      await loadAnimeCast(this.mapId === 'mujin' ? MUJIN_CAST : this.mapId === 'hirasaka' ? HIRASAKA_CAST : undefined);
     }
     if (this.mapId === 'aurelia') {
       // Aurelia's model (a stand-in from the cast until she has her own; without it she wears the stock figure)
@@ -494,7 +506,7 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
+    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
     this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId) });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
@@ -525,7 +537,7 @@ export class Game implements GameCtx {
       this.zombies.beforeUpdate = () => farCrowd().begin();
     }
     // MUJIN's infected wear the anime cast too: the far ones are drawn in the far crowd
-    if (this.mapId === 'mujin') this.zombies.beforeUpdate = () => farCrowd().begin();
+    if (this.mapId === 'mujin' || this.mapId === 'hirasaka') this.zombies.beforeUpdate = () => farCrowd().begin();
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
@@ -589,6 +601,8 @@ export class Game implements GameCtx {
         hudEvent: (e) => this.hud.event(e),
         noise: (radius) => this.zombies.emitNoise(this.player.x, this.player.z, radius),
         throwGrenade: (o, d) => this.grenades.throw(o, d),
+        peaches: () => this.hirasaka?.peaches ?? 0,
+        throwPeach: (o, d) => this.hirasaka?.throwPeach(o, d) ?? false,
         fireRocket: (o, d, dmg) => this.grenades.fireRocket(o, d, dmg),
         recordShot: (hit) => {
           this.session.stats.shotsFired++;
@@ -629,6 +643,11 @@ export class Game implements GameCtx {
       // the station's voices and score, every one before the first loop (the loading screen counts them in)
       this.mujin = new MujinRuntime(this);
       await this.mujin.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `CHECKING TICKETS ${n} / ${of}`));
+    }
+    if (this.mapId === 'hirasaka') {
+      // the island's voices and score, every one before the run (the loading screen counts them in)
+      this.hirasaka = new HirasakaRuntime(this);
+      await this.hirasaka.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `WINDING GENZŌ'S TAPES ${n} / ${of}`));
     }
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
@@ -814,8 +833,8 @@ export class Game implements GameCtx {
       for (const o of forgeWarm) warm.add(o);
       // MUJIN's trains and the anime cast's models (their textures and shapes, first sent to the GPU the moment one is
       // first seen otherwise): borrowed for the moment, then put back where they were
-      const anime = this.mapId === 'sakura' || this.mapId === 'mujin' ? loadedAnimeScenes() : [];
-      const late = [...this.mission.lateObjects(), ...anime].map((o) => ({ o, parent: o.parent, at: o.position.clone(), visible: o.visible }));
+      const anime = this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka' ? loadedAnimeScenes() : [];
+      const late = [...this.mission.lateObjects(), ...(this.hirasaka?.prewarmObjects() ?? []), ...anime].map((o) => ({ o, parent: o.parent, at: o.position.clone(), visible: o.visible }));
       for (const l of late) {
         warm.add(l.o);
         l.o.position.set(0, 0, 0);
@@ -1285,8 +1304,8 @@ export class Game implements GameCtx {
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
-      } else if (this.mapId === 'mujin' && !roam) {
-        // the station says its own name (`mujin/runtime.ts`)
+      } else if ((this.mapId === 'mujin' || this.mapId === 'hirasaka') && !roam) {
+        // the station (the island) says its own name (`mujin/runtime.ts`, `hirasaka/runtime.ts`)
       } else if (this.mapId === 'aurelia' && !roam) {
         this.banner('AURELIA', 'Equinox night. Power the relay, take the shrine, bring Vulcan home.', 'info', 4.5);
       } else if (this.mapId === 'forge' && !roam) {
@@ -1417,6 +1436,8 @@ export class Game implements GameCtx {
     this.asylum?.reset(this.mode === 'coop');
     // MUJIN: the first loop (after the residents, so the Stationmaster `populate` placed can be sent away)
     if (!this.flying) this.mujin?.reset(this.mode === 'coop');
+    // HIRASAKA: the island as the typhoon found it
+    if (!this.flying) this.hirasaka?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
     this.flow.cancel();
     this.flowGoalX = this.flowGoalZ = 1e9;
@@ -1689,6 +1710,7 @@ export class Game implements GameCtx {
     this.aurelia?.update(dt);
     this.sakura?.update(dt);
     this.mujin?.update(dt);
+    this.hirasaka?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -2171,6 +2193,7 @@ export class Game implements GameCtx {
     if (s.ended) return;
     if (outcome === 'victory') this.squad.onExtracted();
     this.mujin?.end();
+    this.hirasaka?.end();
     if (outcome === 'victory' && this.tale) this.sakura?.completeStory(this.tale);
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
@@ -2488,6 +2511,7 @@ export class Game implements GameCtx {
     this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps
     this.sakura?.decorateHud(st, md); // the Sakura District: the Thousand Lanterns, the ghost train, the altar's blessing
     this.mujin?.decorateHud(st, md); // MUJIN: the loop, the lamps, the bell, Ren
+    this.hirasaka?.decorateHud(st, md); // HIRASAKA: the acts, the stone, the surge, the peaches
     this.hud.update(st, md, dt);
     this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
   }

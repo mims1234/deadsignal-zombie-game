@@ -978,7 +978,7 @@ export const ECONOMY = {
   crateOpenTime: 0.8,
   stationRange: 3.4,
   /** Maps where infected leave fewer drops (MUJIN: its paid box is the supply). */
-  mapDropMul: { mujin: 0.5 } as Partial<Record<MapId, number>>,
+  mapDropMul: { mujin: 0.5, hirasaka: 0.75 } as Partial<Record<MapId, number>>,
 } as const;
 
 /**
@@ -1304,6 +1304,17 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
     models: ['hana.vrm', 'yuzu.vrm'],
     fillsSeats: true,
   },
+  // HIRASAKA: Natsuki Hirata, Genzō's granddaughter, comes home with you (co-op players take her place)
+  hirasaka: {
+    names: ['Natsuki'],
+    tag: 'HIRATA',
+    tagColor: '#ffa040',
+    weapons: ['rifle'],
+    helmets: [false],
+    looks: [{ female: true, outfit: 'tactical', hair: 'bob', hairColor: 0x5ad8d0, skin: 0xf3d6c2, eyes: 0x2a5a6a, accent: 0xff7a1a }],
+    models: ['victoria.vrm'],
+    fillsSeats: true,
+  },
 };
 
 /**
@@ -1338,6 +1349,15 @@ export const ANIME_CAST = {
     shape: 'student-f.vrm',
     sitter: 'shino.vrm',
     master: 'student-m.vrm',
+    // HIRASAKA's own (`anime/looks.ts` dresses them)
+    miner: 'hoodie.vrm',
+    lampeater: 'kuro.vrm',
+    drowned: 'fumiriya.vrm',
+    hag: 'student-f.vrm',
+    slag: 'vita.vrm',
+    resident: 'bibi.vrm',
+    follower: 'shino.vrm',
+    overseer: 'student-m.vrm',
   },
   /** The boss (the Warden's part). */
   boss: 'empress.vrm',
@@ -1364,6 +1384,8 @@ export const SURVIVORS = {
   sakura: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // MUJIN: nobody to free; the only passenger you can save is the one the station keeps (`mujin/runtime.ts`)
   mujin: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
+  // HIRASAKA: the island was emptied in 1974; nobody living is left on it
+  hirasaka: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // Aurelia's valley: Vulcan's own, taken across the river and caged on the bank (looks: `forge/looks.ts`)
   aurelia: [
     { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },
@@ -1448,6 +1470,8 @@ export const FREE_ROAM = {
  * only comes out of the tunnel at the very end (the surge); each loop is ~2 minutes (`MUJIN_LOOP`).
  */
 export const MUJIN_CLOCK = { deadline: 3300, surgeStart: 3000, phases: [240, 900, 1800] as readonly number[] };
+/** HIRASAKA's clock: an hour before the typhoon's eye passes and the island goes under for good. */
+export const HIRASAKA_CLOCK = { deadline: 3600, surgeStart: 3400, phases: [240, 900, 1800] as readonly number[] };
 
 export const SAKURA_CLOCK = {
   operation: { deadline: 1200, surgeStart: 860, phases: [150, 420, 860] as readonly number[] },

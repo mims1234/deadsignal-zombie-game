@@ -17,6 +17,8 @@
  *   fr / fg   the Forge's roster (now and then) and its story's state (`forge/net.ts`): who is holed up where and who
  *             made it to the Hearth, the ledger, the Pit, the finale (each client plays and pays itself once per change)
  */
+import { CREW_TINTS } from '../anime/looks';
+import type { AnimeTint } from '../anime/vrm';
 import { COOP, type TeamSkill, VULCAN, type ZombieDifficulty } from '../config';
 import type { NetZombie, PlayerRef } from '../enemies/zombie';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
@@ -330,6 +332,8 @@ export class CoopSession {
     }
     // MUJIN's loop is the simulation's: a report, the All Clear, the payphone, Ren's hand, the bench
     if (g.mujin) g.mujin.request = (a, i) => this.toHost({ k: 'mj', a, i });
+    // HIRASAKA's story is the simulation's: the jobs, the cage, the peaches' wards, a look back, the stone
+    if (g.hirasaka) g.hirasaka.request = (a, i, x, z) => this.toHost({ k: 'hs', a, i, x: x === undefined ? undefined : r1(x), z: z === undefined ? undefined : r1(z) });
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
     this.life = LIFE.up;
@@ -388,18 +392,20 @@ export class CoopSession {
 
   private showAvatar(p: Peer, fired = false): void {
     let a = this.avatars.get(p.id);
-    const anime = this.g.mapId === 'sakura' || this.g.mapId === 'mujin';
+    const anime = this.g.mapId === 'sakura' || this.g.mapId === 'mujin' || this.g.mapId === 'hirasaka';
+    // HIRASAKA: each teammate's jacket in a colour of their own, so they read at a glance across the island
+    const crew = (seat: number): AnimeTint | null => (this.g.mapId === 'hirasaka' ? CREW_TINTS[seat % CREW_TINTS.length]! : null);
     if (!a) {
       // the Sakura District: everyone wears a VRoid model, teammates too
       const seat = this.avatars.size;
-      a = new Avatar(p.name, seat, anime ? { anime: operatorModel(seat) } : undefined);
+      a = new Avatar(p.name, seat, anime ? { anime: operatorModel(seat), animeTint: crew(seat) } : undefined);
       this.g.worldRoot.add(a.root);
       this.avatars.set(p.id, a);
       this.seats.set(p.id, seat);
     } else if (anime) {
       // their own model may have finished loading after they appeared (in a stand-in): change into it
       const want = operatorModel(this.seats.get(p.id) ?? 0);
-      if (want && want !== a.worn) a.rewear(want);
+      if (want && want !== a.worn) a.rewear(want, crew(this.seats.get(p.id) ?? 0));
     }
     // a teammate who goes down falls where they stood (and gets up again when revived); aboard means gone
     const down = p.life === LIFE.down || p.life === LIFE.out;
@@ -440,6 +446,10 @@ export class CoopSession {
       case 'mjpunch':
         // MUJIN: the Stationmaster punched our ticket - one loop back
         if (this.life === LIFE.up) g.mujin?.punched();
+        return;
+      case 'hsblind':
+        // HIRASAKA: a lamp-eater put our light out
+        if (this.life === LIFE.up) g.hirasaka?.blind();
         return;
       case 'hurt':
         if (this.life === LIFE.up) g.takeRemoteHit(Number(d.a) || 0, Number(d.sx) || 0, Number(d.sz) || 0, Number(d.kn) || 0);
@@ -515,6 +525,7 @@ export class CoopSession {
       g.squad.applyRemote((d.sq as AllyRow[] | undefined) ?? [], (d.sh as number[][] | undefined) ?? []);
       if (g.aurelia && d.au !== undefined) g.aurelia.applyWire(d.au);
       if (g.mujin && d.mj !== undefined) g.mujin.applyWire(d.mj);
+      if (g.hirasaka && d.hs !== undefined) g.hirasaka.applyWire(d.hs);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;

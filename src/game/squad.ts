@@ -12,6 +12,7 @@
  * reports, and freeing someone is a request to it. (The Forge's furnaces and their embers: `forge/story.ts`.)
  */
 import { personModel } from '../anime/cast';
+import { NATSUKI_TINT } from '../anime/looks';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FORGE_SQUAD, QUALITY, SQUADS, SURVIVORS, type TeamSkill } from '../config';
@@ -169,7 +170,7 @@ export class SquadRuntime {
         const vl = clan ? vulcanLook(name) : null;
         this.addAlly(
           makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill),
-          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? personModel(def.models[i]) : null }),
+          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? personModel(def.models[i]) : null, animeTint: g.mapId === 'hirasaka' ? NATSUKI_TINT : null }),
         );
       });
     }
@@ -445,6 +446,11 @@ export class SquadRuntime {
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
     }
+  }
+
+  /** The squad's figures (HIRASAKA puts Natsuki's helmet on hers). */
+  figures(): Avatar[] {
+    return this.allies.map((a) => a.avatar);
   }
 
   /** The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. */

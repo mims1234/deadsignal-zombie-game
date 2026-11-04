@@ -7,7 +7,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { MujinKind, ZombieVariant } from '../enemies/variants';
+import type { HirasakaKind, MujinKind, ZombieVariant } from '../enemies/variants';
 import type { Dims, JointName } from './figure';
 import type { AnimeTint } from './vrm';
 
@@ -298,6 +298,94 @@ function crown(put: GearPut, D: Dims): void {
   }
 }
 
+// ---- HIRASAKA's gear ----
+
+/** A miner's helmet, its lamp lit (`lamp`: the lamp's colour; 0 for a dead lamp). */
+export function hardHat(put: GearPut, D: Dims, shell = 0xe8b820, lamp = 0xfff0c0): void {
+  const g = baked('hardHat', () => [new THREE.SphereGeometry(0.118, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2), at(new THREE.CylinderGeometry(0.15, 0.15, 0.012, 14), 0, 0.005, 0)]);
+  put('head', mesh(g, mat(`hat${shell}`, shell, { rough: 0.45 })), 0, D.head * 0.68, 0);
+  const lampG = geo('hatLamp', () => new THREE.CylinderGeometry(0.03, 0.034, 0.04, 10).rotateX(Math.PI / 2));
+  put('head', mesh(lampG, lamp ? mat(`hatLamp${lamp}`, lamp, { glow: 2.6 }) : mat('hatLampDead', 0x2a2a2a)), 0, D.head * 0.78, -0.12);
+}
+
+function pickaxe(put: GearPut, D: Dims): void {
+  const g = baked('pickaxe', () => [new THREE.CylinderGeometry(0.014, 0.014, 0.8, 5).translate(0, -0.35, 0), at(new THREE.BoxGeometry(0.46, 0.035, 0.035), 0, -0.72, 0, 0, 0, 0.12)]);
+  const m = new THREE.Group();
+  m.add(mesh(g, mat('pick', 0x4a3a2e, { metal: 0.5, rough: 0.6 })));
+  inHand(put, D, 'R', m, 1.1);
+}
+
+function sledge(put: GearPut, D: Dims): void {
+  const g = baked('sledge', () => [new THREE.CylinderGeometry(0.02, 0.02, 1.1, 6).translate(0, -0.5, 0), at(new THREE.BoxGeometry(0.16, 0.16, 0.34), 0, -1.02, 0)]);
+  inHand(put, D, 'R', mesh(g, mat('iron', 0x2c2a2a, { metal: 0.7, rough: 0.45 })), 0.6);
+}
+
+/** Kurogane's iron helmet and its great lamp (the brightest thing in the Root Hall). */
+function overseerHelm(put: GearPut, D: Dims): void {
+  const g = baked('overseerHelm', () => [new THREE.SphereGeometry(0.13, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2), at(new THREE.CylinderGeometry(0.17, 0.17, 0.016, 14), 0, 0.005, 0), at(new THREE.BoxGeometry(0.02, 0.06, 0.24), 0, 0.12, 0)]);
+  put('head', mesh(g, mat('helmIron', 0x1e1c1c, { metal: 0.8, rough: 0.4 })), 0, D.head * 0.68, 0);
+  const lampG = geo('helmLamp', () => new THREE.CylinderGeometry(0.05, 0.06, 0.06, 12).rotateX(Math.PI / 2));
+  put('head', mesh(lampG, mat('helmLamp', 0xffd890, { glow: 4 })), 0, D.head * 0.8, -0.14);
+}
+
+/** A glow in the lamp-eater's open mouth. */
+function mouthGlow(put: GearPut, D: Dims): void {
+  put('head', mesh(geo('mouthGlow', () => new THREE.SphereGeometry(0.022, 8, 6)), mat('mouthGlow', 0x7ff8ff, { glow: 3 })), 0, D.head * 0.24, -0.085);
+}
+
+/** Seaweed hanging off the drowned. */
+function seaweed(put: GearPut, D: Dims): void {
+  const g = baked('seaweed', () => {
+    const out: THREE.BufferGeometry[] = [];
+    for (let k = 0; k < 6; k++) out.push(at(new THREE.PlaneGeometry(0.035, 0.32 + (k % 3) * 0.12).translate(0, -0.18, 0), Math.cos(k * 1.1) * 0.1, 0, Math.sin(k * 1.1) * 0.1, 0.2, k, 0));
+    return out;
+  });
+  const m = mat('weed', 0x2a4a2a, { side: THREE.DoubleSide, rough: 0.5 });
+  put('head', mesh(g, m), 0, D.head * 0.6, 0);
+  put('torso', mesh(g, m), D.shoulderX * 0.7, D.torso, 0);
+}
+
+/** The white triangle headband of the dead (the hags of the slope). */
+function deathBand(put: GearPut, D: Dims): void {
+  const g = geo('deathBand', () => {
+    const sh = new THREE.Shape();
+    sh.moveTo(-0.045, 0);
+    sh.lineTo(0.045, 0);
+    sh.lineTo(0, 0.06);
+    return new THREE.ShapeGeometry(sh);
+  });
+  put('head', mesh(g, mat('deathBand', 0xf4f2ec, { side: THREE.DoubleSide, rough: 1 })), 0, D.head * 0.62, -0.115);
+}
+
+/** Mio's red camellia, pinned in her hair. */
+function camellia(put: GearPut, D: Dims): void {
+  const g = baked('camellia', () => {
+    const out: THREE.BufferGeometry[] = [];
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * Math.PI * 2;
+      out.push(at(new THREE.SphereGeometry(0.022, 6, 4).scale(1, 0.4, 1), Math.cos(a) * 0.022, 0, Math.sin(a) * 0.022));
+    }
+    return out;
+  });
+  put('head', mesh(g, mat('camellia', 0xd01a2a, { glow: 0.5 })), 0.07, D.head * 0.7, 0.03);
+  put('head', mesh(geo('camelliaHeart', () => new THREE.SphereGeometry(0.012, 6, 4)), mat('gold', 0xe0b040, { metal: 0.8, rough: 0.3 })), 0.07, D.head * 0.72, 0.03);
+}
+
+/** Embers in the slag's cracks. */
+function embers(put: GearPut, D: Dims): void {
+  const g = geo('ember', () => new THREE.IcosahedronGeometry(0.03, 0));
+  const m = mat('ember', 0xff6a1a, { glow: 2.4 });
+  const spots: [JointName, number, number, number][] = [
+    ['torso', 0.06, D.torso * 0.7, -0.1],
+    ['torso', -0.08, D.torso * 0.4, -0.11],
+    ['torso', 0.02, D.torso * 0.9, 0.12],
+    ['armR', 0, -D.upper * 0.5, 0.04],
+    ['armL', 0, -D.upper * 0.6, -0.04],
+    ['head', 0.06, D.head * 0.4, -0.06],
+  ];
+  for (const [j, x, y, z] of spots) put(j, mesh(g, m), x, y, z);
+}
+
 // ---------------------------------------------------------------------------------------------
 // the kinds
 // ---------------------------------------------------------------------------------------------
@@ -305,7 +393,7 @@ function crown(put: GearPut, D: Dims): void {
 const TOPS = /Tops|Onepice|Onepiece/i;
 const BOTTOMS = /Bottoms/i;
 
-const SAKURA_LOOKS: Record<Exclude<SakuraKind, MujinKind>, KindLook> = {
+const SAKURA_LOOKS: Record<Exclude<SakuraKind, MujinKind | HirasakaKind>, KindLook> = {
   // the 07:12 to the city every morning for twenty years: still in the suit, still carrying the case, eyes gone milky
   commuter: {
     tint: { key: 'commuter', skin: 0x9aa494, cloth: 0x9098a4, hair: 0x7c7c80, eyes: 0xc8d4dc, outlines: false, parts: [{ match: TOPS, color: 0x8a9098 }, { match: /Tie/i, color: 0x6a1a24, flat: true }] },
@@ -423,7 +511,79 @@ const MUJIN_LOOKS: Record<MujinKind, KindLook> = {
   },
 };
 
-export const KIND_LOOKS: Record<SakuraKind, KindLook> = { ...SAKURA_LOOKS, ...MUJIN_LOOKS };
+/** HIRASAKA's kinds (`enemies/variants.ts`): the island's and the mine's own. */
+const HIRASAKA_LOOKS: Record<HirasakaKind, KindLook> = {
+  // the night shift: coal-black overalls, a yellow helmet, the lamp still lit, a pick
+  miner: {
+    tint: { key: 'miner', skin: 0x6a6660, cloth: 0x3a3836, hair: 0x2a2826, eyes: 0xffb030, outlines: false, parts: [{ match: TOPS, color: 0x34322e, flat: true }, { match: BOTTOMS, color: 0x2a2c30, flat: true }, { match: /Shoes/i, color: 0x1a1a1a, flat: true }] },
+    far: { skin: 0x6a6660, cloth: 0x34322e },
+    gear: (put, D) => {
+      hardHat(put, D);
+      pickaxe(put, D);
+    },
+  },
+  // white as a root, black-eyed, a cold light in its open mouth
+  lampeater: {
+    tint: { key: 'lampeater', skin: 0xf0f0f4, cloth: 0x2a2a30, hair: 0x101012, eyes: 0x101014, outlines: false, parts: [{ match: TOPS, color: 0x24242a, flat: true }, { match: BOTTOMS, color: 0x1c1c22, flat: true }] },
+    far: { skin: 0xf0f0f4, cloth: 0x24242a },
+    gear: mouthGlow,
+  },
+  // islanders the typhoon took: blue-green, an indigo yukata soaked black, weed in the hair
+  drowned: {
+    tint: { key: 'drowned', skin: 0x7aa0a0, cloth: 0x243a5a, hair: 0x1a2a2a, eyes: 0xa0fff0, outlines: false, parts: [{ match: TOPS, color: 0x22365a }, { match: BOTTOMS, color: 0x1c2a44 }] },
+    far: { skin: 0x7aa0a0, cloth: 0x22365a },
+    gear: seaweed,
+  },
+  // the Hags of the Slope: white burial kimono, the triangle band, black hair to the ground
+  hag: {
+    tint: { key: 'hag', skin: 0xd8d4d0, cloth: 0xf4f2ec, hair: 0x08080a, eyes: 0xff2020, outlines: false, parts: [{ match: TOPS, color: 0xf4f2ec, flat: true }, { match: BOTTOMS, color: 0xeeece4, flat: true }, { match: /Shoes/i, color: 0xeeece4, flat: true }] },
+    far: { skin: 0xd8d4d0, cloth: 0xf4f2ec },
+    gear: deathBand,
+    lie: 1.15,
+  },
+  // a miner the fire got into: crusted black, burning in the cracks
+  slag: {
+    tint: { key: 'slag', skin: 0x2a2624, cloth: 0x1a1816, hair: 0x101010, eyes: 0xff7a1a, outlines: false, parts: [{ match: TOPS, color: 0x2a1a12, flat: true, glow: 0.3 }, { match: BOTTOMS, color: 0x1a1210, flat: true }] },
+    far: { skin: 0x2a2624, cloth: 0x2a1a12 },
+    gear: (put, D) => {
+      embers(put, D);
+      hardHat(put, D, 0x3a3430, 0);
+    },
+  },
+  // the islanders, the way the last week left them: navy sailor collars, pale, grey-eyed
+  resident: {
+    tint: { key: 'resident', skin: 0xa8b0a4, cloth: 0x8890a0, hair: 0x5a5658, eyes: 0xd0e0ff, outlines: false, parts: [{ match: TOPS, color: 0x2a3456 }, { match: BOTTOMS, color: 0x4a4c56 }] },
+    far: { skin: 0xa8b0a4, cloth: 0x2a3456 },
+  },
+  // Mio Hirata as she went down on Obon night: the canteen's white apron over a dark kimono, the red camellia
+  follower: {
+    tint: { key: 'follower', skin: 0xdfe6ee, cloth: 0xf2efe8, hair: 0x0a0a0e, eyes: 0x1a1a24, outlines: true, parts: [{ match: TOPS, color: 0xf2efe8, flat: true }, { match: BOTTOMS, color: 0x1c2234, flat: true }, { match: /Shoes/i, color: 0x1c2234, flat: true }] },
+    far: { skin: 0xdfe6ee, cloth: 0xf2efe8 },
+    gear: camellia,
+  },
+  // Kurogane: the company's black coat, the iron helmet and its lamp, a sledge
+  overseer: {
+    tint: { key: 'overseer', skin: 0x8a8278, cloth: 0x161618, hair: 0x2a2826, eyes: 0xffd060, outlines: true, parts: [{ match: TOPS, color: 0x141416, flat: true }, { match: BOTTOMS, color: 0x101012, flat: true }] },
+    far: { skin: 0x8a8278, cloth: 0x141416 },
+    gear: (put, D) => {
+      overseerHelm(put, D);
+      sledge(put, D);
+    },
+  },
+};
+
+export const KIND_LOOKS: Record<SakuraKind, KindLook> = { ...SAKURA_LOOKS, ...MUJIN_LOOKS, ...HIRASAKA_LOOKS };
+
+/**
+ * HIRASAKA's people: Natsuki (teal hair, the orange jacket, a yellow helmet) and the co-op crew, each in a jacket of
+ * their own colour so a teammate reads at a glance across the island (`hirasaka/runtime.ts` puts the helmets on).
+ */
+export const NATSUKI_TINT: AnimeTint = { key: 'natsuki', skin: 0xffffff, cloth: 0xffffff, hair: 0x5ad8d0, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0xff7a1a, flat: true }, { match: BOTTOMS, color: 0x2a3446, flat: true }] };
+export const CREW_TINTS: readonly AnimeTint[] = [
+  { key: 'crew0', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0x2a9a6a, flat: true }] },
+  { key: 'crew1', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0x3a6ad8, flat: true }] },
+  { key: 'crew2', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0xc8305a, flat: true }] },
+];
 
 /** The Kurenai Court: living people in the theatre's crimson (no infected look, no gear). */
 export const COURT_TINT: AnimeTint = {

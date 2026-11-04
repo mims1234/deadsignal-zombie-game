@@ -37,6 +37,9 @@ export interface WeaponHost {
   noise(radius: number): void;
   /** Throw a grenade from `origin` along `dir` (adds the player's velocity). */
   throwGrenade(origin: THREE.Vector3, dir: THREE.Vector3): void;
+  /** HIRASAKA: white peaches carried (the grenade key throws one of those first), and the throw. */
+  peaches?(): number;
+  throwPeach?(origin: THREE.Vector3, dir: THREE.Vector3): boolean;
   /** Launch an HX-7 rocket from `origin` along `dir`; `damage` is the blast's centre damage. */
   fireRocket(origin: THREE.Vector3, dir: THREE.Vector3, damage: number): void;
   /** A shot resolved (for accuracy stats). */
@@ -299,7 +302,7 @@ export class WeaponSystem {
 
     // ---- utility actions ----
     if (!input.locked && !this.switching) {
-      if (input.grenadePressed && !this.utility && this.grenadeCd <= 0 && host.inv.grenades > 0) this.startUtility('grenade', GRENADE.throwDelay / 0.5);
+      if (input.grenadePressed && !this.utility && this.grenadeCd <= 0 && (host.inv.grenades > 0 || (host.peaches?.() ?? 0) > 0)) this.startUtility('grenade', GRENADE.throwDelay / 0.5);
       else if (input.platePressed && !this.utility && canApplyPlate(host.vitals, host.inv.plates)) this.startUtility('plate', PLAYER.plateApplyTime);
     }
     if (this.utility) this.updateUtility(dt);
@@ -714,8 +717,10 @@ export class WeaponSystem {
       const cy = Math.cos(p.pitch + 0.08);
       this.dir.set(-Math.sin(p.yaw) * cy, Math.sin(p.pitch + 0.08), -Math.cos(p.yaw) * cy);
       this.tmp.set(p.x, p.eyeY() - 0.15, p.z).addScaledVector(this.dir, 0.5);
-      this.host.throwGrenade(this.tmp, this.dir);
-      this.host.inv.grenades = Math.max(0, this.host.inv.grenades - 1);
+      if (!((this.host.peaches?.() ?? 0) > 0 && this.host.throwPeach?.(this.tmp, this.dir))) {
+        this.host.throwGrenade(this.tmp, this.dir);
+        this.host.inv.grenades = Math.max(0, this.host.inv.grenades - 1);
+      }
       this.host.audio.play('grenade_throw', { priority: 2 });
       this.grenadeCd = GRENADE.cooldown;
     }

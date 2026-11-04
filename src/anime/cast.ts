@@ -32,6 +32,16 @@ export function loadAnimeCast(only?: readonly string[]): Promise<void> & { rest?
 /** MUJIN's cast: the core (the station's own kinds all wear core files) and the co-op teammates' models. */
 export const MUJIN_CAST: readonly string[] = [...new Set([...ANIME_CAST.core, ...ANIME_CAST.operators])];
 
+/** HIRASAKA's cast: the island's and the mine's kinds, the horde, Natsuki and the co-op crew (all before the run). */
+export const HIRASAKA_CAST: readonly string[] = [
+  ...new Set([
+    ...ANIME_CAST.horde,
+    ...ANIME_CAST.operators,
+    'victoria.vrm',
+    ...(['miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const).map((k) => ANIME_CAST.kinds[k]),
+  ]),
+];
+
 /** Load every file at once (the bestiary). */
 export function loadWholeCast(): Promise<void> {
   return loadAnimeFiles(ALL);

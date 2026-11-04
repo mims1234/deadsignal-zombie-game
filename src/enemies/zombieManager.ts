@@ -190,7 +190,7 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' || level.data.id === 'mujin' ? 'sakura' : undefined; // MUJIN wears the anime cast too
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' || level.data.id === 'mujin' || level.data.id === 'hirasaka' ? 'sakura' : undefined; // MUJIN and HIRASAKA wear the anime cast too
     const b = level.data.worldBounds ?? level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }

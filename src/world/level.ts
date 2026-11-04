@@ -19,6 +19,8 @@ import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
 import { AURELIA, AURELIA_BOUNDS, buildAurelia } from './layout/aurelia';
 import { buildMujin, type MujinHandles } from './layout/mujin';
 import { MUJIN, MUJIN_BOUNDS, MUJIN_SPACE } from '../mujin/places';
+import { buildHirasaka, type HirasakaHandles } from './layout/hirasaka';
+import { HIRASAKA, HIRASAKA_BOUNDS, HIRASAKA_SPACE, PLACES as HIRASAKA_PLACES } from '../hirasaka/places';
 import { buildCompound, COMPOUND } from './layout/compound';
 import { buildRailYard } from './layout/railyard';
 import { buildDepot, DEPOT } from './layout/depot';
@@ -58,6 +60,8 @@ export interface Level {
   sakura: SakuraHandles | null;
   /** MUJIN: the gaps the night closes and the pocket room (`layout/mujin.ts`). */
   mujin: MujinHandles | null;
+  /** HIRASAKA: the mine's area, the cage and the old adit (`layout/hirasaka.ts`). */
+  hirasaka: HirasakaHandles | null;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -80,16 +84,18 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   const sakura = mapId === 'sakura';
   const aurelia = mapId === 'aurelia';
   const mujin = mapId === 'mujin';
-  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : mujin ? MUJIN_BOUNDS : WORLD_BOUNDS;
+  const hirasaka = mapId === 'hirasaka';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : mujin ? MUJIN_BOUNDS : hirasaka ? HIRASAKA_BOUNDS : WORLD_BOUNDS;
   // all the space there is: the street map, plus any underground spaces built beside it
-  const SPACE = sakura ? SAKURA_SPACE : mujin ? MUJIN_SPACE : WORLD;
+  const SPACE = sakura ? SAKURA_SPACE : mujin ? MUJIN_SPACE : hirasaka ? HIRASAKA_SPACE : WORLD;
   const world = new CollisionWorld(SPACE);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
   const floors = new Floors(WORLD);
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : mujin ? 457 : 20240928), mats, placed: [], floors };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : mujin ? 457 : hirasaka ? 1974 : 20240928), mats, placed: [], floors };
   let sakuraFx: SakuraHandles | null = null;
   let mujinFx: MujinHandles | null = null;
+  let hirasakaFx: HirasakaHandles | null = null;
 
   let transmitter: TransmitterHandle;
   let spireHandle: SpireHandle;
@@ -144,6 +150,19 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
       defense: { x: M.bell.x, z: M.bell.z, radius: 6 },
       hunt: { wardenX: M.beat[1].x, wardenZ: M.beat[1].z, searchX: 0, searchZ: -6, searchRadius: 34 },
       hazard: { x: -46, z: 0 },
+    };
+  } else if (hirasaka) {
+    const r = buildHirasaka(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    hirasakaFx = r.handles;
+    const H = HIRASAKA;
+    site = {
+      start: { x: H.start.x, z: H.start.z, yaw: yawFacing(0, -1) }, // at the end of the pier, facing the island
+      lz: { x: H.stoneSeal.x, z: H.stoneSeal.z - 3, radius: 8, terminalX: H.stonePush.x + 3, terminalZ: H.stonePush.z - 4, terminalYaw: 0 },
+      defense: { x: HIRASAKA_PLACES.summit.x, z: HIRASAKA_PLACES.summit.z, radius: HIRASAKA_PLACES.summit.r },
+      hunt: { wardenX: 200, wardenZ: -30, searchX: 196, searchZ: -33, searchRadius: 26 },
+      hazard: { x: 0, z: 50 },
     };
   } else if (sakura) {
     const r = buildSakura(c);
@@ -399,6 +418,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     forgeFx,
     sakura: sakuraFx,
     mujin: mujinFx,
+    hirasaka: hirasakaFx,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),
