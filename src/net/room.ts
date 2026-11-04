@@ -1,6 +1,7 @@
 /** Client side of a co-op room: one WebSocket to the game server (see `server/rooms.mjs` for the protocol). */
 import type { MapId } from '../world/layout/data';
 import type { TeamSkill, ZombieDifficulty } from '../config';
+import { discord, socketUrl } from '../platform';
 
 export interface RoomPerson {
   id: string;
@@ -130,7 +131,7 @@ export class RoomClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) return Promise.resolve();
     if (this.opening) return this.opening;
     this.opening = new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+      const ws = new WebSocket(socketUrl());
       ws.onopen = () => {
         this.ws = ws;
         this.opening = null;
@@ -189,11 +190,12 @@ export class RoomClient {
   }
 
   create(visibility: 'public' | 'private', hosting: Hosting = 'server', map: RoomView['map'] = 'district', kind: RoomView['kind'] = 'mission', difficulty: { zombies: ZombieDifficulty; team: TeamSkill } = { zombies: 'normal', team: 'regular' }): Promise<void> {
-    return this.command({ t: 'create', visibility, hosting, map, kind, zombies: difficulty.zombies, team: difficulty.team, device: this.device });
+    // in Discord the session belongs to this Activity: everyone in it finds it from the lobby
+    return this.command({ t: 'create', visibility, hosting, map, kind, zombies: difficulty.zombies, team: difficulty.team, device: this.device, instance: discord()?.instanceId });
   }
 
   join(code: string, as: RoomRole, hidden = false): Promise<void> {
-    return this.command({ t: 'join', code, as, hidden, device: this.device });
+    return this.command({ t: 'join', code, as, hidden, device: this.device, instance: discord()?.instanceId });
   }
 
   leave(): void {

@@ -34,6 +34,7 @@ import { operatorModel } from '../anime/cast';
 import { isStory } from '../sakura/missions';
 import { switchShown } from '../switches';
 import { AVATAR_WEAPONS, Avatar, avatarWeaponOf } from './avatar';
+import { roomLink } from '../platform';
 
 const MODES: ZombieMode[] = ['idle', 'walk', 'run', 'attack', 'stagger', 'death', 'slam', 'charge', 'roar'];
 const TYPES: ZombieType[] = ['shambler', 'runner', 'armored', 'warden'];
@@ -190,7 +191,7 @@ export class CoopSession {
     if (!this.live || !r) return null;
     return {
       code: r.code,
-      link: `${location.origin}/?room=${r.code}`,
+      link: roomLink(r.code),
       serverHosted: r.hosting === 'server',
       owner: this.room.isOwner,
       late: r.late ?? 'all',

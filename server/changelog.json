@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.329",
+      "date": "2026-11-05",
+      "title": "Play inside Discord",
+      "notes": [
+        "The game runs as a Discord Activity: launch it from a voice channel's Activities and you're signed in with your Discord account automatically. It's the same account, progress and cards as on the website, and the website is unchanged.",
+        "Everyone in the same voice channel's Activity shares one co-op session: whoever creates it owns it, and the others find it in the co-op lobby with its code filled in, ready to join or watch, even when it's invite-only.",
+        "Inside Discord, Invite Friends opens Discord's own invite dialog, links open through Discord, and your profile shows the map you're playing and whether it's solo, co-op or spectating."
+      ]
+    },
+    {
       "version": "0.4.328",
       "date": "2026-11-05",
       "title": "HIRASAKA rebuilt in the rock",

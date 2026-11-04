@@ -26,6 +26,7 @@ import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
 import { Rng } from '../logic/rng';
 import { type Account, type LoginReason, type RunPerf, RunTracker, firstGuestMap, firstOpenMap, goSignIn, loadAccount, logout, mapAccess, needsLogin, ping, reportEvent, reportPlayer, reportVisit, roomInfo, takeAfterLogin } from '../net/account';
+import { IS_DISCORD, discord, instanceRoom, pagePath, startPlatform } from '../platform';
 import { switchOfKind, switchShown } from '../switches';
 import { AIM_ASSIST, assistFor, pickTarget, wrapAngle, type AssistPick, type AssistResult, type AssistTarget, type AssistView } from '../player/aimAssist';
 import { Input, type Edges } from '../player/input';
@@ -346,6 +347,8 @@ export class Game implements GameCtx {
     this.menus.setTouchMode(this.touchMode);
     this.menus.setSettings(this.settings);
 
+    // inside a Discord Activity: the SDK handshake and the Discord sign-in, before the account is read
+    await startPlatform((m) => this.menus.showLoading(0.01, m));
     this.account = await loadAccount();
     reportVisit(this.touchMode);
     this.menus.setAccount({
@@ -388,12 +391,12 @@ export class Game implements GameCtx {
         saveMode(after.mode);
       }
       if (after.room) {
-        window.location.assign(`${window.location.pathname}?room=${encodeURIComponent(after.room)}`);
+        window.location.assign(pagePath({ room: after.room }));
         return true;
       }
       if (after.map !== this.mapId && mapAccess(this.account, after.map) !== 'locked') {
         saveMap(after.map);
-        window.location.assign(window.location.pathname);
+        window.location.assign(pagePath());
         return true;
       }
     }
@@ -740,7 +743,8 @@ export class Game implements GameCtx {
     this.menus.showTitle(this.best);
     // an invite link (/?room=CODE) goes straight to the lobby; the admin's "watch unseen" link joins hidden
     const invite = new URLSearchParams(window.location.search);
-    const code = invite.get('room');
+    // in Discord, the co-op session everyone in this Activity is in counts as an invite
+    const code = invite.get('room') ?? (IS_DISCORD && this.account.user ? await instanceRoom() : null);
     // a guest on an invite link: co-op needs Discord (the invite is kept across the sign-in)
     if (code && this.account.online && !this.account.user) this.askLogin('coop', code.toUpperCase().slice(0, 12));
     // a link to a session that has ended (or never existed) is just the main page, with a word about why
@@ -750,11 +754,11 @@ export class Game implements GameCtx {
     // any other way here (a dead link, or none) goes to the first open map
     if (mapAccess(this.account, this.mapId) === 'locked' && !info) {
       saveMap(firstOpenMap(this.account));
-      window.location.assign(window.location.pathname);
+      window.location.assign(pagePath());
       return true;
     }
     if (code && this.account.user && !info) {
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', pagePath());
       this.menus.flash(`Session ${code.toUpperCase().slice(0, 6)} has ended or does not exist.`);
     } else if (info && info.map !== this.mapId) {
       // the session plays another map: switch to it and come back to the same link
@@ -764,7 +768,7 @@ export class Game implements GameCtx {
     }
     if (code) {
       // the invite has been read: drop it from the address so a later reload (a map change) does not replay it
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', pagePath());
     }
     if (code && live) {
       // a live session the server let this player see: they were invited (or it is open to them), even with co-op off
@@ -1097,14 +1101,14 @@ export class Game implements GameCtx {
       /* ignore */
     }
     // a clean address: any invite or sign-in parameters belong to the page that is being left
-    window.location.assign(window.location.pathname);
+    window.location.assign(pagePath());
   }
 
   /** Joined a co-op session that plays another map: build that map and come straight back into the session. */
   switchMapForRoom(code: string, map: MapId): void {
     saveMap(map);
     this.coop.room.leave();
-    window.location.assign(`${window.location.pathname}?room=${encodeURIComponent(code)}`);
+    window.location.assign(pagePath({ room: code }));
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1284,6 +1288,8 @@ export class Game implements GameCtx {
       this.runFrames.reset();
       this.runMinScale = this.renderer.renderScale;
       this.tracker.start(this.mode, this.touchMode, this.mapId, VERSION.replace(/^v/, ''), this.runDifficulty.zombies, { ...this.device, quality: this.settings.quality }, this.tale);
+      // in Discord: the "Playing" line on the player's profile
+      discord()?.presence(MAP_TEXT[this.mapId].name, spectating ? 'Spectating co-op' : this.mode === 'coop' ? 'Co-op' : roam ? 'Free roam' : 'Solo');
       // Auto quality: the first seconds of the page's first real run (free roam has no infected) correct the guess
       if (this.settings.qualityAuto && !this.calibrationDone && !roam && !spectating) {
         this.calibrationDone = true;

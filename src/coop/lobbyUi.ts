@@ -11,6 +11,7 @@ import { loadSakura } from '../storage';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 import type { SwitchId } from '../switches';
+import { discord, instanceRoom, roomLink } from '../platform';
 
 const MAP_NAME: Record<MapId, string> = { district: 'THE DISTRICT', sakura: 'SAKURA DISTRICT', forge: 'THE FORGE', asylum: 'THE ASYLUM', aurelia: 'AURELIA', mujin: 'MUJIN', hirasaka: 'HIRASAKA' };
 const KIND_NOTE: Record<RoomView['kind'], string> = {
@@ -105,6 +106,27 @@ export class CoopUi {
     this.render();
   }
 
+  /** In Discord: a session someone else in this Activity opens shows up here, ready to join or watch. */
+  private instanceTimer: number | null = null;
+  private watchInstance(): void {
+    if (!discord() || this.instanceTimer !== null) return;
+    const look = async (): Promise<void> => {
+      if (!this.wanted || this.coop.room.room) {
+        if (this.instanceTimer !== null) clearInterval(this.instanceTimer);
+        this.instanceTimer = null;
+        return;
+      }
+      const code = await instanceRoom();
+      if (code && code !== this.codeDraft) {
+        this.codeDraft = code;
+        this.notice = 'Someone in this Activity has a session open: press JOIN to play or WATCH to spectate.';
+        this.render();
+      }
+    };
+    this.instanceTimer = window.setInterval(() => void look(), 4000);
+    void look();
+  }
+
   close(): void {
     this.wanted = false;
     this.render();
@@ -123,7 +145,7 @@ export class CoopUi {
   }
 
   private link(code: string): string {
-    return `${location.origin}/?room=${code}`;
+    return roomLink(code);
   }
 
   /** Ticks the start countdown while it shows. */
@@ -177,6 +199,7 @@ export class CoopUi {
     if (problem) el('div', 'problem', body, problem);
 
     if (!room) {
+      this.watchInstance();
       el('p', 'msg', body, `Run the operation together on ${MAP_NAME[this.host.mapId()]}: the contracts, the extraction, and anyone who goes down can be revived by a teammate. Start a session and share the link, or join one with its code.`);
       const net = el('div', 'row', body);
       el('span', 'lbl inline', net, 'YOUR PING');
@@ -241,11 +264,14 @@ export class CoopUi {
     const hidden = this.coop.room.you?.hidden === true;
     const top = el('div', 'row', body);
     el('span', 'codebig', top, room.code);
-    this.button(top, 'COPY INVITE LINK', '', () => {
-      void navigator.clipboard?.writeText(this.link(room.code));
-      this.notice = 'Invite link copied.';
-      this.render();
-    });
+    const dc = discord();
+    if (dc) this.button(top, 'INVITE FRIENDS', '', () => dc.invite());
+    else
+      this.button(top, 'COPY INVITE LINK', '', () => {
+        void navigator.clipboard?.writeText(this.link(room.code));
+        this.notice = 'Invite link copied.';
+        this.render();
+      });
     el('span', 'tag', top, room.visibility === 'private' ? 'INVITE-ONLY' : 'OPEN TO ANYONE WITH THE LINK');
     el('div', 'tag', body, server ? 'SERVER HOSTED  -  the game server runs this session for everyone' : `SELF HOSTED  -  runs on ${owner ? owner.name : 'the owner'}'s device`);
     if (hidden) el('div', 'problem ok', body, 'You are watching unseen. Nobody in this session can tell.');

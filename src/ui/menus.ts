@@ -18,6 +18,7 @@ import { GATED_MAPS } from '../world/layout/data';
 import { icon } from './icons';
 import { setReducedMotionSetting } from './prefs';
 import { type SettingsPanel, buildControlsPanel, buildSettingsPanel } from './settingsPanel';
+import { apiFetch } from '../platform';
 
 type ScreenKind = 'title' | 'pause' | 'resume' | 'results' | 'error';
 
@@ -854,7 +855,7 @@ class Menus implements MenusApi {
     say('Loading...');
     const params = new URLSearchParams({ map: q.map, mode: q.mode, metric: q.metric, difficulty: q.difficulty });
     if (q.thisVersion) params.set('version', VERSION.replace(/^v/, ''));
-    void fetch(`/api/leaderboards?${params}`, { credentials: 'same-origin' })
+    void apiFetch(`/api/leaderboards?${params}`, { credentials: 'same-origin' })
       .then((r) => (r.ok ? (r.json() as Promise<BoardReply>) : null))
       .catch(() => null)
       .then((data) => {

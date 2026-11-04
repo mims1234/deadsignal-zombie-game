@@ -8,6 +8,7 @@ import { FILM_IDS, GATED_FILMS, lockedFilmsFrom, type FilmId } from '../films';
 import { GATED_SWITCHES, lockedSwitchesFrom, type SwitchId } from '../switches';
 import type { GameMode, MissionStats, QualityLevel } from '../types';
 import type { DeviceClass, GpuVendor } from '../render/device';
+import { IS_DISCORD, apiFetch, setSessionToken } from '../platform';
 
 export interface AccountUser {
   id: string;
@@ -88,7 +89,7 @@ const lockedFilmsOf = (open: unknown, locked: unknown): FilmId[] => (Array.isArr
 
 async function post<T>(path: string, body: unknown, keepalive = false): Promise<T | null> {
   try {
-    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body ?? {}), keepalive });
+    const r = await apiFetch(path, { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify(body ?? {}), keepalive });
     return r.ok ? ((await r.json()) as T) : null;
   } catch {
     return null;
@@ -97,7 +98,7 @@ async function post<T>(path: string, body: unknown, keepalive = false): Promise<
 
 export async function loadAccount(): Promise<Account> {
   try {
-    const r = await fetch('/api/me', { headers: { accept: 'application/json' } });
+    const r = await apiFetch('/api/me', { headers: { accept: 'application/json' } });
     if (!r.ok || !(r.headers.get('content-type') ?? '').includes('json')) return { ...OFFLINE };
     const d = (await r.json()) as { user: AccountUser | null; admin?: boolean; banned?: boolean; banReason?: string; cards?: Record<string, number>; devLogin?: boolean; openMaps?: unknown; lockedMaps?: unknown; openFilms?: unknown; lockedFilms?: unknown; openSwitches?: unknown; lockedSwitches?: unknown; boards?: unknown; guestMaps?: unknown };
     return {
@@ -107,7 +108,8 @@ export async function loadAccount(): Promise<Account> {
       banned: !!d.banned,
       banReason: d.banReason ?? '',
       cards: d.cards ?? {},
-      loginUrl: d.devLogin ? '/auth/dev' : '/auth/discord',
+      // in Discord the Activity signs in by itself: no sign-in page to go to
+      loginUrl: IS_DISCORD ? '' : d.devLogin ? '/auth/dev' : '/auth/discord',
       lockedMaps: lockedFrom(d.openMaps, d.lockedMaps),
       lockedFilms: lockedFilmsOf(d.openFilms, d.lockedFilms),
       lockedSwitches: lockedSwitchesFrom(d.openSwitches, d.lockedSwitches),
@@ -149,6 +151,12 @@ export function goSignIn(a: Account, pick: AfterLogin, reason: string): void {
   } catch {
     /* storage off: they land on the title as before */
   }
+  // in Discord the Activity signs in as it starts: the button tries that again
+  if (IS_DISCORD) {
+    setSessionToken(null);
+    window.location.reload();
+    return;
+  }
   window.location.assign(a.loginUrl);
 }
 
@@ -182,7 +190,7 @@ export async function reportPlayer(target: string, reason: string, context: stri
 /** A co-op session's public details, or null when it has ended / never existed. */
 export async function roomInfo(code: string): Promise<{ map: MapId; kind: string; hosting: string } | null> {
   try {
-    const r = await fetch(`/api/rooms/${encodeURIComponent(code.toUpperCase().slice(0, 12))}`);
+    const r = await apiFetch(`/api/rooms/${encodeURIComponent(code.toUpperCase().slice(0, 12))}`);
     if (!r.ok) return null;
     const j = (await r.json()) as { map?: string; kind?: string; hosting?: string };
     return { map: asMapId(j.map), kind: j.kind ?? 'mission', hosting: j.hosting ?? 'server' };

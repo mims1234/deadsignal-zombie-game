@@ -141,15 +141,27 @@ const filmOfPath = (p) => {
 };
 const publicUser = (u) => ({ id: u.id, name: u.display_name, username: u.username, avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png?size=64` : null });
 
+/**
+ * This request's session token: an `Authorization: Bearer` header first (the Discord Activity: its iframe's cookies are
+ * third-party and may be dropped), the `ds_sess` cookie second (the website).
+ */
+function sessionOf(req) {
+  const m = /^Bearer\s+([\w-]{20,100})$/.exec(req.headers.authorization || '');
+  return m ? m[1] : req.cookies.ds_sess || null;
+}
+
 /** The signed-in user for this request, or null. */
 function userOf(req) {
-  const t = req.cookies.ds_sess;
+  const t = sessionOf(req);
   return t ? db.sessionUser(t) : null;
 }
 
 const rooms = createRooms({
-  // a WebSocket upgrade is a raw Node request: read the session cookie from the header
+  // a WebSocket upgrade is a raw Node request: the session token in the address (`/ws?s=`, the Discord Activity: a
+  // browser socket cannot send headers), else the session cookie from the header
   userOf(req) {
+    const q = /[?&]s=([\w-]{20,100})(?:&|$)/.exec(req.url || '');
+    if (q) return db.sessionUser(q[1]);
     const m = /(?:^|;\s*)ds_sess=([^;]+)/.exec(req.headers.cookie || '');
     return m ? db.sessionUser(decodeURIComponent(m[1])) : null;
   },
@@ -175,7 +187,7 @@ function signIn(req, reply, profile) {
   const t = token();
   db.createSession(t, user.id, SESSION_TTL);
   reply.setCookie('ds_sess', t, cookieOpts(SESSION_TTL));
-  return user;
+  return { user, token: t };
 }
 
 // ---- request guards ----------------------------------------------------------------------------------
@@ -187,7 +199,9 @@ app.addHook('preHandler', async (req, reply) => {
   if (req.method !== 'POST') return;
   if (req.headers['x-ds'] !== '1') return reply.code(403).send({ error: 'bad request' });
   const minute = Math.floor(Date.now() / 60000);
-  const key = `${req.ip}:${minute}`;
+  // a signed-in player by account (every Discord Activity player may reach us from the same proxy address), else by address
+  const who = userOf(req);
+  const key = `${who ? `u${who.id}` : req.ip}:${minute}`;
   const n = (hits.get(key) ?? 0) + 1;
   hits.set(key, n);
   if (hits.size > 5000) for (const k of hits.keys()) if (!k.endsWith(`:${minute}`)) hits.delete(k);
@@ -270,8 +284,43 @@ if (DEV_LOGIN) {
   });
 }
 
+// ---- sign-in inside a Discord Activity --------------------------------------------------------------------
+// The Activity cannot redirect to the sign-in page: the Embedded App SDK's `authorize` gives the game a code, the
+// server exchanges it here (the same Discord app and secret as the website's sign-in) and answers with Discord's
+// access token (the SDK's `authenticate` wants it) and this server's session token (sent back as a Bearer header).
+
+app.get('/api/discord/config', async () => ({ clientId: env.DISCORD_CLIENT_ID || null }));
+
+app.post('/api/discord/token', async (req, reply) => {
+  if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) return reply.code(503).send({ error: 'Discord sign-in is not configured on this server' });
+  const code = String(req.body?.code || '');
+  if (!/^[\w-]{10,100}$/.test(code)) return reply.code(400).send({ error: 'bad code' });
+  try {
+    // an embedded (SDK) code is exchanged without a redirect_uri
+    const tr = await fetch('https://discord.com/api/oauth2/token', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ client_id: env.DISCORD_CLIENT_ID, client_secret: env.DISCORD_CLIENT_SECRET, grant_type: 'authorization_code', code }),
+    });
+    if (!tr.ok) throw new Error(`token exchange ${tr.status} ${await tr.text().catch(() => '')}`);
+    const { access_token } = await tr.json();
+    const ur = await fetch('https://discord.com/api/users/@me', { headers: { authorization: `Bearer ${access_token}` } });
+    if (!ur.ok) throw new Error(`profile ${ur.status}`);
+    const d = await ur.json();
+    const { user, token: session_token } = signIn(req, reply, { id: String(d.id), username: String(d.username), display_name: String(d.global_name || d.username), avatar: d.avatar });
+    return { access_token, session_token, user: publicUser(user) };
+  } catch (err) {
+    req.log.warn(err);
+    return reply.code(502).send({ error: 'Discord sign-in failed' });
+  }
+});
+
+/** The co-op session of a Discord Activity instance (everyone in the same voice channel's Activity shares one). */
+app.get('/api/rooms/instance/:id', { preHandler: player }, async (req) => ({ code: rooms.forInstance(req.params.id, req.user) }));
+
 app.post('/auth/logout', async (req, reply) => {
-  if (req.cookies.ds_sess) db.dropSession(req.cookies.ds_sess);
+  const sess = sessionOf(req);
+  if (sess) db.dropSession(sess);
   reply.clearCookie('ds_sess', { path: '/' });
   return { ok: true };
 });

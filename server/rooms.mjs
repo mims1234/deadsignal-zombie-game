@@ -18,6 +18,8 @@
  *            map, kind,  map: fixed for the room; kind: 'mission' (Standard) | 'mazoku' | 'roam'
  *            zombies, team}  difficulty: the infected (easy..nightmare) and the AI squad (rookie..elite)
  *   {t:'join', code, as, hidden}                    {t:'relay', from, d}      a game message from another member / the host
+ *   (create / join may carry `instance`: a Discord Activity instance. A session created in one belongs to it: everyone
+ *    in that Activity finds it and may join it even when it is invite-only, and a second create there joins it instead.)
  *   {t:'ready', value}     a player, in the lobby: ready (the owner can start once every player is)
  *   {t:'leave'}                                     {t:'closed', reason}      kicked / ended / host left
  *   {t:'manage', op, ...}   owner only              {t:'error', msg}
@@ -58,6 +60,9 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
   const rooms = new Map();
   /** user id -> member (a user is in at most one room, on one connection) */
   const members = new Map();
+  /** Discord Activity instance id -> the code of the session created in it */
+  const byInstance = new Map();
+  const instanceOf = (msg) => (typeof msg.instance === 'string' && /^[\w-]{1,100}$/.test(msg.instance) ? msg.instance : null);
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE });
 
   const newCode = () => {
@@ -164,6 +169,7 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
 
   function closeRoom(room, reason) {
     if (!rooms.delete(room.code)) return;
+    if (room.instance && byInstance.get(room.instance) === room.code) byInstance.delete(room.instance);
     cancelStart(room);
     stopSim(room);
     for (const m of room.members.values()) {
@@ -228,6 +234,10 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
     switch (msg.t) {
       case 'create': {
         if (room) return send(m.ws, { t: 'error', msg: 'Leave your current session first' });
+        // this Discord Activity already has a session: join it instead of starting a second one
+        const instance = instanceOf(msg);
+        const existing = instance ? byInstance.get(instance) : null;
+        if (existing && rooms.has(existing)) return handle(m, { t: 'join', code: existing, as: 'player', device: msg.device, instance });
         m.device = msg.device === 'phone' ? 'phone' : 'pc'; // a phone or a computer, shown beside the name
         const who = { id: m.id };
         if (!switchOpenTo(who, 'coop')) return send(m.ws, { t: 'error', msg: 'Co-op is not open right now' });
@@ -264,8 +274,10 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
           kicks: 0,
           peakPlayers: 0,
           peakSpectators: 0,
+          instance,
         };
         rooms.set(r.code, r);
+        if (instance) byInstance.set(instance, r.code);
         if (hosting === 'server') startSim(r);
         else r.sim = undefined;
         onEvent('room-start', { room: r });
@@ -287,7 +299,9 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
         if (!roomOpenTo(r, { id: m.id }) && !invitedPast(r, m.id)) {
           return send(m.ws, { t: 'error', msg: 'That session is not open to you' });
         }
-        if (r.visibility === 'private' && !r.invites.has(m.id) && !m.admin) return send(m.ws, { t: 'error', msg: 'This session is invite-only' });
+        // the people in the session's own Discord Activity are invited by being there
+        const sameActivity = !!r.instance && instanceOf(msg) === r.instance;
+        if (r.visibility === 'private' && !r.invites.has(m.id) && !m.admin && !sameActivity) return send(m.ws, { t: 'error', msg: 'This session is invite-only' });
         const role = msg.as === 'spectator' ? 'spectator' : 'player';
         // a run under way: only a server-hosted session, and only as far as its owner allows (an invite always does)
         if (r.state === 'playing') {
@@ -455,6 +469,14 @@ export function createRooms({ userOf, isAdmin, mapOpenTo = () => true, switchOpe
       const who = user ? { id: user.id } : null;
       if (!roomOpenTo(r, who) && !(who && invitedPast(r, who.id))) return null;
       return { code: r.code, host: r.hostName, hosting: r.hosting, map: r.map, kind: r.kind, zombies: r.zombies, team: r.team, visibility: r.visibility, late: r.late, state: r.state, players: visible(r, 'player').length, spectators: visible(r, 'spectator').length, maxPlayers: MAX_PLAYERS, maxSpectators: MAX_SPECTATORS };
+    },
+    /** The session created in this Discord Activity instance, when it is still open and open to this user. */
+    forInstance(instance, user) {
+      const code = byInstance.get(String(instance));
+      if (!code || !rooms.has(code)) return null;
+      const r = rooms.get(code);
+      const who = { id: user.id };
+      return roomOpenTo(r, who) || invitedPast(r, who.id) ? code : null;
     },
     /** Admin view of everything live, hidden watchers included. */
     live() {
