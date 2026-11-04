@@ -18,8 +18,9 @@ import { addBox, building, groundRect, type Opening } from '../structures';
 import type { FloorLink } from '../floors';
 import type { MaterialName } from '../materials';
 import type { Ctx } from './util';
-import { MAT, bicycle, lanternString, shopFront, shrineHall, stoneLantern, torii, vendingMachine } from './sakura/props';
+import { MAT, bicycle, lanternString, shopFront, stoneLantern, torii, vendingMachine } from './sakura/props';
 import { crag, cragLine, dressMats, minka, peachTree, rootTree, type DressMats } from './hirasakaDress';
+import { bars, bikeShed, fireStair, flagpole, headframe, islandShrine, islandTorii, playground, shopInside, shrineGrounds, storeHut, waterTower, windingDrum, type ShopKind } from './hirasakaBuilds';
 import { BLOCK_STAIR, FLIGHTS, HIRASAKA, HIRASAKA_BOUNDS, ISLAND_X, LEDGE, MINE, MINE_ROOMS, PLACES, ROOT_TREE, SCHOOL, SEA_Y, SLOPE, STEP_RUN, TIERS, TAPES, PHOTOS } from '../../hirasaka/places';
 
 export interface HirasakaHandles {
@@ -263,17 +264,15 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     addBox(b, 'corrugatedRust', (x0 + x1) / 2, 2.5, (z0 + z1) / 2, x1 - x0, 5, z1 - z0);
   }
   addBox(b, 'corrugatedRust', C.x, 5.1, C.z - 0.5, 8.4, 0.2, 7.4, 0, { cast: false });
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const leg = addBox(b, 'steelDark', C.x + sx * 2.6, 11, C.z - 0.5 + sz * 2.6, 0.4, 22, 0.4);
-      leg.rotation.set(sz * 0.08, 0, -sx * 0.08);
-      leg.updateMatrixWorld(true);
-    }
-    for (let y = 4; y < 21; y += 3.4) addBox(b, 'steelDark', C.x + sx * (2.6 - y * 0.08), y, C.z - 0.5, 0.18, 0.18, 5.6 - y * 0.16, 0, { cast: false });
-  }
-  const wheel = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.18, 6, 24), new THREE.MeshStandardMaterial({ color: 0x3a2a22, roughness: 0.6, metalness: 0.7 }));
-  wheel.position.set(C.x, 21.5, C.z - 0.5);
-  b.add(wheel);
+  // the headframe over the shaft, its struts east to the winding house (its legs stand inside the shaft house)
+  const WH = { x: -33.5, z: 33, w: 5, d: 4 };
+  headframe(b, C, 22.7, { x: WH.x - WH.w / 2 - 0.05, y: 3.3, z: WH.z });
+  for (const [lx, lz] of [[-3.2, -3.3], [3.2, -3.3], [-3.2, 2.3], [3.2, 2.3]] as const) b.collide({ x: C.x + lx, z: C.z + lz, hx: 0.25, hz: 0.25, y0: 0, y1: 5, mapKind: 'prop', surface: 'metal', tag: 'headframe-leg' });
+  building(b, { x: WH.x, z: WH.z, w: WH.w, d: WH.d, height: 4, wallMaterial: 'brick', roofMaterial: 'corrugatedRust', floorMaterial: 'floorWarehouse', ceilingMaterial: 'plaster', sides: { S: { openings: [door(2.5, 1.8)] }, E: { openings: [win(2, 1.2, true)] } }, tag: 'winding-house' });
+  addBox(b, 'glassDark', WH.x - WH.w / 2 - 0.03, 3.3, WH.z - 0.5, 0.06, 0.7, 2.2, 0, { cast: false });
+  windingDrum(b, WH.x - 0.6, WH.z - 0.4);
+  b.collide({ x: WH.x - 0.3, z: WH.z - 0.4, hx: 1.9, hz: 1.4, y0: 0, y1: 2.6, mapKind: 'prop', surface: 'metal', tag: 'winding-drum' });
+  b.light({ x: WH.x, y: 3.5, z: WH.z, color: 0xffc070, intensity: 10, distance: 7, mode: 'flicker', pool: 2, glow: 0.3, indoor: true, tag: 'winder' });
   b.light({ x: C.x, y: 4.6, z: C.z, color: 0xffc070, intensity: 16, distance: 10, mode: 'flicker', pool: 3, glow: 0.4, tag: 'shaft' });
   groundRect(b, 'hazard', C.x - 3.2, C.z + 2.2, C.x + 3.2, C.z + 2.6, 0.02);
   // the pier hut (tape and photo inside), the bathhouse (the armoury)
@@ -311,21 +310,36 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   // T1: Market Lane
   // ---------------------------------------------------------------------------------------------
   const T1 = TIERS[1];
-  const SHOPS = [
-    { x: -45, name: '魚屋', sub: 'FISHMONGER', color: '#2a4a5a' },
-    { x: -33, name: '米屋', sub: 'RICE', color: '#5a4a2a' },
-    { x: -22, name: '食堂', sub: 'CANTEEN', color: '#6a2a24' },
-    { x: -11, name: '駄菓子', sub: 'SWEETS', color: '#5a2a4a' },
+  const SHOPS: { x: number; name: string; sub: string; color: string; kind?: ShopKind }[] = [
+    { x: -45, name: '魚屋', sub: 'FISHMONGER', color: '#2a4a5a', kind: 'fish' },
+    { x: -33, name: '米屋', sub: 'RICE', color: '#5a4a2a', kind: 'rice' },
+    { x: -22, name: '食堂', sub: 'CANTEEN', color: '#6a2a24', kind: 'canteen' },
+    { x: -11, name: '駄菓子', sub: 'SWEETS', color: '#5a2a4a', kind: 'sweets' },
     { x: 11, name: '床屋', sub: 'BARBER', color: '#2a3a6a' },
     { x: 22, name: '映画館', sub: 'CINEMA', color: '#4a2a5a' },
-    { x: 41, name: '酒屋', sub: 'SAKE', color: '#3a5a2a' },
-    { x: 52, name: '郵便局', sub: 'POST OFFICE', color: '#7a2a20' },
+    { x: 41, name: '酒屋', sub: 'SAKE', color: '#3a5a2a', kind: 'sake' },
+    { x: 52, name: '郵便局', sub: 'POST OFFICE', color: '#7a2a20', kind: 'post' },
   ];
-  for (const sh of SHOPS) {
-    // the shops are built into the school tier's wall: a box from the ground up so the lane stops at their fronts
-    rim(c, sh.x - 4.6, T1.z0, sh.x + 4.6, T1.z0 + 3.4, T1.y + 4, 'shop');
-    addBox(b, 'plaster', sh.x, T1.y + 2.2, T1.z0 + 1.7, 9.2, 4.4, 3.4, 0, { cast: false });
-    shopFront(b, { x: sh.x, y: T1.y, z: T1.z0 + 3.42, rot: 0, w: 8.6, name: sh.name, sub: sh.sub, color: sh.color, shutter: sh.x === -22 ? 'torn' : 'down', noren: sh.x === -22 ? '食堂' : undefined, lit: sh.x === 22 });
+  for (const [i, sh] of SHOPS.entries()) {
+    // the shops are built into the school tier's wall. Most stand open (walk in: shelves, a counter, what they sold, a
+    // lamp); the barber's and the cinema's shutters are down, solid from the ground up so the lane stops at them.
+    const z0 = T1.z0;
+    const zf = T1.z0 + 3.4;
+    if (sh.kind) {
+      rim(c, sh.x - 4.6, z0, sh.x + 4.6, z0 + 0.5, T1.y + 4, 'shop');
+      rim(c, sh.x - 4.6, z0, sh.x - 4.3, zf, T1.y + 4, 'shop');
+      rim(c, sh.x + 4.3, z0, sh.x + 4.6, zf, T1.y + 4, 'shop');
+      rim(c, sh.x - 4.3, z0 + 0.5, sh.x + 4.3, z0 + 0.95, T1.y + 2.3, 'shop-shelves');
+      b.collide({ x: sh.x + 4.6 - 1.1, z: (z0 + zf) / 2 - 0.2, hx: 0.4, hz: (3.4 - 1.4) / 2, y0: 0, y1: T1.y + 0.95, mapKind: 'prop', surface: 'wood', tag: 'shop-counter' });
+      shopInside(b, sh.kind, sh.x, T1.y, z0, zf, 9.2, 7100 + i);
+      addBox(b, 'plaster', sh.x, T1.y + 3.575, zf - 0.1, 9.2, 1.65, 0.2, 0, { cast: false });
+      addBox(b, 'plaster', sh.x, T1.y + 4.0, (z0 + zf) / 2, 9.2, 0.8, 3.4, 0, { cast: false });
+      b.light({ x: sh.x, y: T1.y + 3.2, z: (z0 + zf) / 2, color: sh.kind === 'post' ? 0xe0ecff : 0xffd0a0, intensity: 9, distance: 7, mode: i % 3 === 0 ? 'flicker' : 'steady', pool: 2.2, glow: 0.3, indoor: true, tag: 'shop' });
+    } else {
+      rim(c, sh.x - 4.6, z0, sh.x + 4.6, zf, T1.y + 4, 'shop');
+      addBox(b, 'plaster', sh.x, T1.y + 2.2, (z0 + zf) / 2, 9.2, 4.4, 3.4, 0, { cast: false });
+    }
+    shopFront(b, { x: sh.x, y: T1.y, z: zf + 0.02, rot: 0, w: 8.6, name: sh.name, sub: sh.sub, color: sh.color, shutter: sh.kind ? 'up' : 'down', open: !!sh.kind, noren: sh.kind === 'canteen' ? '食堂' : sh.kind === 'sake' ? '酒' : undefined, lit: sh.x === 22 });
   }
   lanternString(c, { x0: -50, z0: 15, x1: 50, z1: 15, y: T1.y + 4.2, lit: 0.4, seed: 5201 });
   for (const [x, z, r] of [[-28, 17, 0.6], [16, 18, -0.4], [34, 12.6, 1.3]] as const) bicycle(b, { x, y: T1.y, z, rot: r, fallen: r > 1 });
@@ -378,6 +392,19 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     b.light({ x, y: T2.y + 4.2, z, color: 0xcfe0ff, intensity: 16, distance: 13, mode: x === 12 ? 'fail' : 'steady', pool: 3, glow: 0.5, tag: 'school' });
   }
   crateGroup(b, { x: 6, y: T2.y, z: -7, rot: 0.2, count: 3, radius: 1.2, seed: 5301 });
+  // the schoolyard: the bicycle shed along the school's front, the flag, the bars, the sports store
+  bikeShed(b, -42, -33, 1.6, T2.y, 3);
+  flagpole(b, -24, 3.6, T2.y);
+  bars(b, -50, 0.5, T2.y);
+  storeHut(b, -51, -7.6, T2.y, 4, 2.8);
+  // the school's entrance: a canopy over glass doors
+  addBox(b, 'glassDark', -29, T2.y + 1.2, S.z1 + 0.05, 3.2, 2.4, 0.06, 0, { cast: false });
+  addBox(b, 'steelDark', -29, T2.y + 1.2, S.z1 + 0.08, 0.08, 2.4, 0.06, 0, { cast: false });
+  addBox(b, 'concreteSlab', -29, T2.y + 2.75, S.z1 + 1.2, 4.6, 0.2, 2.4);
+  for (const sx of [-1, 1]) {
+    addBox(b, 'concreteWall', -29 + sx * 2.1, T2.y + 1.35, S.z1 + 2.2, 0.25, 2.7, 0.25);
+    b.collide({ x: -29 + sx * 2.1, z: S.z1 + 2.2, hx: 0.15, hz: 0.15, y0: 0, y1: T2.y + 2.7, mapKind: 'prop', tag: 'canopy' });
+  }
 
   // ---------------------------------------------------------------------------------------------
   // T3: Block 65, its outside stair and Genzō's room
@@ -407,20 +434,12 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     const xb = BS.xFoot - (i + 1) * run;
     const last = i === n - 1;
     b.collide({ x: (xa + xb) / 2 - (last ? 0.2 : 0), z: BS.z, hx: run / 2 + (last ? 0.2 : 0), hz: BS.w / 2, y0: top - 0.6, y1: top, floor: true, surface: 'metal', mapKind: 'none', tag: 'block-stair' });
-    addBox(b, 'grating', (xa + xb) / 2, top - 0.05, BS.z, run + 0.02, 0.1, BS.w, 0, { cast: false });
   }
   for (const sz of [-1, 1]) {
     const z = BS.z + sz * (BS.w / 2 + 0.15);
     rim(c, BS.xTop, z - 0.15, BS.xFoot, z + 0.15, BS.yTop + 1, 'block-stair-rail');
-    const L = BS.xFoot - BS.xTop;
-    const rail = addBox(b, 'steelDark', (BS.xFoot + BS.xTop) / 2, (BS.yFoot + BS.yTop) / 2 + 0.95, z, Math.hypot(L, BS.yTop - BS.yFoot), 0.06, 0.06, 0, { cast: false });
-    rail.rotation.set(0, 0, -Math.atan2(BS.yTop - BS.yFoot, L));
-    rail.updateMatrixWorld(true);
-    for (let x = BS.xTop + 1; x < BS.xFoot; x += 3.5) {
-      const y = BS.yFoot + ((BS.xFoot - x) / L) * (BS.yTop - BS.yFoot);
-      addBox(b, 'steelDark', x, (T3.y + y) / 2, z, 0.14, y - T3.y, 0.14, 0, { cast: false });
-    }
   }
+  fireStair(b, BS, -22, STEP_H);
   // the ledge and Genzō's room on it
   const L = LEDGE;
   b.collide({ x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2, hx: (L.x1 - L.x0) / 2, hz: (L.z1 - L.z0) / 2, y0: L.y - 0.4, y1: L.y, floor: true, surface: 'concrete', mapKind: 'none', tag: 'ledge' });
@@ -429,7 +448,9 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   rim(c, L.x0, L.z1, L.x1, L.z1 + 0.3, L.y + 1, 'ledge');
   rim(c, L.x1, L.z1 - 1.6, L.x1 + 0.3, L.z1, L.y + 1, 'ledge');
   addBox(b, 'concreteWall', (L.x0 + L.x1) / 2, L.y + 0.5, L.z1 + 0.15, L.x1 - L.x0, 1, 0.3, 0, { cast: false });
-  for (let x = L.x0 + 1; x < L.x1; x += 3) addBox(b, 'concreteDark', x, (T3.y + L.y) / 2, L.z1 - 0.3, 0.4, L.y - T3.y, 0.4, 0, { cast: false });
+  for (let x = L.x0 + 1; x < L.x1; x += 3) addBox(b, 'concreteDark', x, (T3.y + L.y) / 2, L.z1 - 0.3, 0.55, L.y - T3.y, 0.55, 0, { cast: false });
+  addBox(b, 'concreteDark', (L.x0 + L.x1) / 2, L.y - 0.65, L.z1 - 0.3, L.x1 - L.x0, 0.5, 0.6, 0, { cast: false });
+  for (let x = L.x0 + 1; x < L.x1; x += 3) addBox(b, 'concreteDark', x, L.y - 0.65, (L.z0 + L.z1) / 2, 0.4, 0.5, L.z1 - L.z0, 0, { cast: false });
   // the room: walls on three sides, a door on the east
   const RX0 = L.x0;
   const RX1 = L.x0 + 6;
@@ -442,10 +463,26 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   addBox(b, 'wood', RX1 + 0.1, L.y + 1.3, RZ0 + 0.6, 0.2, 2.6, 1.2);
   addBox(b, 'wood', RX1 + 0.1, L.y + 1.3, RZ0 + 3.5, 0.2, 2.6, 1.8);
   addBox(b, 'wood', RX1 + 0.1, L.y + 2.4, RZ0 + 1.9, 0.2, 0.4, 1.4);
-  addBox(b, 'corrugatedRust', (RX0 + RX1) / 2, L.y + 2.7, (RZ0 + RZ1) / 2, RX1 - RX0 + 0.6, 0.12, RZ1 - RZ0 + 0.6);
+  const shackRoof = addBox(b, 'corrugatedRust', (RX0 + RX1) / 2, L.y + 2.75, (RZ0 + RZ1) / 2 + 0.2, RX1 - RX0 + 1.0, 0.1, RZ1 - RZ0 + 1.4);
+  shackRoof.rotation.set(0.1, 0, 0);
+  shackRoof.updateMatrixWorld(true);
+  addBox(b, 'windowLit', (RX0 + RX1) / 2 - 0.8, L.y + 1.6, RZ1 + 0.22, 1.4, 0.9, 0.04, 0, { cast: false, receive: false });
+  for (const dx of [-0.8 - 0.72, -0.8 + 0.72]) addBox(b, MAT.woodDark(), (RX0 + RX1) / 2 + dx, L.y + 1.6, RZ1 + 0.24, 0.08, 1.0, 0.06, 0, { cast: false });
+  addBox(b, MAT.woodDark(), (RX0 + RX1) / 2 - 0.8, L.y + 1.6, RZ1 + 0.24, 1.5, 0.06, 0.06, 0, { cast: false });
+  addBox(b, MAT.woodDark(), RX1 + 0.12, L.y + 1.25, RZ0 + 1.9, 0.06, 2.3, 0.08, 0, { cast: false });
+  addBox(b, MAT.woodDark(), RX1 + 0.12, L.y + 1.25, RZ0 + 2.6, 0.06, 2.3, 0.08, 0, { cast: false });
+  // a drum of rainwater and an aerial on the roof beside the room
+  const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 1.0, 14), b.mats.get('barrelBlue'));
+  drum.position.set(RX0 + 0.7, L.y + 3.4, RZ0 + 0.8);
+  b.add(drum);
+  addBox(b, 'steelDark', RX1 - 0.6, L.y + 4.2, RZ0 + 0.6, 0.05, 3, 0.05, 0, { cast: false });
+  for (const h of [4.8, 5.2, 5.5]) addBox(b, 'steelDark', RX1 - 0.6, L.y + h, RZ0 + 0.6, 1.2 - (h - 4.8), 0.03, 0.03, 0, { cast: false });
   addBox(b, MAT.woodDark(), RX0 + 1.4, L.y + 0.4, RZ0 + 1.2, 2, 0.8, 1);
   b.collide({ x: RX0 + 1.4, z: RZ0 + 1.2, hx: 1, hz: 0.5, y0: 0, y1: L.y + 0.8, mapKind: 'prop', surface: 'wood', tag: 'genzo-desk' });
   b.light({ x: RX0 + 3, y: L.y + 2.4, z: RZ0 + 2.2, color: 0xffc080, intensity: 9, distance: 7, mode: 'flicker', pool: 2, glow: 0.3, tag: 'genzo' });
+  // T3: the estate's playground, a water tank
+  playground(b, 40, -23, T3.y);
+  waterTower(b, 10, -23.5, T3.y);
   // T3 dressing: laundry on poles, a rooftop garden of planters, the lamps
   for (const x of [4, 14, 26, 38, 50]) {
     addBox(b, 'steelDark', x, T3.y + 1.1, -14, 0.08, 2.2, 0.08);
@@ -465,9 +502,10 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   // ---------------------------------------------------------------------------------------------
   const T4 = TIERS[4];
   const sh = HIRASAKA.shrine;
-  shrineHall(b, { x: sh.x, y: T4.y, z: sh.z, rot: 0, w: 7, d: 6 });
+  islandShrine(b, sh.x, T4.y, sh.z);
   rim(c, sh.x - 3.7, sh.z - 3.2, sh.x + 3.7, sh.z + 3.2, T4.y + 4, 'shrine');
-  torii(b, { x: sh.x, y: T4.y, z: sh.z + 8, rot: 0, scale: 0.9 });
+  islandTorii(b, sh.x, T4.y, sh.z + 8.6);
+  shrineGrounds(b, sh.x, T4.y, sh.z);
   for (const z of [sh.z + 5, sh.z + 11]) {
     stoneLantern(b, { x: sh.x - 2.6, y: T4.y, z, lit: true, scale: 0.7 });
     stoneLantern(b, { x: sh.x + 2.6, y: T4.y, z, lit: true, scale: 0.7 });
@@ -518,10 +556,30 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     addBox(b, 'glassDark', LH.x + Math.cos(a) * rr, T4.y + y, LH.z + Math.sin(a) * rr, 0.08, 0.9, 0.55, -a, { cast: false });
   }
   const G = PLACES.generator;
-  addBox(b, 'corrugatedRust', G.x + 1.6, T4.y + 1.3, G.z, 2.4, 2.6, 3.6);
-  b.collide({ x: G.x + 1.6, z: G.z, hx: 1.2, hz: 1.8, y0: 0, y1: T4.y + 2.6, mapKind: 'prop', surface: 'metal', tag: 'generator-shed' });
-  addBox(b, 'oliveMetal', G.x + 0.2, T4.y + 0.55, G.z, 1.2, 1.1, 1.8);
-  b.collide({ x: G.x + 0.2, z: G.z, hx: 0.6, hz: 0.9, y0: 0, y1: T4.y + 1.1, mapKind: 'prop', surface: 'metal', tag: 'generator' });
+  // the generator house: a lean-to of block walls and a sloping iron roof against the lighthouse, open to the west
+  addBox(b, 'concreteWall', G.x + 2.6, T4.y + 1.5, G.z, 0.3, 3.0, 4.4);
+  for (const sz of [-1, 1]) addBox(b, 'concreteWall', G.x + 1.0, T4.y + 1.35, G.z + sz * 2.2, 3.5, 2.7, 0.3);
+  const leanRoof = addBox(b, 'corrugatedRust', G.x + 0.9, T4.y + 2.88, G.z, 4.4, 0.08, 5.0);
+  leanRoof.rotation.set(0, 0, 0.11);
+  leanRoof.updateMatrixWorld(true);
+  rim(c, G.x + 2.45, G.z - 2.35, G.x + 2.75, G.z + 2.35, T4.y + 3, 'generator-shed');
+  for (const sz of [-1, 1]) rim(c, G.x - 0.75, G.z + sz * 2.2 - 0.15, G.x + 2.75, G.z + sz * 2.2 + 0.15, T4.y + 2.6, 'generator-shed');
+  // the genset: a skid, the engine, the radiator and its grille, the exhaust up through the roof, the control box
+  addBox(b, 'steelDark', G.x + 0.6, T4.y + 0.1, G.z, 1.4, 0.2, 2.8);
+  addBox(b, 'oliveMetal', G.x + 0.6, T4.y + 0.75, G.z + 0.3, 1.1, 1.1, 1.8);
+  addBox(b, 'steelDark', G.x + 0.6, T4.y + 0.8, G.z - 0.85, 1.2, 1.2, 0.3);
+  for (let k = 0; k < 8; k++) addBox(b, 'steel', G.x + 0.6, T4.y + 0.3 + k * 0.13, G.z - 1.01, 1.0, 0.03, 0.02, 0, { cast: false });
+  const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 2.6, 8), b.mats.get('rust'));
+  stack.position.set(G.x + 0.9, T4.y + 2.4, G.z + 0.9);
+  b.add(stack);
+  addBox(b, 'paintGrey', G.x - 0.1, T4.y + 1.0, G.z + 1.25, 0.15, 0.7, 0.5);
+  addBox(b, 'lampRed', G.x - 0.18, T4.y + 1.2, G.z + 1.25, 0.03, 0.08, 0.08, 0, { cast: false });
+  const drum2 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.9, 12), b.mats.get('barrelRed'));
+  drum2.position.set(G.x + 1.9, T4.y + 0.45, G.z - 1.6);
+  b.add(drum2);
+  b.collide({ x: G.x + 0.6, z: G.z, hx: 0.7, hz: 1.4, y0: 0, y1: T4.y + 1.4, mapKind: 'prop', surface: 'metal', tag: 'generator' });
+  // the cable from the generator house up the lighthouse's side
+  addBox(b, 'steelDark', G.x + 2.8, T4.y + 2.2, G.z - 1.2, 0.08, 0.08, 1.6, 0, { cast: false });
   for (const [x, z] of [[-53, -30], [10, -36], [-2, -42], [28, -44]] as const) {
     addBox(b, 'steelDark', x, T4.y + 2.2, z, 0.12, 4.4, 0.12);
     b.collide({ x, z, hx: 0.12, hz: 0.12, y0: 0, y1: T4.y + 4.4, mapKind: 'prop', surface: 'metal', tag: 'lamp' });
@@ -587,13 +645,14 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   d.label('BLOCK 65', -26, -18, 0.8);
   d.label('THE SUMMIT', 0, -36, 0.8);
   d.label('LIGHTHOUSE', 46, -34, 0.6);
-  d.label('SHRINE', -14, -34, 0.6);
+  d.label('SHRINE', HIRASAKA.shrine.x, HIRASAKA.shrine.z + 3, 0.6);
   d.road(-3, 44, 3, -26, 'THE HUNDRED STEPS');
   // the boxes: one paid by the company store, a few free ones on the seawall and in the deep
   d.crate(-30, 26, 0, 'low', MYSTERY_BOX.paidCost);
   for (const [x, z, r] of [[36, 36, 0.3], [-52, 38, 0.8]] as const) d.crate(x, z, r, 'low');
   d.crate(150, 30, 0, 'high');
   d.crate(200, 12, 1.2, 'high');
+  d.crate(49.5, TIERS[1].z0 + 1.9, 0, 'low'); // in the post office on Market Lane
   // spawn points by tier (the director picks near the hunted), and in the mine
   d.spawn('low', 'general', [[-54, 30], [-54, 40], [54, 30], [54, 40], [-20, 40], [26, 40], [-48, 12], [-30, 12], [-10, 14], [12, 13], [30, 14], [52, 12]], 1);
   d.spawn('medium', 'general', [[-54, -4], [-8, -3], [10, -2], [48, -6], [-52, -14], [-2, -12], [24, -16], [52, -22], [36, -12]], 1);
@@ -601,7 +660,7 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   d.spawn('low', 'defense', [[-36, 28], [38, 28], [-52, 34], [52, 34]], 1);
   d.spawn('high', 'defense', [[24, -32], [30, -28], [54, -44], [-4, -34]], 1);
   d.spawn('high', 'lz', [[0, -22], [-52, -24], [52, -24], [32, -24]], 1);
-  d.zombies('low', 'shambler', [[-30, 34], [-8, 32], [12, 30], [-44, 22.6], [36, 30]]);
+  d.zombies('low', 'shambler', [[-26, 37], [-8, 32], [12, 30], [-44, 22.6], [36, 30]]);
   d.zombies('low', 'shambler', [[-44, 14], [-24, 16], [-4, 13], [18, 16], [46, 14]]);
   d.zombies('medium', 'shambler', [[-50, -2], [-4, 0], [12, -2], [46, -6], [-30, -6]]);
   d.zombies('medium', 'runner', [[24, -14], [40, -20]]);

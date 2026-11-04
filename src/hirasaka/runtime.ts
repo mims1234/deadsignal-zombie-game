@@ -182,6 +182,32 @@ export class HirasakaRuntime {
     this.sound.update();
   }
 
+  /**
+   * Free roam (no story): the island drawn as it stands, and the way down - fly down the shaft under the headframe at
+   * the seawall's west end and you come out in the mine at the cage's landing; fly up out of the landing to come back.
+   */
+  roam(dt: number): void {
+    const g = this.g;
+    const p = g.player;
+    this.t += dt;
+    this.underground = inMine(p.x);
+    this.look.update(dt, this.view, g.renderer.camera, this.underground, (x, z, y) => g.level.world.floorBelow(x, z, 0.1, y, 0.4));
+    if (!this.said.has('roam')) {
+      this.said.add('roam');
+      g.banner('THE MINE IS BELOW', 'Fly down the shaft under the headframe (the seawall, west end) to go underground. Fly up out of the cage landing to come back.', 'info', 9);
+    }
+    const C = HIRASAKA.cage;
+    const D = HIRASAKA.cageBottom;
+    if (!this.underground && Math.hypot(p.x - C.x, p.z - (C.z - 0.5)) < 3.2 && p.y < 1.5) {
+      p.teleport(D.x, D.z + 2, p.yaw);
+      p.y = 2;
+      g.banner('THE GALLERIES', 'The cage landing, 300 m down. Fly up here to go back to the island.', 'info', 5);
+    } else if (this.underground && Math.hypot(p.x - D.x, p.z - D.z) < 4.5 && p.y > 5.2) {
+      p.teleport(C.x, C.z + 5, p.yaw);
+      p.y = 3;
+    }
+  }
+
   /** Solo: the story, the island's infected, Kurogane. */
   private authority(dt: number): void {
     const g = this.g;
@@ -255,7 +281,7 @@ export class HirasakaRuntime {
       window.setTimeout(() => nat('nat_dontlook'), 9000);
     }
     if (b.surfaced && !a.surfaced) {
-      g.banner('THE STORM SURGE', 'The sea is coming up the island behind you. Climb to the summit and push the stone home.', 'danger', 7);
+      g.banner('THE STORM SURGE', 'The sea is coming up behind you. Climb the Hundred Steps to the summit and stand in the gold ring beside the Sealing Stone: it rolls while you stand there.', 'danger', 8);
       nat('nat_surface');
       this.sound.say('sk_surge', { story: true });
       this.pa('pa_dont');
@@ -271,7 +297,7 @@ export class HirasakaRuntime {
       this.once('sk_stone', { delay: 4 });
     }
     if (b.held && !a.held) {
-      g.banner('SHE IS AT THE STONE', 'It will not move while she leans on it - drive her off it (a peach)', 'danger', 4);
+      g.banner('SHE IS LEANING ON THE STONE', 'It barely moves while she does. Shoot her off it - she cannot die, but enough shots push her back - or throw a peach.', 'danger', 6);
       this.once('mio_stone', { pos: this.mioPos() });
     }
     if (b.tapes !== a.tapes) {
@@ -369,7 +395,7 @@ export class HirasakaRuntime {
     if (this.t > 24) say('jobs', "Three jobs get the cage running, any order - they are your objectives: Genzō's key up Block 65's outside stair, the lighthouse on the summit, the sea gates along the seawall.", 11);
     if (this.t > 40) say('tapes', "Genzō's tapes and his photographs are hidden round the island and the mine. The journal (pause menu) keeps them.", 8);
     if (v.peaches) say('peach', 'You carry white peaches. Throw one with the grenade key: nothing of the dead crosses the ring where it lands, for a few seconds. Not even her.', 10);
-    if (v.act === ACT.climb) say('look', 'Do not look back at her. Every look brings her on faster. Climb, and push the stone home at the summit.', 9);
+    if (v.act === ACT.climb) say('look', 'Do not look back at her: every look brings her on faster. She cannot be killed - shots only push her back a step. Climb to the summit and stand by the stone to roll it home.', 10);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -838,7 +864,7 @@ export class HirasakaRuntime {
         mk('hs-adit', HIRASAKA.slopeDoor, 'THE ADIT', '#ffe08a', true);
       }
       if (v.surfaced && !this.underground) {
-        obj('stone', 'PUSH THE SEALING STONE', v.held ? 'She is leaning on it - drive her off' : v.pushers > 0 ? `Rolling: ${Math.round(v.push * 100)}%` : 'At the head of the Hundred Steps, on the summit', false, v.push, HIRASAKA.stonePush, true);
+        obj('stone', 'PUSH THE SEALING STONE', v.held ? `She is leaning on it: shoot her back, or a peach (${Math.round(v.push * 100)}%)` : v.pushers > 0 ? `Rolling: ${Math.round(v.push * 100)}% - stay in the ring` : 'Summit, top of the Hundred Steps: stand in the gold ring beside it', false, v.push, HIRASAKA.stonePush, true);
         mk('hs-stone', HIRASAKA.stonePush, 'THE STONE', '#ffe08a', true, HIRASAKA.stonePush.r);
         if (v.surge < SURGE.length) {
           const s = SURGE[v.surge]!;

@@ -1029,6 +1029,26 @@ export class Zombie {
     if (this.invulnerable) {
       // MUJIN's Stationmaster: he only flinches
       this.hitKick = 1;
+      // HIRASAKA's Mio: nothing kills her, but enough shots drive her back a step and hold her there a moment
+      if (this.variant === 'follower' && this.state !== 'stagger') {
+        this.poise += amount * impulse;
+        if (this.poise >= 45) {
+          this.poise = 0;
+          const dx = this.x - env.player.x;
+          const dz = this.z - env.player.z;
+          const d = Math.max(0.5, Math.hypot(dx, dz));
+          const nx = this.x + (dx / d) * 1.6;
+          const nz = this.z + (dz / d) * 1.6;
+          if (!env.world.circleBlocked(nx, nz, 0.3, this.y + 0.4, this.y + 1.6)) {
+            this.x = nx;
+            this.z = nz;
+          }
+          this.enterState('stagger');
+          this.staggerT = 0;
+          this.staggerDur = 1.1;
+          this.vx = this.vz = 0;
+        }
+      }
       return false;
     }
     this.hp -= amount;

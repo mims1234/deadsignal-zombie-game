@@ -2,6 +2,21 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.331",
+      "date": "2026-11-05",
+      "title": "HIRASAKA: the stone always rolls, and the island is finished",
+      "notes": [
+        "The Sealing Stone can no longer get stuck. Stand in the gold ring beside it at the top of the Hundred Steps and it rolls. While Mio leans on it, it only creeps along instead of stopping. She still can't be killed, but enough shots push her back a step, and a peach still holds her off. The banners, the objective and the journal now say all of this.",
+        "The mine's headframe is rebuilt: braced legs, a railed deck, two spoked winding wheels, back struts and the ropes running to a new brick winding house with its drum inside.",
+        "The summit shrine is rebuilt with a raised hall, lit lattice doors, a curved roof, the sacred rope and bell, a proper torii, a pair of stone guardian lions, a water basin pavilion and a rack of prayer plaques. The generator now sits under its own shelter against the lighthouse.",
+        "Block 65's outside stair is a real fire stair now, with stringers, handrails, columns and brackets into the wall. Genzō's rooftop room has a lit window, a sloping roof, a water drum and an aerial.",
+        "Six of Market Lane's eight shops are open and you can walk in: the fishmonger, rice shop, canteen, sweet shop, sake shop and post office, each with shelves, a counter, a lamp and its own goods. There's a free box in the post office.",
+        "The empty spaces have things in them now: a bicycle shed, a flagpole, horizontal bars, a sports shed and a covered entrance at the school, and a playground and a water tower on Block 65's roof.",
+        "The rain streaks are gone.",
+        "Free roam: fly down the shaft under the headframe to reach the mine, and fly up out of the cage landing to come back."
+      ]
+    },
+    {
       "version": "0.4.330",
       "date": "2026-11-05",
       "title": "Discord: the other pages open on the website",

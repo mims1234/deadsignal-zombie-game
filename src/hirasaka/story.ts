@@ -32,6 +32,8 @@ export const HIRASAKA_STORY = {
   charge: 40,
   /** Seconds of pushing (one player) to roll the stone across; each more pusher adds half again. */
   push: 26,
+  /** While Mio leans on the stone it still creeps on, this much as fast (shoot her off it, or throw a peach). */
+  heldRate: 0.25,
   /** The big waves over the seawall in act I: every so often, with a warning first. */
   waveEvery: [26, 38] as readonly [number, number],
   waveWarn: 3.5,
@@ -174,7 +176,7 @@ export class HirasakaStory {
 
   /**
    * Every frame on the host: the generator's hold, the waves, the surge, the stone. `stand`: the players; `mioAtStone`:
-   * she has reached the stone (it will not move while she leans on it).
+   * she has reached the stone (it barely moves while she leans on it).
    */
   tick(dt: number, stand: readonly Stand[], mioAtStone = false): void {
     const v = this.view;
@@ -210,7 +212,7 @@ export class HirasakaStory {
       if (n > 0 && v.pushers === 0) this.events.push({ kind: 'pushing' });
       v.pushers = n;
       v.held = mioAtStone && n > 0;
-      if (n > 0 && !v.held) v.push = Math.min(1, v.push + (dt / HIRASAKA_STORY.push) * (1 + 0.5 * (n - 1)));
+      if (n > 0) v.push = Math.min(1, v.push + (dt / HIRASAKA_STORY.push) * (1 + 0.5 * (n - 1)) * (v.held ? HIRASAKA_STORY.heldRate : 1));
       if (v.push >= 1) this.win(1);
     } else v.pushers = 0;
   }

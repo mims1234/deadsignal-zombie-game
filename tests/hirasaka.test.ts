@@ -95,10 +95,11 @@ describe('HIRASAKA: the story', () => {
     expect(HirasakaStory.seaLevel(q.view)).toBeGreaterThan(TIERS[1].y);
     q.tick(1000, []);
     expect(HirasakaStory.seaLevel(q.view)).toBeLessThan(Y4);
-    // she holds the stone while she leans on it; one pusher rolls it home in `push` seconds
-    q.tick(5, up({ ...HIRASAKA.stonePush, y: Y4 }), true);
-    expect(q.view.push).toBe(0);
+    // while she leans on it the stone only creeps (never stuck); one pusher rolls it home in `push` seconds
+    q.tick(4, up({ ...HIRASAKA.stonePush, y: Y4 }), true);
     expect(q.view.held).toBe(true);
+    expect(q.view.push).toBeCloseTo((4 / HIRASAKA_STORY.push) * HIRASAKA_STORY.heldRate, 5);
+    expect(q.view.push).toBeGreaterThan(0);
     for (let t = 0; t < HIRASAKA_STORY.push + 1; t += 0.5) q.tick(0.5, up({ ...HIRASAKA.stonePush, y: Y4 }));
     expect(q.view.act).toBe(ACT.won);
     expect(q.view.ending).toBe(1);

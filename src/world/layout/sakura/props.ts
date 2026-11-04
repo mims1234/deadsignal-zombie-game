@@ -620,7 +620,7 @@ export function bicycle(b: LevelBuilder, o: At & { fallen?: boolean; color?: num
  * A shop front on the face of a building: the shutter (down and painted, rolled up on a dark interior, or torn open),
  * a signboard over it, a noren curtain in the doorway, an awning. Faces +Z after `rot`; `w` wide.
  */
-export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; sub?: string; color: string; shutter: 'down' | 'up' | 'torn'; noren?: string; lit?: boolean }): void {
+export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; sub?: string; color: string; shutter: 'down' | 'up' | 'torn'; noren?: string; lit?: boolean; open?: boolean }): void {
   const g = new THREE.Group();
   const w = o.w;
   // shutter / dark interior
@@ -629,9 +629,12 @@ export function shopFront(b: LevelBuilder, o: At & { w: number; name: string; su
     sh.position.set(0, 1.35, 0.05);
     g.add(sh);
   } else {
-    const dark = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 2.7, 0.04), std('shopDark', 0x0c0d0e, 1));
-    dark.position.set(0, 1.35, 0.02);
-    g.add(dark);
+    // a doorway into the dark (an open shop, `open`, has its inside built behind it instead)
+    if (!o.open) {
+      const dark = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 2.7, 0.04), std('shopDark', 0x0c0d0e, 1));
+      dark.position.set(0, 1.35, 0.02);
+      g.add(dark);
+    }
     if (o.shutter === 'torn') {
       const half = new THREE.Mesh(new THREE.BoxGeometry(w - 0.4, 1.1, 0.06), std('shutterTorn', 0x7a7e80, 0.6, { metalness: 0.5 }));
       half.position.set(0, 2.15, 0.07);

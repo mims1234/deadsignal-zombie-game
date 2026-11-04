@@ -1769,6 +1769,7 @@ export class Game implements GameCtx {
       this.zombies.update(dt, z, false);
     }
     this.cards.update(dt);
+    this.hirasaka?.roam(dt); // HIRASAKA: the island drawn, and the shaft down to the mine
     this.mission.update(0, this.renderer.camera, this.time); // dt = 0: the clock never starts
     this.entities.update(dt, this.time);
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);

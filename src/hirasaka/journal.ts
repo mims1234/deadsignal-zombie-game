@@ -19,7 +19,7 @@ export const PHOTO_TEXT: readonly { year: string; text: string }[] = [
 const ACT_TEXT: readonly string[] = [
   'Hirasaka-jima: a coal island, five thousand people stacked on a rock in the sea, emptied in a week in 1974 after "a gas accident in Shaft Three". Three nights ago Typhoon No. 13 cracked its seawall, its lights came on by themselves, and the dead began coming over the water. Natsuki Hirata has come home to the island her grandfather never stopped talking about. The cage down to Shaft Three needs his key, the lighthouse and the sea gates.',
   'Under the sea the night shift is still working. Below the seam there is a village older than the island, its doors open, its tree of white peaches still bearing. Somewhere past it, in the Root Hall, is what Genzō left behind.',
-  'Kurogane is dead and the cable has gone. The only way out is the Slope, up to the old adit at the foot of the island - and up the island, with the storm surge rising behind. She is following. Do not look back. Push the Sealing Stone home.',
+  'Kurogane is dead and the cable has gone. The only way out is the Slope, up to the old adit at the foot of the island - and up the island, with the storm surge rising behind. She is following. Do not look back. At the summit, stand in the ring beside the Sealing Stone until it rolls home.',
 ];
 
 const KEY = 'deadsignal.hirasaka.v1';
@@ -61,7 +61,7 @@ export const FIELD: readonly { kind: string; name: string; text: string }[] = [
   { kind: 'slag', name: 'Slag', text: 'A miner the fire got into. Crusted black, burning in the cracks, slow and heavy, and it hits like a falling prop.' },
   { kind: 'overseer', name: 'Kurogane', text: 'Tetsuji Kurogane, the overseer. Bitten a week before the collapse; he hid it under his gloves and kept the seam open. He still gives orders, and the miners still come.' },
   { kind: 'hag', name: 'Hags of the Slope', text: 'They crawl up the slope on all fours behind anyone climbing it, and they always know where you are. They whisper the same thing.' },
-  { kind: 'follower', name: 'Mio', text: 'She follows you up. Nothing you carry hurts her. Every time you look back, she is closer. A peach holds her for a moment.' },
+  { kind: 'follower', name: 'Mio', text: 'She follows you up. Nothing you carry hurts her, but enough shots push her back a step. Every time you look back, she is closer. A peach holds her off for a moment; while she leans on the stone it barely moves.' },
 ];
 
 const CSS = `

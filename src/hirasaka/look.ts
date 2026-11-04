@@ -1,6 +1,6 @@
 /**
- * What changes on the island as the story goes (`story.ts` says what; this draws it): the typhoon's rain, the waves
- * over the seawall, the sea gates' wheels, the lighthouse's beam and the island's windows coming on, the cage in the
+ * What changes on the island as the story goes (`story.ts` says what; this draws it): the waves over the
+ * seawall, the sea gates' wheels, the lighthouse's beam and the island's windows coming on, the cage in the
  * headframe and at the bottom of the shaft (and smashed when the cable goes), the tapes, the photographs, the key, the
  * peaches, the hairpin, the Old Village's doors all opening, the Sealing Stone rolling home, the storm surge climbing
  * the island, and the peaches' wards.
@@ -17,7 +17,6 @@ import { WARD } from './director';
 import { HIRASAKA, PHOTOS, PLACES, ROOT_PEOPLE, ROOT_TREE, TAPES, TIERS, ISLAND_X, SEA_Y, rootTrunkR } from './places';
 import { HirasakaStory, type StoryView } from './story';
 
-const RAIN = 2200;
 
 /**
  * Part of a mesh (an index range) as plain static geometry moved by `world`: position, normal and uv only, indexed (the
@@ -45,26 +44,6 @@ function bakePart(src: THREE.BufferGeometry, start: number, count: number, world
 
 /** The people the Root Hall's tree holds: the island's own faces, grey as the bark, eyes shut. */
 const ROOT_TINT: AnimeTint = { key: 'hs-roots', skin: 0xe0d2c4, cloth: 0x8a7a6c, hair: 0x5a4c44, eyes: null, outlines: false };
-
-const RAIN_VERT = /* glsl */ `
-  attribute vec3 seed;
-  uniform float uTime;
-  uniform vec3 uCam;
-  varying float vA;
-  void main() {
-    // each drop: a fixed spot in a 60 m box round the camera, falling and wrapping; the second vertex trails above
-    float h = 26.0;
-    float fall = mod(seed.z * h - uTime * (17.0 + seed.x * 4.0), h);
-    vec3 p = vec3(mod(seed.x * 60.0 - uCam.x + 30.0, 60.0) - 30.0 + uCam.x, uCam.y - 8.0 + fall, mod(seed.y * 60.0 - uCam.z + 30.0, 60.0) - 30.0 + uCam.z);
-    p.y += position.y * 0.9;
-    p.x += position.y * 0.18;
-    vA = 0.22 + 0.2 * seed.z;
-    gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
-  }`;
-const RAIN_FRAG = /* glsl */ `
-  varying float vA;
-  uniform float uAmt;
-  void main() { gl_FragColor = vec4(0.72, 0.8, 0.88, vA * uAmt); }`;
 
 /** Foam streaks on dark water (a small canvas, tiled across the surge). */
 function foamTexture(): THREE.CanvasTexture {
@@ -95,8 +74,6 @@ export class IslandLook {
   readonly root = new THREE.Group();
   /** The headlamp the squad wears in the mine (always in the scene: switching it on rebuilds no shader). */
   readonly headlamp = new THREE.SpotLight(0xfff0d8, 0, 34, 0.55, 0.45, 1.4);
-  private readonly rain: THREE.LineSegments;
-  private readonly rainU = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uAmt: { value: 1 } };
   private readonly surge: THREE.Mesh;
   private readonly surgeMat: THREE.MeshStandardMaterial;
   private readonly foam: THREE.CanvasTexture;
@@ -133,23 +110,6 @@ export class IslandLook {
 
   constructor() {
     this.root.name = 'HirasakaLook';
-    // ---- the rain ----
-    const g = new THREE.BufferGeometry();
-    const pos = new Float32Array(RAIN * 6);
-    const seed = new Float32Array(RAIN * 6);
-    for (let i = 0; i < RAIN; i++) {
-      const a = Math.random();
-      const b = Math.random();
-      const c = Math.random();
-      pos.set([0, 0, 0, 0, 1, 0], i * 6);
-      seed.set([a, b, c, a, b, c], i * 6);
-    }
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    g.setAttribute('seed', new THREE.BufferAttribute(seed, 3));
-    this.rain = new THREE.LineSegments(g, new THREE.ShaderMaterial({ uniforms: this.rainU, vertexShader: RAIN_VERT, fragmentShader: RAIN_FRAG, transparent: true, depthWrite: false }));
-    this.rain.frustumCulled = false;
-    this.root.add(this.rain);
-
     // ---- the storm surge over the island, and the waves over the seawall ----
     this.foam = foamTexture();
     this.surgeMat = new THREE.MeshStandardMaterial({ color: 0x3a6a6c, map: this.foam, roughness: 0.12, metalness: 0.5, transparent: true, opacity: 0.9, emissive: 0x0c2224 });
@@ -406,11 +366,6 @@ export class IslandLook {
     this.t += dt;
     const t = this.t;
     this.people.visible = Math.hypot(cam.position.x - ROOT_TREE.x, cam.position.z - ROOT_TREE.z) < 46;
-    // rain round the camera (none underground, harder in the surge)
-    this.rain.visible = !underground;
-    this.rainU.uTime.value = t;
-    this.rainU.uCam.value.copy(cam.position);
-    this.rainU.uAmt.value = v.surge > 0 ? 1.4 : 1;
     // the surge: the water's top eases up to its level, a swell on it
     const target = HirasakaStory.seaLevel(v);
     this.sea += (target - this.sea) * Math.min(1, dt * 0.35);

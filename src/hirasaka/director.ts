@@ -181,7 +181,7 @@ export class HirasakaDirector {
 
   /**
    * Every frame on whoever runs the infected: the wards, Mio's pace, the hags on the climb. Returns whether Mio has
-   * reached the stone (it will not roll while she leans on it).
+   * reached the stone (it barely rolls while she leans on it).
    */
   step(dt: number, v: StoryView, stand: readonly Stand[], rng: Rng): { mioAtStone: boolean } {
     this.view = v;
