@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.330",
+      "date": "2026-11-05",
+      "title": "Discord: the other pages open on the website",
+      "notes": [
+        "In the Discord Activity, the admin page, the cinematics, the bestiary and the licence now open on the website in your browser (Discord asks first). Before, the admin page took over the Activity, wasn't signed in and had no way back, and the others didn't open at all."
+      ]
+    },
+    {
       "version": "0.4.329",
       "date": "2026-11-05",
       "title": "Play inside Discord",

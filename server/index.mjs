@@ -289,7 +289,8 @@ if (DEV_LOGIN) {
 // server exchanges it here (the same Discord app and secret as the website's sign-in) and answers with Discord's
 // access token (the SDK's `authenticate` wants it) and this server's session token (sent back as a Bearer header).
 
-app.get('/api/discord/config', async () => ({ clientId: env.DISCORD_CLIENT_ID || null }));
+// publicUrl: where the Activity sends the pages that need the website (the admin page, the films, the bestiary)
+app.get('/api/discord/config', async () => ({ clientId: env.DISCORD_CLIENT_ID || null, publicUrl: PUBLIC_URL }));
 
 app.post('/api/discord/token', async (req, reply) => {
   if (!env.DISCORD_CLIENT_ID || !env.DISCORD_CLIENT_SECRET) return reply.code(503).send({ error: 'Discord sign-in is not configured on this server' });

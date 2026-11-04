@@ -26,7 +26,7 @@ export async function connectDiscord(onStatus: (msg: string) => void): Promise<D
   // mapped hosts load)
   patchUrlMappings([CDN_MAPPING], { patchFetch: true, patchWebSocket: false, patchXhr: false, patchSrcAttributes: true });
 
-  const cfg = (await (await apiFetch('/api/discord/config')).json()) as { clientId?: string };
+  const cfg = (await (await apiFetch('/api/discord/config')).json()) as { clientId?: string; publicUrl?: string };
   if (!cfg.clientId) {
     console.warn('[discord] the server has no DISCORD_CLIENT_ID');
     return null;
@@ -76,24 +76,40 @@ export async function connectDiscord(onStatus: (msg: string) => void): Promise<D
     }
   }
 
-  // links out: an iframe cannot open a tab, Discord opens it (after asking the player)
+  // Links out: the Activity's frame cannot open a tab, so Discord opens them in the browser (after asking the player).
+  // The game's other pages (the admin page, the films, the bestiary, the licence) open on the website too: in here a
+  // page cannot be signed in (no cookie, and a page load cannot carry the session token) and has no way back.
+  const site = (cfg.publicUrl || 'https://zombies.genxmims.org').replace(/\/$/, '');
+  const outward = (href: string): string | null => {
+    const url = new URL(href, location.href);
+    if (url.origin !== location.origin) return url.href;
+    // the game page itself stays in the Activity
+    if (url.pathname === '/' || url.pathname === '/index.html') return null;
+    return site + url.pathname + url.search + url.hash;
+  };
+  const openOut = (url: string): void => void sdk.commands.openExternalLink({ url }).catch((err) => console.warn('[discord] open link', err));
   document.addEventListener(
     'click',
     (ev) => {
       const a = (ev.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
       if (!a) return;
-      const url = new URL(a.href, location.href);
-      if (url.origin === location.origin) return;
+      const out = outward(a.href);
+      if (out === null) return;
       ev.preventDefault();
-      void sdk.commands.openExternalLink({ url: url.href }).catch(() => {});
+      openOut(out);
     },
     true,
   );
+  window.open = (url?: string | URL) => {
+    const out = url === undefined ? null : outward(String(url));
+    if (out !== null) openOut(out);
+    return null;
+  };
 
   return {
     instanceId: sdk.instanceId,
     invite: () => void sdk.commands.openInviteDialog().catch((err) => console.warn('[discord] invite', err)),
-    openExternal: (url) => void sdk.commands.openExternalLink({ url }).catch(() => {}),
+    openExternal: (url) => openOut(outward(url) ?? url),
     presence: (details, state) => {
       // after a reload the scope is not known again: try, and let Discord refuse
       if (!canPresence && !kept) return;
