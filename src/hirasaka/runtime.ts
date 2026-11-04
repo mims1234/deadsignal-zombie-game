@@ -79,7 +79,7 @@ export class HirasakaRuntime {
     this.sound = new HirasakaSound(g.audio);
     g.worldRoot.add(this.look.root);
     this.dir = new HirasakaDirector(g.level, g.zombies);
-    g.zombies.pickVariant = hirasakaVariantPicker();
+    g.zombies.pickVariant = hirasakaVariantPicker(() => this.dir.lureVariant);
     g.zombies.spawnAllowed = this.dir.spawnAllowed();
     g.zenv.blind = () => this.blind();
     g.interaction.sources.push((t) => this.targets(t));

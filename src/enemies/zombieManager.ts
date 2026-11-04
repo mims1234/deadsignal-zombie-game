@@ -120,6 +120,12 @@ export class ZombieManager {
   namer: (() => string | null) | null = null;
   /** May the director spawn at this point? (The Asylum: only in zones whose doors are open.) null: anywhere. */
   spawnAllowed: ((x: number, z: number) => boolean) | null = null;
+  /**
+   * A map's director can draw the dead in for a while (HIRASAKA: a noise on the island): the ambient spawn rate is
+   * multiplied by `rateMul` and its cap raised by `capBonus` (never past the anime cast's cap).
+   */
+  rateMul = 1;
+  capBonus = 0;
   /** Where the Warden lives (his hunt's lair); he is brought back here when he strays and nobody is near. */
   private lair: { x: number; z: number; yaw: number } | null = null;
   private strayT = 0;
@@ -247,6 +253,12 @@ export class ZombieManager {
     rng: Rng,
     opts: { state?: ZombieState; ambient?: boolean; boss?: boolean; hpScale?: number; yaw?: number; rig?: ZombieRig; def?: ZombieDef; curable?: boolean; oneOff?: boolean; y?: number; area?: number; variant?: ZombieVariant } = {},
   ): Zombie {
+    // HIRASAKA's tiers are raised floors: anything spawned without a height stands on the floor there (an agent only ever
+    // steps up a few tenths of a metre, so one put at y 0 under Market Lane would stay inside the retaining wall)
+    if (opts.y === undefined && this.level.data.id === 'hirasaka') {
+      const y = this.level.world.floorHeight(x, z, 0.3);
+      opts = { ...opts, y, area: opts.area ?? this.level.floors.areaAt(x, y, z) };
+    }
     // the Sakura District's kinds: chosen here (or given: a co-op guest's puppet, a miko's summons)
     const variant: ZombieVariant = opts.variant ?? (this.pickVariant && !opts.rig && !opts.curable ? this.pickVariant(type, x, z, opts.y ?? 0, rng) : '');
     if (variant) {
@@ -814,12 +826,14 @@ export class ZombieManager {
       const lite = liteOffset(ctx.region, ctx.phase, ctx.quality);
       let interval = (spawnInterval(ctx.region, ctx.phase) * lite.interval) / this.tuning.count;
       if (ctx.defenseActive) interval = Math.min(interval, MISSION.defense.spawnInterval);
+      interval /= Math.max(0.2, this.rateMul);
       this.spawnTimer = interval * (0.8 + rng.f() * 0.4);
       let cap = Math.min(SPAWN.hardCap, Math.max(3, Math.round(activeCap(ctx.region, ctx.phase, ctx.quality) * this.tuning.count)));
       if (ctx.defenseActive) cap = Math.max(cap, MISSION.defense.activeCap);
       if (ctx.extractionElapsed !== null) cap = Math.min(cap, MISSION.extraction.activeCap);
+      cap += this.capBonus;
       if (this.theme === 'sakura') cap = Math.min(cap, animeHordeCap());
-      if (active < cap && nearAlerted < SPAWN.nearbyLimit * this.tuning.count) {
+      if (active < cap && nearAlerted < (SPAWN.nearbyLimit + this.capBonus) * this.tuning.count) {
         const type = pickSpawnType(ctx.region, ctx.phase, rng);
         this.spawnFrom(type, ctx.defenseActive ? 'defense' : 'general', ctx, env, rng, ctx.phase, ctx.defenseActive ? 1 : lite.hp);
       }

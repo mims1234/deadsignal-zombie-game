@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.328",
+      "date": "2026-11-05",
+      "title": "HIRASAKA rebuilt in the rock",
+      "notes": [
+        "The island's infected now stand on the tier they're on. At the start they were stuck under the floors of Market Lane, the school tier, Block 65 and the summit, inside the retaining walls where nobody could see them.",
+        "Loud moments draw the dead in instead of spawning them out of the air: Genzō's key, the generator, each sea gate, the peaches and Kurogane waking each raise the spawn rate for a while. The infected come from out of sight toward the noise, mostly the kind that belongs there (islanders, the drowned, miners).",
+        "Genzō's tapes, the photographs and his key now lie well apart, so their lines don't run into each other. Tape 2 is at the shrine on the summit, one photograph is on the ferry noticeboard on the seawall, and another is on the washing lines outside Block 65. A tape waits as long as it has to and is never dropped or talked over.",
+        "Real rock: craggy sea stacks, crags along the island's sides and its north cliff, and a jagged headland round the mine where there was a flat grey wall. In the mine, cut stone walls with rock breaking out of them, a gravel floor, and rock hanging from the caverns' roofs.",
+        "The Old Village is now thatched minka: stone footings, mud walls in a dark timber frame, lit shoji, slatted windows and lanterns by the doors. The peach tree is twisted, under a white crown of blossom.",
+        "The Root Hall's tree holds its people: islanders and miners in the bark, arms spread, with the roots grown up and wound over them, and more lying in the roots with their feet to the trunk. It is a vast, twisted trunk with boughs spreading up into the roof.",
+        "The lighthouse has its gallery and railing, a glass lantern room under a red dome, a door and windows. Block 65 and the retaining walls have floor slabs, sills and lintels."
+      ]
+    },
+    {
       "version": "0.4.327",
       "date": "2026-11-04",
       "title": "HIRASAKA, the island that sealed its mine",

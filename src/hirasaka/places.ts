@@ -120,17 +120,20 @@ export const PLACES = {
 /** Genzō's five tapes, where each lies. */
 export const TAPES = [
   { x: -10.5, y: 0, z: 38.6, where: 'the pier hut' },
-  { x: -40.4, y: 18, z: -19.4, where: "Genzō's room" },
+  { x: 18, y: 14.4, z: -35.4, where: 'the shrine on the summit' },
   { x: 150, y: 0, z: 40, where: 'a coal face in the galleries' },
   { x: 202, y: 0, z: 19.5, where: 'a house in the Old Village' },
   { x: 174, y: 0, z: -24, where: 'the Root Hall' },
 ] as const;
 
-/** The five photographs (the Easter egg: every one found and the gallery telephone rings). */
+/**
+ * The five photographs (the Easter egg: every one found and the gallery telephone rings). Each lies well away from any
+ * tape and from Genzō's key, so what one says never runs into what another does.
+ */
 export const PHOTOS = [
-  { x: -12.6, y: 0, z: 36.4, where: 'the pier hut' },
+  { x: -20, y: 0, z: 42.8, where: 'the ferry noticeboard on the seawall' },
   { x: -20, y: 10.8, z: -5, where: 'the school roof' },
-  { x: -41.2, y: 18, z: -21.2, where: "Genzō's room" },
+  { x: 28.5, y: 10.8, z: -15.2, where: 'the washing lines outside Block 65' },
   { x: 192, y: 0, z: 4.4, where: 'a house in the Old Village' },
   { x: 214, y: 0, z: -30, where: 'the Root Hall' },
 ] as const;
@@ -209,3 +212,28 @@ export const SEA_SPOTS = [
  * infected wears its own body (`ANIME_CAST.kinds`, dressed by `anime/looks.ts`).
  */
 export const NATSUKI_MODEL = 'victoria.vrm';
+
+/**
+ * The tree in the Root Hall whose roots are people (`world/layout/hirasakaDress.ts` grows it, `look.ts` puts the people
+ * in it, wearing the island's own faces). Each person is at angle `a` round the trunk: upright in the bark with their
+ * feet at height `y`, or lying in the roots (`r` metres out from the trunk's centre, feet toward it).
+ */
+export const ROOT_TREE = { x: 196, z: -36, r: 3 } as const;
+export const ROOT_PEOPLE: readonly { a: number; y?: number; r?: number; kind: 'resident' | 'miner' | 'drowned' }[] = [
+  { a: 0.35, y: 0.5, kind: 'resident' },
+  { a: 1.5, y: 5.6, kind: 'drowned' },
+  { a: 2.5, y: 2.4, kind: 'miner' },
+  { a: 4.3, y: 0.7, kind: 'resident' },
+  { a: 5.4, y: 3.8, kind: 'miner' },
+  { a: 0.95, r: 5.4, kind: 'miner' },
+  { a: 2.05, r: 6.2, kind: 'resident' },
+  { a: 3.3, r: 5.2, kind: 'drowned' },
+  { a: 4.1, r: 9.6, kind: 'miner' },
+  { a: 5.0, r: 5.8, kind: 'resident' },
+];
+
+/** The Root Hall tree's trunk radius at height y (broad at the floor, narrowing into the roof). */
+export function rootTrunkR(y: number): number {
+  const t = Math.min(1, Math.max(0, (y + 1) / 22));
+  return 3.1 + (1.4 - 3.1) * Math.pow(t, 0.8);
+}

@@ -49,7 +49,9 @@ try {
   await tp(-39.4, -20, Math.PI / 2, 18, -0.15);
   await shot('02-genzo-room');
   await act('key');
+  await tp(18, -35.4, Math.PI, 14.4, 0);
   await act('tape', 1);
+  await tp(28.5, -15.2, 0, 10.8, 0);
   await act('photo', 2);
   await tp(-20, -14, -0.4, 10.8, 0.1);
   await shot('03-block65');
@@ -70,6 +72,7 @@ try {
   await sleep(2600);
   await shot('06-wave');
   await act('tape', 0);
+  await tp(-20, 42.6, Math.PI, 0, 0);
   await act('photo', 0);
   await tp(-20, -5, 0, 10.8, 0);
   await act('photo', 1);

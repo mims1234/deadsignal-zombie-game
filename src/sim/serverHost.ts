@@ -298,7 +298,7 @@ export class SessionSim {
     if (this.map === 'hirasaka') {
       this.hirasaka = new HirasakaStory();
       this.hirasakaDir = new HirasakaDirector(this.level, this.zombies);
-      this.zombies.pickVariant = hirasakaVariantPicker();
+      this.zombies.pickVariant = hirasakaVariantPicker(() => this.hirasakaDir?.lureVariant ?? '');
       this.zombies.spawnAllowed = this.hirasakaDir.spawnAllowed();
     }
   }

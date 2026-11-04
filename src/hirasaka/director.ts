@@ -1,9 +1,10 @@
 /**
  * The island's infected, act by act (no THREE): the solo game and the co-op simulation both run one (whoever runs the
- * infected). Every moment of the story answers: the islanders pour down Block 65's stair for the key, the summit fills
- * while the generator catches, the drowned rise at each sea gate, the Old Village opens every door for its peaches,
- * Kurogane wakes for Mio's hairpin with his miners round him. On the climb Mio follows (nothing hurts her; every look
- * back brings her on faster), the Hags of the Slope crawl up behind, and the drowned come up out of the surge.
+ * infected). Every loud moment of the story draws the dead in: nobody
+ * appears out of the air at a trigger - the spawn rate rises for a while (`draw`) and they come from out of sight toward
+ * the noise: islanders for Genzō's key and the generator, the drowned for the sea gates, the deep for the peaches,
+ * miners for Kurogane (who wakes in the Root Hall himself). On the climb Mio follows (nothing hurts her; every look
+ * back brings her on faster), the Hags of the Slope crawl up behind, and the surge drives the drowned up ahead of it.
  *
  * Peaches: where one lands, nothing of the dead will cross a ring round it for a few seconds (Mio included).
  */
@@ -13,23 +14,40 @@ import type { Zombie } from '../enemies/zombie';
 import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { Level } from '../world/level';
-import { VILLAGE_HOUSES } from '../world/layout/hirasaka';
-import { HIRASAKA, PLACES, SEA_SPOTS, TIERS, inMine, tierAt } from './places';
+import { HIRASAKA, SEA_SPOTS, TIERS, inMine, tierAt } from './places';
 import { ACT, HirasakaStory, type Stand, type StoryEvent, type StoryView } from './story';
 
 /** A peach's ward: radius and seconds. */
 export const WARD = { r: 4.6, t: 7 };
 
 /** `ZombieManager.pickVariant` for the island. */
-export function hirasakaVariantPicker(): (type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant {
-  return (type, x, z, _y, rng) => hirasakaVariant(type, x, z, () => rng.f());
+export function hirasakaVariantPicker(lure?: () => ZombieVariant): (type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant {
+  return (type, x, z, _y, rng) => {
+    // a lure brings mostly its own kind (the mine's kinds only in the mine, the island's only on the island)
+    const v = lure?.() ?? '';
+    if (v && type !== 'warden' && (v === 'miner' || v === 'lampeater') === inMine(x) && (v !== 'slag' || type === 'armored') && rng.f() < 0.65) return v;
+    return hirasakaVariant(type, x, z, () => rng.f());
+  };
 }
+
+/** A lure: seconds left and in all, how much faster the dead come, how many more at once, and mostly what kind. */
+interface Lure {
+  t: number;
+  len: number;
+  mul: number;
+  cap: number;
+  variant: ZombieVariant;
+}
+
+/** How long the generator's lure lasts (about as long as the summit is held while it catches). */
+const GENERATOR_LURE = 45;
 
 export class HirasakaDirector {
   private readonly wards: { x: number; z: number; t: number }[] = [];
   private hagT = 0;
   private burst = 0;
   private mioT = 0;
+  private lure: Lure = { t: 0, len: 1, mul: 1, cap: 0, variant: '' };
   /** The story's view as last seen (what `spawnAllowed` reads). */
   private view: StoryView = HirasakaStory.empty();
 
@@ -56,6 +74,9 @@ export class HirasakaDirector {
     this.hagT = 0;
     this.burst = 0;
     this.mioT = 0;
+    this.lure = { t: 0, len: 1, mul: 1, cap: 0, variant: '' };
+    this.zombies.rateMul = 1;
+    this.zombies.capBonus = 0;
     this.view = HirasakaStory.empty();
     this.zombies.vanish((z) => z.isBoss);
   }
@@ -76,6 +97,18 @@ export class HirasakaDirector {
     }
   }
 
+  /** The kind a lure is drawing in (none when nothing is). */
+  get lureVariant(): ZombieVariant {
+    return this.lure.t > 0 ? this.lure.variant : '';
+  }
+
+  /** A noise draws the dead in: for `seconds`, `mul` times the spawn rate and `cap` more at once (the stronger lure wins). */
+  private draw(seconds: number, mul: number, cap: number, variant: ZombieVariant = ''): void {
+    const l = this.lure;
+    if (l.t > 0 && (l.mul - 1) * l.t > (mul - 1) * seconds) return;
+    this.lure = { t: seconds, len: seconds, mul, cap, variant };
+  }
+
   /** A ward where a peach landed. */
   peach(x: number, z: number): void {
     this.wards.push({ x, z, t: WARD.t });
@@ -85,36 +118,26 @@ export class HirasakaDirector {
   onEvent(e: StoryEvent, v: StoryView, rng: Rng): void {
     switch (e.kind) {
       case 'done':
-        if (e.job === 'key') {
-          // the block wakes: down its stair and out of its doors
-          this.horde('shambler', 4, -14, -16, 4, rng, 'resident');
-          this.horde('runner', 1, -4, -14, 3, rng, 'resident');
-        }
+        // Genzō's door slamming open on Block 65's roof is heard across the island
+        if (e.job === 'key') this.draw(30, 2.6, 4, 'resident');
         break;
       case 'generating':
-        this.horde('shambler', 3, 30, -22, 4, rng, 'resident');
-        this.horde('runner', 2, -2, -22, 3, rng);
+        // the generator's roar on the summit, as long as it runs up
+        this.draw(GENERATOR_LURE, 3, 6, 'resident');
         break;
-      case 'valve': {
-        const k = PLACES.valves[e.i]!;
-        this.horde('shambler', 2, k.x, k.z - 3, 3, rng, 'drowned');
-        if (e.n === 3) this.horde('armored', 1, k.x, k.z - 6, 2, rng, 'slag');
+      case 'valve':
+        // each sea gate grinding open; the last one loudest
+        this.draw(e.n === 3 ? 30 : 20, e.n === 3 ? 3 : 2.4, e.n === 3 ? 5 : 3, 'drowned');
         break;
-      }
       case 'peaches':
-        // every door in the village opens at once
-        VILLAGE_HOUSES.forEach((h, i) => {
-          if (i % 2) return;
-          const fx = Math.sin(h.rot) * 3.4;
-          const fz = Math.cos(h.rot) * 3.4;
-          this.horde('shambler', 1, h.x + fx, h.z + fz, 0.6, rng, i % 4 ? 'resident' : 'miner');
-        });
-        this.horde('runner', 2, 196, 26, 3, rng, 'lampeater');
+        // every door in the village opens at once (`look.ts`), and the deep comes to see who took them
+        this.draw(35, 3, 6, 'miner');
         break;
       case 'hairpin': {
+        // Kurogane wakes where he lies in the Root Hall and calls his shift back to work
         const b = this.zombies.spawnWarden(rng);
         b.setState('chase');
-        this.horde('shambler', 3, 196, -28, 6, rng, 'miner');
+        this.draw(40, 2.6, 5, 'miner');
         break;
       }
       case 'cable': {
@@ -124,16 +147,13 @@ export class HirasakaDirector {
         break;
       }
       case 'surfaced':
-        this.horde('shambler', 3, 38, 38, 4, rng, 'drowned');
+        this.draw(30, 2.4, 4, 'drowned');
         this.hagT = 2;
         break;
-      case 'surge': {
-        // the drowned come up out of it onto the tier above the water
-        const t = Math.min(TIERS.length - 1, e.i + 1);
-        const z = TIERS[t]!.z1 - 3;
-        for (const x of [-40, -10, 22, 48]) this.horde('shambler', 1, x, z, 1, rng, 'drowned');
+      case 'surge':
+        // the sea coming over a tier drives the drowned up ahead of it
+        this.draw(25, 2.2, 4, 'drowned');
         break;
-      }
       case 'look':
         this.burst = 1.6;
         break;
@@ -166,6 +186,17 @@ export class HirasakaDirector {
   step(dt: number, v: StoryView, stand: readonly Stand[], rng: Rng): { mioAtStone: boolean } {
     this.view = v;
     const zm = this.zombies;
+    // the lure: full strength, then fading out over its last third
+    const l = this.lure;
+    if (l.t > 0) {
+      l.t = Math.max(0, l.t - dt);
+      const k = Math.min(1, l.t / (l.len * 0.35));
+      zm.rateMul = 1 + (l.mul - 1) * k;
+      zm.capBonus = Math.round(l.cap * k);
+    } else {
+      zm.rateMul = 1;
+      zm.capBonus = 0;
+    }
     // the peaches' wards: nothing of the dead stands inside one
     for (let i = this.wards.length - 1; i >= 0; i--) {
       const w = this.wards[i]!;

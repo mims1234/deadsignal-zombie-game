@@ -15,6 +15,10 @@ import { ACT, decodeStory, encodeStory, HIRASAKA_STORY, HirasakaStory } from '..
 import { HIRASAKA, PHOTOS, PLACES, SURGE, TAPES, TIERS } from '../src/hirasaka/places';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import { FlowField } from '../src/world/nav';
+import { ZombieManager } from '../src/enemies/zombieManager';
+import { createNullRigFactory } from '../src/sim/nullRig';
+import { HirasakaDirector } from '../src/hirasaka/director';
+import { Rng } from '../src/logic/rng';
 
 const up = (o: { x: number; y?: number; z: number }) => [{ x: o.x, y: o.y ?? 0, z: o.z, up: true }];
 const Y4 = TIERS[4].y;
@@ -199,6 +203,52 @@ describe('HIRASAKA: the island and the mine', () => {
     ];
     const cut = points.filter(([, x, z]) => !mineField.isReachable(x, z)).map(([n]) => n);
     expect(cut).toEqual([]);
+  });
+
+  it('every spawn point and every infected placed at the start stands on open ground it can walk from', () => {
+    const pts = [...level.data.spawnPoints, ...level.data.ambient];
+    const cut = pts.filter((p) => !(p.x > 100 ? mineField : field).isReachable(p.x, p.z)).map((p) => `${p.x},${p.z}`);
+    expect(cut).toEqual([]);
+  });
+
+  it('the infected are put on the floor where they spawn (a tier, the school roof), never under it', () => {
+    const zm = new ZombieManager(createNullRigFactory(), level);
+    const rng = new Rng(7);
+    for (const t of TIERS) {
+      const z = zm.spawn('shambler', 10, (t.z0 + t.z1) / 2, rng);
+      expect(z.y).toBeCloseTo(t.y, 1);
+    }
+    expect(zm.spawn('shambler', -20, -5, rng).y).toBeCloseTo(10.8, 1);
+    expect(zm.spawn('shambler', 150, 30, rng).area).toBe(mine);
+  });
+
+  it('a loud moment draws the dead in (the spawn rate rises for a while) instead of spawning them out of the air', () => {
+    const zm = new ZombieManager(createNullRigFactory(), level);
+    const dir = new HirasakaDirector(level, zm);
+    const rng = new Rng(3);
+    const v = HirasakaStory.empty();
+    const before = zm.zombies.length;
+    dir.onEvent({ kind: 'valve', i: 0, n: 1 }, v, rng);
+    dir.onEvent({ kind: 'done', job: 'key', n: 1 }, v, rng);
+    expect(zm.zombies.length).toBe(before);
+    dir.step(0.1, v, [], rng);
+    expect(zm.rateMul).toBeGreaterThan(2);
+    expect(zm.capBonus).toBeGreaterThan(0);
+    expect(['drowned', 'resident']).toContain(dir.lureVariant);
+    for (let t = 0; t < 40; t += 0.5) dir.step(0.5, v, [], rng);
+    expect(zm.rateMul).toBe(1);
+    expect(zm.capBonus).toBe(0);
+  });
+
+  it("Genzō's tapes, the photographs and his key lie well apart (what one says never runs into another)", () => {
+    const things: { x: number; y?: number; z: number }[] = [...TAPES, ...PHOTOS, PLACES.key];
+    for (let i = 0; i < things.length; i++) {
+      for (let j = i + 1; j < things.length; j++) {
+        const a = things[i]!;
+        const b = things[j]!;
+        expect(Math.hypot(a.x - b.x, a.z - b.z, (a.y ?? 0) - (b.y ?? 0))).toBeGreaterThan(8);
+      }
+    }
   });
 
   it('the island climbs: each tier is its height, and the summit is the highest walkable ground', () => {

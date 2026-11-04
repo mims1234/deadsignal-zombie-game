@@ -10,11 +10,41 @@
  */
 import * as THREE from 'three';
 import { VILLAGE_HOUSES } from '../world/layout/hirasaka';
+import { hordeModel } from '../anime/cast';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { AnimeBody, type AnimeTint } from '../anime/vrm';
 import { WARD } from './director';
-import { HIRASAKA, PHOTOS, PLACES, TAPES, TIERS, ISLAND_X, SEA_Y } from './places';
+import { HIRASAKA, PHOTOS, PLACES, ROOT_PEOPLE, ROOT_TREE, TAPES, TIERS, ISLAND_X, SEA_Y, rootTrunkR } from './places';
 import { HirasakaStory, type StoryView } from './story';
 
 const RAIN = 2200;
+
+/**
+ * Part of a mesh (an index range) as plain static geometry moved by `world`: position, normal and uv only, indexed (the
+ * rest pose of a skinned mesh is its geometry as stored, so this is the body as it stands at rest).
+ */
+function bakePart(src: THREE.BufferGeometry, start: number, count: number, world: THREE.Matrix4): THREE.BufferGeometry | null {
+  const pos = src.attributes.position;
+  if (!pos) return null;
+  const idx = src.index;
+  const n = idx ? idx.count : pos.count;
+  const from = Math.max(0, start);
+  const to = Math.min(n, from + (Number.isFinite(count) ? count : n));
+  if (to <= from) return null;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', pos.clone());
+  g.setAttribute('normal', src.attributes.normal ? src.attributes.normal.clone() : pos.clone());
+  g.setAttribute('uv', src.attributes.uv ? src.attributes.uv.clone() : new THREE.BufferAttribute(new Float32Array(pos.count * 2), 2));
+  const out = new Uint32Array(to - from);
+  for (let i = from; i < to; i++) out[i - from] = idx ? idx.getX(i) : i;
+  g.setIndex(new THREE.BufferAttribute(out, 1));
+  g.applyMatrix4(world);
+  if (!src.attributes.normal) g.computeVertexNormals();
+  return g;
+}
+
+/** The people the Root Hall's tree holds: the island's own faces, grey as the bark, eyes shut. */
+const ROOT_TINT: AnimeTint = { key: 'hs-roots', skin: 0xe0d2c4, cloth: 0x8a7a6c, hair: 0x5a4c44, eyes: null, outlines: false };
 
 const RAIN_VERT = /* glsl */ `
   attribute vec3 seed;
@@ -97,6 +127,9 @@ export class IslandLook {
   private readonly fwd = new THREE.Vector3();
   /** The lighthouse's lamp is lit. */
   lit = false;
+  /** The Root Hall's people, baked (`rootPeople`): drawn only near the tree. */
+  private readonly people = new THREE.Group();
+  private readonly peopleGeos: THREE.BufferGeometry[] = [];
 
   constructor() {
     this.root.name = 'HirasakaLook';
@@ -242,6 +275,9 @@ export class IslandLook {
     this.hairpin.position.set(PLACES.hairpin.x, 0.5, PLACES.hairpin.z);
     this.root.add(this.hairpin);
 
+    // ---- the people in the Root Hall's tree ----
+    this.rootPeople();
+
     // ---- the Old Village's doors ----
     const doorGeo = new THREE.BoxGeometry(1.4, 2.2, 0.08).translate(0.7, 1.1, 0);
     const doorMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 });
@@ -369,6 +405,7 @@ export class IslandLook {
   update(dt: number, v: StoryView, cam: THREE.Camera, underground: boolean, ground: (x: number, z: number, y: number) => number): void {
     this.t += dt;
     const t = this.t;
+    this.people.visible = Math.hypot(cam.position.x - ROOT_TREE.x, cam.position.z - ROOT_TREE.z) < 46;
     // rain round the camera (none underground, harder in the surge)
     this.rain.visible = !underground;
     this.rainU.uTime.value = t;
@@ -483,7 +520,67 @@ export class IslandLook {
     this.headlamp.target.position.copy(cam.position).addScaledVector(this.fwd, 6);
   }
 
+  /**
+   * The people in the Root Hall's tree (`ROOT_PEOPLE`), in the island's own anime bodies: upright in the bark, arms
+   * spread round the trunk and the roots wound over them, or lying in the roots with their feet to the trunk. They never
+   * move (no animation runs on them: their skeletons stay in the models' rest pose).
+   */
+  private rootPeople(): void {
+    // each body is dressed and placed once, then baked: its meshes in their rest pose, moved where it lies and merged by
+    // material with everyone else's (a few dozen draws for all of them, no skinning; a skinned body each was 120)
+    const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    const tmp = new THREE.Group();
+    ROOT_PEOPLE.forEach((p, i) => {
+      const t = hordeModel('shambler', 31 + i, p.kind);
+      if (!t) return;
+      const body = new AnimeBody(t, { scale: 1.62 / t.measure.height, offset: new THREE.Vector3(), tint: ROOT_TINT, grip: 0.2, shadows: false });
+      const g = new THREE.Group();
+      g.add(body.root);
+      tmp.add(g);
+      const ca = Math.cos(p.a);
+      const sa = Math.sin(p.a);
+      if (p.r === undefined) {
+        const d = rootTrunkR(p.y! + 0.9) * 0.97 - 0.06;
+        g.position.set(ROOT_TREE.x + ca * d, p.y!, ROOT_TREE.z + sa * d);
+        g.rotation.set(0.1, Math.atan2(-ca, -sa), 0, 'YXZ');
+      } else {
+        g.position.set(ROOT_TREE.x + ca * p.r, 0.16, ROOT_TREE.z + sa * p.r);
+        g.rotation.set(Math.PI / 2, Math.atan2(ca, sa), 0, 'YXZ');
+      }
+      tmp.updateMatrixWorld(true);
+      body.root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (!m.isMesh || !m.visible) return;
+        const mats = Array.isArray(m.material) ? m.material : [m.material];
+        const groups = Array.isArray(m.material) && m.geometry.groups.length > 0 ? m.geometry.groups : [{ start: 0, count: Infinity, materialIndex: 0 }];
+        for (const gr of groups) {
+          const mat = mats[gr.materialIndex ?? 0];
+          if (!mat) continue;
+          const geo = bakePart(m.geometry, gr.start, gr.count, m.matrixWorld);
+          if (!geo) continue;
+          const list = byMat.get(mat) ?? [];
+          list.push(geo);
+          byMat.set(mat, list);
+        }
+      });
+      body.dispose();
+    });
+    for (const [mat, geos] of byMat) {
+      const merged = geos.length === 1 ? geos[0]! : mergeGeometries(geos, false);
+      if (!merged) continue;
+      if (geos.length > 1) for (const g of geos) g.dispose();
+      merged.computeBoundingSphere();
+      const mesh = new THREE.Mesh(merged, mat);
+      mesh.matrixAutoUpdate = false;
+      this.people.add(mesh);
+      this.peopleGeos.push(merged);
+    }
+    this.root.add(this.people);
+  }
+
   dispose(): void {
     this.root.removeFromParent();
+    for (const g of this.peopleGeos) g.dispose();
+    this.peopleGeos.length = 0;
   }
 }

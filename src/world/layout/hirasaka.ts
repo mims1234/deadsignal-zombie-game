@@ -19,7 +19,8 @@ import type { FloorLink } from '../floors';
 import type { MaterialName } from '../materials';
 import type { Ctx } from './util';
 import { MAT, bicycle, lanternString, shopFront, shrineHall, stoneLantern, torii, vendingMachine } from './sakura/props';
-import { BLOCK_STAIR, FLIGHTS, HIRASAKA, HIRASAKA_BOUNDS, ISLAND_X, LEDGE, MINE, MINE_ROOMS, PLACES, SCHOOL, SEA_Y, SLOPE, STEP_RUN, TIERS, TAPES, PHOTOS } from '../../hirasaka/places';
+import { crag, cragLine, dressMats, minka, peachTree, rootTree, type DressMats } from './hirasakaDress';
+import { BLOCK_STAIR, FLIGHTS, HIRASAKA, HIRASAKA_BOUNDS, ISLAND_X, LEDGE, MINE, MINE_ROOMS, PLACES, ROOT_TREE, SCHOOL, SEA_Y, SLOPE, STEP_RUN, TIERS, TAPES, PHOTOS } from '../../hirasaka/places';
 
 export interface HirasakaHandles {
   /** The mine's floors area, the cage (players only: always closed to the infected), the old adit (opens on the climb). */
@@ -81,10 +82,15 @@ function facade(c: Ctx, x0: number, x1: number, z: number, y0: number, y1: numbe
       const roll = r();
       const mat: MaterialName = roll < litShare ? 'windowLit' : roll < 0.75 ? 'glassDark' : 'concreteDark';
       addBox(b, mat, x, wy, z + facing * 0.02, 1.1, 1.1, 0.06, 0, { cast: false, receive: false });
+      // a sill under it and a lintel over it, standing out of the face
+      addBox(b, 'concreteWall', x, wy - 0.62, z + facing * 0.1, 1.4, 0.12, 0.22, 0, { cast: false });
+      addBox(b, 'concreteWall', x, wy + 0.62, z + facing * 0.06, 1.3, 0.1, 0.14, 0, { cast: false });
       // a balcony rail now and then, and stains
       if (roll > 0.82) addBox(b, 'rust', x, wy - 0.7, z + facing * 0.25, 1.6, 0.08, 0.5, 0, { cast: false });
     }
   }
+  // a floor slab's edge at every storey, the face's rhythm
+  for (let f = 1; f * 2.8 < h - 0.4; f++) addBox(b, 'concreteWall', (x0 + x1) / 2, y0 + f * 2.8 + 0.2, z + facing * 0.12, w, 0.2, 0.26, 0, { cast: false });
   // a downpipe or two
   for (let x = x0 + 6; x < x1; x += 17) addBox(b, 'rust', x, (y0 + y1) / 2, z + facing * 0.12, 0.16, h, 0.16, 0, { cast: false });
 }
@@ -121,12 +127,11 @@ function flight(c: Ctx, t: number, x: number, w: number, main: boolean): void {
   }
 }
 
-/** A dark cone of rock (the cliffs and the sea stacks). */
-function rock(b: Ctx['b'], x: number, z: number, r: number, h: number, y = SEA_Y): void {
-  const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 7), MAT.stoneDark());
-  m.position.set(x, y + h / 2 - 0.5, z);
-  m.rotation.y = x * 0.37 + z;
-  b.add(m, { cast: false });
+/** A sea stack: a tall crag out of the water, a smaller one leaning on it. */
+function rock(b: Ctx['b'], M: DressMats, x: number, z: number, r: number, h: number, y = SEA_Y): void {
+  const seed = Math.round(x * 13 + z * 7);
+  crag(b, M.rock, { x, y: y + h * 0.36, z, sx: r, sy: h * 0.6, sz: r * 0.85, seed, rot: x * 0.37 + z });
+  crag(b, M.rock, { x: x + r * 0.9, y: y + h * 0.12, z: z - r * 0.5, sx: r * 0.6, sy: h * 0.25, sz: r * 0.55, seed: seed + 1, rot: z });
 }
 
 const door = (at: number, width = 1.6, height = 2.5): Opening => ({ at, width, height, kind: 'door', frame: 'wood' });
@@ -134,6 +139,7 @@ const win = (at: number, width = 1.4, lit = false): Opening => ({ at, width, hei
 
 export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: SpireHandle; handles: HirasakaHandles } {
   const { b, d, floors } = c;
+  const M = dressMats(c.mats);
 
   // ---------------------------------------------------------------------------------------------
   // the sea, the edge of everything
@@ -168,7 +174,7 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     const x = Math.cos(a) * r;
     const z = Math.sin(a) * r * 0.8;
     if (x > 90 && Math.abs(z) < 70) continue; // keep the line of sight to the mine's rock clear of stacks
-    rock(b, x, z, 4 + rand() * 6, 8 + rand() * 18);
+    rock(b, M, x, z, 4 + rand() * 6, 8 + rand() * 18);
   }
   // the island's foot: a rough skirt of concrete and rock below the tiers (the sea breaks on it)
   for (const x of [ISLAND_X.x0 - 3, ISLAND_X.x1 + 3]) {
@@ -176,6 +182,14 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   }
   addBox(b, 'concreteDark', 0, 8, -49, 124, 18, 6, 0, { cast: false });
   addBox(b, 'concreteDark', 0, -0.8, 46.5, 126, 2.4, 5, 0, { cast: false });
+  // the rock the concrete was poured over: crags along the island's sides up to each tier, and its north cliff
+  const tierTop = (zz: number): number => {
+    const t = TIERS.find((q) => zz >= q.z0 - 0.5 && zz <= q.z1 + 0.5);
+    return (t ? t.y : zz < 0 ? TIERS[4].y : 0) + 1.6;
+  };
+  for (const sx of [-1, 1]) cragLine(b, M.rock, sx * 64, 46, sx * 64, -50, 5.5, sx > 0 ? 811 : 812, { y: SEA_Y - 0.6, h: (_x, zz) => tierTop(zz) + 1.2, w: 3.6, depth: 3.4 });
+  cragLine(b, M.rock, -66, -54, 66, -54, 6, 813, { y: SEA_Y - 0.6, h: () => TIERS[4].y + 3, w: 4.2, depth: 3.6 });
+  for (const sx of [-1, 1]) cragLine(b, M.rock, sx * 12, 49.5, sx * 62, 49.5, 5, sx > 0 ? 814 : 815, { y: SEA_Y - 0.8, h: () => 2.6, w: 3, depth: 2.4 });
 
   // ---------------------------------------------------------------------------------------------
   // the tiers: floor, retaining wall (an apartment front), rims
@@ -474,9 +488,35 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
     b.add(band, { cast: false });
   }
   rim(c, LH.x - 3, LH.z - 3, LH.x + 3, LH.z + 3, T4.y + 16, 'lighthouse');
-  addBox(b, 'steelDark', LH.x, T4.y + 16.2, LH.z, 5, 0.3, 5, 0, { cast: false });
-  addBox(b, 'glass', LH.x, T4.y + 17.4, LH.z, 3, 2, 3, 0, { cast: false });
-  addBox(b, 'roof', LH.x, T4.y + 18.6, LH.z, 3.4, 0.4, 3.4, 0, { cast: false });
+  const steel = new THREE.MeshStandardMaterial({ color: 0x23282c, roughness: 0.5, metalness: 0.7 });
+  const lhAt = (m: THREE.Mesh, y: number): void => {
+    m.position.set(LH.x, T4.y + y, LH.z);
+    b.add(m, { cast: false });
+  };
+  // the gallery round the top, its railing, the lantern room's glass and its domed cap
+  lhAt(new THREE.Mesh(new THREE.CylinderGeometry(3.1, 2.4, 0.4, 20), steel), 16.15);
+  lhAt(new THREE.Mesh(new THREE.TorusGeometry(3.0, 0.05, 4, 28).rotateX(Math.PI / 2), steel), 17.25);
+  for (let k = 0; k < 16; k++) {
+    const a = (k / 16) * Math.PI * 2;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.06), steel);
+    post.position.set(LH.x + Math.cos(a) * 3, T4.y + 16.8, LH.z + Math.sin(a) * 3);
+    b.add(post, { cast: false });
+  }
+  lhAt(new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.55, 2.2, 16, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a3438, roughness: 0.1, metalness: 0.4, emissive: 0x6a5a30, emissiveIntensity: 0.35, side: THREE.DoubleSide })), 17.45);
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * Math.PI * 2;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.2, 0.08), steel);
+    bar.position.set(LH.x + Math.cos(a) * 1.57, T4.y + 17.45, LH.z + Math.sin(a) * 1.57);
+    b.add(bar, { cast: false });
+  }
+  lhAt(new THREE.Mesh(new THREE.SphereGeometry(1.75, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x8a1c18, roughness: 0.6, metalness: 0.3 })), 18.55);
+  lhAt(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 1.2, 6), steel), 20.6);
+  // its door, and the small windows up the stair inside
+  addBox(b, MAT.woodDark(), LH.x - 2.62, T4.y + 1.15, LH.z, 0.12, 2.3, 1.2, 0, { cast: false });
+  for (const [y, a] of [[5.5, Math.PI * 0.5], [9.5, Math.PI * 0.75], [13, Math.PI * 0.25]] as const) {
+    const rr = 2.2 + (3 - 2.2) * (1 - y / 16) + 0.02;
+    addBox(b, 'glassDark', LH.x + Math.cos(a) * rr, T4.y + y, LH.z + Math.sin(a) * rr, 0.08, 0.9, 0.55, -a, { cast: false });
+  }
   const G = PLACES.generator;
   addBox(b, 'corrugatedRust', G.x + 1.6, T4.y + 1.3, G.z, 2.4, 2.6, 3.6);
   b.collide({ x: G.x + 1.6, z: G.z, hx: 1.2, hz: 1.8, y0: 0, y1: T4.y + 2.6, mapKind: 'prop', surface: 'metal', tag: 'generator-shed' });
@@ -498,7 +538,7 @@ export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: 
   // ---------------------------------------------------------------------------------------------
   // the mine
   // ---------------------------------------------------------------------------------------------
-  const mine = buildMine(c);
+  const mine = buildMine(c, M);
 
   // the cage: players ride it on purpose; the infected never do
   const cageLink = floors.addLink(
@@ -597,13 +637,15 @@ export function slopeY(x: number): number {
   return Math.min(SLOPE.y, i * STEP_H);
 }
 
-function buildMine(c: Ctx): number {
+function buildMine(c: Ctx, D: DressMats): number {
   const { b, floors } = c;
   const M = MINE;
   const area = floors.addArea('The Mine', 'under', 0, { minX: M.x0, maxX: M.x1, minZ: M.z0, maxZ: M.z1 });
-  const rockMat = new THREE.MeshStandardMaterial({ color: 0x6e6256, roughness: 0.95 });
+  const rockMat = D.mineWall;
   const coalMat = new THREE.MeshStandardMaterial({ color: 0x0e0e10, roughness: 0.7, metalness: 0.2 });
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x3a342e, roughness: 1, side: THREE.DoubleSide });
+  const roofMat = D.mineRoof;
+  const mineTone = [0.062, 0.052, 0.042] as const;
+  let cragSeed = 9000;
   // the shell: the mine sits inside a block of black rock (from the island it is a dark headland far across the water)
   const shell = new THREE.Mesh(new THREE.BoxGeometry(M.x1 - M.x0 + 8, 30, M.z1 - M.z0 + 8), new THREE.MeshStandardMaterial({ color: 0x0a0c0d, roughness: 1, side: THREE.BackSide }));
   shell.position.set((M.x0 + M.x1) / 2, 14, (M.z0 + M.z1) / 2);
@@ -611,6 +653,29 @@ function buildMine(c: Ctx): number {
   const outer = new THREE.Mesh(new THREE.BoxGeometry(M.x1 - M.x0 + 10, 31, M.z1 - M.z0 + 10), new THREE.MeshStandardMaterial({ color: 0x0b0d0e, roughness: 1 }));
   outer.position.set((M.x0 + M.x1) / 2, 14.6, (M.z0 + M.z1) / 2);
   b.add(outer, { cast: false, receive: false });
+  // the headland it is cut into, as the island sees it: crags all round the block and over its top
+  const hx0 = M.x0 - 7;
+  const hx1 = M.x1 + 7;
+  const hz0 = M.z0 - 7;
+  const hz1 = M.z1 + 7;
+  const cliff = (): number => 30;
+  cragLine(b, D.rock, hx0, hz1, hx0, hz0, 6.5, 901, { y: SEA_Y - 1, h: cliff, w: 6.5, depth: 5 });
+  cragLine(b, D.rock, hx0 + 4, hz1 - 3, hx0 + 4, hz0 + 3, 9, 906, { y: 4, h: () => 32, w: 7, depth: 5 });
+  cragLine(b, D.rock, hx0, hz0, hx1, hz0, 8, 902, { y: SEA_Y - 1, h: cliff, w: 7.5, depth: 5 });
+  cragLine(b, D.rock, hx0, hz1, hx1, hz1, 8, 903, { y: SEA_Y - 1, h: cliff, w: 7.5, depth: 5 });
+  cragLine(b, D.rock, hx1, hz0, hx1, hz1, 10, 904, { y: SEA_Y - 1, h: cliff, w: 7.5, depth: 5 });
+  {
+    let q = 905;
+    const r = (): number => {
+      q = (q * 1664525 + 1013904223) >>> 0;
+      return q / 4294967296;
+    };
+    for (let i = 0; i < 26; i++) {
+      const x = M.x0 - 2 + r() * (M.x1 - M.x0 + 4);
+      const z = M.z0 - 2 + r() * (M.z1 - M.z0 + 4);
+      crag(b, D.rock, { x, y: 30, z, sx: 6 + r() * 6, sy: 3 + r() * 6, sz: 6 + r() * 6, seed: 950 + i, rot: r() * 6 });
+    }
+  }
 
   // carve: 1 m cells, each open cell knows its floor and roof
   const cols = M.x1 - M.x0;
@@ -633,7 +698,7 @@ function buildMine(c: Ctx): number {
   const isOpen = (i: number, j: number): boolean => i >= 0 && j >= 0 && i < cols && j < rows && open[j * cols + i] === 1;
   // walls along every edge between open and rock, merged into runs of the same height
   const wallMat = rockMat;
-  const emit = (x0: number, z0: number, x1: number, z1: number, top: number): void => {
+  const emit = (x0: number, z0: number, x1: number, z1: number, top: number, inX: number, inZ: number): void => {
     const hx = Math.max(0.25, (x1 - x0) / 2);
     const hz = Math.max(0.25, (z1 - z0) / 2);
     const cx = (x0 + x1) / 2;
@@ -642,6 +707,23 @@ function buildMine(c: Ctx): number {
     const m = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, top + 0.5, hz * 2), wallMat);
     m.position.set(cx, (top + 0.5) / 2, cz);
     b.add(m, { cast: false });
+    // the face is broken rock: crags set into it, standing a little out into the room
+    const len = Math.max(hx, hz) * 2;
+    if (len < 1.4) return;
+    const fx = inX !== 0 ? (inX > 0 ? x1 : x0) : 0;
+    const fz = inZ !== 0 ? (inZ > 0 ? z1 : z0) : 0;
+    const n = Math.max(1, Math.round(len / 2.6));
+    for (let i = 0; i < n; i++) {
+      const s = cragSeed++;
+      const t = (i + 0.5 + Math.sin(s * 12.9898) * 0.25) / n;
+      const along = inX !== 0 ? z0 + (z1 - z0) * t : x0 + (x1 - x0) * t;
+      const px = inX !== 0 ? fx + inX * 0.08 : along;
+      const pz = inZ !== 0 ? fz + inZ * 0.08 : along;
+      const tall = top > 8;
+      const hh = tall ? 2.5 + (Math.abs(Math.sin(s * 3.1)) * top) / 2.2 : 0.8 + Math.abs(Math.sin(s * 3.1)) * top * 0.35;
+      const w = 1.1 + Math.abs(Math.sin(s * 7.7)) * 0.9;
+      crag(b, D.rock, { x: px, y: hh * 0.45 - 0.2, z: pz, sx: inX !== 0 ? 0.42 : w, sy: hh * 0.62, sz: inX !== 0 ? w : 0.42, seed: s, detail: 1, tone: mineTone });
+    }
   };
   // rows: walls on the north (j-1 rock) and south (j+1 rock) sides of open cells
   for (const dj of [-1, 1]) {
@@ -651,7 +733,7 @@ function buildMine(c: Ctx): number {
       const flush = (iEnd: number): void => {
         if (start < 0) return;
         const z = M.z0 + j + (dj < 0 ? 0 : 1);
-        emit(M.x0 + start, z - (dj < 0 ? 0.5 : 0), M.x0 + iEnd, z + (dj < 0 ? 0 : 0.5), h);
+        emit(M.x0 + start, z - (dj < 0 ? 0.5 : 0), M.x0 + iEnd, z + (dj < 0 ? 0 : 0.5), h, 0, -dj);
         start = -1;
       };
       for (let i = 0; i <= cols; i++) {
@@ -674,7 +756,7 @@ function buildMine(c: Ctx): number {
       const flush = (jEnd: number): void => {
         if (start < 0) return;
         const x = M.x0 + i + (di < 0 ? 0 : 1);
-        emit(x - (di < 0 ? 0.5 : 0), M.z0 + start, x + (di < 0 ? 0 : 0.5), M.z0 + jEnd, h);
+        emit(x - (di < 0 ? 0.5 : 0), M.z0 + start, x + (di < 0 ? 0 : 0.5), M.z0 + jEnd, h, -di, 0);
         start = -1;
       };
       for (let j = 0; j <= rows; j++) {
@@ -695,12 +777,25 @@ function buildMine(c: Ctx): number {
     const y = r.id === 'slopeTop' ? SLOPE.y : 0;
     const w = r.x1 - r.x0;
     const dd = r.z1 - r.z0;
-    const fl = new THREE.Mesh(new THREE.PlaneGeometry(w, dd).rotateX(-Math.PI / 2), rockMat);
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(w, dd).rotateX(-Math.PI / 2), D.mineFloor);
     fl.position.set((r.x0 + r.x1) / 2, y + 0.01, (r.z0 + r.z1) / 2);
     b.add(fl, { cast: false });
     const rf = new THREE.Mesh(new THREE.PlaneGeometry(w, dd).rotateX(Math.PI / 2), roofMat);
     rf.position.set((r.x0 + r.x1) / 2, y + r.h, (r.z0 + r.z1) / 2);
     b.add(rf, { cast: false, receive: false });
+  }
+  // the caverns' roofs hang with rock
+  for (const id of ['village', 'roothall'] as const) {
+    const room = MINE_ROOMS.find((q) => q.id === id)!;
+    for (let i = 0; i < 22; i++) {
+      const s = cragSeed++;
+      const u = Math.abs(Math.sin(s * 12.9898) * 43758.5453) % 1;
+      const v = Math.abs(Math.sin(s * 78.233) * 12543.1234) % 1;
+      const x = room.x0 + 2 + u * (room.x1 - room.x0 - 4);
+      const z = room.z0 + 2 + v * (room.z1 - room.z0 - 4);
+      const len = 1.5 + Math.abs(Math.sin(s)) * 4;
+      crag(b, D.rock, { x, y: room.h - len * 0.4, z, sx: 0.6 + u * 0.9, sy: len * 0.6, sz: 0.6 + v * 0.9, seed: s, detail: 1, tone: mineTone });
+    }
   }
   // the landing at the top of the Slope
   const st = MINE_ROOMS.find((r) => r.id === 'slopeTop')!;
@@ -761,63 +856,27 @@ function buildMine(c: Ctx): number {
   b.collide({ x: PLACES.phone.x, z: 24.3, hx: 0.3, hz: 0.2, y1: 1.8, mapKind: 'prop', tag: 'mine-phone' });
 
   // ---- the Old Village: houses, a well, lanterns in the windows, the tree of white peaches ----
+  VILLAGE_HOUSES.forEach((h, i) => minka(b, D, h.x, h.z, h.rot, 5600 + i * 17));
   for (const h of VILLAGE_HOUSES) {
-    const g = new THREE.Group();
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 5), MAT.woodDark());
-    wall.position.y = 1.5;
-    const roofG = new THREE.Mesh(new THREE.ConeGeometry(4.6, 2.2, 4, 1), MAT.tileRoof());
-    roofG.position.y = 4.1;
-    roofG.rotation.y = Math.PI / 4;
-    roofG.scale.set(1, 1, 0.85);
-    const win1 = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.8), new THREE.MeshStandardMaterial({ color: 0x8a5a30, emissive: 0xff9a40, emissiveIntensity: 0.55 }));
-    win1.position.set(1.8, 1.7, 2.52);
-    g.add(wall, roofG, win1);
-    g.position.set(h.x, 0, h.z);
-    g.rotation.y = h.rot;
-    b.add(g);
     const sideways = Math.abs(Math.sin(h.rot)) > 0.5;
     b.collide({ x: h.x, z: h.z, hx: sideways ? 2.5 : 3, hz: sideways ? 3 : 2.5, y1: 3.2, mapKind: 'building', surface: 'wood', tag: 'village-house' });
   }
   addBox(b, MAT.stone(), 198, 0.5, 14, 2, 1, 2);
   b.collide({ x: 198, z: 14, hx: 1, hz: 1, y1: 1, mapKind: 'prop', tag: 'well' });
   lanternString(c, { x0: 176, z0: 12, x1: 220, z1: 12, y: 4.4, lit: 0.8, seed: 5501 });
-  // the peach tree: a twisted trunk, a pale crown, fruit that glows
+  // the peach tree: a twisted trunk, low boughs, a pale crown of blossom (its glowing fruit is `look.ts`'s)
   const PT = PLACES.peaches;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.9, 6, 7), MAT.pinkBark());
-  trunk.position.set(PT.x, 3, PT.z);
-  trunk.rotation.z = 0.12;
-  b.add(trunk);
-  b.collide({ x: PT.x, z: PT.z, hx: 0.8, hz: 0.8, y1: 6, mapKind: 'prop', surface: 'wood', tag: 'peach-tree' });
-  const crownMat = new THREE.MeshStandardMaterial({ color: 0xc8d0c4, roughness: 0.9, emissive: 0x30403a, emissiveIntensity: 0.35 });
-  for (const [dx, dy, dz, r] of [[0, 7, 0, 3.2], [2, 6.4, 1, 2.4], [-2.2, 6.6, -0.6, 2.3], [0.6, 8.2, -1.4, 2]] as const) {
-    const cr = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), crownMat);
-    cr.position.set(PT.x + dx, dy, PT.z + dz);
-    b.add(cr, { cast: false });
-  }
+  peachTree(b, D);
+  b.collide({ x: PT.x, z: PT.z, hx: 0.9, hz: 0.9, y1: 6, mapKind: 'prop', surface: 'wood', tag: 'peach-tree' });
   b.light({ x: PT.x, y: 5.5, z: PT.z, color: 0xffe8f0, intensity: 110, distance: 34, mode: 'pulse', period: 4, pool: 6, glow: 1.6, weight: 2, tag: 'peach' });
   for (const [x, z] of [[178, 26], [214, -4], [176, -4], [218, 28]] as const) b.light({ x, y: 4, z, color: 0xff9a50, intensity: 36, distance: 16, mode: 'flicker', glow: 0.4, tag: 'village' });
 
   // ---- the Root Hall: the dead tree whose roots are people ----
-  const RT = { x: 196, z: -36 };
-  const big = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 4.2, 18, 9), MAT.pinkBark());
-  big.position.set(RT.x, 9, RT.z);
-  b.add(big);
-  b.collide({ x: RT.x, z: RT.z, hx: 3.4, hz: 3.4, y1: 18, mapKind: 'prop', surface: 'wood', tag: 'root-tree' });
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x8a7a72, roughness: 0.9, emissive: 0x2a0a18, emissiveIntensity: 0.6 });
-  for (let k = 0; k < 14; k++) {
-    const a = (k / 14) * Math.PI * 2;
-    const len = 8 + (k % 4) * 3;
-    const root = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.7, len, 6), MAT.pinkBark());
-    root.position.set(RT.x + Math.cos(a) * (len / 2 + 2), 0.6, RT.z + Math.sin(a) * (len / 2 + 2));
-    root.rotation.set(0, -a, Math.PI / 2 - 0.12);
-    b.add(root, { cast: false });
-    // a body held in the root
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 1.2, 3, 6), bodyMat);
-    body.position.set(RT.x + Math.cos(a) * (len * 0.6 + 2), 0.9, RT.z + Math.sin(a) * (len * 0.6 + 2));
-    body.rotation.set(Math.PI / 2, 0, a);
-    b.add(body, { cast: false });
-  }
+  rootTree(b, D);
+  b.collide({ x: ROOT_TREE.x, z: ROOT_TREE.z, hx: 3.2, hz: 3.2, y1: 18, mapKind: 'prop', surface: 'wood', tag: 'root-tree' });
   for (const [x, z] of [[176, -30], [216, -26], [206, -44], [184, -44], [196, -24]] as const) b.light({ x, y: 6, z, color: 0xd0406e, intensity: 70, distance: 24, mode: 'pulse', period: 5, glow: 0.7, tag: 'roots' });
+  // a cold light on the people the tree holds, from either side of it
+  for (const [x, z] of [[203, -31], [189, -30], [196, -44]] as const) b.light({ x, y: 2.6, z, color: 0xe8d8ff, intensity: 40, distance: 13, mode: 'steady', glow: 0, tag: 'root-people' });
   b.light({ x: PLACES.hairpin.x, y: 1.4, z: PLACES.hairpin.z, color: 0xff3048, intensity: 8, distance: 6, mode: 'pulse', period: 2, glow: 0.4, tag: 'hairpin' });
   return area;
 }

@@ -16,6 +16,8 @@ import { VERSION } from '../version';
 import { CUES, LINE, LINES, type Chain } from './lines';
 
 const BASE = './hirasaka/';
+/** Lines that wait as long as it takes and go to the front of the queue: Genzō's tapes, the calls. */
+const KEEP: ReadonlySet<Chain> = new Set<Chain>(['tape', 'phone']);
 type Vec = { x: number; y: number; z: number };
 
 export interface Played {
@@ -35,7 +37,7 @@ export class HirasakaSound {
   private loaded = false;
   private loading: Promise<void> | null = null;
   /** Story lines waiting their turn (never two at once). */
-  private queue: { id: string; pos?: Vec; chain?: Chain; at: number }[] = [];
+  private queue: { id: string; pos?: Vec; chain?: Chain; at: number; keep: boolean }[] = [];
   private busyUntil = 0;
   private music: { id: string; src: AudioBufferSourceNode; gain: GainNode } | null = null;
   private loops = new Map<string, { stop(fade?: number): void; set?(v: number): void }>();
@@ -126,9 +128,17 @@ export class HirasakaSound {
     const buf = this.buffers.get(id);
     if (!buf || !this.graph()) return 0;
     const now = this.ctx!.currentTime;
-    if (o.story && now < this.busyUntil) {
-      if (this.queue.length < 4) this.queue.push({ id, pos: o.pos, chain: o.chain, at: now });
-      return buf.duration;
+    if (now < this.busyUntil) {
+      // a story line waits its turn (a tape or a call at the front, and never dropped); Natsuki's and the crew's asides
+      // are not said over one at all
+      if (o.story) {
+        const keep = KEEP.has(o.chain ?? LINE[id]?.chain ?? 'dry');
+        const q = { id, pos: o.pos, chain: o.chain, at: now, keep };
+        if (keep) this.queue.splice(this.queue.findIndex((e) => !e.keep) < 0 ? this.queue.length : this.queue.findIndex((e) => !e.keep), 0, q);
+        else if (this.queue.length < 4) this.queue.push(q);
+        return buf.duration;
+      }
+      if (/^(sq[fm]_|nat_)/.test(id)) return 0;
     }
     return this.play(id, buf, o.chain ?? LINE[id]?.chain ?? 'dry', o.pos, o.volume ?? 1, !!o.story);
   }
@@ -622,7 +632,7 @@ export class HirasakaSound {
     if (this.queue.length > 0 && ctx.currentTime >= this.busyUntil) {
       const q = this.queue.shift()!;
       // a line that waited too long has missed its moment
-      if (ctx.currentTime - q.at < 8) this.say(q.id, { pos: q.pos, chain: q.chain, story: true });
+      if (q.keep || ctx.currentTime - q.at < 8) this.say(q.id, { pos: q.pos, chain: q.chain, story: true });
     }
   }
 
