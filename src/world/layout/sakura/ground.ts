@@ -8,7 +8,7 @@ import { skylineBackdrop } from '../../landmarks';
 import { debris, streetLamp, utilityPole, vehicle, roadSign, trafficLight, cones } from '../../props';
 import { groundDecal, groundRect, perimeterWall } from '../../structures';
 import type { Ctx } from '../util';
-import { CANAL, ROADS, SAKURA_BOUNDS, type Rect, ZONES } from './consts';
+import { CANAL, ROADS, SAKURA_BOUNDS, type Rect, UNDER, ZONES } from './consts';
 import { cherryTree, grass, petals, vendingMachine } from './props';
 
 /** Cover `outer` with rectangles, leaving `holes` (axis-aligned, inside it) uncovered. */
@@ -55,7 +55,10 @@ export function buildSakuraGround(c: Ctx, holes: Rect[]): void {
   perimeterWall(b, B.minX, B.maxZ, B.maxX, B.maxZ, 6, 'concreteWall');
   perimeterWall(b, B.minX, B.minZ, B.minX, B.maxZ, 6, 'concreteWall');
   perimeterWall(b, B.maxX, B.minZ, B.maxX, B.maxZ, 6, 'concreteWall');
-  skylineBackdrop(b, { bounds: { minX: B.minX, maxX: B.maxX, minZ: B.minZ, maxZ: B.maxZ }, seed: 77 });
+  // the metro, the lab and Kisaragi are laid out south of the street map: the backdrop leaves them clear (its towers
+  // and the ridge used to stand right through the tunnels and the lab)
+  const avoid = Object.values(UNDER).map((u) => ({ minX: u.x0, maxX: u.x1, minZ: u.z0, maxZ: u.z1 }));
+  skylineBackdrop(b, { bounds: { minX: B.minX, maxX: B.maxX, minZ: B.minZ, maxZ: B.maxZ }, seed: 77, avoid });
 
   // ---- the roads, seven springs on: cracks, grass, the odd young cherry tree through the asphalt ----
   const rnd = c.rng;

@@ -31,8 +31,12 @@ function facadeMat(variant: number): THREE.MeshStandardMaterial {
   });
 }
 
-export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?: number }): void {
+export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?: number; avoid?: Bounds[] }): void {
   const bd = o.bounds;
+  const avoid = o.avoid ?? [];
+  /** Does a footprint (centre, half sizes) come within 3 m of a space the backdrop must leave clear? */
+  const blocked = (x: number, z: number, hx: number, hz: number): boolean =>
+    avoid.some((a) => x + hx > a.minX - 3 && x - hx < a.maxX + 3 && z + hz > a.minZ - 3 && z - hz < a.maxZ + 3);
   const rng = new Rng((o.seed ?? 1) * 104729 + 17);
   const asm = new Assembly(0, 0, 0, 0);
   const m = b.mats;
@@ -98,7 +102,7 @@ export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?
         bw = d;
         bd2 = w;
       }
-      placed.push({ x, z, w: bw, d: bd2, h, face: side });
+      if (!blocked(x, z, bw / 2 + 1, bd2 / 2 + 1)) placed.push({ x, z, w: bw, d: bd2, h, face: side });
       t += w + rng.range(row.gap[0], row.gap[1]);
     }
   };
@@ -171,6 +175,7 @@ export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?
     const p = far(rng.range(60, 110), i);
     const h = rng.range(44, 76);
     const r = rng.range(1.8, 3.2);
+    if (blocked(p.x, p.z, r + 1, r + 1)) continue;
     const bands = 6;
     for (let k = 0; k < bands; k++) {
       const hh = h / bands;
@@ -182,6 +187,7 @@ export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?
   }
   for (let i = 0; i < 3; i++) {
     const p = far(rng.range(70, 115), i + 10);
+    if (blocked(p.x, p.z, 12, 12)) continue;
     const h = 38;
     asm.taper(concrete, 9.5, 12, 14, p.x, 7, p.z, 28, { cast: false });
     asm.taper(concrete, 7, 9.5, 14, p.x, 21, p.z, 28, { cast: false });
@@ -193,6 +199,7 @@ export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?
   for (let i = 0; i < 8; i++) {
     const p = far(rng.range(35, 120), i + 20);
     const h = rng.range(42, 74);
+    if (blocked(p.x, p.z, 1.5, 1.5)) continue;
     const a = new Assembly(p.x, 0, p.z, 0);
     addLattice(a, { y0: 0, y1: h, halfBase: 1.0, halfTop: 0.28, panels: Math.round(h / 4.5), legThickBase: 0.13, legThickTop: 0.07, braceThick: 0.05, legMat: dark, braceMat: dark, cross: false });
     a.commit(b, { cast: false, receive: false });
@@ -210,8 +217,11 @@ export function buildSkylineBackdrop(b: LevelBuilder, o: { bounds: Bounds; seed?
     const noise = (t: number): number => 0.5 + 0.28 * Math.sin(t * 5 + 1.3) + 0.18 * Math.sin(t * 13 + 0.4) + 0.1 * Math.sin(t * 29 + 2.2);
     for (let i = 0; i <= N; i++) {
       const t = (i / N) * Math.PI * 2;
-      const x = cx + Math.cos(t) * rMinX;
-      const z = cz + Math.sin(t) * rMinZ;
+      // pushed further out where it would run through a space it must leave clear
+      let k = 1;
+      while (k < 3 && blocked(cx + Math.cos(t) * rMinX * k, cz + Math.sin(t) * rMinZ * k, 4, 4)) k += 0.05;
+      const x = cx + Math.cos(t) * rMinX * k;
+      const z = cz + Math.sin(t) * rMinZ * k;
       const h = 8 + 34 * noise(t);
       pos.push(x, -2, z, x, h, z);
       if (i < N) {

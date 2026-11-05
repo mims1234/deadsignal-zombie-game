@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.332",
+      "date": "2026-11-05",
+      "title": "Sakura District: no more buildings through the metro and the lab",
+      "notes": [
+        "The tall buildings, chimneys, radio masts and cooling tower of the far-off city no longer stand through the metro, the lab under the theatre or Kisaragi Station. Walls and towers used to cut across the platforms, the tunnel and the lab's rooms. The distant city is still there from the street, it just keeps clear of the underground now.",
+        "The low hills on the horizon no longer run straight through the field at Kisaragi Station."
+      ]
+    },
+    {
       "version": "0.4.331",
       "date": "2026-11-05",
       "title": "HIRASAKA: the stone always rolls, and the island is finished",

@@ -84,11 +84,12 @@ export function overpassRuin(b: LevelBuilder, o: Place & { length: number; width
 /**
  * Distant backdrop ring outside `bounds`: silhouettes of dark city blocks, industrial stacks, a few dim lit windows,
  * radio masts with red beacons (`b.glow`), and a low ridge line. Cheap merged geometry, no colliders. It sits at 20-120 m
- * beyond the bounds, inside the fog, giving the district a sense of being enclosed by a larger dead city.
+ * beyond the bounds, inside the fog, giving the district a sense of being enclosed by a larger dead city. `avoid`: spaces
+ * built out past the bounds (underground rooms laid out off-map) that nothing in the backdrop may stand in.
  */
 export function skylineBackdrop(
   b: LevelBuilder,
-  o: { bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed?: number },
+  o: { bounds: { minX: number; maxX: number; minZ: number; maxZ: number }; seed?: number; avoid?: { minX: number; maxX: number; minZ: number; maxZ: number }[] },
 ): void {
   buildSkylineBackdrop(b, o);
 }
