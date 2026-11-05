@@ -10,6 +10,7 @@ import { yawFacing } from '../data';
 import { stairwellDown } from '../storeys';
 import type { Ctx } from '../util';
 import { SITES, ZONES } from './consts';
+import { trimBlock, wallClock } from './facades';
 import { bicycle, cherryTree, commuterCar, grass, groundWords, ivy, jpSignMaterial, luggagePile, petals, rails, signBoard, tarpCamp, wallWords } from './props';
 
 /** The station's metro stairwell (the kiosk on the plaza): its doorway, facing north onto the plaza. */
@@ -69,6 +70,12 @@ export function buildStation(c: Ctx, metro: { area: number; x: number; z: number
     tag: 'station-hall',
   });
   void hall;
+  // its dress: pilasters between the doors, a cornice, a deep canopy over the plaza doors, the clock stopped at 21:47
+  trimBlock(b, { x0: -117, z0: 40.5, x1: -87, z1: 49.5, h: 5.5, pilasterEvery: 5, clear: { N: [[-109, 3.2], [-95, 3.2], [-102, 2.6]], S: [[-102, 4]] } });
+  addBox(b, 'concreteDark', -102, 3.45, 39.6, 30.6, 0.22, 1.9, 0, { cast: false });
+  addBox(b, 'steelDark', -102, 3.25, 38.68, 30.6, 0.3, 0.08);
+  wallClock(b, { x: -86.98, y: 3.6, z: 45, side: 'E', r: 0.8 });
+  wallClock(b, { x: -117.02, y: 3.6, z: 45, side: 'W', r: 0.8 });
   signBoard(b, { x: -102, z: 40.4, y: 6.2, rot: Math.PI, w: 9, h: 1.3, text: '桜木駅', sign: { bg: '#f2f0ea', fg: '#1a2a5a', sub: 'SAKURAGI STATION', worn: 0.7 } });
   ivy(b, { x: -112, z: 40.45, rot: Math.PI, w: 6, h: 5.4 });
   ivy(b, { x: -90, z: 40.45, rot: Math.PI, w: 4, h: 4.2 });

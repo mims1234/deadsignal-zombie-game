@@ -12,6 +12,7 @@ import { yawFacing } from '../data';
 import { stairwellDown, storeyBuilding } from '../storeys';
 import type { Ctx } from '../util';
 import { ARCADE, ZONES } from './consts';
+import { streetFace, trimBlock } from './facades';
 import { MAT, cherryTree, grass, ivy, jpSignMaterial, lanternString, petals, shopFront, signBoard, vendingMachine, wallWords } from './props';
 
 /** The shotengai's metro stairwell: its doorway on the south side of the lane, facing north into the arcade. */
@@ -58,6 +59,12 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
       const h = 6.5 + rng.f() * 3;
       solidBlock(b, { x: cx, z: (z0 + z1) / 2, w: w - 0.3, d: z1 - z0, height: h, wallMaterial: rng.f() < 0.5 ? 'plaster' : 'brick', facade: { floors: 2, floorHeight: 3.2, seed: Math.round(cx * 13), faces: [side === 'N' ? 'S' : 'N'], litFraction: 0 } });
       const [name, sub, color] = SHOPS[shopI++ % SHOPS.length]!;
+      // the back, on the road (Kita-dori to the north, Sakura-dori to the south): the floors above the shop
+      const back = side === 'N' ? z0 - 0.02 : z1 + 0.02;
+      streetFace(b, { x: cx, z: back, side, w: w - 0.3, h, d: z1 - z0, kind: rng.f() < 0.7 ? 'shop' : 'house', seed: Math.round(cx * 7 + (side === 'N' ? 1 : 2)), sign: rng.f() < 0.5 ? { text: name, color } : undefined });
+      // the ends of the row, on the cross streets
+      if (x === x0) streetFace(b, { x: x + 0.13, z: (z0 + z1) / 2, side: 'W', w: z1 - z0, h, d: w - 0.3, kind: 'house', seed: Math.round(cx * 3 + 5) });
+      if (x + w >= x1 - 4) streetFace(b, { x: x + w - 0.13, z: (z0 + z1) / 2, side: 'E', w: z1 - z0, h, d: w - 0.3, kind: 'house', seed: Math.round(cx * 3 + 9) });
       const faceZ = side === 'N' ? ARCADE.z0 + 0.02 : ARCADE.z1 - 0.02;
       const shut = rng.f();
       shopFront(b, { x: cx, z: faceZ, rot: side === 'N' ? 0 : Math.PI, w: w - 0.6, name, sub, color, shutter: shut < 0.6 ? 'down' : shut < 0.85 ? 'torn' : 'up', noren: shut > 0.6 ? name : undefined });
@@ -175,6 +182,7 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
     rooms: [{ storey: 1, x0: 26, z0: -12.5, x1: 32, z1: -12.5, openings: [{ at: 3, width: 1.2, height: 2.2, kind: 'door' }] }],
     tag: 'karaoke',
   });
+  trimBlock(b, { x0: 26, z0: -16, x1: 38, z1: -8, h: 8, bands: [4] });
   signBoard(b, { x: 32, z: -7.85, y: 8.6, rot: 0, w: 8, h: 1.1, text: 'カラオケ きらめき', sign: { bg: '#5a2a8a', fg: '#ffd8f0', sub: 'KARAOKE KIRAMEKI', glow: 0.2, worn: 0.75 } });
   const vipRoom = { x: 28.5, y: 4, z: -14.5 };
   addBox(b, 'paintRed', 28.5, 4.4, -15.4, 3.2, 0.8, 0.9); // the VIP booth's sofa
@@ -193,6 +201,7 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
     upperDoors: [{ storey: 1, side: 'N', at: 3, width: 1.6 }],
     tag: 'kissaten',
   });
+  trimBlock(b, { x0: 30, z0: ARCADE.z1, x1: 40, z1: 8, h: 8, bands: [4], material: 'wood' });
   signBoard(b, { x: 35, z: ARCADE.z1 - 0.1, y: 7.6, rot: Math.PI, w: 7, h: 0.9, text: '喫茶 花見', sign: { bg: '#3a2a1a', fg: '#f0d8b0', sub: 'KISSA HANAMI', worn: 0.8 } });
   // the plank bridge across the lane at the first floor
   {
@@ -225,6 +234,7 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
   row(ZONES.shotengaiE.x0, 98, 'S', []);
   for (let x = 100; x < 126; x += 6.5) {
     solidBlock(b, { x: x + 3, z: -12, w: 6.2, d: 8, height: 5, wallMaterial: 'wood', facade: { floors: 1, floorHeight: 3, seed: Math.round(x), faces: ['S'] } });
+    streetFace(b, { x: x + 3, z: -16.02, side: 'N', w: 6.2, h: 5, d: 8, kind: 'house', seed: Math.round(x * 5), floorHeight: 2.6 });
     shopFront(b, { x: x + 3, z: ARCADE.z0 + 0.02, rot: 0, w: 5.6, name: ['居酒屋', '焼鳥', 'おでん', '酒場'][Math.floor((x - 100) / 6.5) % 4]!, sub: 'IZAKAYA', color: '#3a1a12', shutter: 'up', noren: '酒', lit: rng.f() < 0.3 });
   }
   lanternString(c, { x0: 100, z0: -7.2, x1: 126, z1: -7.2, y: 3.2, lit: 0.35, seed: 71 });
@@ -245,6 +255,7 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
     tag: 'apartments',
   });
   void apt;
+  trimBlock(b, { x0: 100, z0: ARCADE.z1, x1: 124, z1: 8, h: 16, bands: [4, 8, 12] });
   signBoard(b, { x: 112, z: ARCADE.z1 - 0.12, y: 3.2, rot: Math.PI, w: 6, h: 0.8, text: '桜木ハイツ', sign: { bg: '#e8e4dc', fg: '#2a2a2a', sub: 'SAKURAGI HEIGHTS' } });
   ivy(b, { x: 104, z: ARCADE.z1 - 0.1, rot: Math.PI, w: 6, h: 12 });
   vendingMachine(b, { x: 98.5, z: -2.2, rot: Math.PI, color: 'red', dead: false, seed: 7 });

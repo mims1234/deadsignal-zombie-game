@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.335",
+      "date": "2026-11-05",
+      "title": "Sakura District: the buildings dressed",
+      "notes": [
+        "The shopping street blocks were blank brick and plaster walls on Kita-dori and Sakura-dori. They now have upper floors facing the road: windows (a few still lit, some behind storm shutters), floor lines, air-conditioner units, drainpipes, back doors and stockroom shutters, vertical shop signs, a parapet, and water tanks, aerials and condensers on the roofs. The ends of each row on the cross streets are dressed too, and so are the backs of the izakaya.",
+        "The school has floor lines, a cornice and a clock tower on its roof over the sports field. The gym has steel pilasters, a band of high windows, a vaulted roof and its name over the doors.",
+        "Sakuragi Station has pilasters, a cornice, a deep canopy over the plaza doors, and a clock on each end, stopped at 21:47.",
+        "The karaoke house, the coffee shop and Sakuragi Heights have floor lines and cornices.",
+        "All of it is merged into the existing batches, so it costs very little to draw."
+      ]
+    },
+    {
       "version": "0.4.334",
       "date": "2026-11-05",
       "title": "Sakura District: the bell no longer needs the relay",

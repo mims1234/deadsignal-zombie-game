@@ -4,12 +4,14 @@
  * of cots; its last broadcast was a song from the PA, on a loop until the power died. Now: the SOS on the field is
  * under tall grass, the rooftop camp has rotted, and the classrooms are where the shelter's people still walk.
  */
+import * as THREE from 'three';
 import { corpse, crateGroup, debris, utilityPole, sandbagWall, chainlinkFence } from '../../props';
 import { helipad } from '../../landmarks';
 import { addBox, building, groundRect } from '../../structures';
 import { yawFacing } from '../data';
 import { storeyBuilding } from '../storeys';
 import type { Ctx } from '../util';
+import { trimBlock, vaultRoof, wallClock } from './facades';
 import { SITES, ZONES } from './consts';
 import { bicycle, cherryTree, deskBarricade, grass, groundWords, ivy, petals, signBoard, tarpCamp, wallWords } from './props';
 
@@ -78,6 +80,12 @@ export function buildSchool(c: Ctx): SchoolInfo {
   // the PA horn, still on its pole by the gate
   utilityPole(b, { x: -82, z: -28, rot: 0, wireTo: [] });
   addBox(b, 'steelDark', -82, 7.2, -28.4, 0.5, 0.5, 0.7);
+  // its dress: floor lines and a cornice, and the clock tower on the roof over the field (stopped at 21:47)
+  trimBlock(b, { x0: -124, z0: -64, x1: -108, z1: -30, h: 12, bands: [4, 8] });
+  addBox(b, 'plaster', -110.2, 13.6, -47, 3.2, 3.2, 3.2);
+  addBox(b, 'concreteDark', -110.2, 15.3, -47, 3.6, 0.3, 3.6, 0, { cast: false });
+  b.collideBox(-110.2, -47, 3.2, 3.2, 15.2, { mapKind: 'none', tag: 'clock-tower', surface: 'concrete' });
+  wallClock(b, { x: -108.58, y: 13.7, z: -47, side: 'E', r: 1.0 });
 
   // ---- the gym: the shelter's dormitory ----
   building(b, {
@@ -92,6 +100,20 @@ export function buildSchool(c: Ctx): SchoolInfo {
     sides: { S: { openings: [{ at: 9, width: 3.4, height: 3.2, kind: 'door' }] }, E: { openings: [{ at: 7, width: 2.4, height: 1.4, sill: 3, kind: 'window' }] } },
     tag: 'gym',
   });
+  // the gym's dress: steel pilasters, a band of high windows, a vaulted roof, its name over the doors
+  trimBlock(b, { x0: -104, z0: -64, x1: -86, z1: -50, h: 7, pilasterEvery: 3, material: 'steelDark', clear: { S: [[-95, 3.6]], E: [[-56.6, 2.6]] } });
+  for (const z of [-64.04, -49.96]) {
+    for (let x = -102.5; x <= -87.5; x += 3) {
+      if (z > -50 && Math.abs(x - -95) < 2.5) continue;
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.1), b.mats.get('glassDark'));
+      pane.position.set(x, 5.4, z);
+      pane.rotation.y = z > -57 ? 0 : Math.PI;
+      pane.updateMatrixWorld(true);
+      b.add(pane, { cast: false, receive: false });
+    }
+  }
+  vaultRoof(b, { x0: -104, x1: -86, z0: -64, z1: -50, y: 7.3, rise: 2.2 });
+  signBoard(b, { x: -95, z: -49.9, y: 4.2, rot: 0, w: 4, h: 0.7, text: '体育館', sign: { bg: '#e8e2d2', fg: '#203a7a', sub: 'GYMNASIUM', worn: 0.8 } });
   for (let i = 0; i < 6; i++) {
     const x = -102 + (i % 3) * 5;
     const z = -61 + Math.floor(i / 3) * 5;
