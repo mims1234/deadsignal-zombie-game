@@ -4,7 +4,7 @@
  * herself, the bestiary and its Style Lab. Each is live for everyone or admin only, from the Visibility tab. The server
  * keeps the same list (`SWITCHES` in server/index.mjs) and refuses what is off; the game hides it.
  */
-export const SWITCH_IDS = ['coop', 'roam', 'cards', 'host-server', 'host-self', 'story-kaika', 'story-curtain', 'story-lasttrain', 'story-hanami', 'aurelia-npc', 'bestiary', 'stylelab'] as const;
+export const SWITCH_IDS = ['coop', 'roam', 'cards', 'host-server', 'host-self', 'story-kaika', 'aurelia-npc', 'bestiary', 'stylelab'] as const;
 export type SwitchId = (typeof SWITCH_IDS)[number];
 
 /** Switches that start admin only, until an admin puts them live (and that a build with no server keeps off). */

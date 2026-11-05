@@ -21,10 +21,9 @@ const state = (q: Partial<QuestView>, more: Partial<{ defense: string; hunt: str
 });
 
 describe('KAIKA', { timeout: 30000 }, () => {
-  it('is open from the start; the other stories wait for the Thousand Lanterns', () => {
-    expect(storiesOpen(false)).toEqual(['kaika']);
-    expect(storiesOpen(true)).toEqual(['kaika', 'curtain', 'lasttrain', 'hanami']);
-    expect(STORIES.kaika.settled).toBeUndefined();
+  it('is the one story, open from the start', () => {
+    expect(storiesOpen()).toEqual(['kaika']);
+    expect(STORIES.kaika.campaign).toBe(true);
   });
 
   it('moves through its chapters in order, on the shared state', () => {
@@ -35,9 +34,12 @@ describe('KAIKA', { timeout: 30000 }, () => {
     expect(chapterIndex(state({ found: 0b1, marks: P }))).toBe(2);
     expect(chapterIndex(state({ found: 0b1111, marks: P }))).toBe(5); // the checkpoint next
     expect(chapterIndex(state({ found: 0b1111, marks: P | MARK.checkpoint }))).toBe(6);
-    expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the Empress
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(9);
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(10);
+    // the lanterns and the bell before the Empress (the relics are for her), the relay and home after
+    expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the lanterns
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(8); // the Empress early changes nothing
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 }))).toBe(9); // the bell
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }))).toBe(10); // the Empress
+    expect(CHAPTERS[10]!.id).toBe('curtain');
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(11); // the relay, if it was never restored
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(12);
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete', extracted: true }))).toBe(CHAPTERS.length);
@@ -123,7 +125,7 @@ describe('the Sakura District clock', () => {
     const kaika = missionClock('sakura', 'kaika');
     expect(op.deadline).toBeGreaterThan(missionClock('district').deadline);
     expect(kaika.deadline).toBeGreaterThanOrEqual(op.deadline * 2);
-    expect(missionClock('sakura', 'curtain')).toBe(op);
+    expect(missionClock('sakura', 'roam')).toBe(op);
     const sim = new SessionSim({ seed: 2, kind: 'kaika', map: 'sakura', send() {} });
     expect((sim as unknown as { clock: { deadline: number } }).clock.deadline).toBe(kaika.deadline);
   });

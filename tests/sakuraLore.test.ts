@@ -29,8 +29,9 @@ describe('the Sakura District scroll', { timeout: 30000 }, () => {
     return f;
   };
 
-  it('is the festival scroll on the theatre stage', () => {
-    expect(NOTES.map((n) => n.id)).toEqual(['th-stage']);
+  it('is the festival scroll at the shrine hall (readable before the Empress)', () => {
+    expect(NOTES.map((n) => n.id)).toEqual(['shrine-scroll']);
+    expect(NOTES[0]!.zone).toBe('shrine');
   });
 
   it('every note is on open, reachable ground of its floor', () => {

@@ -5,7 +5,8 @@
  *   1. charms     find the shrine's five omamori where Aoi left them (the metro's lost and found, the music room piano,
  *                 the karaoke's mirror ball, the sunken boat's bow, the lab's sample fridge)
  *   2. tie        tie them to the bare sacred tree in the shrine grounds (any number at a time)
- *   3. lanterns   light the five great lanterns in the order of this run's poem (nailed up on the theatre stage);
+ *   3. lanterns   light the five great lanterns in the order of this run's poem (the festival scroll, left on the
+ *                 offering box at the shrine hall);
  *                 a wrong one puts them all out and the dead come for the shrine
  *   4. bell       ring the shrine bell (the relay is not needed)
  *   5. bloom      the blood moon: crimson trees, a glowing canal, and a ghost train at the station for Kisaragi
@@ -95,7 +96,7 @@ export class SakuraQuest {
     return e;
   }
 
-  /** The poem on the theatre stage: one line for each lantern, in the order they are to be lit. */
+  /** The festival scroll's poem: one line for each lantern, in the order they are to be lit. */
   static poem(order: readonly number[]): string[] {
     return order.map((i, k) => `${['First', 'Then', 'Then', 'Then', 'Last'][k]}, ${LANTERN_SIGNS[i]!.line}.`);
   }
@@ -204,7 +205,7 @@ export class SakuraQuest {
       case 'charms':
         return v.found === 0 ? 'The sacred tree at the shrine stands bare.' : `Omamori found ${bits(v.found)}/5, tied to the sacred tree ${bits(v.tied)}/5.`;
       case 'lanterns':
-        return `The charms are on the tree. Great lanterns lit ${v.lit}/5 - the order is in the poem on the theatre stage.`;
+        return `The charms are on the tree. Great lanterns lit ${v.lit}/5 - the order is in the festival scroll, on the offering box at the shrine hall.`;
       case 'bell':
         return 'Every lantern burns. Ring the shrine bell.';
       case 'bloom':

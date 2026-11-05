@@ -30,7 +30,7 @@ describe('switches', () => {
     expect(switchOfKind('cards')).toBe('cards');
     expect(switchOfKind('mazoku')).toBe('cards');
     expect(switchOfKind('kaika')).toBe('story-kaika');
-    expect(switchOfKind('hanami')).toBe('story-hanami');
+    expect(switchOfKind('hanami')).toBeNull(); // the short story missions are gone
     expect(switchOfKind('mission')).toBeNull();
     expect(switchOfKind('standard')).toBeNull();
   });

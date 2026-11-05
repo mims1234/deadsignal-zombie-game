@@ -62,8 +62,8 @@ import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
 import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
-import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
-import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex } from '../sakura/campaign';
+import { isStory, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
+import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
@@ -486,6 +486,22 @@ export class SessionSim {
   /** The chapter KAIKA is on (its set piece comes when it begins). */
   private chapter = -1;
 
+  /** The procession (`sakura/campaign.ts`): waves sent, and seconds since the call after the bloom. */
+  private procession = 0;
+  private processionT = 0;
+
+  /** After the bloom, the call to the helicopter brings the dead of Sakuragi up the hill, in the operation and in KAIKA. */
+  private stepProcession(dt: number): void {
+    const ex = this.extraction;
+    if (this.sakura?.view.phase !== 'bloom' || this.procession >= PROCESSION.at.length) return;
+    if (ex.phase !== 'called' && ex.phase !== 'inbound' && ex.phase !== 'landing') return;
+    this.processionT += dt;
+    while (this.procession < PROCESSION.at.length && this.processionT >= PROCESSION.at[this.procession]!) {
+      processionWave(this.procession, this.zombies, this.level, this.rng, Math.max(1, this.peers.size));
+      this.procession++;
+    }
+  }
+
   /** KAIKA: anyone at the freight yard's checkpoint marks it; a new chapter brings its set piece. */
   private stepCampaign(): void {
     const q = this.sakura!;
@@ -503,13 +519,12 @@ export class SessionSim {
     const rng = this.rng;
     // the Forge: who is holed up where this run (and the first infected at their doors), before the residents, so none
     // of them carries a living person's name; the co-leaders who deploy come from the same roster
-    // a Sakura District story mission comes in somewhere of its own
-    const tale = this.map === 'sakura' && isStory(this.kind) ? this.kind : null;
-    if (this.map === 'sakura') applyStoryStart(this.level, tale);
     const roster = this.forge?.reset(rng) ?? null;
     // the Thousand Lanterns: a new poem, and the ghost train gone until the next bloom
     this.sakura?.reset(() => rng.f());
     this.chapter = -1;
+    this.procession = 0;
+    this.processionT = 0;
     if (this.level.sakura) this.level.sakura.kisaragi.link.closed = true;
     this.rosterSentAt = -99;
     if (this.map === 'forge' || this.map === 'aurelia') {
@@ -527,10 +542,6 @@ export class SessionSim {
     if (this.map === 'sakura') {
       populateSakura(this.zombies, this.level, rng);
       this.stalker.reset();
-      if (tale) {
-        populateStory(tale, this.zombies, this.level, rng);
-        settleStoryContracts(tale, this.defense, this.hunt);
-      }
     }
     const st = level.data.playerStart;
     const squad = roster ? roster.squad : squadRoster(this.map, Math.max(1, this.seated.size));
@@ -1000,6 +1011,7 @@ export class SessionSim {
       this.sakuraEvents();
       if (this.story) this.stalker.update(dt, this.zombies, this.level, [...this.peers.values()].map((q) => ({ x: q.ref.x, z: q.ref.z, alive: q.ref.alive })), this.rng);
       if (this.campaign) this.stepCampaign();
+      if (this.story) this.stepProcession(dt);
     }
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night

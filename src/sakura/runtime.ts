@@ -26,7 +26,7 @@ import type { SakuraHandles } from '../world/layout/sakura';
 import { CANAL_WATER } from '../world/layout/sakura/canal';
 import { BLOSSOM, jpSignMaterial } from '../world/layout/sakura/props';
 import { buildFieldFile, type FieldFileStory, type NoteText, SakuraHud, STAMP_URL } from './hud';
-import { CHAPTERS, CHECKPOINT, FIELD, type FieldKind, type Line, MARK, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt } from './campaign';
+import { CHAPTERS, CHECKPOINT, FIELD, type FieldKind, type Line, MARK, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt, PROCESSION, processionWave } from './campaign';
 import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
 import { type RouteGoal, RouteTrail } from './trail';
@@ -95,6 +95,9 @@ export class SakuraRuntime {
   /** This run's story mission (KAIKA: the campaign), and the chapter it is on (-1 before the first). */
   private tale: StoryId | null = null;
   private chapter = -1;
+  /** The procession (`campaign.ts`): waves sent, and seconds since the helicopter was called after the bloom. */
+  private procession = 0;
+  private processionT = 0;
   /** Places whose transmission has played this run; kinds met this run (their field card shows once a run). */
   private readonly heard = new Set<Place>();
   private readonly met = new Set<string>();
@@ -348,6 +351,8 @@ export class SakuraRuntime {
     this.idolWarned = false;
     this.tale = tale;
     this.chapter = -1;
+    this.procession = 0;
+    this.processionT = 0;
     this.heard.clear();
     this.met.clear();
     this.timers.length = 0;
@@ -371,8 +376,6 @@ export class SakuraRuntime {
     g.weapons.perkReloadMul = 1;
     g.weapons.perkFireIntervalMul = 1;
     this.unbloom();
-    // Hanami: the festival night under a blood moon from the first minute
-    if (tale && STORIES[tale].bloodMoon) this.redMoon();
     this.present(true);
     this.hud.hide();
   }
@@ -417,6 +420,23 @@ export class SakuraRuntime {
     } else if (!this.stalker.spawned && g.zombies.zombies.some((z) => z.variant === 'kuchisake' && z.alive)) {
       this.stalker.spawned = true;
       this.stalkerCame();
+    }
+    // the procession: after the bloom, calling the helicopter brings the dead of Sakuragi up the hill (co-op: the
+    // simulation sends them; every screen says so)
+    const ex = g.session.extraction;
+    if (this.view.phase === 'bloom' && this.procession < PROCESSION.at.length && (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing')) {
+      this.processionT += dt;
+      while (this.procession < PROCESSION.at.length && this.processionT >= PROCESSION.at[this.procession]!) {
+        if (!this.follow) processionWave(this.procession, g.zombies, g.level, g.rng);
+        if (this.procession === 0) {
+          g.banner('THE PROCESSION', 'Everyone the bell woke is coming up the hill. Hold the landing zone.', 'danger', 6);
+          this.say([
+            ['AOI', 'They heard the bell. Every one of them is coming up the hill to go home, and they will take you with them. Hold until the bird lands. What Kisaragi gave you is for this.'],
+            ['YUZU', 'That is a lot of red trees walking.'],
+          ], 1);
+        } else g.feed(this.procession === 1 ? 'THE PROCESSION: ONI ON THE SLOPE' : 'THE PROCESSION: THE LAST OF THEM', 'danger');
+        this.procession++;
+      }
     }
     // KAIKA: the checkpoint (solo: here; co-op: the simulation), and the chapter it is on
     if (this.campaign) {
@@ -696,7 +716,7 @@ export class SakuraRuntime {
       const ch = CHAPTERS[i];
       if (ch) {
         const s = this.campaignState();
-        const goal = ch.id === 'lanterns' ? `${ch.goal}: ${orderWords(v)}` : ch.id === 'tree' ? `${ch.goal} (${SakuraQuest.held(v)} carried)` : ch.goal;
+        const goal = ch.id === 'lanterns' ? (this.poemRead ? `${ch.goal}: ${orderWords(v)}` : `${ch.goal} (read the scroll at the shrine hall)`) : ch.id === 'tree' ? `${ch.goal} (${SakuraQuest.held(v)} carried)` : ch.goal;
         const tg = ch.target(this.spots, s);
         const dist = tg ? Math.round(Math.hypot(tg.x - this.g.player.x, tg.z - this.g.player.z)) : -1;
         st.objectives.unshift({ id: 'kaika', title: `${i + 1}/${CHAPTERS.length}  ${ch.title}`, detail: goal, state: 'active', progress: i / CHAPTERS.length, tracked: true, distance: dist });
@@ -881,9 +901,9 @@ export class SakuraRuntime {
     g.banner('THE FESTIVAL SCROLL', 'The poem is in the field file (pause menu)', 'info', 4);
   }
 
-  /** A note's text as shown: the poem on the stage is this run's. */
+  /** A note's text as shown: the festival scroll's poem is this run's. */
   private textOf(n: SakuraNote): NoteText {
-    if (n.id === 'th-stage') return { was: n.was, during: n.during, now: SakuraQuest.poem(this.view.order).join('\n'), clue: n.clue };
+    if (n.id === 'shrine-scroll') return { was: n.was, during: n.during, now: SakuraQuest.poem(this.view.order).join('\n'), clue: n.clue };
     return { was: n.was, during: n.during, now: n.now, clue: n.clue };
   }
 
@@ -993,7 +1013,7 @@ export class SakuraRuntime {
       const all = v.tied === 0b11111;
       g.audio.play('omamori_chime', { pos: { x: s.tree.x, y: 2, z: s.tree.z }, priority: 2 });
       g.banner('THE SACRED TREE', all ? 'All five charms are tied. The lanterns are waiting.' : `${bitsOf(v.tied)}/5 charms tied`, 'good', 4);
-      if (all) g.radio('HANA', 'The old tree just... moved. Gold on the branches. The lanterns - the poem on the theatre stage says the order.', 8);
+      if (all) g.radio('HANA', 'The old tree just... moved. Gold on the branches. The lanterns - the scroll on the offering box at the hall says the order.', 8);
     }
     // the lanterns
     const lit = v.phase === 'bell' || v.phase === 'bloom' ? 5 : v.phase === 'lanterns' ? v.lit : 0;
@@ -1020,7 +1040,7 @@ export class SakuraRuntime {
     this.shown = { ...v, order: [...v.order] };
   }
 
-  /** The blood moon and the crimson trees without the bloom itself (Hanami). */
+  /** The blood moon, the crimson trees and the glowing canal. */
   private redMoon(): void {
     SakuraRuntime.look(this.g.renderer, BLOOD);
     BLOSSOM.color.setHex(0xff2a48);
@@ -1033,12 +1053,7 @@ export class SakuraRuntime {
   private bloom(silent: boolean): void {
     const g = this.g;
     this.bloomed = true;
-    SakuraRuntime.look(g.renderer, BLOOD);
-    BLOSSOM.color.setHex(0xff2a48);
-    BLOSSOM.emissive.setHex(0x5a0a10);
-    CANAL_WATER.emissive.setHex(0xff2a6a);
-    CANAL_WATER.emissiveIntensity = 0.9;
-    this.petals.setColor(0xd8203a);
+    this.redMoon();
     this.ghost.visible = true;
     this.h.kisaragi.link.closed = false;
     if (!this.progress.egg) {

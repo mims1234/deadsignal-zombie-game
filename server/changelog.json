@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.337",
+      "date": "2026-11-05",
+      "title": "Sakura District: two ways to play, and a reason for the relics",
+      "notes": [
+        "The Sakura District now has two ways to play: The Operation and KAIKA. The Crimson Curtain, Last Train and Hanami are gone. They were the Operation with one contract already done.",
+        "The Thousand Lanterns can now be finished early. The festival scroll with the lantern order is on the offering box at the shrine hall, not on the Empress's stage, so you no longer have to kill her first. The relics and the Blossom Altar from Kisaragi can now help you against the Empress and in the relay defense.",
+        "The Procession: once the Bloom has happened, calling the helicopter brings the dead of Sakuragi up the hill in three waves while you hold the landing zone: bloomed and rooted first, then Oni, then Jorogumo and more Oni. In co-op there are more of them. This is what the relics are for.",
+        "KAIKA's chapters are in a new order: the tree, the lanterns, the bell and the Bloom, then the Empress (Aoi tells you to take the train to Kisaragi first), then the relay if it is not done, then home.",
+        "The lantern order shows in KAIKA's objective once you have read the scroll."
+      ]
+    },
+    {
       "version": "0.4.336",
       "date": "2026-11-05",
       "title": "Sakura District: the theatre, the clinic and the freight yard dressed",

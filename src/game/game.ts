@@ -36,7 +36,7 @@ import { deviceReport } from '../render/device';
 import { mouseToRadians, Player, type PlayerControl } from '../player/player';
 import { checkCapabilities, GameRenderer } from '../render/renderer';
 import { setSkyColors } from '../render/stage';
-import { hasStoredMap, hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSakura, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
+import { hasStoredMap, hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
 import type { BestRun, GameMode, MissionStats, QualityLevel, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
 import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
@@ -65,7 +65,7 @@ import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
-import { applyStoryStart, isStory, populateStory, settleStoryContracts, STORIES, storiesOpen, type StoryId } from '../sakura/missions';
+import { isStory, STORIES, storiesOpen, type StoryId } from '../sakura/missions';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput, type InteractionTarget } from './interaction';
@@ -975,9 +975,8 @@ export class Game implements GameCtx {
     });
     // a guest sees the free zones first
     const maps = guest ? [...all.filter((m) => m.badge === 'FREE'), ...all.filter((m) => m.badge !== 'FREE')] : all;
-    // the Sakura District's story missions, once the Thousand Lanterns has been seen through
-    // (each can be switched off from the admin page)
-    const stories = this.mapId === 'sakura' ? storiesOpen(loadSakura().egg).filter((id) => switchShown(this.account, `story-${id}`)).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
+    // the Sakura District's story (it can be switched off from the admin page)
+    const stories = this.mapId === 'sakura' ? storiesOpen().filter((id) => switchShown(this.account, `story-${id}`)).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
     return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '', login: needsLogin(this.account, this.mapId, this.mode), freeMap: guest ? firstGuestMap(this.account) : null };
   }
 
@@ -1410,7 +1409,6 @@ export class Game implements GameCtx {
 
     // a story mission comes in somewhere of its own
     this.builtTale = this.tale;
-    if (this.mapId === 'sakura') applyStoryStart(this.level, this.tale);
     // the clock this run is held to (the Sakura District's by its story: KAIKA gets far longer)
     this.mission.clock = missionClock(this.mapId, this.mode === 'coop' ? this.coop.kind : this.tale);
     const st = this.level.data.playerStart;
@@ -1423,12 +1421,6 @@ export class Game implements GameCtx {
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
     this.sakura?.reset(this.mode === 'coop', this.tale);
     if (this.mode !== 'coop') this.zombies.populate(this.rng);
-    // a story mission's own night: who else is out there, and the contract already settled (co-op: the simulation's)
-    const tale = this.tale;
-    if (tale && this.mode !== 'coop') {
-      populateStory(tale, this.zombies, this.level, this.rng);
-      settleStoryContracts(tale, this.session.defense, this.session.hunt);
-    }
     this.cards.reset(this.mode === 'cards', false);
     if (this.mode === 'coop') this.coop.begin();
     // the squad: solo runs it here; a co-op story run shows the simulation's

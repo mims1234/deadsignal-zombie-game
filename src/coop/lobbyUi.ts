@@ -6,8 +6,7 @@
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import { type Hosting, LATE_CHOICES, LATE_NOTE, type RoomView } from '../net/room';
-import { isStory, STORIES, STORY_IDS, storiesOpen } from '../sakura/missions';
-import { loadSakura } from '../storage';
+import { isStory, STORIES, storiesOpen } from '../sakura/missions';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 import type { SwitchId } from '../switches';
@@ -19,9 +18,6 @@ const KIND_NOTE: Record<RoomView['kind'], string> = {
   mazoku: 'The operation with the five Mazoku card carriers on the map. A recovered card goes to everyone.',
   roam: 'No infected and no clock: fly anywhere together.',
   kaika: STORIES.kaika.note,
-  curtain: STORIES.curtain.note,
-  lasttrain: STORIES.lasttrain.note,
-  hanami: STORIES.hanami.note,
 };
 
 /** A phone or a computer, before a name: what they are playing on. */
@@ -310,9 +306,8 @@ export class CoopUi {
     el('div', 'lbl', body, `MODE  //  ${MAP_NAME[room.map]}`);
     const variant = el('div', 'row choice', body);
     // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
-    // the Sakura District's story missions, once the owner has seen the Thousand Lanterns through
-    // (each switched on from the admin page: Standard Mazoku, Free roam, every story)
-    const tales = room.map === 'sakura' ? (isStory(room.kind) && !storiesOpen(loadSakura().egg).includes(room.kind) ? STORY_IDS : storiesOpen(loadSakura().egg)).filter((id) => this.host.shown(`story-${id}`)).map((id) => [id, STORIES[id].title] as const) : [];
+    // the Sakura District's story (switched on from the admin page, as Standard Mazoku and Free roam are)
+    const tales = room.map === 'sakura' ? storiesOpen().filter((id) => this.host.shown(`story-${id}`)).map((id) => [id, STORIES[id].title] as const) : [];
     const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ...(this.host.shown('cards') ? [['mazoku', 'STANDARD MAZOKU'] as const] : []), ...tales];
     const roam = room.kind === 'roam';
     if (!roam && !isStory(room.kind)) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';

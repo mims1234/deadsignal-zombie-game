@@ -55,7 +55,7 @@ function para(parent: HTMLElement, label: string, text: string): void {
   parent.appendChild(p);
 }
 
-/** A note's text as shown: the poem on the stage is this run's (the quest writes it). */
+/** A note's text as shown: the festival scroll's poem is this run's (the quest writes it). */
 export interface NoteText {
   was: string;
   during: string;

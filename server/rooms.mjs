@@ -41,7 +41,7 @@ export const SIM_ID = 'sim';
 /** The countdown between the owner pressing start and everyone being brought in. */
 const START_COUNTDOWN_MS = 5000;
 const MAPS = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka'];
-const KINDS = ['mission', 'mazoku', 'roam', 'kaika', 'curtain', 'lasttrain', 'hanami']; // the last four: the Sakura District's story missions
+const KINDS = ['mission', 'mazoku', 'roam', 'kaika']; // the last: the Sakura District's story
 const ZOMBIE_LEVELS = ['easy', 'normal', 'hard', 'nightmare'];
 const TEAM_LEVELS = ['rookie', 'regular', 'veteran', 'elite'];
 /** Who may come in once a run is under way (server-hosted sessions only). */

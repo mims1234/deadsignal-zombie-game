@@ -16,7 +16,7 @@ import type { ZombieManager } from '../enemies/zombieManager';
 import type { HirasakaKind, MujinKind, ZombieVariant } from '../enemies/variants';
 import type { Rng } from '../logic/rng';
 import type { Level } from '../world/level';
-import { ZONES } from '../world/layout/sakura/consts';
+import { SAKURA_BOUNDS, SITES, ZONES } from '../world/layout/sakura/consts';
 import { FUSE_BIT, LANTERN_SIGNS, type QuestSpots, type QuestView, SakuraQuest } from './quest';
 
 export type Speaker = 'AOI' | 'HANA' | 'YUZU';
@@ -364,20 +364,6 @@ export const CHAPTERS: readonly Chapter[] = [
     kinds: ['miko'],
   },
   {
-    id: 'curtain',
-    title: 'THE CRIMSON CURTAIN',
-    place: 'theatre',
-    goal: 'Theatre: kill the Crimson Empress',
-    done: (s) => s.hunt === 'complete',
-    target: () => ({ x: 20, z: -44, label: 'THE STAGE' }),
-    intro: [
-      ['AOI', 'The tree remembers. To finish, the lanterns must be lit in the order of the festival poem - and the Court hung the poem over her stage.'],
-      ['AOI', 'Sayo is there. She was kind, before. Let her rest.'],
-      ['HANA', 'The Empress. Patient zero. Let\'s end her story.'],
-    ],
-    kinds: ['empress', 'court'],
-  },
-  {
     id: 'lanterns',
     title: 'THE THOUSAND LANTERNS',
     place: 'shrine',
@@ -388,7 +374,7 @@ export const CHAPTERS: readonly Chapter[] = [
       return { x: q.lanterns[j]!.x, z: q.lanterns[j]!.z, label: `${LANTERN_SIGNS[j]!.word} LANTERN` };
     },
     intro: [
-      ['AOI', 'Thank you, Sayo. Now the poem. Light the great lanterns in its order. One wrong, and they all go out - and the dead come to see why.'],
+      ['AOI', 'The tree remembers. Now the lanterns, in the order of the festival poem. I left the scroll on the offering box before the hall. One wrong, and they all go out - and the dead come to see why.'],
     ],
     kinds: [],
   },
@@ -404,6 +390,20 @@ export const CHAPTERS: readonly Chapter[] = [
       ['YUZU', 'Ring a bell. Sounds easy. It won\'t be.'],
     ],
     kinds: [],
+  },
+  {
+    id: 'curtain',
+    title: 'THE CRIMSON CURTAIN',
+    place: 'theatre',
+    goal: 'Theatre: kill the Crimson Empress',
+    done: (s) => s.hunt === 'complete',
+    target: () => ({ x: 20, z: -44, label: 'THE STAGE' }),
+    intro: [
+      ['AOI', 'The trees are red. Before you go home - Sayo. Take the train to Kisaragi first: what my family kept there is for her.'],
+      ['AOI', 'She is on her stage, with her Court round her. She was kind, before. Let her rest.'],
+      ['HANA', 'The Empress. Patient zero. Let\'s end her story.'],
+    ],
+    kinds: ['empress', 'court'],
   },
   {
     // the helicopter still wants both contracts: if the relay was never restored, it is the last thing before home
@@ -507,6 +507,42 @@ export function campaignSetPiece(index: number, zm: ZombieManager, level: Level,
       break;
     default:
       break;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// the procession: what the Bloom wakes
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Once the trees are red, the dead of Sakuragi are going home - and calling the helicopter calls them all to the hill.
+ * Three waves up the slope to the landing zone while the bird comes in, the heavier the later: the reason the relics
+ * and the Blossom Altar are worth the trip to Kisaragi. Seconds after the call each wave comes, in solo and co-op.
+ */
+export const PROCESSION = { at: [2, 20, 38] as const, ring: [22, 34] as const };
+
+/** Wave `i` (0..2) of the procession, round the landing zone, all coming for it (`players`: how many to bring it to). */
+export function processionWave(i: number, zm: ZombieManager, level: Level, rng: Rng, players = 1): void {
+  const lz = SITES.lz;
+  const nav = level.floors.navOf(0);
+  const B = SAKURA_BOUNDS;
+  const more = Math.max(0, Math.min(3, players - 1));
+  const put = (n: number, type: 'shambler' | 'runner' | 'armored', variant: ZombieVariant): void => {
+    for (let k = 0; k < n; k++) {
+      const a = rng.f() * Math.PI * 2;
+      const r = PROCESSION.ring[0] + rng.f() * (PROCESSION.ring[1] - PROCESSION.ring[0]);
+      const x = Math.min(B.maxX - 4, Math.max(B.minX + 4, lz.x + Math.cos(a) * r));
+      const z = Math.min(B.maxZ - 4, Math.max(B.minZ + 4, lz.z + Math.sin(a) * r));
+      const cell = nav.nearestFree(x, z, 6);
+      if (cell >= 0) zm.spawn(type, nav.cellCenterX(cell), nav.cellCenterZ(cell), rng, { state: 'chase', variant });
+    }
+  };
+  put(6 + more * 2, 'shambler', 'bloomed');
+  put(3 + more, 'runner', 'rooted');
+  if (i >= 1) put(1 + (more >= 2 ? 1 : 0), 'armored', 'oni');
+  if (i >= 2) {
+    put(2, 'runner', 'jorogumo');
+    put(1 + (more >= 1 ? 1 : 0), 'armored', 'oni');
   }
 }
 

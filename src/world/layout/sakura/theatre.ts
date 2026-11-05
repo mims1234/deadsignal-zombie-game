@@ -20,7 +20,7 @@ export const LAB_KIOSK = { x: -12, z: -40, yaw: 0 };
 
 export interface TheatreInfo {
   spire: SpireHandle;
-  /** The theatre's stage (the haiku note lies on it) and the clinic's specimen room (an Easter egg spot is in the lab). */
+  /** The theatre's stage (the Empress's court) and the clinic's specimen room (an Easter egg spot is in the lab). */
   stage: { x: number; y: number; z: number };
   /** The Court's bonfires (they light the courtyard; the humans gather round them). */
   fires: { x: number; z: number }[];

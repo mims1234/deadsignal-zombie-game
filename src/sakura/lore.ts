@@ -1,5 +1,5 @@
 /**
- * The Sakura District's one paper left lying about: the festival scroll on the theatre stage, whose poem gives the
+ * The Sakura District's one paper left lying about: the festival scroll on the shrine hall's offering box, whose poem gives the
  * order the great lanterns are lit in (written new each run, `quest.ts`). The rest of the district's story is told
  * aloud now - Aoi Kisaragi on the shrine relay, Hana and Yuzu - and kept in the field file (`campaign.ts`).
  */
@@ -25,15 +25,15 @@ export interface SakuraNote {
 
 export const NOTES: readonly SakuraNote[] = [
   {
-    id: 'th-stage',
-    zone: 'theatre',
+    id: 'shrine-scroll',
+    zone: 'shrine',
     area: 'street',
-    x: 20,
-    z: -57,
+    x: 116.5,
+    z: 50,
     title: 'The festival scroll',
-    source: 'Nailed to the theatre stage\'s backdrop',
+    source: 'Weighted down with a stone on the offering box before the shrine hall',
     was: 'The shrine\'s scroll for the Thousand Lanterns: a poem that tells the order the great lanterns are lit, written new each year.',
-    during: 'The Court took it from the shrine to hang over their goddess\'s stage. They do not know what it is for.',
+    during: 'Aoi left it here the night she took the charms out into the city, for whoever brought them home. Nobody has come up the shrine steps to read it since.',
     now: 'The poem is read in the order of its lines.',
     clue: 'The poem: the lantern order.',
   },
