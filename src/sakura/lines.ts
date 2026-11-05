@@ -72,10 +72,11 @@ export const LINES: readonly VoiceLine[] = [
   L('cmd_minute', 'COMMAND', 'One minute until the district is sealed. Call extraction now.', 'urgent, hard', 'One minute until the district is sealed. Call extraction now.'),
   L('cmd_surge_warn', 'COMMAND', "Containment's failing at the theatre. Surge in twenty seconds.", 'alarmed', 'Containment is failing at the compound. Surge in twenty seconds.'),
   L('cmd_surge', 'COMMAND', 'Contamination surge! Stay ahead of the front and get to the landing zone.', 'shouting over static', 'Contamination surge! Stay ahead of the front and reach the LZ.'),
+  L('cmd_glow', 'COMMAND', 'Something glowing where that one fell - whatever this place was cooking, it is on our side for once. Walk through it.', 'puzzled, then dry'),
   L('cmd_lost_hana', 'COMMAND', "We lost Hana. Keep the other one breathing.", 'grim, controlled', 'We lost Hana. Keep the other one breathing.'),
   L('cmd_lost_yuzu', 'COMMAND', "We lost Yuzu. Keep the other one breathing.", 'grim, controlled', 'We lost Yuzu. Keep the other one breathing.'),
   L('cmd_aoi_ignore', 'COMMAND', 'Whoever that is, she is not your mission. Stick to the contracts, Hanabi.', 'flat, dismissive'),
-  L('cmd_bloom_op', 'COMMAND', 'Hanabi, every reading in the ward just went red. What did you do?', 'startled, then grim'),
+  L('cmd_bloom_op', 'COMMAND', 'Hanabi, every reading in the ward just went red. What did you do?', 'alarmed'),
   L('pilot_approach', 'PILOT', 'Bird on approach. Mark your position.', 'tense, over rotors', 'Bird on approach. Mark your position.'),
   L('pilot_hot', 'PILOT', 'Coming in hot - clear the pad!', 'shouting over rotors', 'Coming in hot - clear the pad!'),
   L('pilot_ground', 'PILOT', "We're on the ground - get aboard, now!", 'shouting, urgent', "We're on the ground - get aboard, now!"),
@@ -108,7 +109,7 @@ export const LINES: readonly VoiceLine[] = [
 
   // ---- the squad: the first time into each part of the district ----
   L('place_station_1', 'HANA', 'Evacuation Point 3. "Wait. Rescue is coming." They painted it on the ground for the helicopters.', 'quiet, sombre'),
-  L('place_station_2', 'YUZU', 'Nobody came. The trains stopped on night nine.', 'quiet, bitter'),
+  L('place_station_2', 'YUZU', 'Nobody came. The trains stopped on night nine.', 'quiet'),
   L('place_metro', 'YUZU', 'Four hundred people waited on this platform for the 21:47. Some of them still are.', 'whispering'),
   L('place_school', 'HANA', 'Hilltop school. The last helicopter out left from that sports field. Full.', 'sombre'),
   L('place_shotengai', 'YUZU', 'The arcade. Pachinko, the konbini, karaoke on the corner. The loudest street in the ward.', 'wistful, wry'),
@@ -134,7 +135,7 @@ export const LINES: readonly VoiceLine[] = [
 
   // ---- Aoi: her first call, the way, and the charms' stories ----
   L('aoi_call', 'AOI', '...if anyone can hear this. This is Aoi Kisaragi, at Sakuragi Shrine. My five charms can end this. Bring them home.', 'faint, pleading, through static'),
-  L('aoi_power', 'AOI', 'The station has been dark for seven years. Bring the light back - and the relay will have the strength to carry my voice.', 'gentle, hopeful'),
+  L('aoi_power', 'AOI', 'The station has been dark for seven years. Bring the light back - and the relay will have the strength to carry my voice.', 'hopeful'),
   L('aoi_dir_metro', 'AOI', 'The lights... The lost and found is by the ticket gates. My first charm is there.', 'soft, guiding'),
   L('aoi_dir_school', 'AOI', 'The second is on the hill, at the school. In the music room, inside the piano.', 'soft, guiding'),
   L('aoi_dir_karaoke', 'AOI', 'The third is with Mei, at the karaoke on the arcade. She is still singing. Do not follow her voice.', 'soft, a warning'),
@@ -151,15 +152,16 @@ export const LINES: readonly VoiceLine[] = [
   L('aoi_poem', 'AOI', 'Read it line by line - that is the order of the lanterns. One wrong, and they all go out, and the dead come to see why.', 'careful, quiet'),
   L('aoi_again', 'AOI', 'Again. From the first line.', 'patient, gentle'),
   L('aoi_bell', 'AOI', 'Every lantern burns. Ring the bell, and let them hear it.', 'solemn, quiet joy'),
-  L('aoi_bloom', 'AOI', 'That train is for the dead. It stops at Kisaragi, where my family kept what the shrine could not. Take it - you will need it before this night is over.', 'solemn, urgent'),
+  L('aoi_bloom', 'AOI', 'That train is for the dead. It stops at Kisaragi, where my family kept what the shrine could not. Take it - you will need it before this night is over.', 'solemn, quiet'),
   L('aoi_kisaragi', 'AOI', 'Kisaragi. The stop on no map. The dead wait here for the train home. Take the relics, and do not stay long.', 'whispering, solemn'),
   L('aoi_empress', 'AOI', 'Before you go home - Sayo. She is on her stage with her Court round her. She was kind, before. Let her rest.', 'sad, resolved'),
   L('aoi_rest', 'AOI', 'Rest, Sayo.', 'tender, a whisper'),
-  L('aoi_relay', 'AOI', 'One more thing. The relay - start it, and hold the courtyard while it speaks. It calls your helicopter too.', 'gentle, urgent'),
+  L('aoi_relay', 'AOI', 'One more thing. The relay - start it, and hold the courtyard while it speaks. It calls your helicopter too.', 'softly, asking a favour'),
   L('aoi_relay_done', 'AOI', 'Can you hear it? My voice, all the way to the sea.', 'wondering, happy'),
   L('aoi_home', 'AOI', 'They are going home. So am I. Thank you, all of you. Go back to your own home now.', 'peaceful, tearful, warm'),
-  L('aoi_procession', 'AOI', 'They heard the bell. Every one of them is coming up the hill to go home - and they will take you with them. Hold until the bird lands. What Kisaragi gave you is for this.', 'urgent, sorrowful'),
-  L('aoi_op_bloom', 'AOI', 'Thank you. They can go home now - but they will all come up the hill to do it. Be ready when you call your helicopter.', 'grateful, then warning'),
+  L('aoi_procession', 'AOI', 'They heard the bell. Every one of them is coming up the hill to go home - and they will take you with them.', 'frightened, urgent'),
+  L('aoi_procession_2', 'AOI', 'Hold until the bird lands. What Kisaragi gave you is for this.', 'steady, encouraging'),
+  L('aoi_op_bloom', 'AOI', 'Thank you. They can go home now - but they will all come up the hill to do it. Be ready when you call your helicopter.', 'grateful, quiet'),
 
   // ---- the station's speakers ----
   { ...L('pa_delay_ja', 'PA', '21時47分発、きさらぎ行き各駅停車は、ただいま遅れております。', 'calm, measured, a station announcement in Japanese'), say: '[calm, measured, a station announcement] 21時47分発、きさらぎ行き各駅停車は、ただいま遅れております。ご迷惑をおかけしております。' },

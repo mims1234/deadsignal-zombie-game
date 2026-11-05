@@ -489,7 +489,7 @@ export class SakuraRuntime {
         const calling = (): boolean => ['called', 'inbound', 'landing'].includes(g.session.extraction.phase);
         if (this.procession === 0) {
           g.banner('THE PROCESSION', 'Everyone the bell woke is coming up the hill. Hold the landing zone.', 'danger', 6);
-          this.voice.say('aoi_procession', { kind: 'story' });
+          this.voice.sayAll(['aoi_procession', 'aoi_procession_2'], { kind: 'story' });
           this.voice.say('yuzu_procession', { kind: 'place' });
         } else {
           g.feed(this.procession === 1 ? 'THE PROCESSION: ONI ON THE SLOPE' : 'THE PROCESSION: THE LAST OF THEM', 'danger');

@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.339",
+      "date": "2026-11-05",
+      "title": "Sakura District: polish after a co-op play-test",
+      "notes": [
+        "Better takes for seven lines: Aoi's calls about the power, the relay, the Bloom and the procession, Command's reaction to the Bloom, and Yuzu at the station. Aoi's procession call is now two shorter lines.",
+        "Command's line about the first glowing power-up drop is voiced too.",
+        "Threat banners (LOW, MEDIUM, HIGH) no longer flicker when you walk along the edge of a zone. They show once you have been in the new zone for a moment. This applies on every map."
+      ]
+    },
+    {
       "version": "0.4.338",
       "date": "2026-11-05",
       "title": "Sakura District: voiced, and every step has a reason",

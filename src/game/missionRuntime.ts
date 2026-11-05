@@ -84,6 +84,9 @@ export class MissionRuntime implements MissionApi {
   private coughTimer = 0;
   private wasInsideDefense = true;
   private lastRegion = 'low';
+  /** The region the player has been in for `regionT` seconds (the banner waits for it to settle). */
+  private regionCand = 'low';
+  private regionT = 0;
   /**
    * Co-op: the relay belongs to the squad. The host decides its progress from everyone's positions; starting it is
    * a request (`requestRelay`) and nobody calls extraction - the session is won on waves.
@@ -355,6 +358,8 @@ export class MissionRuntime implements MissionApi {
     this.coughTimer = 0;
     this.wasInsideDefense = true;
     this.lastRegion = 'low';
+    this.regionCand = 'low';
+    this.regionT = 0;
     this.night?.reset();
   }
 
@@ -388,7 +393,12 @@ export class MissionRuntime implements MissionApi {
     }
     const region = ctx.playerRegion();
     bumpRegion(s, region);
-    if (region !== this.lastRegion) {
+    // the threat banner once you are really in a new region (2.5 s in it), not at every step along a border
+    if (region !== this.regionCand) {
+      this.regionCand = region;
+      this.regionT = 0;
+    } else this.regionT += dt;
+    if (region !== this.lastRegion && this.regionT >= 2.5) {
       this.lastRegion = region;
       const names = data.text.regions;
       if (region === 'medium') ctx.banner('MEDIUM THREAT', names.medium, 'warn', 3);
