@@ -1473,9 +1473,10 @@ export const MUJIN_CLOCK = { deadline: 3300, surgeStart: 3000, phases: [240, 900
 /** HIRASAKA's clock: an hour before the typhoon's eye passes and the island goes under for good. */
 export const HIRASAKA_CLOCK = { deadline: 3600, surgeStart: 3400, phases: [240, 900, 1800] as readonly number[] };
 
+/** The Sakura District's clocks: the operation (and the three story missions on it) 35 minutes, KAIKA 75. */
 export const SAKURA_CLOCK = {
-  operation: { deadline: 1200, surgeStart: 860, phases: [150, 420, 860] as readonly number[] },
-  kaika: { deadline: 2700, surgeStart: 2280, phases: [180, 900, 1800] as readonly number[] },
+  operation: { deadline: 2100, surgeStart: 1700, phases: [150, 600, 1500] as readonly number[] },
+  kaika: { deadline: 4500, surgeStart: 4000, phases: [180, 1200, 2700] as readonly number[] },
 } as const;
 
 export const MISSION = {

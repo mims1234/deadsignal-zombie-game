@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.333",
+      "date": "2026-11-05",
+      "title": "Sakura District: more time on the clock",
+      "notes": [
+        "The Sakura District's operation now gives you 35 minutes before the district is sealed, up from 20. That includes The Crimson Curtain, Last Train and Hanami. The contamination surge starts later and the waves build up more slowly to match.",
+        "KAIKA, the full story, now gives you 75 minutes, up from 45, with the surge and the waves stretched the same way."
+      ]
+    },
+    {
       "version": "0.4.332",
       "date": "2026-11-05",
       "title": "Sakura District: no more buildings through the metro and the lab",
