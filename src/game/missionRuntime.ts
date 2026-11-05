@@ -114,6 +114,8 @@ export class MissionRuntime implements MissionApi {
   holdExtraction: () => boolean = () => false;
   /** Besides the contracts, what the helicopter waits for (KAIKA: the bloom). */
   extractGate: () => boolean = () => true;
+  /** What a closed hunt says (null: the default): the Sakura District's Empress waits for her moment. */
+  huntClosed: (() => string | null) | null = null;
   /** Why the relay cannot be started yet (null: it can): the Sakura District's relay needs the metro's power. */
   relayBlock: (() => string | null) | null = null;
   /** The Forge after the burnout: the firestorm dies down and stops hurting. */
@@ -950,17 +952,19 @@ export class MissionRuntime implements MissionApi {
     const huntDist = Math.hypot(data.hunt.searchX - p.x, data.hunt.searchZ - p.z);
     const hstate = s.hunt.status;
     let hdetail: string;
+    const closed = hstate === 'available' ? (this.huntClosed?.() ?? null) : null;
     if (hstate === 'complete') hdetail = `${data.text.boss} is dead`;
+    else if (closed) hdetail = closed;
     else if (s.hunt.identified && boss?.alive) hdetail = `Eliminate ${data.text.boss} (${Math.round(Math.hypot(boss.x - p.x, boss.z - p.z))} m)`;
     else hdetail = `Search ${data.text.huntSite} (${Math.round(huntDist)} m)`;
     list.push({
       id: 'hunt',
       title: data.text.huntTitle,
       detail: hdetail,
-      state: hstate === 'complete' ? 'complete' : 'active',
+      state: hstate === 'complete' ? 'complete' : closed ? 'locked' : 'active',
       progress: hstate === 'complete' ? 1 : boss && s.hunt.identified ? 1 - boss.hp / boss.maxHp : -1,
       tracked: false,
-      distance: hstate === 'complete' ? -1 : s.hunt.identified && boss?.alive ? Math.hypot(boss.x - p.x, boss.z - p.z) : huntDist,
+      distance: hstate === 'complete' || closed ? -1 : s.hunt.identified && boss?.alive ? Math.hypot(boss.x - p.x, boss.z - p.z) : huntDist,
     });
     const ex = s.extraction;
     const lzDist = Math.hypot(this.lz.lzX - p.x, this.lz.lzZ - p.z);

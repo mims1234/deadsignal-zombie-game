@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.341",
+      "date": "2026-11-05",
+      "title": "Sakura District: the Empress waits for her moment, and the Court keeps to its ground",
+      "notes": [
+        "The Crimson Empress is no longer loose from the start, so you can't kill her early and skip the story, and she no longer chases you while you are doing the Easter egg. She waits inside the Kurenai Theatre until her moment: in the Operation once the relay is up (Command sends you to her), in KAIKA once the trees turn red. THE CURTAIN RISES, and she is on her stage. Until then the contract says the theatre is shut.",
+        "Once out, she keeps to the theatre's grounds. If you leave them, she stops chasing and goes back inside.",
+        "The Kurenai Court keeps to its ground, the theatre or the freight yard. They hold it and shoot from its edge, but they no longer follow you into other parts of the district."
+      ]
+    },
+    {
       "version": "0.4.340",
       "date": "2026-11-05",
       "title": "Sakura District: Aoi's way has its own marker",

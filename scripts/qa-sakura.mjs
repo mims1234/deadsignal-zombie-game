@@ -64,10 +64,10 @@ try {
   await ev(() => { const s = window.__dead.game.sakura; s.ride(0); }); await beat('kisaragi', () => null, 12);
   await ev(() => { const s = window.__dead.game.sakura; const k = s.h.kisaragi; window.__dead.teleport(k.plinths[0].x, k.plinths[0].z + 1); s.takeRelic(0); s.takeRelic(1); }); await beat('relics', () => null, 6);
   await ev(() => { const s = window.__dead.game.sakura; s.ride(s.h.kisaragi.area); }); await beat('back', () => null, 10);
-  await ev(() => { const g = window.__dead.game; const b = g.zombies.boss; if (b) { window.__dead.teleport(b.x + 6, b.z + 6); b.hp = 1; } }); await beat('empress-near', () => null, 4);
-  await ev(() => { const g = window.__dead.game; const b = g.zombies.boss; if (b && b.alive) { b.hp = 0; b.takeDamage?.(9999, 'head'); g.session.hunt.status = 'complete'; } }); await beat('empress-down', () => null, 15);
   await ev(() => { const g = window.__dead.game; const d = g.level.data.defense; window.__dead.teleport(d.x, d.z); g.mission.beginDefense(); }); await beat('relay-start', () => null, 10);
   await ev(() => { const g = window.__dead.game; g.session.defense.progress = 1; }); await beat('relay', () => null, 15);
+  await ev(() => { const g = window.__dead.game; const b = g.zombies.boss; if (b) { window.__dead.teleport(20, -48); window.__dead.lookAt(b.x, b.z, 2); } return b ? [Math.round(b.x), Math.round(b.z)] : 'no empress'; }, null); await beat('empress-near', () => null, 4);
+  await ev(() => { const g = window.__dead.game; const b = g.zombies.boss; if (b && b.alive) { b.hp = 0; g.session.hunt.status = 'complete'; } }); await beat('empress-down', () => null, 15);
   await ev(() => { const g = window.__dead.game; const e = g.level.data.extraction; window.__dead.teleport(e.lzX, e.lzZ); }); await beat('lz', () => null, 6);
   await ev(() => { const g = window.__dead.game; g.mission.callExtraction?.(); if (g.session.extraction.phase === 'available') { g.session.extraction.phase = 'called'; g.session.extraction.countdown = 60; g.session.extraction.calledAt = g.session.elapsed; } return g.session.extraction.phase; });
   await beat('called', () => null, 45);

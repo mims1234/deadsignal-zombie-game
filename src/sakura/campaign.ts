@@ -353,7 +353,7 @@ export const CHAPTERS: readonly Chapter[] = [
     place: 'theatre',
     goal: 'Theatre: kill the Crimson Empress',
     done: (s) => s.hunt === 'complete',
-    target: () => ({ x: 20, z: -44, label: 'THE STAGE' }),
+    target: () => ({ x: 20, z: -56, label: 'THE STAGE' }),
     intro: ['aoi_empress'],
     kinds: ['empress', 'court'],
   },

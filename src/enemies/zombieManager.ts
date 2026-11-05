@@ -177,6 +177,8 @@ export class ZombieManager {
    * and the Kurenai Court's figures (living people, not infected rigs; the game sets it, the simulation does not draw).
    */
   pickVariant: ((type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant) | null = null;
+  /** The ground a new infected keeps to, if any (the Sakura District's Empress and Court: `sakura/director.ts`). */
+  territoryOf: ((z: Zombie) => { x0: number; z0: number; x1: number; z1: number } | null) | null = null;
   courtRig: ((seed: number) => ZombieRig) | null = null;
   /** Called before each frame's update (the Sakura District's far crowd starts its count again). */
   beforeUpdate: (() => void) | null = null;
@@ -289,6 +291,7 @@ export class ZombieManager {
     }
     this.zombies.push(zz);
     this.totalSpawned++;
+    zz.territory = this.territoryOf?.(zz) ?? null;
     return zz;
   }
 
@@ -400,6 +403,37 @@ export class ZombieManager {
   }
 
   /**
+   * Those with a territory stay in it: they cannot step out of it, and once whoever they are after has been outside it
+   * for a few seconds (and out of a shooter's reach) they stand down and walk back in. The Court holds its yard and
+   * shoots from the edge; the Empress keeps to her theatre.
+   */
+  private keepTerritories(dt: number): void {
+    for (const z of this.zombies) {
+      const t = z.territory;
+      if (!t || !z.alive) continue;
+      const inX = Math.min(t.x1, Math.max(t.x0, z.x));
+      const inZ = Math.min(t.z1, Math.max(t.z0, z.z));
+      if (inX !== z.x || inZ !== z.z) {
+        z.x = inX;
+        z.z = inZ;
+        z.vx = z.vz = 0;
+      }
+      if (!z.chasing) {
+        z.outsideT = 0;
+        continue;
+      }
+      const q = z.quarry;
+      const out = q.x < t.x0 - 3 || q.x > t.x1 + 3 || q.z < t.z0 - 3 || q.z > t.z1 + 3;
+      const reach = z.variant === 'court' ? z.def.attackRange : 0;
+      z.outsideT = out && Math.hypot(q.x - z.x, q.z - z.z) > reach ? z.outsideT + dt : 0;
+      if (z.outsideT > 4) {
+        z.outsideT = 0;
+        z.standDown(z.homeX >= t.x0 && z.homeX <= t.x1 && z.homeZ >= t.z0 && z.homeZ <= t.z1 ? z.homeX : (t.x0 + t.x1) / 2, z.homeZ >= t.z0 && z.homeZ <= t.z1 && z.homeX >= t.x0 && z.homeX <= t.x1 ? z.homeZ : (t.z0 + t.z1) / 2);
+      }
+    }
+  }
+
+  /**
    * Keep the hunt winnable: a Warden drawn out of his lair by noise who gives up the chase would otherwise settle
    * wherever he stopped, far from the search area. Once he has been calm, away from the lair and out of everyone's
    * reach for a while, he is back home (nobody sees the move).
@@ -493,6 +527,7 @@ export class ZombieManager {
 
     const players = envs ? envs.map((e) => e.player) : [p];
     if (aiEnabled) this.guardLair(dt, players);
+    if (aiEnabled) this.keepTerritories(dt);
     if (aiEnabled) this.matron?.update(dt, this.boss, this.zombies, players, env);
     else this.matron?.watch(dt, this.boss);
 

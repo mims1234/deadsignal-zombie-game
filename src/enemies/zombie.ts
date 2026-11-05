@@ -196,6 +196,13 @@ export class Zombie {
   private netSpeed = 0;
   homeX = 0;
   homeZ = 0;
+  /**
+   * Ground this one never leaves (the Sakura District's Empress in her theatre's compound, the Court in their yard):
+   * the manager keeps it inside, and it gives up on anyone who has left (`ZombieManager.keepTerritories`).
+   */
+  territory: { x0: number; z0: number; x1: number; z1: number } | null = null;
+  /** How long its quarry has been out of its ground. */
+  outsideT = 0;
   speedScale = 1;
   /** Difficulty: damage dealt and how far it sees (set by the manager at spawn). */
   dmgScale = 1;
@@ -961,6 +968,21 @@ export class Zombie {
     this.lastKnownZ = z;
     this.memory = 0;
     if (this.alertDelay < 0) this.alertDelay = delay;
+  }
+
+  /** Where it thinks its quarry is. */
+  get quarry(): { x: number; z: number } {
+    return { x: this.lastKnownX, z: this.lastKnownZ };
+  }
+
+  /** Give up the chase and walk back to (x, z), its home (no teleport: it is seen going). */
+  standDown(x: number, z: number): void {
+    this.homeX = this.wanderX = x;
+    this.homeZ = this.wanderZ = z;
+    this.enterState('idle');
+    this.seesPlayer = false;
+    this.memory = 99;
+    this.alertDelay = -1;
   }
 
   /** Back at (x, z), calm, with it as home (the Warden returning to his lair while nobody watches). */

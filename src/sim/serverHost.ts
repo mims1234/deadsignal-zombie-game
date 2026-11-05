@@ -61,7 +61,7 @@ import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/d
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
-import { LURES, populateSakura, SakuraDirector, sakuraVariantPicker, Stalker } from '../sakura/director';
+import { empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { isStory, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
 import { campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
 import { buildLevel, type Level } from '../world/level';
@@ -255,6 +255,7 @@ export class SessionSim {
       this.sakuraDir = new SakuraDirector(this.zombies);
       const dir = this.sakuraDir;
       this.zombies.pickVariant = sakuraVariantPicker(this.level, () => dir.kinds);
+      this.zombies.territoryOf = sakuraTerritory();
     }
     this.zombies.onKill = (z, head) => this.onKill(z, head);
     // insta-kill: any hit kills (not bosses, not carriers)
@@ -396,6 +397,14 @@ export class SessionSim {
       } else if (e.kind === 'key') dir.draw(LURES.key);
     }
     if (this.level.sakura) this.level.sakura.theatre.labLink.closed = !SakuraQuest.hasKey(v);
+    // the Empress is off the map until her moment (the relay in the operation, the bloom in KAIKA)
+    if (this.hunt.status !== 'complete') {
+      if (!empressAwake(this.campaign, v.phase, this.defense.status)) {
+        this.hunt.status = 'available';
+        const b = this.zombies.boss;
+        if (b) this.zombies.remove(b);
+      } else if (this.hunt.status === 'available') this.hunt.status = 'active';
+    }
     // the lab's alarm the first time anyone goes down
     if (!this.labWoken && this.level.sakura) {
       const fl = this.level.floors;

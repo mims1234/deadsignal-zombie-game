@@ -32,7 +32,7 @@ import { PetalFall } from './petalFall';
 import { type RouteGoal, RouteTrail } from './trail';
 import { metroPower } from '../world/layout/sakura/metro';
 import { CHARM_PLACES, decodeQuest, FUSE_BIT, LANTERN_SIGNS, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
-import { LURES, populateSakura, SakuraDirector, sakuraVariantPicker, Stalker } from './director';
+import { empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from './director';
 import { BY_TEXT, LINE } from './lines';
 import { type LineKind, SakuraVoice } from './voice';
 import { LAB_KIOSK } from '../world/layout/sakura/theatre';
@@ -132,8 +132,8 @@ export class SakuraRuntime {
   private readonly dir: SakuraDirector;
   /** Lines that come back now and then (seconds until each may again). */
   private readonly again = new Map<string, number>();
-  /** The Empress: seen, raging, down (her lines, once each). */
-  private empress = { seen: false, rage: false, down: false };
+  /** The Empress: seen, raging, down (her lines, once each); awake (her hunt open) as last seen. */
+  private empress = { seen: false, rage: false, down: false, awake: false };
   private scanT = 0;
   /** The district's air: the next wind chime, crow or departure melody. */
   private ambT = 6;
@@ -174,6 +174,7 @@ export class SakuraRuntime {
     g.radioHook = (who, text) => this.onRadio(who, text);
     this.dir = new SakuraDirector(g.zombies);
     g.zombies.pickVariant = sakuraVariantPicker(g.level, () => this.dir.kinds);
+    g.zombies.territoryOf = sakuraTerritory();
     g.menus.pauseTab = () => ({ label: 'FIELD FILE', build: () => buildFieldFile({ story: this.fieldStory(), seen: new Set(this.progress.seen), poem: this.poemRead ? SakuraQuest.poem(this.view.order) : null }) });
   }
 
@@ -400,7 +401,9 @@ export class SakuraRuntime {
     this.voice.stopAll();
     this.dir.reset();
     this.again.clear();
-    this.empress = { seen: false, rage: false, down: false };
+    this.empress = { seen: false, rage: false, down: false, awake: false };
+    // the Empress is not on the map until her moment (`director.ts` empressAwake); the hunt says what she waits for
+    g.mission.huntClosed = () => (this.campaign ? 'She waits on her stage. The Court has shut the theatre.' : 'The theatre is shut. Restore the relay first.');
     this.poemRead = false;
     this.routeT = 0;
     this.trail.set(null);
@@ -498,6 +501,17 @@ export class SakuraRuntime {
         this.procession++;
       }
     }
+    // the Empress's hunt: shut (and she off the map) until her moment, then the curtain rises (co-op: the simulation's)
+    const s = g.session;
+    const awake = empressAwake(this.campaign, this.view.phase, s.defense.status);
+    if (!this.follow && s.hunt.status !== 'complete') {
+      if (!awake) {
+        s.hunt.status = 'available';
+        if (g.zombies.boss) g.zombies.remove(g.zombies.boss);
+      } else if (s.hunt.status === 'available') s.hunt.status = 'active';
+    }
+    if (s.hunt.status === 'active' && awake && !this.empress.awake) this.curtainRises();
+    this.empress.awake = awake || s.hunt.status === 'complete';
     // KAIKA: the chapter it is on
     if (this.campaign) {
       const ch = chapterIndex(this.campaignState());
@@ -625,6 +639,15 @@ export class SakuraRuntime {
     }
     if (v.phase === 'bell') return { x: s.bell.x, z: s.bell.z, label: 'THE BELL', what: 'ring the shrine bell' };
     return null;
+  }
+
+  /** Her moment: the theatre's doors open, she is on her stage, and the Court knows. */
+  private curtainRises(): void {
+    const g = this.g;
+    g.audio.play('bloom_swell', { priority: 2, volume: 0.6 });
+    g.banner('THE CURTAIN RISES', 'The Crimson Empress is on her stage at the Kurenai Theatre', 'danger', 5);
+    g.feed('THE THEATRE DOORS ARE OPEN', 'danger');
+    if (!this.follow) this.dir.draw(LURES.key);
   }
 
   /** The first time into a place: what it wakes. */

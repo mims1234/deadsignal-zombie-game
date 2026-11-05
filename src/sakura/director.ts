@@ -43,6 +43,36 @@ export function sakuraVariantPicker(level: Level, lure?: () => LureKinds | null)
   };
 }
 
+/** A rectangle of ground. */
+type Ground = { x0: number; z0: number; x1: number; z1: number };
+const inside = (r: Ground, x: number, z: number): boolean => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1;
+const within = (r: Ground, m: number): Ground => ({ x0: r.x0 + m, z0: r.z0 + m, x1: r.x1 - m, z1: r.z1 - m });
+
+/**
+ * `ZombieManager.territoryOf` for the Sakura District: the Empress keeps to her theatre's compound, the Court to the
+ * ground it was found on (the theatre's compound or the freight yard). They hold it and shoot from its edge; they do not
+ * follow anyone down the streets, so the district can be crossed without bringing them along.
+ */
+export function sakuraTerritory(): (z: { isBoss: boolean; variant: string; x: number; z: number }) => Ground | null {
+  const theatre = within(ZONES.theatre, 1.4);
+  const freight = within(ZONES.freight, 1.2);
+  return (z) => {
+    if (z.isBoss) return theatre;
+    if (z.variant !== 'court') return null;
+    if (inside(ZONES.freight, z.x, z.z)) return freight;
+    if (inside(ZONES.theatre, z.x, z.z)) return theatre;
+    return null;
+  };
+}
+
+/**
+ * The Empress's hunt opens at her moment, not before (she is not on the map until then): in the operation once the
+ * relay is up (Command sends you to her), in KAIKA once the trees are red (Aoi sends you, with what Kisaragi gave you).
+ */
+export function empressAwake(kaika: boolean, phase: string, defense: string): boolean {
+  return kaika ? phase === 'bloom' : defense === 'complete';
+}
+
 /** A run's start: the Court's sentries up on the container decks and round the fires before the theatre. */
 export function populateSakura(zm: ZombieManager, level: Level, rng: Rng): void {
   const h = level.sakura;

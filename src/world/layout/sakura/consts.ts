@@ -49,8 +49,8 @@ export const SITES = {
   lz: { x: -60, z: -44, radius: 9, terminalX: -48, terminalZ: -36 },
   /** The relay at the shrine (the defense: hold the courtyard). */
   defense: { x: 100, z: 50, radius: 14 },
-  /** The Crimson Empress's courtyard, before the theatre. */
-  boss: { x: 20, z: -40, searchX: 20, searchZ: -44, searchRadius: 24 },
+  /** The Crimson Empress: on her stage inside the theatre (she comes out through its doors), the search its hall and courtyard. */
+  boss: { x: 20, z: -57.5, searchX: 20, searchZ: -48, searchRadius: 22 },
   /** The pagoda in the theatre's garden: the surge rises from here. */
   hazard: { x: 55, z: -56 },
 } as const;
