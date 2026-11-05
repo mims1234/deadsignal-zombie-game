@@ -154,7 +154,8 @@ export function buildSchool(c: Ctx): SchoolInfo {
   d.crate(-110, -28, 0.4, 'low');
   d.crate(-36, -40, 1.2, 'low');
   d.spawn('low', 'general', [[-126, -64], [-80, -64], [-36, -64], [-126, -28]], 1);
-  d.spawn('low', 'lz', [[-84, -60], [-36, -60], [-84, -32], [-38, -32], [-60, -62]], 1);
+  // the landing zone's: round the field and out on the roads, so a wave climbs the hill from every side (the procession)
+  d.spawn('low', 'lz', [[-84, -60], [-36, -60], [-84, -32], [-38, -32], [-60, -62], [-24, -50], [-24, -35], [-40, -20], [-72, -20], [-95, -22], [-100, -36], [-34, -64], [-90, -64]], 1);
   d.zombies('low', 'shambler', [[-100, -40], [-90, -46], [-72, -52], [-50, -40], [-44, -58], [-80, -36]]);
   d.zombies('low', 'runner', [[-60, -58], [-96, -50]]);
   return { areas: main.areas, musicRoom };

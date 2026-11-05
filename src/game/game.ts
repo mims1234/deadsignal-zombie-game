@@ -641,7 +641,11 @@ export class Game implements GameCtx {
     }
     // Aurelia herself: solo only when she is switched on for this player; in co-op whenever the session runs her
     if (this.mapId === 'aurelia') this.aurelia = new AureliaRuntime(this);
-    if (this.mapId === 'sakura') this.sakura = new SakuraRuntime(this);
+    if (this.mapId === 'sakura') {
+      // the district's voices and score, every one before the run (the loading screen counts them in)
+      this.sakura = new SakuraRuntime(this);
+      await this.sakura.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `GATHERING THE PETALS ${n} / ${of}`));
+    }
     if (this.mapId === 'mujin') {
       // the station's voices and score, every one before the first loop (the loading screen counts them in)
       this.mujin = new MujinRuntime(this);
@@ -1126,7 +1130,11 @@ export class Game implements GameCtx {
     this.hud.event({ type: 'banner', title, subtitle, tone, duration });
   }
 
+  /** A map that voices its radio (the Sakura District) takes every line here instead; true: taken. */
+  radioHook: ((speaker: string, text: string, duration?: number) => boolean) | null = null;
+
   radio(speaker: string, text: string, duration?: number): void {
+    if (this.radioHook?.(speaker, text, duration)) return;
     this.hud.event({ type: 'radio', speaker, text, duration });
     this.audio.play('radio_chirp', { priority: 1, volume: 0.5 });
   }
@@ -1318,7 +1326,7 @@ export class Game implements GameCtx {
       } else if (this.mapId === 'sakura' && !roam) {
         const tale = this.tale;
         if (tale) this.banner(STORIES[tale].title, STORIES[tale].banner, 'info', 5);
-        else this.banner('SAKURAGI', 'Seventh spring. Restore the shrine relay, put down the Empress, extract. Nobody is left to save.', 'info', 5);
+        else this.banner('SAKURAGI', 'Seventh spring. Power the shrine relay from the metro, put down the Empress, extract.', 'info', 5);
       } else if (!roam) this.banner('OPERATION DEAD SIGNAL', 'Restore the relay. Kill the Warden. Free the trapped survivors. Extract.', 'info', 4.5);
       // the first deploy on a browser that never opened Settings: where to raise the graphics
       if (this.qualityHint && !spectating) {

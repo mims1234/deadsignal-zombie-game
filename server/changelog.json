@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.338",
+      "date": "2026-11-05",
+      "title": "Sakura District: voiced, and every step has a reason",
+      "notes": [
+        "The Sakura District speaks now: 104 voiced lines and 5 music pieces made for it. Aoi Kisaragi on the shrine relay, Hana and Yuzu, Command, the pilot, the station announcer in Japanese and English, Sayo Kurenai herself, Mei the idol and the masked woman. The music follows the night: dusk, the blood moon, Kisaragi, the procession, and home.",
+        "Lines never talk over each other, and nothing the story needs is lost when you do two things at once. Command's calls come first. The story is told in the order it happened, and every charm carries Aoi's memory of whose it was, so taking them early or out of order loses nothing. Directions are skipped only if you have already done them. Squad members who are down stop talking.",
+        "Every step has a reason. The shrine relay draws its power from the metro substation, so the 3 fuses come first in both modes. The lab under the theatre is sealed: the army kept its keycard at the freight yard's office, so you have to go and get it.",
+        "The Operation and KAIKA feel different. The Operation is Command's mission: Aoi breaks into the radio, Command tells you to ignore her, and Command reacts when the Bloom happens. KAIKA is Aoi's story, and Command holds the helicopter until her rite is done.",
+        "The dead never stop coming. A few are always on their way to you, from out of sight, all over the district. The pressure rises as the story moves on, and loud moments draw more for a while: the station lights coming back, a charm taken, the lab's alarm, the lanterns going out, the bell. Nobody appears in front of you at a story moment any more.",
+        "The Procession comes up from every side of the hill, and the lanterns' wrath comes from round the shrine.",
+        "Taking the second Kisaragi relic no longer throws away the first one."
+      ]
+    },
+    {
       "version": "0.4.337",
       "date": "2026-11-05",
       "title": "Sakura District: two ways to play, and a reason for the relics",

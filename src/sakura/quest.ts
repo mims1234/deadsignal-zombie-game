@@ -25,7 +25,7 @@ export const QUEST_PHASES = ['charms', 'lanterns', 'bell', 'bloom'] as const;
 export type QuestPhase = (typeof QUEST_PHASES)[number];
 
 /** Within reach of a charm, the tree, a lantern or the bell (m). The boat's charm is reached from the bank. */
-export const QUEST_REACH = { charm: 2.2, boat: 4.2, tree: 3.4, lantern: 2.4, bell: 3 };
+export const QUEST_REACH = { charm: 2.2, boat: 4.2, tree: 3.4, lantern: 2.4, bell: 3, key: 2.6 };
 
 export interface QuestView {
   phase: QuestPhase;
@@ -43,6 +43,7 @@ export interface QuestView {
 
 export type QuestEvent =
   | { kind: 'charm'; i: number }
+  | { kind: 'key' }
   | { kind: 'tied'; n: number; all: boolean }
   | { kind: 'lit'; lantern: number; n: number }
   | { kind: 'wrong'; lantern: number }
@@ -53,13 +54,16 @@ export interface QuestSpots {
   charms: { x: number; y: number; z: number }[];
   /** The metro's three fuses (its power, `MARK.fuses`). */
   fuses: { x: number; y: number; z: number }[];
+  /** The lab keycard, on the hook inside the yard office's door at the freight yard. */
+  key: { x: number; z: number };
   tree: { x: number; z: number };
   lanterns: { x: number; z: number }[];
   bell: { x: number; z: number };
 }
 
 const ALL = 0b11111;
-/** `QuestView.marks`: bit 0 is KAIKA's checkpoint (`campaign.ts`), bits 1-3 the metro's fuses. */
+/** `QuestView.marks`: bit 0 the lab keycard (the lab's stairs open for everyone), bits 1-3 the metro's fuses. */
+export const KEY_BIT = 0b1;
 export const FUSE_BIT = 0b10;
 export const FUSES_ALL = 0b1110;
 const bits = (v: number): number => {
@@ -186,6 +190,20 @@ export class SakuraQuest {
     let n = 0;
     for (let i = 0; i < 3; i++) if (v.marks & (FUSE_BIT << i)) n++;
     return n;
+  }
+
+  /** Take the lab keycard from the yard office (someone at (x, z)). */
+  takeKey(x: number, z: number): boolean {
+    const k = this.spots.key;
+    if (this.view.marks & KEY_BIT || Math.hypot(k.x - x, k.z - z) > QUEST_REACH.key) return false;
+    this.view.marks |= KEY_BIT;
+    this.events.push({ kind: 'key' });
+    return true;
+  }
+
+  /** The lab's stairs are open (someone has the keycard). */
+  static hasKey(v: QuestView): boolean {
+    return (v.marks & KEY_BIT) !== 0;
   }
 
   /** Someone reached a campaign place (`campaign.ts` MARK); true the first time. */

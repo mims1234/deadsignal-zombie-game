@@ -14,6 +14,8 @@ import type { Entities, StationRuntime } from './entities';
 export interface MissionApi {
   transmitterPos(): { x: number; z: number };
   canActivateTransmitter(): boolean;
+  /** Why the relay cannot be started yet, or null. */
+  relayBlocked(): string | null;
   activateTransmitter(): void;
   terminalPos(): { x: number; z: number };
   terminalState(): 'locked' | 'available' | 'busy';
@@ -231,7 +233,10 @@ export class Interaction {
     if (this.mission.canActivateTransmitter()) {
       const t = this.mission.transmitterPos();
       const d = Math.hypot(t.x - px, t.z - pz);
-      if (d < 3.4) {
+      const blocked = this.mission.relayBlocked();
+      if (d < 3.4 && blocked) {
+        targets.push({ id: 'transmitter', dist: d, text: blocked, sub: 'The relay feeds from the metro substation - put its 3 fuses back', tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
+      } else if (d < 3.4) {
         targets.push({
           id: 'transmitter',
           dist: d,

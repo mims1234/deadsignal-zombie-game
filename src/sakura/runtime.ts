@@ -26,13 +26,16 @@ import type { SakuraHandles } from '../world/layout/sakura';
 import { CANAL_WATER } from '../world/layout/sakura/canal';
 import { BLOSSOM, jpSignMaterial } from '../world/layout/sakura/props';
 import { buildFieldFile, type FieldFileStory, type NoteText, SakuraHud, STAMP_URL } from './hud';
-import { CHAPTERS, CHECKPOINT, FIELD, type FieldKind, type Line, MARK, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt, PROCESSION, processionWave } from './campaign';
+import { CHAPTERS, FIELD, type FieldKind, PLACE_NAMES, PLACE_RADIO, type Place, campaignSetPiece, chapterIndex, orderWords, placeAt, PROCESSION, processionWave } from './campaign';
 import { NOTES, type SakuraNote } from './lore';
 import { PetalFall } from './petalFall';
 import { type RouteGoal, RouteTrail } from './trail';
 import { metroPower } from '../world/layout/sakura/metro';
-import { CHARM_PLACES, decodeQuest, FUSE_BIT, LANTERN_SIGNS, lanternWrath, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
-import { populateSakura, Stalker } from './director';
+import { CHARM_PLACES, decodeQuest, FUSE_BIT, LANTERN_SIGNS, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
+import { LURES, populateSakura, SakuraDirector, sakuraVariantPicker, Stalker } from './director';
+import { BY_TEXT, LINE } from './lines';
+import { type LineKind, SakuraVoice } from './voice';
+import { LAB_KIOSK } from '../world/layout/sakura/theatre';
 import { STORIES, type StoryId } from './missions';
 import { questSpots } from './spots';
 
@@ -48,8 +51,28 @@ const PERKS = {
 } as const;
 type PerkId = keyof typeof PERKS;
 
+/** Command's briefing, in each mode (the mission says it a few seconds in; `lines.ts` voices it). */
+const BRIEF = {
+  op: LINE.cmd_brief_op!.text,
+  kaika: LINE.cmd_brief_kaika!.text,
+};
+
+/** The lab stairwell's doorway, behind the clinic (the SEALED prompt stands here while nobody has the keycard). */
+const LAB_DOOR = { x: LAB_KIOSK.x, z: LAB_KIOSK.z + 0.4 };
+
+/** How far the story has come, 0..1 (the district's pressure rises with it). */
+function storyProgress(v: QuestView, defense: string, hunt: string): number {
+  let n = bitsOf(v.found) + (SakuraQuest.powered(v) ? 1 : 0) + (SakuraQuest.hasKey(v) ? 1 : 0);
+  if (v.tied === 0b11111) n++;
+  if (v.phase === 'bell' || v.phase === 'bloom') n++;
+  if (v.phase === 'bloom') n += 2;
+  if (defense === 'complete') n++;
+  if (hunt === 'complete') n++;
+  return Math.min(1, n / 13);
+}
+
 /** What a player asks of the quest (co-op: the simulation does it). */
-type QuestAct = 'charm' | 'fuse' | 'tie' | 'light' | 'ring';
+type QuestAct = 'charm' | 'fuse' | 'tie' | 'light' | 'ring' | 'key';
 
 interface NoteView {
   n: SakuraNote;
@@ -101,8 +124,16 @@ export class SakuraRuntime {
   /** Places whose transmission has played this run; kinds met this run (their field card shows once a run). */
   private readonly heard = new Set<Place>();
   private readonly met = new Set<string>();
-  /** When the radio is free again (lines queue, never over each other). */
-  private radioAt = 0;
+  /** The lab keycard on the yard office's door (gone once taken). */
+  private readonly keycard: THREE.Group;
+  /** Everything said aloud, one line at a time (`voice.ts`), and the score. */
+  readonly voice: SakuraVoice;
+  /** The district's pressure and its lures (solo: here; co-op: the simulation's). */
+  private readonly dir: SakuraDirector;
+  /** Lines that come back now and then (seconds until each may again). */
+  private readonly again = new Map<string, number>();
+  /** The Empress: seen, raging, down (her lines, once each). */
+  private empress = { seen: false, rage: false, down: false };
   private scanT = 0;
   /** The district's air: the next wind chime, crow or departure melody. */
   private ambT = 6;
@@ -117,8 +148,6 @@ export class SakuraRuntime {
   private powerShown = false;
   /** Paper lanterns risen where a charm was taken (the place is at peace), cleared on a new run. */
   private readonly risen: THREE.Group[] = [];
-  /** Radio lines waiting their turn (they wait for a lull in the fighting, up to a while). */
-  private readonly radioQueue: { who: Line[0]; text: string; at: number; waited: number }[] = [];
 
   constructor(private readonly g: Game) {
     this.h = g.level.sakura!;
@@ -138,7 +167,19 @@ export class SakuraRuntime {
     this.labArea = g.level.floors.areas.findIndex((a) => a.name === 'Kurenai lab');
     this.trail = new RouteTrail(g.level, g.worldRoot);
     this.buildFuses();
+    this.keycard = this.buildKeycard();
+    this.voice = new SakuraVoice(g.audio);
+    this.voice.onCaption = (who, text, dur) => g.hud.event({ type: 'radio', speaker: who, text, duration: dur });
+    this.voice.canSpeak = (who) => !((who === 'HANA' || who === 'YUZU') && g.squad.lost(who));
+    g.radioHook = (who, text) => this.onRadio(who, text);
+    this.dir = new SakuraDirector(g.zombies);
+    g.zombies.pickVariant = sakuraVariantPicker(g.level, () => this.dir.kinds);
     g.menus.pauseTab = () => ({ label: 'FIELD FILE', build: () => buildFieldFile({ story: this.fieldStory(), seen: new Set(this.progress.seen), poem: this.poemRead ? SakuraQuest.poem(this.view.order) : null }) });
+  }
+
+  /** Load the voices and the score (the loading screen waits for it). */
+  preload(progress?: (done: number, total: number) => void): Promise<void> {
+    return this.voice.load(progress);
   }
 
   /** The dusk look (sky, fog, lights): the map's own; the bloom changes it. */
@@ -356,8 +397,10 @@ export class SakuraRuntime {
     this.heard.clear();
     this.met.clear();
     this.timers.length = 0;
-    this.radioAt = 0;
-    this.radioQueue.length = 0;
+    this.voice.stopAll();
+    this.dir.reset();
+    this.again.clear();
+    this.empress = { seen: false, rage: false, down: false };
     this.poemRead = false;
     this.routeT = 0;
     this.trail.set(null);
@@ -367,8 +410,16 @@ export class SakuraRuntime {
     metroPower(g.level.lights, false);
     // KAIKA: the helicopter waits for the bloom (co-op: the simulation holds it)
     g.mission.extractGate = () => !this.campaign || this.view.phase === 'bloom';
-    // any other run: Aoi's first call a little way in (KAIKA opens on it)
-    if (!this.campaign) this.say(CHAPTERS[0]!.intro.slice(0, 3), 22);
+    // the relay draws from the station substation: no uplink until the metro's power is back
+    g.mission.relayBlock = () => (SakuraQuest.powered(this.view) ? null : 'NO POWER');
+    // Command's briefing (the mission says it a few seconds in): the operation's, or KAIKA's
+    g.mission.brief = () => (this.campaign ? BRIEF.kaika : BRIEF.op);
+    // the operation: Aoi's first call a little way in, and Command telling you to ignore her (KAIKA opens on it)
+    if (!this.campaign) {
+      this.voice.sayAll(['aoi_call', 'hana_aoi', 'cmd_aoi_ignore', 'yuzu_aoi'], { delay: 45 });
+      this.aoiNext(46);
+    }
+    this.voice.cue('dusk', 4);
     this.view = this.local.view;
     this.shown = { ...this.view, found: 0, tied: 0, lit: 0, phase: 'charms' };
     this.relicTaken.fill(false);
@@ -411,7 +462,11 @@ export class SakuraRuntime {
       this.timers.splice(i, 1)[0]!.fn();
     }
     this.hud.update(dt);
+    this.voice.update(this.time);
+    for (const [k, v] of this.again) this.again.set(k, v - dt);
     if (!this.follow) {
+      this.dir.progress = storyProgress(this.view, g.session.defense.status, g.session.hunt.status);
+      this.dir.tick(dt);
       this.local.tick(dt);
       this.view = this.local.view;
       this.consumeLocal();
@@ -427,20 +482,24 @@ export class SakuraRuntime {
     if (this.view.phase === 'bloom' && this.procession < PROCESSION.at.length && (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing')) {
       this.processionT += dt;
       while (this.procession < PROCESSION.at.length && this.processionT >= PROCESSION.at[this.procession]!) {
-        if (!this.follow) processionWave(this.procession, g.zombies, g.level, g.rng);
+        if (!this.follow) {
+          processionWave(this.procession, g.zombies);
+          this.dir.draw(LURES.procession);
+        }
+        const calling = (): boolean => ['called', 'inbound', 'landing'].includes(g.session.extraction.phase);
         if (this.procession === 0) {
           g.banner('THE PROCESSION', 'Everyone the bell woke is coming up the hill. Hold the landing zone.', 'danger', 6);
-          this.say([
-            ['AOI', 'They heard the bell. Every one of them is coming up the hill to go home, and they will take you with them. Hold until the bird lands. What Kisaragi gave you is for this.'],
-            ['YUZU', 'That is a lot of red trees walking.'],
-          ], 1);
-        } else g.feed(this.procession === 1 ? 'THE PROCESSION: ONI ON THE SLOPE' : 'THE PROCESSION: THE LAST OF THEM', 'danger');
+          this.voice.say('aoi_procession', { kind: 'story' });
+          this.voice.say('yuzu_procession', { kind: 'place' });
+        } else {
+          g.feed(this.procession === 1 ? 'THE PROCESSION: ONI ON THE SLOPE' : 'THE PROCESSION: THE LAST OF THEM', 'danger');
+          this.voice.say(this.procession === 1 ? 'hana_oni' : 'yuzu_last', { kind: 'direction', valid: calling });
+        }
         this.procession++;
       }
     }
-    // KAIKA: the checkpoint (solo: here; co-op: the simulation), and the chapter it is on
+    // KAIKA: the chapter it is on
     if (this.campaign) {
-      if (!this.follow && g.playerAlive() && Math.hypot(g.player.x - CHECKPOINT.x, g.player.z - CHECKPOINT.z) < CHECKPOINT.r) this.local.mark(MARK.checkpoint);
       const ch = chapterIndex(this.campaignState());
       if (ch !== this.chapter) this.onChapter(ch);
     }
@@ -449,12 +508,15 @@ export class SakuraRuntime {
     if (this.scanT <= 0 && g.playerAlive()) {
       this.scanT = 0.4;
       const place = this.placeOf();
-      if (place && !this.heard.has(place)) {
+      if (place && !this.heard.has(place) && !(place === 'station' && this.time < 50)) {
         this.heard.add(place);
-        this.say(PLACE_RADIO[place], 0.6);
+        this.voice.sayAll(PLACE_RADIO[place], { kind: 'place', delay: 0.6 });
+        this.enter(place);
       }
       this.scanKinds();
+      this.watch();
     }
+    this.music();
     // the petal trail: the goal worked out twice a second, the petals every frame
     this.routeT -= dt;
     if (this.routeT <= 0) {
@@ -463,8 +525,8 @@ export class SakuraRuntime {
     }
     this.trail.update(dt, this.time, g.player.x, g.player.y, g.player.z);
     for (const f of this.fuses) f.rotation.y += dt * 1.5;
+    this.keycard.children[0]!.position.y = Math.sin(this.time * 2) * 0.02;
     for (const r of this.risen) for (let i = 0; i < r.children.length; i++) r.children[i]!.position.y = 2.4 + i * 0.35 + Math.sin(this.time * 1.2 + i) * 0.18;
-    this.pumpRadio(dt);
     this.ambT -= dt;
     if (this.ambT <= 0) {
       this.ambT = 9 + g.rng.f() * 14;
@@ -477,7 +539,7 @@ export class SakuraRuntime {
     this.moveMul += (want - this.moveMul) * Math.min(1, dt * 3);
     if (near < 18 && !this.idolWarned) {
       this.idolWarned = true;
-      g.radio('HANA', 'That voice - it\'s Mei Hoshino, the idol from the posters. Don\'t listen to her. Don\'t walk toward it.', 7);
+      this.voice.say('hana_idol', { kind: 'story' });
     }
     // the charms bob and turn; the flames flicker; the relics turn over their plinths
     for (const c of this.charms) {
@@ -500,8 +562,7 @@ export class SakuraRuntime {
   private stalkerCame(): void {
     const g = this.g;
     g.audio.play('fzombie_giggle', { priority: 3, volume: 0.8 });
-    g.radio('YUZU', 'Something is following us. A woman with a mask. When I look at her, she stops.', 7);
-    this.later(9, () => g.radio('HANA', 'Then keep looking at her. She only moves when nobody does.', 6));
+    this.voice.sayAll(['yuzu_stalker', 'hana_stalker'], { kind: 'story' });
   }
 
   private readonly timers: { t: number; fn: () => void }[] = [];
@@ -509,37 +570,97 @@ export class SakuraRuntime {
     this.timers.push({ t: this.time + s, fn });
   }
 
-  /** Lines on the radio, one after another (after whatever is already queued), from `delay` seconds on. */
-  private say(lines: readonly Line[], delay = 0): void {
-    for (const [who, text] of lines) this.radioQueue.push({ who, text, at: this.time + delay, waited: 0 });
+  // ---------------------------------------------------------------------------------------------
+  // what is said
+  // ---------------------------------------------------------------------------------------------
+
+  /** The mission's own radio (Command, the pilot, the squad's cries): through the voice director, voiced where it can be. */
+  private onRadio(who: string, text: string): boolean {
+    const id = BY_TEXT.get(`${who}|${text}`);
+    const kind: LineKind = who === 'COMMAND' || who === 'PILOT' ? 'system' : /hit bad/.test(text) ? 'bark' : 'story';
+    if (!id) {
+      this.voice.caption(who, text, { kind });
+      return true;
+    }
+    this.voice.say(id, { kind });
+    if (id === 'cmd_relay_done') {
+      if (this.campaign) this.voice.say('aoi_relay_done', { kind: 'story' });
+      else this.voice.say('cmd_empress_next', { kind: 'direction', valid: () => this.g.session.hunt.status !== 'complete' });
+    }
+    return true;
   }
 
   /**
-   * The next line on the radio when the last one is done - and when the fighting has let up (nobody reads in a melee):
-   * a line waits while infected are on the player, up to 18 s.
+   * The operation: Aoi says where the next of her charms is (KAIKA's chapters say it there) - the first still out there,
+   * and the keycard before the lab - unless it has been found before her turn comes.
    */
-  private pumpRadio(dt: number): void {
-    const next = this.radioQueue[0];
-    if (!next || this.time < next.at || this.time < this.radioAt) return;
-    if (this.underAttack() && next.waited < 18) {
-      next.waited += dt;
-      return;
-    }
-    this.radioQueue.shift();
-    const dur = Math.min(11, 3.2 + next.text.length / 17);
-    if (next.who === 'AOI') this.g.audio.play('relay_voice', { priority: 2, volume: 0.7 });
-    this.g.radio(next.who === 'AOI' ? 'AOI  //  SHRINE RELAY' : next.who, next.text, dur);
-    this.radioAt = this.time + dur + 0.5;
+  private aoiNext(delay: number): void {
+    const v = this.view;
+    const i = [0, 1, 2, 3, 4].find((k) => !(v.found & (1 << k)));
+    if (i === undefined) return;
+    const id = i === 4 ? (SakuraQuest.hasKey(v) ? 'aoi_dir_lab' : 'aoi_dir_key') : ['aoi_dir_metro', 'aoi_dir_school', 'aoi_dir_karaoke', 'aoi_dir_canal'][i]!;
+    this.voice.say(id, { kind: 'direction', delay, valid: () => !(this.view.found & (1 << i)) && (id !== 'aoi_dir_key' || !SakuraQuest.hasKey(this.view)) });
   }
 
-  /** Infected on the player right now (chasing or striking within a dozen metres). */
-  private underAttack(): boolean {
-    const p = this.g.player;
-    for (const z of this.g.zombies.zombies) {
-      if (!z.alive || z.dormant || (z.state !== 'chase' && z.state !== 'attack')) continue;
-      if (Math.hypot(z.x - p.x, z.z - p.z) < 12 && Math.abs(z.y - p.y) < 3) return true;
+  /** The first time into a place: what it wakes. */
+  private enter(place: Place): void {
+    if (place === 'kisaragi') this.voice.say('aoi_kisaragi', { kind: 'story', once: true, delay: 1 });
+    if (place === 'lab' && !this.follow) this.dir.draw(LURES.lab);
+  }
+
+  /** A line that may come back now and then (`every` seconds apart at the least). */
+  private now(id: string, every: number): boolean {
+    if ((this.again.get(id) ?? 0) > 0) return false;
+    this.again.set(id, every);
+    return true;
+  }
+
+  /** What is worth a word as it happens: the Empress, the masked woman, Mei, the station's speakers, a dead relay. */
+  private watch(): void {
+    const g = this.g;
+    const p = g.player;
+    const b = g.zombies.boss;
+    if (b && b.alive) {
+      const d = Math.hypot(b.x - p.x, b.z - p.z);
+      if (!this.empress.seen && d < 34 && Math.abs(b.y - p.y) < 4) {
+        this.empress.seen = true;
+        this.voice.say('sayo_seen', { kind: 'story', pos: { x: b.x, y: b.y + 2.2, z: b.z }, valid: () => !!b.alive });
+      }
+      if (this.empress.seen && !this.empress.rage && b.hp < b.maxHp * 0.5) {
+        this.empress.rage = true;
+        this.voice.say('sayo_rage', { kind: 'story', pos: { x: b.x, y: b.y + 2.2, z: b.z }, valid: () => !!b.alive });
+        this.voice.say('hana_empress_rage', { kind: 'place', valid: () => !!b.alive });
+      }
     }
-    return false;
+    if (!this.empress.down && g.session.hunt.status === 'complete') {
+      this.empress.down = true;
+      this.voice.sayAll(['sayo_down', 'aoi_rest'], { kind: 'story' });
+    }
+    for (const z of g.zombies.zombies) {
+      if (!z.alive || z.dormant) continue;
+      const d = Math.hypot(z.x - p.x, z.z - p.z);
+      if (z.variant === 'kuchisake' && d < 7 && this.now('mask_near', 30)) this.voice.say('mask_near', { kind: 'bark', pos: { x: z.x, y: z.y + 1.6, z: z.z } });
+      if (z.variant === 'idol' && d < 30 && this.now('mei_sing', 35)) this.voice.say('mei_sing', { kind: 'bark', pos: { x: z.x, y: z.y + 1.6, z: z.z } });
+    }
+    const v = this.view;
+    const place = this.placeOf();
+    if (place === 'metro' && SakuraQuest.powered(v) && this.now('pa_line', 80)) this.voice.say('pa_line', { kind: 'bark' });
+    if (this.bloomed) {
+      const k = this.h.kisaragi.boardStreet;
+      if (Math.hypot(k.x - p.x, k.z - p.z) < 45) this.voice.say('pa_arriving', { kind: 'story', once: true });
+    }
+    const d = g.level.data.defense;
+    if (!SakuraQuest.powered(v) && g.session.defense.status !== 'complete' && Math.hypot(d.x - p.x, d.z - p.z) < 9) this.voice.say('cmd_nopower', { kind: 'system', once: true });
+  }
+
+  /** The score: dusk, the blood moon, Kisaragi, the procession, home. */
+  private music(): void {
+    const g = this.g;
+    const p = g.player;
+    const ex = g.session.extraction.phase;
+    const inK = g.level.floors.areaAt(p.x, p.y, p.z) === this.h.kisaragi.area;
+    const want = ex === 'extracted' || ex === 'boarding' ? 'home' : inK ? 'kisaragi' : this.procession > 0 && ['called', 'inbound', 'landing', 'landed'].includes(ex) ? 'procession' : this.bloomed ? 'bloom' : 'dusk';
+    this.voice.cue(want);
   }
 
   /** Where the petal trail leads: KAIKA's chapter; otherwise the operation's next contract (then the landing zone). */
@@ -559,12 +680,35 @@ export class SakuraRuntime {
     const s = g.session;
     const d = g.level.data;
     if (s.extraction.phase === 'extracted') return null;
+    if (s.defense.status !== 'complete' && !SakuraQuest.powered(this.view)) {
+      const f = this.spots.fuses.find((_, i) => !(this.view.marks & (FUSE_BIT << i)));
+      if (f) return at(f.x, f.z, f.y > 2.5 ? f.y - 1.4 : 0);
+    }
     if (s.defense.status !== 'complete') return at(d.defense.x, d.defense.z);
     if (s.hunt.status !== 'complete') {
       const b = g.zombies.boss;
       return b && b.alive ? at(b.x, b.z, b.y) : at(d.hunt.searchX, d.hunt.searchZ);
     }
     return at(d.extraction.lzX, d.extraction.lzZ);
+  }
+
+  /** The lab keycard on the yard office's door: a white card glowing on its hook until someone takes it. */
+  private buildKeycard(): THREE.Group {
+    const g = this.g;
+    const k = this.spots.key;
+    const grp = new THREE.Group();
+    const card = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.012), new THREE.MeshStandardMaterial({ color: 0xf2f2ee, roughness: 0.4, emissive: 0xffd8dc, emissiveIntensity: 0.9 }));
+    grp.add(card);
+    // the reader it hangs by: a dark plate, its red light still on
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.42, 0.02), new THREE.MeshStandardMaterial({ color: 0x1a1c20, roughness: 0.6 }));
+    plate.position.set(0, 0.06, -0.012);
+    grp.add(plate);
+    const led = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.02), new THREE.MeshStandardMaterial({ color: 0xff2030, emissive: 0xff2030, emissiveIntensity: 2.5 }));
+    led.position.set(0, 0.22, 0);
+    grp.add(led);
+    grp.position.set(k.x, 1.35, k.z - 0.72);
+    g.worldRoot.add(grp);
+    return grp;
   }
 
   /** The metro's fuses: yellow cartridges glowing in their cabinets until taken. */
@@ -667,7 +811,7 @@ export class SakuraRuntime {
     if (first) {
       this.progress.seen = [...this.progress.seen, k];
       saveSakura(this.progress);
-      if (k !== 'kuchisake') this.say([f.quip]);
+      if (k !== 'kuchisake') this.voice.say(f.quip, { kind: 'place' });
     }
     this.hud.card(first ? 'FIELD FILE  //  NEW' : 'FIELD FILE', `${f.name}  -  ${f.tag}`, first ? `${f.look}\n\n${f.does}\n\n${f.why}` : f.does, first ? 13 : 6);
   }
@@ -678,7 +822,7 @@ export class SakuraRuntime {
     const prev = this.chapter;
     this.chapter = i;
     if (i <= prev) return;
-    if (!this.follow) campaignSetPiece(i, g.zombies, g.level, this.spots, g.rng);
+    if (!this.follow) campaignSetPiece(i, g.zombies, g.level, this.spots, g.rng, [{ x: g.player.x, y: g.player.y, z: g.player.z }]);
     const done = prev >= 0 ? CHAPTERS[prev] : undefined;
     if (done) {
       g.audio.play('contract_complete', { priority: 2 });
@@ -690,7 +834,9 @@ export class SakuraRuntime {
       g.audio.play('chapter_koto', { priority: 3 });
       g.banner(`CHAPTER ${i + 1}/${CHAPTERS.length}  //  ${ch.title}`, ch.goal, 'info', 6);
     });
-    this.say(ch.intro, done ? 4 : 7);
+    // the first chapter's call opens the story (said whatever happens); the others say the way on, while it still is
+    if (i === 0) this.voice.sayAll(ch.intro, { kind: 'story', delay: 7 });
+    else this.voice.sayAll(ch.intro, { kind: 'direction', delay: done ? 4 : 2, valid: () => !ch.done(this.campaignState()) });
   }
 
   /** The field file's story page. */
@@ -722,7 +868,14 @@ export class SakuraRuntime {
         st.objectives.unshift({ id: 'kaika', title: `${i + 1}/${CHAPTERS.length}  ${ch.title}`, detail: goal, state: 'active', progress: i / CHAPTERS.length, tracked: true, distance: dist });
         if (tg) md.markers.push({ id: 'kaika', kind: 'objective', x: tg.x, z: tg.z, label: tg.label, color: '#ff9ec8', visible: true, compass: true, pulse: true });
       }
-    } else if (v.found || v.phase !== 'charms' || this.heard.size > 1) {
+    } else if (!SakuraQuest.powered(v) && this.g.session.defense.status !== 'complete') {
+      // the operation: the relay has no power until the metro's substation is back
+      const i = [0, 1, 2].find((k) => !(v.marks & (FUSE_BIT << k))) ?? 0;
+      const f = this.spots.fuses[i]!;
+      st.objectives.unshift({ id: 'power', title: 'RESTORE POWER', detail: `The relay feeds from the metro substation: fuses ${SakuraQuest.fuses(v)}/3`, state: 'active', progress: SakuraQuest.fuses(v) / 3, tracked: true, distance: Math.round(Math.hypot(f.x - this.g.player.x, f.z - this.g.player.z)) });
+      md.markers.push({ id: 'fuse', kind: 'objective', x: f.x, z: f.z, label: `FUSE ${SakuraQuest.fuses(v) + 1}/3`, color: '#ffd040', visible: true, compass: true, pulse: true });
+    }
+    if (!this.campaign && (v.found || v.phase !== 'charms' || this.heard.size > 1)) {
       // the quest shows once you are on its trail: once Aoi has been heard, or any of it done
       st.objectives.push({ id: 'lanterns', title: 'THE THOUSAND LANTERNS', detail: SakuraQuest.status(v), state: v.phase === 'bloom' ? 'complete' : 'active', progress: -1, tracked: false, distance: -1 });
     }
@@ -764,6 +917,16 @@ export class SakuraRuntime {
       if (d > (i === 3 ? QUEST_REACH.boat : QUEST_REACH.charm) - 0.15 || Math.abs(c.y - p.y) > 2.4) return;
       out.push({ id: `charm:${i}`, dist: d * 0.5, text: 'TAKE THE OMAMORI', sub: i === 3 ? 'Reach over the rail for it' : 'A shrine charm', tone: 'good', hold: 0.5, enabled: true, onUse: () => this.act('charm', i) });
     });
+    // the lab keycard at the yard office, and the lab's stairs while they are sealed
+    if (!SakuraQuest.hasKey(v)) {
+      const dk = near(s.key.x, s.key.z, 0, QUEST_REACH.key - 0.2);
+      if (dk >= 0) out.push({ id: 'key', dist: dk * 0.5, text: 'TAKE THE KEYCARD', sub: 'Kurenai Biotech, level B2', tone: 'good', hold: 0.6, enabled: true, onUse: () => this.act('key', 0) });
+      const ds = near(LAB_DOOR.x, LAB_DOOR.z, 0, 2.6);
+      if (ds >= 0) {
+        out.push({ id: 'lab-sealed', dist: ds, text: 'SEALED', sub: 'Kurenai Biotech B2 - the keycard is at the freight yard office', tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
+        this.voice.say('hana_locked', { kind: 'place', once: true });
+      }
+    }
     // the tree
     {
       const d = near(s.tree.x, s.tree.z, 0, QUEST_REACH.tree - 0.15);
@@ -855,6 +1018,7 @@ export class SakuraRuntime {
     else if (a === 'fuse') q.takeFuse(i, p.x, p.y, p.z);
     else if (a === 'tie') q.tie(p.x, p.z);
     else if (a === 'light') q.light(i, p.x, p.z);
+    else if (a === 'key') q.takeKey(p.x, p.z);
     else q.ring(p.x, p.z);
     this.consumeLocal();
     this.present(false);
@@ -865,9 +1029,12 @@ export class SakuraRuntime {
     const g = this.g;
     for (const e of this.local.drain()) {
       if (e.kind === 'wrong') {
-        lanternWrath((type, x, z) => void g.zombies.spawn(type, x, z, g.rng, { state: 'chase' }));
+        g.zombies.queue('shambler', 4, 'defense', 0.6);
+        g.zombies.queue('runner', 2, 'defense', 0.9);
+        this.dir.draw(LURES.wrong);
         g.audio.play('fzombie_scream', { priority: 3 });
         g.banner('THE LANTERNS GO OUT', 'Wrong. The dead come for the shrine.', 'danger', 4);
+        this.voice.sayAll(['yuzu_wrong', 'aoi_again'], { kind: 'story' });
       }
     }
   }
@@ -890,7 +1057,7 @@ export class SakuraRuntime {
     this.hud.show(n, this.textOf(n), 'THE THOUSAND LANTERNS', 20);
     if (!this.poemRead) {
       this.poemRead = true;
-      this.say([['AOI', 'The festival poem. Read it line by line - that is the order of the lanterns.']], 2);
+      this.voice.say('aoi_poem', { kind: 'story', delay: 1.5 });
     }
     if (!first) return;
     this.found.add(n.id);
@@ -926,7 +1093,15 @@ export class SakuraRuntime {
   private takeRelic(i: number): void {
     const g = this.g;
     const id = i === 0 ? 'hanafubuki' : 'raijin';
-    const r = takePrize(g.session.inv, { kind: 'weapon', id });
+    const inv = g.session.inv;
+    // holding the other relic: the new one goes in the other hand
+    const relic = (w: { id: string } | null | undefined): boolean => w?.id === 'hanafubuki' || w?.id === 'raijin';
+    const other = inv.activeSlot === 0 ? 1 : 0;
+    if (relic(activeWeapon(inv)) && !relic(inv.slots[other])) {
+      inv.activeSlot = other;
+      g.weapons.cancelActions();
+    }
+    const r = takePrize(inv, { kind: 'weapon', id });
     if (!r.ok) {
       g.banner(WEAPONS[id].short, r.message, 'warn', 2.5);
       return;
@@ -936,6 +1111,7 @@ export class SakuraRuntime {
     this.relicMeshes[i]!.visible = false;
     g.audio.play('box_reveal', { priority: 2 });
     g.banner(WEAPONS[id].name.toUpperCase(), r.message, 'good', 4);
+    this.voice.say(i === 0 ? 'yuzu_relic' : 'hana_relic', { kind: 'place' });
   }
 
   /** The Blossom Altar: the gun in your hands to its top tier, magazine and reserve filled. */
@@ -989,8 +1165,22 @@ export class SakuraRuntime {
       if (powered && !silent) {
         g.audio.play('defense_start', { priority: 3 });
         g.audio.play('station_chime', { priority: 2, volume: 0.9 });
-        g.banner('POWER RESTORED', 'The metro\'s lights are back on', 'good', 4);
+        g.banner('POWER RESTORED', this.campaign ? 'The metro\'s lights are back on' : 'The relay has power - start the uplink at the shrine', 'good', 4);
+        // the station's tapes wake with the lights (and say where the last train goes); Command sees the relay go live
+        this.voice.sayAll(['pa_delay_ja', 'pa_delay_en', 'yuzu_kisaragi_pa'], { kind: 'story', delay: 1.2 });
+        if (!this.campaign) this.voice.say('cmd_power_op', { kind: 'system', delay: 1 });
+        if (!this.follow) this.dir.draw(LURES.power);
       }
+    }
+    // the lab's stairs: sealed until someone has the keycard
+    this.h.theatre.labLink.closed = !SakuraQuest.hasKey(v);
+    this.keycard.visible = !SakuraQuest.hasKey(v);
+    if (SakuraQuest.hasKey(v) && !SakuraQuest.hasKey(was) && !silent) {
+      g.audio.play('pickup_plate', { priority: 2 });
+      g.banner('LAB KEYCARD', 'Kurenai Biotech, level B2 - the stairs behind the clinic are open', 'good', 4);
+      this.voice.sayAll(['hana_key', 'yuzu_key'], { kind: 'story' });
+      if (!this.campaign) this.aoiNext(1);
+      if (!this.follow) this.dir.draw(LURES.key);
     }
     // charms found: lanterns rise where each one was
     for (let i = 0; i < 5; i++) {
@@ -1004,6 +1194,11 @@ export class SakuraRuntime {
         const n = bitsOf(v.found);
         g.audio.play('omamori_chime', { priority: 2 });
         g.banner(`OMAMORI ${n}/5`, `From ${CHARM_PLACES[i]}`, 'good', 3.5);
+        // whose charm it was: told whenever it is taken, in whatever order
+        this.voice.say(`aoi_charm_${i}`, { kind: 'story', delay: 0.8 });
+        if (n === 5) this.voice.say('aoi_all', { kind: 'story', delay: 1 });
+        else if (!this.campaign) this.aoiNext(1);
+        if (!this.follow) this.dir.draw(LURES.charm[i]!);
         this.hud.card('THE THOUSAND LANTERNS', `Omamori ${n}/5`, n === 5 ? 'All five. Tie them to the sacred tree at the shrine.' : 'Aoi\'s charm. The sacred tree at the shrine has knots for five.', 8);
       }
     }
@@ -1013,7 +1208,10 @@ export class SakuraRuntime {
       const all = v.tied === 0b11111;
       g.audio.play('omamori_chime', { pos: { x: s.tree.x, y: 2, z: s.tree.z }, priority: 2 });
       g.banner('THE SACRED TREE', all ? 'All five charms are tied. The lanterns are waiting.' : `${bitsOf(v.tied)}/5 charms tied`, 'good', 4);
-      if (all) g.radio('HANA', 'The old tree just... moved. Gold on the branches. The lanterns - the scroll on the offering box at the hall says the order.', 8);
+      if (all) {
+        this.voice.sayAll(['hana_tree', 'aoi_tied'], { kind: 'story' });
+        if (!this.follow) this.dir.draw(LURES.tied);
+      }
     }
     // the lanterns
     const lit = v.phase === 'bell' || v.phase === 'bloom' ? 5 : v.phase === 'lanterns' ? v.lit : 0;
@@ -1033,6 +1231,7 @@ export class SakuraRuntime {
       const j = v.order[4]!;
       g.audio.play('lantern_light', { pos: { x: s.lanterns[j]!.x, y: 1.5, z: s.lanterns[j]!.z }, priority: 2 });
       g.banner('EVERY LANTERN BURNS', 'Ring the shrine bell', 'good', 5);
+      this.voice.say('aoi_bell', { kind: 'story', delay: 0.8 });
     }
     // the bloom
     if (v.phase === 'bloom' && !this.bloomed) this.bloom(silent);
@@ -1064,7 +1263,8 @@ export class SakuraRuntime {
     g.audio.play('bloom_swell', { priority: 3 });
     g.audio.play('ghost_train', { pos: { x: this.h.kisaragi.ghost.x, y: 2, z: this.h.kisaragi.ghost.z }, priority: 2 });
     g.banner('THE THOUSAND LANTERNS', 'The dead of Sakuragi are seen home. A train is waiting at the station.', 'good', 7);
-    g.radio('YUZU', 'The moon just went red. Every tree in the city is... crimson. And there is a train at the station. With its lights on.', 9);
+    this.voice.sayAll(this.campaign ? ['yuzu_bloom', 'aoi_bloom'] : ['yuzu_bloom', 'cmd_bloom_op', 'aoi_op_bloom'], { kind: 'story' });
+    if (!this.follow) this.dir.draw(LURES.bloom);
     g.fadeThroughBlack(0.8);
   }
 

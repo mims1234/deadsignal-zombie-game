@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three';
 import type { ColliderSpec } from '../collision';
-import type { FloorPoint } from '../floors';
+import type { FloorPoint, FloorLink } from '../floors';
 import type { MaterialName } from '../materials';
 import { addBox, wall, type Opening } from '../structures';
 import type { Ctx } from './util';
@@ -316,7 +316,7 @@ export function stairwellDown(
   top: { x: number; z: number; yaw: number },
   under: { area: number; x: number; z: number; yaw: number },
   opts: { roof?: MaterialName; wall?: MaterialName; sign?: THREE.Material } = {},
-): void {
+): FloorLink {
   const { b, floors } = c;
   const wallMat = opts.wall ?? 'concreteWall';
   const cos = Math.cos(top.yaw);
@@ -370,5 +370,5 @@ export function stairwellDown(
   // and a stop at the foot of the steps below (LEAVE is a choice too)
   b.collide({ x: ux + usin * 0.45, z: uz + ucos * 0.45, hx: 1.5, hz: 0.12, rot: under.yaw, y1: 3, mapKind: 'none', tag: 'stairwell-door' });
   // lower end first: [underground out-point, underground foot, street entry, street out-point]
-  floors.addLink(under.area, 0, [footOut, footIn, { x: ix, y: 0, z: iz }, { x: ox, y: 0, z: oz }], true);
+  return floors.addLink(under.area, 0, [footOut, footIn, { x: ix, y: 0, z: iz }, { x: ox, y: 0, z: oz }], true);
 }

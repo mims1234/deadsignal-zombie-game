@@ -294,6 +294,12 @@ export class SquadRuntime {
   // ---------------------------------------------------------------------------------------------
 
   /** The cage in reach of the player, if any. */
+  /** Is the soldier of this name out of the fight for good (a squad that had them, and lost them)? */
+  lost(name: string): boolean {
+    const a = this.allies.find((x) => x.kind === 'soldier' && x.name.toLowerCase() === name.toLowerCase());
+    return !!a && !a.ref.alive;
+  }
+
   rescueTarget(): { id: string; name: string; dist: number } | null {
     if (!this.survivors || !this.g.playerAlive()) return null;
     const p = this.g.player;

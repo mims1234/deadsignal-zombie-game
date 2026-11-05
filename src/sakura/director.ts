@@ -1,7 +1,13 @@
 /**
- * Who is where on the Sakura District (the solo game and the co-op simulation both use it): what kind each infected
- * spawned in a zone becomes, the Kurenai Court's sentries on the container decks and round their fires, and the
- * stalker who comes for you once you have been in the district a while.
+ * Who is where on the Sakura District, and when they come (the solo game and the co-op simulation both run it): what
+ * kind each infected spawned in a zone becomes, the Kurenai Court's sentries on the container decks and round their
+ * fires, the stalker who comes for you once you have been in the district a while - and the lures.
+ *
+ * Nobody appears out of the air at a story moment: the district's spawning never stops (the zombie manager's own
+ * director, from out of sight), its rate rises as the story goes on (`pressure`), and every loud moment draws the dead
+ * for a while (`lure`): the station's lights and its announcement, a charm taken, the lab's alarm, the lanterns going
+ * out, the bell - mostly the kinds that live there. The waves that matter (the lanterns, the procession) come from the
+ * map's own spawn points through `ZombieManager.queue`.
  */
 import { sakuraVariant, type ZombieVariant } from '../enemies/variants';
 import type { ZombieManager } from '../enemies/zombieManager';
@@ -10,11 +16,16 @@ import type { ZombieType } from '../types';
 import type { Level } from '../world/level';
 import { ZONES } from '../world/layout/sakura/consts';
 
-/** `ZombieManager.pickVariant` for the Sakura District: by the zone (and floor) an infected is spawned on. */
-export function sakuraVariantPicker(level: Level): (type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant {
+/** What a lure draws, by the type the director spawns. */
+export type LureKinds = Partial<Record<ZombieType, ZombieVariant>>;
+
+/** `ZombieManager.pickVariant` for the Sakura District: by the zone (and floor) an infected is spawned on, or, while a lure is on, mostly the kind it draws. */
+export function sakuraVariantPicker(level: Level, lure?: () => LureKinds | null): (type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant {
   const fl = level.floors;
   const kisaragi = level.sakura?.kisaragi.area ?? -1;
   return (type, x, z, y, rng) => {
+    const drawn = lure?.()?.[type];
+    if (drawn && rng.f() < 0.7) return drawn;
     const area = fl.areaAt(x, y, z);
     const kind = fl.areas[area]?.kind;
     let zone = 'street';
@@ -77,5 +88,72 @@ export class Stalker {
     zm.spawn('runner', s.x, s.z, rng, { state: 'chase', variant: 'kuchisake' });
     this.spawned = true;
     return true;
+  }
+}
+
+/** A lure: seconds left, how much faster the dead come, how many more at once, and what kinds mostly. */
+interface Lure {
+  t: number;
+  mul: number;
+  cap: number;
+  kinds: LureKinds;
+}
+
+/** The moments that draw the dead, and how hard (seconds, rate, extra at once, kinds). */
+export const LURES = {
+  power: { t: 40, mul: 2.2, cap: 4, kinds: { shambler: 'commuter', runner: 'jorogumo' } },
+  charm: [
+    { t: 35, mul: 2, cap: 3, kinds: { shambler: 'commuter', runner: 'jorogumo' } },
+    { t: 35, mul: 2, cap: 3, kinds: { runner: 'rooted' } },
+    { t: 35, mul: 2, cap: 3, kinds: { shambler: 'bloomed' } },
+    { t: 35, mul: 2, cap: 3, kinds: { runner: 'rooted', shambler: 'bloomed' } },
+    { t: 40, mul: 2.2, cap: 4, kinds: { armored: 'oni', runner: 'jorogumo' } },
+  ],
+  key: { t: 30, mul: 1.8, cap: 3, kinds: {} },
+  lab: { t: 40, mul: 2, cap: 3, kinds: { armored: 'oni', runner: 'jorogumo' } },
+  tied: { t: 30, mul: 1.8, cap: 3, kinds: { shambler: 'miko' } },
+  wrong: { t: 25, mul: 3, cap: 6, kinds: {} },
+  bloom: { t: 70, mul: 2.4, cap: 6, kinds: { shambler: 'bloomed', runner: 'rooted' } },
+  procession: { t: 50, mul: 2, cap: 8, kinds: { shambler: 'bloomed', runner: 'rooted', armored: 'oni' } },
+} as const satisfies Record<string, { t: number; mul: number; cap: number; kinds: LureKinds } | readonly { t: number; mul: number; cap: number; kinds: LureKinds }[]>;
+
+/**
+ * The district's pressure (the solo runtime and the co-op simulation each run one for whoever spawns): a base rate that
+ * rises with the story, times the strongest lure going.
+ */
+export class SakuraDirector {
+  private lure: Lure = { t: 0, mul: 1, cap: 0, kinds: {} };
+  /** How far the story has come (0..1): the base rate rises with it. */
+  progress = 0;
+
+  constructor(private readonly zombies: ZombieManager) {}
+
+  reset(): void {
+    this.lure = { t: 0, mul: 1, cap: 0, kinds: {} };
+    this.progress = 0;
+    this.zombies.rateMul = 1;
+    this.zombies.capBonus = 0;
+  }
+
+  /** What the current lure draws (none when nothing is). */
+  get kinds(): LureKinds | null {
+    return this.lure.t > 0 ? this.lure.kinds : null;
+  }
+
+  /** A loud moment: for `t` seconds `mul` times the spawn rate and `cap` more at once (the stronger lure wins). */
+  draw(l: { t: number; mul: number; cap: number; kinds: LureKinds }): void {
+    const now = this.lure;
+    if (now.t > 0 && (now.mul - 1) * now.t > (l.mul - 1) * l.t) return;
+    this.lure = { t: l.t, mul: l.mul, cap: l.cap, kinds: { ...l.kinds } };
+  }
+
+  tick(dt: number): void {
+    const l = this.lure;
+    l.t = Math.max(0, l.t - dt);
+    // the base: a little busier from the start, up to half as busy again by the end of the story
+    const base = 1.15 + 0.45 * Math.min(1, Math.max(0, this.progress));
+    const k = l.t > 0 ? Math.min(1, l.t / 6) : 0; // a lure eases off over its last seconds
+    this.zombies.rateMul = base * (1 + (l.mul - 1) * k);
+    this.zombies.capBonus = Math.round(l.cap * k) + Math.round(2 * this.progress);
   }
 }

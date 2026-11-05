@@ -51,11 +51,21 @@ describe('the procession', { timeout: 30000 }, () => {
     expect(count('bloomed')).toBeLessThanOrEqual(bloomed0);
     // the bloom: it comes
     s.sakura.view.phase = 'bloom';
-    step(30 * 3); // the first wave, 2 s after the call
-    expect(count('bloomed') - bloomed0).toBeGreaterThanOrEqual(5);
-    expect(count('rooted')).toBeGreaterThanOrEqual(2);
-    step(30 * 37); // the second and the third
-    expect(count('jorogumo')).toBeGreaterThanOrEqual(1);
-    expect(count('oni') - oni0).toBeGreaterThanOrEqual(2);
+    // the waves come up from the landing zone's own spawn points (out of sight), mostly the blood-moon kinds: count
+    // what the director sends (the squad shoots them as they come)
+    const zm = s.zombies as unknown as { spawn: (...a: unknown[]) => { variant: string } };
+    const sent: string[] = [];
+    const spawn = zm.spawn.bind(zm);
+    zm.spawn = (...a: unknown[]) => {
+      const z = spawn(...a);
+      sent.push(z.variant);
+      return z;
+    };
+    step(30 * 8);
+    expect(sent.length).toBeGreaterThanOrEqual(8);
+    expect(sent.filter((v) => v === 'bloomed' || v === 'rooted').length).toBeGreaterThanOrEqual(4);
+    step(30 * 34); // the second and the third: oni among them
+    expect(sent.filter((v) => v === 'oni').length).toBeGreaterThanOrEqual(1);
+    void oni0;
   });
 });

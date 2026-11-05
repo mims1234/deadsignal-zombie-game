@@ -6,6 +6,7 @@
  * the garden is where the surge rises from.
  */
 import * as THREE from 'three';
+import type { FloorLink } from '../../floors';
 import type { SpireHandle } from '../../landmarks';
 import { barrelGroup, corpse, crateGroup, debris, sandbagWall, tent, vehicle, chainlinkFence } from '../../props';
 import { addBox, building, groundDecal, groundRect } from '../../structures';
@@ -24,6 +25,8 @@ export interface TheatreInfo {
   stage: { x: number; y: number; z: number };
   /** The Court's bonfires (they light the courtyard; the humans gather round them). */
   fires: { x: number; z: number }[];
+  /** The stairs down to the lab: sealed until someone has the keycard from the yard office (`quest.ts` KEY_BIT). */
+  labLink: FloorLink;
 }
 
 /** A poster of Sayo's last show: a red silhouette in a fan dance, the title in brush letters. */
@@ -266,7 +269,7 @@ export function buildTheatre(c: Ctx, lab: { area: number; x: number; z: number; 
   chainlinkFence(b, { x0: -17, z0: -48, x1: -1, z1: -48, height: 2.4, damaged: true, barbed: true, gaps: [{ at: 5, width: 3 }] });
   corpse(b, { x: -8, z: -45, rot: 0.6, kind: 'hazmat', seed: 77 });
   corpse(b, { x: -2, z: -47, rot: 2.4, kind: 'hazmat', seed: 78 });
-  stairwellDown(c, LAB_KIOSK, lab, { wall: 'labPanel', sign: jpSignMaterial('関係者以外立入禁止', { bg: '#f0f0ee', fg: '#a8141e', aspect: 4.8, sub: 'STAFF ONLY', worn: 0.6 }) });
+  const labLink = stairwellDown(c, LAB_KIOSK, lab, { wall: 'labPanel', sign: jpSignMaterial('関係者以外立入禁止', { bg: '#f0f0ee', fg: '#a8141e', aspect: 4.8, sub: 'STAFF ONLY', worn: 0.6 }) });
 
   // ---- the pagoda garden ----
   groundRect(b, 'gravel', 44, -64, 64, -48, 0.026);
@@ -305,5 +308,5 @@ export function buildTheatre(c: Ctx, lab: { area: number; x: number; z: number; 
   d.zombies('high', 'shambler', [[0, -34], [12, -44], [30, -46], [44, -38], [56, -30], [-8, -36], [24, -33], [48, -52]]);
   d.zombies('high', 'runner', [[6, -30], [40, -44], [58, -58]]);
   d.zombies('high', 'armored', [[20, -36], [-10, -42], [36, -30]]);
-  return { spire, stage, fires };
+  return { spire, stage, fires, labLink };
 }

@@ -111,6 +111,8 @@ export class MissionRuntime implements MissionApi {
   holdExtraction: () => boolean = () => false;
   /** Besides the contracts, what the helicopter waits for (KAIKA: the bloom). */
   extractGate: () => boolean = () => true;
+  /** Why the relay cannot be started yet (null: it can): the Sakura District's relay needs the metro's power. */
+  relayBlock: (() => string | null) | null = null;
   /** The Forge after the burnout: the firestorm dies down and stops hurting. */
   calm: () => boolean = () => false;
   /**
@@ -193,7 +195,12 @@ export class MissionRuntime implements MissionApi {
     return !this.train && !this.island && this.ctx.session.defense.status === 'available';
   }
 
+  relayBlocked(): string | null {
+    return this.relayBlock?.() ?? null;
+  }
+
   activateTransmitter(): void {
+    if (this.relayBlocked()) return;
     if (this.shared && this.requestRelay) {
       this.requestRelay();
       return;

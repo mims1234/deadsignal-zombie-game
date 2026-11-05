@@ -147,7 +147,7 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     premise: 'Seven springs after the fall, the cherry trees own Sakuragi. Deploy with Hana and Yuzu, clear two contracts and get out before the surge takes the landing zone. Read what the city left behind.',
     foot: 'Hana and Yuzu deploy with you; co-op players take their places. Nobody is left to save: only the infected, and the Kurenai Court, who shoot back.',
     rows: [
-      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE SHRINE RELAY', text: 'Activate the transmitter in the shrine grounds and hold the courtyard while the uplink completes.' },
+      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE SHRINE RELAY', text: 'Put the metro substation\'s power back, then start the transmitter in the shrine grounds and hold the courtyard while the uplink completes.' },
       { tag: 'CONTRACT BRAVO', title: 'DEFEAT THE EMPRESS', text: 'Find and put down the Crimson Empress at the Kurenai Theatre.' },
       { tag: 'EXTRACT', title: 'LZ HILLTOP', text: 'Radio the helicopter, survive the final horde and board with your squad.' },
     ],

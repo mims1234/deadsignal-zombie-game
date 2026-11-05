@@ -54,16 +54,16 @@ import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { encodeRoster, encodeState } from '../forge/net';
 import { ForgeStory, type StoryTick } from '../forge/story';
-import { encodeQuest, lanternWrath, SakuraQuest } from '../sakura/quest';
+import { encodeQuest, SakuraQuest } from '../sakura/quest';
 import { VARIANTS } from '../enemies/variants';
 import { questSpots } from '../sakura/spots';
 import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/director';
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
-import { populateSakura, sakuraVariantPicker, Stalker } from '../sakura/director';
+import { LURES, populateSakura, SakuraDirector, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { isStory, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
-import { CHECKPOINT, MARK, campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
+import { campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
@@ -251,7 +251,11 @@ export class SessionSim {
       this.level.root.clear();
     }
     this.zombies = new ZombieManager(createNullRigFactory(), this.level);
-    if (this.map === 'sakura') this.zombies.pickVariant = sakuraVariantPicker(this.level);
+    if (this.map === 'sakura') {
+      this.sakuraDir = new SakuraDirector(this.zombies);
+      const dir = this.sakuraDir;
+      this.zombies.pickVariant = sakuraVariantPicker(this.level, () => dir.kinds);
+    }
     this.zombies.onKill = (z, head) => this.onKill(z, head);
     // insta-kill: any hit kills (not bosses, not carriers)
     this.zombies.damageFilter = (z, amount) => filterDamage(this.powerups, amount, z);
@@ -367,13 +371,44 @@ export class SessionSim {
     if (this.extraction.phase === 'available') callExtraction(this.extraction, this.elapsed, true, true);
   }
 
-  /** The Thousand Lanterns' consequences: the dead at the shrine for a wrong lantern; the ghost train at the bloom. */
+  /**
+   * The Thousand Lanterns' consequences (as the solo runtime's, `sakura/runtime.ts`): every loud moment draws the dead
+   * for a while (`director.ts` LURES); a wrong lantern sends the shrine's own spawn points at it; the bloom opens the
+   * ghost train; the keycard opens the lab's stairs.
+   */
   private sakuraEvents(): void {
-    if (!this.sakura) return;
-    for (const e of this.sakura.drain()) {
-      if (e.kind === 'wrong') lanternWrath((type, x, z) => void this.zombies.spawn(type, x, z, this.rng, { state: 'chase' }));
-      else if (e.kind === 'bloom' && this.level.sakura) this.level.sakura.kisaragi.link.closed = false;
+    const q = this.sakura;
+    const dir = this.sakuraDir;
+    if (!q || !dir) return;
+    const v = q.view;
+    const was = this.sakuraSeen;
+    if (SakuraQuest.powered(v) && !SakuraQuest.powered(was)) dir.draw(LURES.power);
+    for (let i = 0; i < 5; i++) if (v.found & (1 << i) && !(was.found & (1 << i))) dir.draw(LURES.charm[i]!);
+    if (v.tied === 0b11111 && was.tied !== 0b11111) dir.draw(LURES.tied);
+    for (const e of q.drain()) {
+      if (e.kind === 'wrong') {
+        this.zombies.queue('shambler', 4, 'defense', 0.6);
+        this.zombies.queue('runner', 2, 'defense', 0.9);
+        dir.draw(LURES.wrong);
+      } else if (e.kind === 'bloom') {
+        if (this.level.sakura) this.level.sakura.kisaragi.link.closed = false;
+        dir.draw(LURES.bloom);
+      } else if (e.kind === 'key') dir.draw(LURES.key);
     }
+    if (this.level.sakura) this.level.sakura.theatre.labLink.closed = !SakuraQuest.hasKey(v);
+    // the lab's alarm the first time anyone goes down
+    if (!this.labWoken && this.level.sakura) {
+      const fl = this.level.floors;
+      for (const p of this.peers.values()) {
+        const area = fl.areaAt(p.ref.x, p.ref.y, p.ref.z);
+        if (p.ref.alive && fl.areas[area]?.name === 'Kurenai lab') {
+          this.labWoken = true;
+          dir.draw(LURES.lab);
+        }
+      }
+    }
+    dir.progress = sakuraProgress(v, this.defense.status, this.hunt.status);
+    this.sakuraSeen = { ...v, order: [...v.order] };
   }
 
   /** The environment of the nearest player who is up (else anyone at all): what the Forge's reborn hunts. */
@@ -489,6 +524,10 @@ export class SessionSim {
   /** The procession (`sakura/campaign.ts`): waves sent, and seconds since the call after the bloom. */
   private procession = 0;
   private processionT = 0;
+  /** The Sakura District's pressure and lures (`sakura/director.ts`), the quest as last seen, the lab's alarm. */
+  private sakuraDir: SakuraDirector | null = null;
+  private sakuraSeen = SakuraQuest.empty();
+  private labWoken = false;
 
   /** After the bloom, the call to the helicopter brings the dead of Sakuragi up the hill, in the operation and in KAIKA. */
   private stepProcession(dt: number): void {
@@ -497,19 +536,17 @@ export class SessionSim {
     if (ex.phase !== 'called' && ex.phase !== 'inbound' && ex.phase !== 'landing') return;
     this.processionT += dt;
     while (this.procession < PROCESSION.at.length && this.processionT >= PROCESSION.at[this.procession]!) {
-      processionWave(this.procession, this.zombies, this.level, this.rng, Math.max(1, this.peers.size));
+      processionWave(this.procession, this.zombies, Math.max(1, this.peers.size));
+      this.sakuraDir?.draw(LURES.procession);
       this.procession++;
     }
   }
 
-  /** KAIKA: anyone at the freight yard's checkpoint marks it; a new chapter brings its set piece. */
+  /** KAIKA: a new chapter brings its set piece (out of everyone's sight). */
   private stepCampaign(): void {
     const q = this.sakura!;
-    for (const p of this.peers.values()) {
-      if (p.ref.alive && Math.hypot(p.ref.x - CHECKPOINT.x, p.ref.z - CHECKPOINT.z) < CHECKPOINT.r) q.mark(MARK.checkpoint);
-    }
     const ch = chapterIndex({ quest: q.view, defense: this.defense.status, hunt: this.hunt.status, extracted: this.extraction.phase === 'extracted' });
-    if (ch > this.chapter) campaignSetPiece(ch, this.zombies, this.level, q.spots, this.rng);
+    if (ch > this.chapter) campaignSetPiece(ch, this.zombies, this.level, q.spots, this.rng, [...this.peers.values()].filter((p) => p.ref.alive).map((p) => ({ x: p.ref.x, y: p.ref.y, z: p.ref.z })));
     this.chapter = ch;
   }
 
@@ -525,6 +562,10 @@ export class SessionSim {
     this.chapter = -1;
     this.procession = 0;
     this.processionT = 0;
+    this.sakuraDir?.reset();
+    this.sakuraSeen = SakuraQuest.empty();
+    this.labWoken = false;
+    if (this.level.sakura) this.level.sakura.theatre.labLink.closed = true;
     if (this.level.sakura) this.level.sakura.kisaragi.link.closed = true;
     this.rosterSentAt = -99;
     if (this.map === 'forge' || this.map === 'aurelia') {
@@ -648,6 +689,7 @@ export class SessionSim {
       }
       case 'relay': {
         const c = this.level.transmitter.console;
+        if (this.sakura && !SakuraQuest.powered(this.sakura.view)) return;
         if (up && Math.hypot(c.x - p.ref.x, c.z - p.ref.z) < 5) activateDefense(this.defense);
         return;
       }
@@ -710,6 +752,7 @@ export class SessionSim {
         else if (d.a === 'tie') q.tie(p.ref.x, p.ref.z);
         else if (d.a === 'light') q.light(i, p.ref.x, p.ref.z);
         else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z);
+        else if (d.a === 'key') q.takeKey(p.ref.x, p.ref.z);
         this.sakuraEvents();
         return;
       }
@@ -1012,6 +1055,7 @@ export class SessionSim {
       if (this.story) this.stalker.update(dt, this.zombies, this.level, [...this.peers.values()].map((q) => ({ x: q.ref.x, z: q.ref.z, alive: q.ref.alive })), this.rng);
       if (this.campaign) this.stepCampaign();
       if (this.story) this.stepProcession(dt);
+      this.sakuraDir?.tick(dt);
     }
 
     // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
@@ -1334,3 +1378,17 @@ export class SessionSim {
 
 /** The name the server worker and the earlier tests know it by. */
 export { SessionSim as ServerHost };
+
+/** How far the Sakura story has come, 0..1 (as the solo runtime's: the district's pressure rises with it). */
+function sakuraProgress(v: { found: number; tied: number; phase: string; marks: number }, defense: string, hunt: string): number {
+  let n = 0;
+  for (let i = 0; i < 5; i++) if (v.found & (1 << i)) n++;
+  if (SakuraQuest.powered(v as never)) n++;
+  if (SakuraQuest.hasKey(v as never)) n++;
+  if (v.tied === 0b11111) n++;
+  if (v.phase === 'bell' || v.phase === 'bloom') n++;
+  if (v.phase === 'bloom') n += 2;
+  if (defense === 'complete') n++;
+  if (hunt === 'complete') n++;
+  return Math.min(1, n / 13);
+}

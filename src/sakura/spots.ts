@@ -19,6 +19,7 @@ export function questSpots(h: SakuraHandles): QuestSpots {
       { x: fridge.x - 0.6, y: 1.5, z: fridge.z }, // the lab's sample fridge
     ],
     fuses: h.under.metro.fuses.map((f) => ({ ...f })),
+    key: { x: 92.6, z: -62.3 }, // the yard office's door (`freight.ts`)
     tree: { x: h.canal.sacredTree.x, z: h.canal.sacredTree.z },
     lanterns: h.canal.lanterns.map((l) => ({ x: l.x, z: l.z })),
     bell: { x: 122, z: 39 },

@@ -5,9 +5,10 @@
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
-import { CHAPTERS, CHECKPOINT, FIELD, MARK, PLACE_RADIO, chapterIndex, placeAt } from '../src/sakura/campaign';
+import { CHAPTERS, FIELD, PLACE_RADIO, chapterIndex, placeAt } from '../src/sakura/campaign';
+import { LINE } from '../src/sakura/lines';
 import { STORIES, storiesOpen } from '../src/sakura/missions';
-import { FUSE_BIT, FUSES_ALL, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
+import { FUSE_BIT, FUSES_ALL, KEY_BIT, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
 import { HIRASAKA_KINDS, MUJIN_KINDS, VARIANTS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import { missionClock } from '../src/logic/mission';
@@ -32,8 +33,9 @@ describe('KAIKA', { timeout: 30000 }, () => {
     expect(chapterIndex(state({ marks: FUSE_BIT }))).toBe(0); // one fuse is not the power
     expect(chapterIndex(state({ marks: P }))).toBe(1);
     expect(chapterIndex(state({ found: 0b1, marks: P }))).toBe(2);
-    expect(chapterIndex(state({ found: 0b1111, marks: P }))).toBe(5); // the checkpoint next
-    expect(chapterIndex(state({ found: 0b1111, marks: P | MARK.checkpoint }))).toBe(6);
+    expect(chapterIndex(state({ found: 0b1111, marks: P }))).toBe(5); // the lab keycard next
+    expect(CHAPTERS[5]!.id).toBe('key');
+    expect(chapterIndex(state({ found: 0b1111, marks: P | KEY_BIT }))).toBe(6); // the lab
     // the lanterns and the bell before the Empress (the relics are for her), the relay and home after
     expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the lanterns
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(8); // the Empress early changes nothing
@@ -49,6 +51,9 @@ describe('KAIKA', { timeout: 30000 }, () => {
     // MUJIN's kinds are the station's and HIRASAKA's the island's, not the field file's
     for (const v of VARIANTS) if (v && !(MUJIN_KINDS as readonly string[]).includes(v) && !(HIRASAKA_KINDS as readonly string[]).includes(v)) expect(FIELD[v as keyof typeof FIELD].does.length).toBeGreaterThan(20);
     for (const lines of Object.values(PLACE_RADIO)) expect(lines.length).toBeGreaterThan(0);
+    // every line a chapter, a place or a first sight says is a voiced line
+    const ids = [...CHAPTERS.flatMap((c) => c.intro), ...Object.values(PLACE_RADIO).flat(), ...Object.values(FIELD).map((f) => f.quip)];
+    for (const id of ids) expect(LINE[id], id).toBeDefined();
     expect(placeAt(-100, 30, false, false, false)).toBe('station');
     expect(placeAt(100, 50, false, false, false)).toBe('shrine');
     expect(placeAt(20, -44, false, false, false)).toBe('theatre');
@@ -74,10 +79,18 @@ describe('KAIKA', { timeout: 30000 }, () => {
     expect(q.takeFuse(0, fz[1]!.x, 0, fz[1]!.z)).toBe(false);
     for (let i = 0; i < 3; i++) expect(q.takeFuse(i, fz[i]!.x, 0, fz[i]!.z)).toBe(true);
     expect(SakuraQuest.powered(q.view)).toBe(true);
-    // someone at the freight yard's list board marks the checkpoint
-    stand(CHECKPOINT.x, CHECKPOINT.z);
+    // the lab's stairs are sealed until someone takes the keycard from the yard office (from beside it, not from afar)
+    const lab = sim.level.sakura!.theatre.labLink;
+    expect(lab.closed).toBe(true);
+    const k = q.spots.key;
+    sim.message('p1', { k: 'sq', a: 'key', i: 0 }, false);
+    expect(SakuraQuest.hasKey(q.view)).toBe(false);
+    stand(k.x, k.z);
     sim.tick(1 / 30);
-    expect(q.view.marks & MARK.checkpoint).toBe(MARK.checkpoint);
+    sim.message('p1', { k: 'sq', a: 'key', i: 0 }, false);
+    expect(SakuraQuest.hasKey(q.view)).toBe(true);
+    sim.tick(1 / 30);
+    expect(lab.closed).toBe(false);
     // both contracts done: still no helicopter until the bloom
     const d = sim.debug;
     d.defense.status = 'complete';
@@ -128,5 +141,26 @@ describe('the Sakura District clock', () => {
     expect(missionClock('sakura', 'roam')).toBe(op);
     const sim = new SessionSim({ seed: 2, kind: 'kaika', map: 'sakura', send() {} });
     expect((sim as unknown as { clock: { deadline: number } }).clock.deadline).toBe(kaika.deadline);
+  });
+
+  it('will not start the relay without the metro\'s power (it feeds from the station substation)', () => {
+    const sim = new SessionSim({ seed: 8, kind: 'mission', map: 'sakura', send() {} });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const q = (sim as unknown as { sakura: SakuraQuest }).sakura;
+    const c = sim.level.transmitter.console;
+    const stand = (): void => sim.message('p1', { k: 'p', x: c.x, y: 0, z: c.z + 1, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
+    stand();
+    sim.tick(1 / 30);
+    const d = sim.debug;
+    d.defense.status = 'available';
+    sim.message('p1', { k: 'relay' }, false);
+    expect(d.defense.status).toBe('available');
+    const fz = q.spots.fuses;
+    for (let i = 0; i < 3; i++) q.takeFuse(i, fz[i]!.x, fz[i]!.y - 1.4 > 0.5 ? fz[i]!.y - 1.4 : 0, fz[i]!.z);
+    expect(SakuraQuest.powered(q.view)).toBe(true);
+    stand();
+    sim.message('p1', { k: 'relay' }, false);
+    expect(d.defense.status).toBe('active');
   });
 });

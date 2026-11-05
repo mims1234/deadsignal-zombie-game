@@ -85,6 +85,9 @@ export interface DirectorContext {
   paused: boolean;
 }
 
+/** The Sakura District: no more spawns past this many infected on the map, hunting or not. */
+const SAKURA_CEILING = 150;
+
 interface PendingSpawn {
   type: SpawnType;
   at: number;
@@ -442,6 +445,13 @@ export class ZombieManager {
     return n;
   }
 
+  /** Infected hunting someone right now (not the residents standing about): what the Sakura District's director caps. */
+  get huntingCount(): number {
+    let n = 0;
+    for (const z of this.zombies) if (z.alive && !z.dormant && !z.isBoss && !z.curable && z.chasing) n++;
+    return n;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // per-frame update
   // ---------------------------------------------------------------------------------------------
@@ -633,6 +643,14 @@ export class ZombieManager {
   // noise & alerts
   // ---------------------------------------------------------------------------------------------
 
+  /**
+   * Send `n` of `type` from the map's spawn points of `group` (out of sight, reachable, like every director spawn), one
+   * every `every` seconds: a horde that comes from somewhere, not one that appears.
+   */
+  queue(type: SpawnType, n: number, group: SpawnGroup, every = 0.5): void {
+    for (let i = 0; i < n; i++) this.pending.push({ type, at: this.simTime + i * every, group });
+  }
+
   emitNoise(x: number, z: number, radius: number): void {
     const r2 = radius * radius;
     for (const zz of this.zombies) {
@@ -765,7 +783,10 @@ export class ZombieManager {
   /** Continuous spawning by threat region and phase, plus defense bursts and extraction waves. */
   director(dt: number, ctx: DirectorContext, env: ZombieEnv, rng: Rng): void {
     if (ctx.paused) return;
-    const active = this.activeCount;
+    // the Sakura District keeps its residents standing about the streets (the far ones drawn as a cheap crowd): what is
+    // capped there is how many are hunting, so the dead keep coming while nothing else happens - up to a ceiling on all
+    const sakura = this.level.data.id === 'sakura';
+    const active = sakura ? (this.hostileCount > SAKURA_CEILING ? Infinity : this.huntingCount) : this.activeCount;
     let nearAlerted = 0;
     const r2 = SPAWN.nearbyRadius * SPAWN.nearbyRadius;
     for (const z of this.zombies) {
@@ -790,7 +811,7 @@ export class ZombieManager {
       }
     }
     if (this.pending.length > 0) {
-      const cap = ctx.extractionElapsed !== null ? MISSION.extraction.activeCap : 40;
+      const cap = (ctx.extractionElapsed !== null ? MISSION.extraction.activeCap : 40) + this.capBonus;
       let awake = active;
       for (let i = 0; i < this.pending.length; i++) {
         const s = this.pending[i]!;
@@ -831,6 +852,8 @@ export class ZombieManager {
       let cap = Math.min(SPAWN.hardCap, Math.max(3, Math.round(activeCap(ctx.region, ctx.phase, ctx.quality) * this.tuning.count)));
       if (ctx.defenseActive) cap = Math.max(cap, MISSION.defense.activeCap);
       if (ctx.extractionElapsed !== null) cap = Math.min(cap, MISSION.extraction.activeCap);
+      // the Sakura District: a steady few on you at any time (the lures and the story raise it), never a crowd of figures
+      if (sakura) cap = Math.min(cap, Math.round(9 * this.tuning.count));
       cap += this.capBonus;
       if (this.theme === 'sakura') cap = Math.min(cap, animeHordeCap());
       if (active < cap && nearAlerted < (SPAWN.nearbyLimit + this.capBonus) * this.tuning.count) {
