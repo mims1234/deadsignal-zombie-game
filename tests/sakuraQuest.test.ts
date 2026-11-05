@@ -53,7 +53,7 @@ describe('the Thousand Lanterns', { timeout: 30000 }, () => {
     expect(bad).toEqual([]);
   });
 
-  it('runs: charms, the tree, the lanterns in the poem\'s order, the bell during the relay', () => {
+  it('runs: charms, the tree, the lanterns in the poem\'s order, the bell', () => {
     const q = new SakuraQuest(spots);
     let seed = 7;
     q.reset(() => ((seed = (seed * 16807) % 2147483647) / 2147483647));
@@ -77,15 +77,14 @@ describe('the Thousand Lanterns', { timeout: 30000 }, () => {
     for (const j of q.view.order) q.light(j, ...L(j));
     expect(q.view.phase).toBe('bell');
     void second;
-    // the bell does nothing without the relay
+    // the bell: out of reach does nothing; in reach it blooms, with no relay needed
     const b = spots.bell;
-    q.ring(b.x, b.z, false);
+    expect(q.ring(b.x + 20, b.z)).toBe(false);
     expect(q.view.phase).toBe('bell');
-    q.ring(b.x, b.z, true);
+    expect(q.ring(b.x, b.z)).toBe(true);
     expect(q.view.phase).toBe('bloom');
     const kinds = q.drain().map((e) => e.kind);
     expect(kinds).toContain('wrong');
-    expect(kinds).toContain('bellEarly');
     expect(kinds[kinds.length - 1]).toBe('bloom');
     // the wire
     const back = decodeQuest(encodeQuest(q.view))!;

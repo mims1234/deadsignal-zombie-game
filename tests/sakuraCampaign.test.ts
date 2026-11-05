@@ -38,7 +38,8 @@ describe('KAIKA', { timeout: 30000 }, () => {
     expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the Empress
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(9);
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(10);
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(11);
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(11); // the relay, if it was never restored
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(12);
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete', extracted: true }))).toBe(CHAPTERS.length);
   });
 

@@ -698,8 +698,7 @@ export class SessionSim {
         else if (d.a === 'fuse') q.takeFuse(i, p.ref.x, p.ref.y, p.ref.z);
         else if (d.a === 'tie') q.tie(p.ref.x, p.ref.z);
         else if (d.a === 'light') q.light(i, p.ref.x, p.ref.z);
-        // KAIKA: a relay already finished still carries the bell (the helicopter waits for the bloom, so it must stay possible)
-        else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z, this.defense.status === 'active' || (this.campaign && this.defense.status === 'complete'));
+        else if (d.a === 'ring') q.ring(p.ref.x, p.ref.z);
         this.sakuraEvents();
         return;
       }

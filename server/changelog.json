@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.334",
+      "date": "2026-11-05",
+      "title": "Sakura District: the bell no longer needs the relay",
+      "notes": [
+        "The Thousand Lanterns: once every great lantern is lit, ringing the shrine bell brings the bloom straight away. You no longer need the shrine relay running. Before, in the Operation, ringing it after the relay was already restored did nothing, and nothing told you why.",
+        "If you ring the bell too early, a message now says what is missing (the charms on the tree, or the lanterns). It shows in co-op too.",
+        "KAIKA: the bell chapter is just the bell now. If the relay still is not restored after the bloom, a new short chapter, My Voice, sends you to restore it before the helicopter, because the helicopter still needs both contracts."
+      ]
+    },
+    {
       "version": "0.4.333",
       "date": "2026-11-05",
       "title": "Sakura District: more time on the clock",

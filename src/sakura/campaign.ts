@@ -46,7 +46,7 @@ export const OUTBREAK: readonly { title: string; text: string }[] = [
   },
   {
     title: 'THE RITE',
-    text: 'Aoi knew what had been taken could be given back. Five charms blessed at the tree, tied to it again; the five great lanterns lit in the order of the festival poem; the bell rung while the shrine\'s voice speaks. She gave the charms to people she wanted to keep safe, and she did not live to bring them home. Seven springs later, last night, the shrine relay began transmitting on its own. It is her voice.',
+    text: 'Aoi knew what had been taken could be given back. Five charms blessed at the tree, tied to it again; the five great lanterns lit in the order of the festival poem; the shrine\'s bell rung. She gave the charms to people she wanted to keep safe, and she did not live to bring them home. Seven springs later, last night, the shrine relay began transmitting on its own. It is her voice.',
   },
 ];
 
@@ -396,12 +396,26 @@ export const CHAPTERS: readonly Chapter[] = [
     id: 'bell',
     title: 'THE NIGHT THEY GO HOME',
     place: 'shrine',
-    goal: 'Shrine: start the relay, ring the bell',
+    goal: 'Shrine: ring the bell',
     done: (s) => s.quest.phase === 'bloom',
-    target: (q, s) => (s.defense === 'complete' || s.defense === 'active' ? { x: q.bell.x, z: q.bell.z, label: 'THE BELL' } : { x: 100, z: 50, label: 'SHRINE RELAY' }),
+    target: (q) => ({ x: q.bell.x, z: q.bell.z, label: 'THE BELL' }),
     intro: [
-      ['AOI', 'Every lantern burns. Now my voice must carry: start the relay, and while it speaks, ring the bell. Everything that is left will come for the shrine.'],
-      ['YUZU', 'Hold the courtyard, ring a bell. Sounds easy. It won\'t be.'],
+      ['AOI', 'Every lantern burns. Now ring the bell, and let them hear it. Everything that is left will come for the shrine.'],
+      ['YUZU', 'Ring a bell. Sounds easy. It won\'t be.'],
+    ],
+    kinds: [],
+  },
+  {
+    // the helicopter still wants both contracts: if the relay was never restored, it is the last thing before home
+    id: 'relay',
+    title: 'MY VOICE',
+    place: 'shrine',
+    goal: 'Shrine: restore the relay',
+    done: (s) => s.defense === 'complete',
+    target: () => ({ x: 100, z: 50, label: 'SHRINE RELAY' }),
+    intro: [
+      ['AOI', 'They are going home. One more thing: the relay. Start it, and hold the courtyard while it speaks. It calls your helicopter too.'],
+      ['HANA', 'Hold the shrine, then the hilltop. Nearly there.'],
     ],
     kinds: [],
   },

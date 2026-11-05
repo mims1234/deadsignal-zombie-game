@@ -835,7 +835,7 @@ export class SakuraRuntime {
     else if (a === 'fuse') q.takeFuse(i, p.x, p.y, p.z);
     else if (a === 'tie') q.tie(p.x, p.z);
     else if (a === 'light') q.light(i, p.x, p.z);
-    else q.ring(p.x, p.z, g.session.defense.status === 'active' || (this.campaign && g.session.defense.status === 'complete')); // KAIKA: a finished relay still carries it
+    else q.ring(p.x, p.z);
     this.consumeLocal();
     this.present(false);
   }
@@ -849,7 +849,6 @@ export class SakuraRuntime {
         g.audio.play('fzombie_scream', { priority: 3 });
         g.banner('THE LANTERNS GO OUT', 'Wrong. The dead come for the shrine.', 'danger', 4);
       }
-      if (e.kind === 'bellEarly') g.banner('THE BELL TOLLS', 'Nothing answers.', 'info', 3);
     }
   }
 
@@ -859,6 +858,9 @@ export class SakuraRuntime {
     const b = this.spots.bell;
     g.audio.play('temple_bell', { pos: { x: b.x, y: 3, z: b.z }, priority: 3 });
     g.zombies.emitNoise(g.player.x, g.player.z, 40);
+    // say why nothing answers (here, so a co-op player hears it too: the simulation sends no event for it)
+    const v = this.view;
+    if (v.phase !== 'bell') g.banner('THE BELL TOLLS', v.phase === 'lanterns' ? 'Nothing answers. Light every great lantern first.' : 'Nothing answers. Tie the five charms to the sacred tree first.', 'info', 4);
     this.act('ring', 0);
   }
 
@@ -1010,7 +1012,7 @@ export class SakuraRuntime {
     if (!silent && v.phase === 'bell' && was.phase !== 'bell') {
       const j = v.order[4]!;
       g.audio.play('lantern_light', { pos: { x: s.lanterns[j]!.x, y: 1.5, z: s.lanterns[j]!.z }, priority: 2 });
-      g.banner('EVERY LANTERN BURNS', 'Ring the shrine bell while the relay transmits', 'good', 5);
+      g.banner('EVERY LANTERN BURNS', 'Ring the shrine bell', 'good', 5);
     }
     // the bloom
     if (v.phase === 'bloom' && !this.bloomed) this.bloom(silent);

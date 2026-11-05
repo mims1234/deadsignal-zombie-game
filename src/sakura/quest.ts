@@ -7,7 +7,7 @@
  *   2. tie        tie them to the bare sacred tree in the shrine grounds (any number at a time)
  *   3. lanterns   light the five great lanterns in the order of this run's poem (nailed up on the theatre stage);
  *                 a wrong one puts them all out and the dead come for the shrine
- *   4. bell       ring the bell while the shrine relay transmits (the defense)
+ *   4. bell       ring the shrine bell (the relay is not needed)
  *   5. bloom      the blood moon: crimson trees, a glowing canal, and a ghost train at the station for Kisaragi
  */
 
@@ -152,12 +152,12 @@ export class SakuraQuest {
     return true;
   }
 
-  /** Ring the bell: with the lanterns lit and the relay transmitting, the bloom. */
-  ring(x: number, z: number, relayOn: boolean): boolean {
+  /** Ring the bell: with every lantern lit, the bloom. */
+  ring(x: number, z: number): boolean {
     const v = this.view;
     const b = this.spots.bell;
     if (Math.hypot(b.x - x, b.z - z) > QUEST_REACH.bell || v.phase === 'bloom') return false;
-    if (v.phase === 'bell' && relayOn) {
+    if (v.phase === 'bell') {
       v.phase = 'bloom';
       v.bloomT = 0;
       this.events.push({ kind: 'bloom' });
@@ -206,7 +206,7 @@ export class SakuraQuest {
       case 'lanterns':
         return `The charms are on the tree. Great lanterns lit ${v.lit}/5 - the order is in the poem on the theatre stage.`;
       case 'bell':
-        return 'Every lantern burns. Ring the shrine bell while the relay transmits.';
+        return 'Every lantern burns. Ring the shrine bell.';
       case 'bloom':
         return 'The blood moon is up. A train waits at the station for a stop on no map.';
     }
