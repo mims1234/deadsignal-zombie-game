@@ -65,7 +65,7 @@ import { farCrowd } from '../anime/farCrowd';
 import { loadModels, PACKS } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
-import { isStory, STORIES, storiesOpen, type StoryId } from '../sakura/missions';
+import { isStory, STORIES, type StoryId } from '../sakura/missions';
 import { SakuraRuntime } from '../sakura/runtime';
 import { RevealCinematic } from '../forge/reveal';
 import { Interaction, type InteractionOutput, type InteractionTarget } from './interaction';
@@ -178,11 +178,11 @@ export class Game implements GameCtx {
   /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
   private builtTale: StoryId | null = null;
 
-  /** The story mission this run plays: the co-op session's kind, or the solo pick (the Sakura District only). */
+  /** The story this run plays: the Sakura District is KAIKA, every run but free roam (solo or co-op, the card hunt or not). */
   get tale(): StoryId | null {
     if (this.mapId !== 'sakura') return null;
-    if (this.mode === 'coop') return isStory(this.coop.kind) ? this.coop.kind : null;
-    return this.mode === 'standard' && this.storyPick && switchShown(this.account, `story-${this.storyPick}`) ? this.storyPick : null;
+    if (this.mode === 'coop') return this.coop.kind === 'roam' ? null : 'kaika';
+    return this.mode === 'standard' || this.mode === 'cards' ? 'kaika' : null;
   }
 
   /**
@@ -979,8 +979,8 @@ export class Game implements GameCtx {
     });
     // a guest sees the free zones first
     const maps = guest ? [...all.filter((m) => m.badge === 'FREE'), ...all.filter((m) => m.badge !== 'FREE')] : all;
-    // the Sakura District's story (it can be switched off from the admin page)
-    const stories = this.mapId === 'sakura' ? storiesOpen().filter((id) => switchShown(this.account, `story-${id}`)).map((id) => ({ id, label: STORIES[id].title, note: STORIES[id].note })) : undefined;
+    // the Sakura District has one way to play (KAIKA, its story), so there is nothing to pick
+    const stories = undefined;
     return { mode: this.mode, map: this.mapId, cards: this.cards.collection(), difficulty: { ...this.difficulty }, lockedMap: this.coop.room.room?.map ?? null, roamBase: this.roamBase, maps, stories, story: this.storyPick ?? '', login: needsLogin(this.account, this.mapId, this.mode), freeMap: guest ? firstGuestMap(this.account) : null };
   }
 

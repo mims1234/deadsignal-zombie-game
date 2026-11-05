@@ -62,7 +62,7 @@ import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
 import { empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from '../sakura/director';
-import { isStory, STORIES, STORY_IDS, type StoryId } from '../sakura/missions';
+import { isStory, STORY_IDS, type StoryId } from '../sakura/missions';
 import { campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
 import { buildLevel, type Level } from '../world/level';
 import type { MapId } from '../world/layout/data';
@@ -524,7 +524,8 @@ export class SessionSim {
 
   /** A KAIKA run (`sakura/campaign.ts`). */
   private get campaign(): boolean {
-    return this.map === 'sakura' && isStory(this.kind) && !!STORIES[this.kind].campaign && !!this.sakura;
+    // the Sakura District is KAIKA in every session but free roam (the card hunt rides on top of it)
+    return this.map === 'sakura' && this.kind !== 'roam' && !!this.sakura;
   }
 
   /** The chapter KAIKA is on (its set piece comes when it begins). */

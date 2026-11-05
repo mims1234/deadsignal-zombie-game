@@ -110,11 +110,13 @@ try {
     check('the Sakura District is live on the test server', r.public === true, JSON.stringify(r));
     await ctx.close();
   }
-  for (const kind of ['mission', 'kaika']) {
+  for (const kind of ['mission', 'mazoku']) {
     const { owner, guest } = await session(kind === 'mission' ? '6200000001' : '6200000003', kind === 'mission' ? '6200000002' : '6200000004', 'sakura', 'mission');
-    if (kind === 'kaika') {
-      await click(owner, 'KAIKA: THE BLOOMING');
-      check('the lobby switches to KAIKA and the guest sees it', await until(guest, () => window.__dead.game.coop.room.room.kind === 'kaika', null, 10000));
+    // the session is KAIKA whatever its kind: the lobby says so; the card hunt rides on top of it
+    check(`${kind}: the lobby calls the session KAIKA`, (await lobby(owner)).includes('KAIKA'), await lobby(owner));
+    if (kind === 'mazoku') {
+      await click(owner, 'STANDARD MAZOKU');
+      check('the lobby switches on the card hunt and the guest sees it', await until(guest, () => window.__dead.game.coop.room.room.kind === 'mazoku', null, 10000));
     }
     await deployBoth(owner, guest);
     await sleep(3000);
@@ -140,10 +142,11 @@ try {
     const lg = await lines(guest);
     check(`${kind}: both hear the station's announcement and the keycard`, ['pa_delay_en', 'hana_key'].every((id) => lo.includes(id) && lg.includes(id)), `owner ${lo.join(',')} | guest ${lg.join(',')}`);
     const q = await Promise.all([owner, guest].map((p) => p.evaluate(() => window.__dead.game.sakura.voice.pending)));
-    check(`${kind}: no pile-up of lines`, q.every((n) => n <= 5), JSON.stringify(q));
+    const waiting = await owner.evaluate(() => { const v = window.__dead.game.sakura.voice; return { t: Math.round(v.t), busy: Math.round(v.busyUntil), q: v.queue.map((r) => `${r.id ?? r.text.slice(0, 20)}:${r.kind}@${Math.round(r.at)}`) }; });
+    check(`${kind}: no pile-up of lines`, q.every((n) => n <= 5), `${JSON.stringify(q)} owner ${JSON.stringify(waiting)}`);
     const hunting = await owner.evaluate(() => window.__dead.game.zombies.zombies.filter((z) => z.alive && z.chasing).length);
     check(`${kind}: the dead are coming`, hunting > 0, String(hunting));
-    if (kind === 'kaika') check('kaika: the chapter moved on for the guest too', await guest.evaluate(() => window.__dead.game.sakura.chapter >= 1), String(await guest.evaluate(() => window.__dead.game.sakura.chapter)));
+    check(`${kind}: KAIKA's chapter moved on for the guest too`, await guest.evaluate(() => window.__dead.game.sakura.chapter >= 1), String(await guest.evaluate(() => window.__dead.game.sakura.chapter)));
     for (const p of [owner, guest]) await p.context().close();
   }
 } catch (e) {

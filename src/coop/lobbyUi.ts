@@ -6,7 +6,7 @@
 import type { MapId } from '../world/layout/data';
 import { COOP, TEAM_SKILL, TEAM_SKILLS, type TeamSkill, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, type ZombieDifficulty } from '../config';
 import { type Hosting, LATE_CHOICES, LATE_NOTE, type RoomView } from '../net/room';
-import { isStory, STORIES, storiesOpen } from '../sakura/missions';
+import { isStory, STORIES } from '../sakura/missions';
 import { el, svgEl } from '../ui/dom';
 import type { CoopSession } from './coop';
 import type { SwitchId } from '../switches';
@@ -307,8 +307,9 @@ export class CoopUi {
     const variant = el('div', 'row choice', body);
     // Standard or Standard Mazoku, and free roam as a switch on top (the session's kind is 'roam' while it is on)
     // the Sakura District's story (switched on from the admin page, as Standard Mazoku and Free roam are)
-    const tales = room.map === 'sakura' ? storiesOpen().filter((id) => this.host.shown(`story-${id}`)).map((id) => [id, STORIES[id].title] as const) : [];
-    const kinds: (readonly [RoomView['kind'], string])[] = [['mission', 'STANDARD'], ...(this.host.shown('cards') ? [['mazoku', 'STANDARD MAZOKU'] as const] : []), ...tales];
+    // the Sakura District's session is its story (KAIKA) under the usual entry: nothing extra to pick
+    const tales: (readonly [RoomView['kind'], string])[] = [];
+    const kinds: (readonly [RoomView['kind'], string])[] = [['mission', room.map === 'sakura' ? 'KAIKA: THE BLOOMING' : 'STANDARD'], ...(this.host.shown('cards') ? [['mazoku', 'STANDARD MAZOKU'] as const] : []), ...tales];
     const roam = room.kind === 'roam';
     if (!roam && !isStory(room.kind)) this.roamBase = room.kind === 'mazoku' ? 'mazoku' : 'mission';
     const active = roam ? this.roamBase : room.kind;
@@ -327,10 +328,10 @@ export class CoopUi {
       }
     } else {
       // its own name, even when it is something this guest could not pick (they were invited into it)
-      const name = active === 'mazoku' ? 'STANDARD MAZOKU' : isStory(active) ? STORIES[active].title : 'STANDARD';
+      const name = room.map === 'sakura' && active !== 'mazoku' ? STORIES.kaika.title : active === 'mazoku' ? 'STANDARD MAZOKU' : isStory(active) ? STORIES[active].title : 'STANDARD';
       el('span', 'name', variant, `${name}${roam ? '  +  FREE ROAM' : ''}`);
     }
-    el('div', 'tag', body, KIND_NOTE[room.kind]);
+    el('div', 'tag', body, room.map === 'sakura' && room.kind !== 'roam' ? (room.kind === 'mazoku' ? `${STORIES.kaika.note} With the five Mazoku card carriers.` : STORIES.kaika.note) : KIND_NOTE[room.kind]);
 
     // ---- difficulty: the infected and the AI squad ----
     const zd = room.zombies ?? 'normal';

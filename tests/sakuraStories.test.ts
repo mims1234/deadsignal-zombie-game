@@ -31,12 +31,13 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
     });
   }
 
-  it('the operation: the Empress wakes on her stage once the relay is up, and never leaves her theatre', () => {
+  it('a co-op session is KAIKA: the Empress wakes on her stage once the trees are red, and never leaves her theatre', () => {
     const sim = run('mission');
+    (sim as unknown as { sakura: { view: { phase: string } } }).sakura.view.phase = 'bloom';
     const d = sim.debug as unknown as { defense: { status: string }; hunt: { status: string } };
     const at = (x: number, z: number) => sim.message('p1', { k: 'p', x, y: 0, z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
-    // the relay done: she is there, on the stage inside the theatre
-    d.defense.status = 'complete';
+    // the bloom: she is there, on the stage inside the theatre (the relay need not be up)
+    void d.defense;
     at(20, -30);
     for (let i = 0; i < 3; i++) sim.tick(1 / 30);
     expect(d.hunt.status).toBe('active');

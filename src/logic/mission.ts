@@ -16,7 +16,8 @@ export interface MissionClock {
 }
 
 export function missionClock(map: MapId, kind?: string | null): MissionClock {
-  if (map === 'sakura') return kind === 'kaika' ? SAKURA_CLOCK.kaika : SAKURA_CLOCK.operation;
+  if (map === 'sakura') return SAKURA_CLOCK.kaika; // the district is KAIKA, whatever the session's kind
+  void kind;
   if (map === 'mujin') return MUJIN_CLOCK;
   if (map === 'hirasaka') return HIRASAKA_CLOCK;
   return map === 'asylum' ? ASYLUM_CLOCK : map === 'forge' ? FORGE_STORY.clock : MISSION;

@@ -144,12 +144,12 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     brief: "Hanabi unit, we're in. Seven years of silence, and last night a signal woke up at the shrine. Restore the relay there, put down whatever the Kurenai Court made of the Empress at the old theatre, and we call the bird at the hilltop. Nobody is left to save in here.",
     kicker: 'SAKURAGI  //  SEVENTH SPRING  //  HANABI UNIT',
     signal: 'SHRINE RELAY TRANSMITTING  -  SOURCE UNKNOWN',
-    premise: 'Seven springs after the fall, the cherry trees own Sakuragi. Deploy with Hana and Yuzu, clear two contracts and get out before the surge takes the landing zone. Read what the city left behind.',
+    premise: 'Seven springs after the fall, the cherry trees own Sakuragi - and last night the shrine relay began to speak with the voice of a woman missing seven years. Deploy with Hana and Yuzu and follow her through every corner of the district.',
     foot: 'Hana and Yuzu deploy with you; co-op players take their places. Nobody is left to save: only the infected, and the Kurenai Court, who shoot back.',
     rows: [
-      { tag: 'CONTRACT ALPHA', title: 'RESTORE THE SHRINE RELAY', text: 'Put the metro substation\'s power back, then start the transmitter in the shrine grounds and hold the courtyard while the uplink completes.' },
-      { tag: 'CONTRACT BRAVO', title: 'DEFEAT THE EMPRESS', text: 'Find and put down the Crimson Empress at the Kurenai Theatre.' },
-      { tag: 'EXTRACT', title: 'LZ HILLTOP', text: 'Radio the helicopter, survive the final horde and board with your squad.' },
+      { tag: 'THE STORY', title: 'AOI\'S FIVE CHARMS', text: 'Follow her voice: the metro\'s power, then her charms in the metro, the school, the arcade, the canal and the lab under the theatre.' },
+      { tag: 'THE RITE', title: 'THE THOUSAND LANTERNS', text: 'Tie the charms to the sacred tree, light the lanterns in the poem\'s order, ring the bell - and take the ghost train to Kisaragi.' },
+      { tag: 'THE END', title: 'THE EMPRESS AND HOME', text: 'Bring down the Crimson Empress, restore the relay, and hold the hilltop while the dead climb toward the helicopter.' },
     ],
   },
   forge: {

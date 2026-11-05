@@ -133,14 +133,15 @@ describe('KAIKA', { timeout: 30000 }, () => {
 });
 
 describe('the Sakura District clock', () => {
-  it('gives the operation more time than the standard maps, and KAIKA far more', () => {
-    const op = missionClock('sakura', 'mission');
+  it('is KAIKA in every session but free roam (the card hunt rides on it), on KAIKA\'s clock', () => {
     const kaika = missionClock('sakura', 'kaika');
-    expect(op.deadline).toBeGreaterThan(missionClock('district').deadline);
-    expect(kaika.deadline).toBeGreaterThanOrEqual(op.deadline * 2);
-    expect(missionClock('sakura', 'roam')).toBe(op);
-    const sim = new SessionSim({ seed: 2, kind: 'kaika', map: 'sakura', send() {} });
-    expect((sim as unknown as { clock: { deadline: number } }).clock.deadline).toBe(kaika.deadline);
+    expect(kaika.deadline).toBeGreaterThan(missionClock('district').deadline * 2);
+    for (const kind of ['mission', 'mazoku']) {
+      expect(missionClock('sakura', kind)).toBe(kaika);
+      const sim = new SessionSim({ seed: 2, kind: kind as 'mission', map: 'sakura', send() {} });
+      expect((sim as unknown as { clock: { deadline: number } }).clock.deadline).toBe(kaika.deadline);
+      expect((sim as unknown as { campaign: boolean }).campaign).toBe(true);
+    }
   });
 
   it('will not start the relay without the metro\'s power (it feeds from the station substation)', () => {

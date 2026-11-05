@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.342",
+      "date": "2026-11-05",
+      "title": "Sakura District: one story, KAIKA",
+      "notes": [
+        "The Sakura District now has one way to play: KAIKA, its story. The Operation is gone, and the Thousand Lanterns is no longer a side quest: the charms, the sacred tree, the lanterns, the bell and Kisaragi are the story itself, chapter by chapter.",
+        "Every Sakura run is KAIKA, solo or co-op. A co-op session on Sakura is KAIKA for everyone in it, and the Mazoku card hunt plays on top of it. There is nothing to pick on the title screen any more, and the lobby calls the session KAIKA.",
+        "The title screen's briefing for the district tells the story: Aoi's five charms, the Thousand Lanterns, then the Empress and home."
+      ]
+    },
+    {
       "version": "0.4.341",
       "date": "2026-11-05",
       "title": "Sakura District: the Empress waits for her moment, and the Court keeps to its ground",

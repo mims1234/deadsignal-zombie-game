@@ -51,12 +51,6 @@ const PERKS = {
 } as const;
 type PerkId = keyof typeof PERKS;
 
-/** Command's briefing, in each mode (the mission says it a few seconds in; `lines.ts` voices it). */
-const BRIEF = {
-  op: LINE.cmd_brief_op!.text,
-  kaika: LINE.cmd_brief_kaika!.text,
-};
-
 /** The lab stairwell's doorway, behind the clinic (the SEALED prompt stands here while nobody has the keycard). */
 const LAB_DOOR = { x: LAB_KIOSK.x, z: LAB_KIOSK.z + 0.4 };
 
@@ -403,7 +397,7 @@ export class SakuraRuntime {
     this.again.clear();
     this.empress = { seen: false, rage: false, down: false, awake: false };
     // the Empress is not on the map until her moment (`director.ts` empressAwake); the hunt says what she waits for
-    g.mission.huntClosed = () => (this.campaign ? 'She waits on her stage. The Court has shut the theatre.' : 'The theatre is shut. Restore the relay first.');
+    g.mission.huntClosed = () => 'She waits on her stage. The Court has shut the theatre.';
     this.poemRead = false;
     this.routeT = 0;
     this.trail.set(null);
@@ -415,13 +409,8 @@ export class SakuraRuntime {
     g.mission.extractGate = () => !this.campaign || this.view.phase === 'bloom';
     // the relay draws from the station substation: no uplink until the metro's power is back
     g.mission.relayBlock = () => (SakuraQuest.powered(this.view) ? null : 'NO POWER');
-    // Command's briefing (the mission says it a few seconds in): the operation's, or KAIKA's
-    g.mission.brief = () => (this.campaign ? BRIEF.kaika : BRIEF.op);
-    // the operation: Aoi's first call a little way in, and Command telling you to ignore her (KAIKA opens on it)
-    if (!this.campaign) {
-      this.voice.sayAll(['aoi_call', 'hana_aoi', 'cmd_aoi_ignore', 'yuzu_aoi'], { delay: 45 });
-      this.aoiNext(46);
-    }
+    // Command's briefing (the mission says it a few seconds in)
+    g.mission.brief = () => LINE.cmd_brief_kaika!.text;
     this.voice.cue('dusk', 4);
     this.view = this.local.view;
     this.shown = { ...this.view, found: 0, tied: 0, lit: 0, phase: 'charms' };
@@ -598,47 +587,9 @@ export class SakuraRuntime {
     }
     this.voice.say(id, { kind });
     if (id === 'cmd_relay_done') {
-      if (this.campaign) this.voice.say('aoi_relay_done', { kind: 'story' });
-      else this.voice.say('cmd_empress_next', { kind: 'direction', valid: () => this.g.session.hunt.status !== 'complete' });
+      this.voice.say('aoi_relay_done', { kind: 'story' });
     }
     return true;
-  }
-
-  /**
-   * The operation: Aoi says where the next of her charms is (KAIKA's chapters say it there) - the first still out there,
-   * and the keycard before the lab - unless it has been found before her turn comes.
-   */
-  private aoiNext(delay: number): void {
-    const v = this.view;
-    const i = [0, 1, 2, 3, 4].find((k) => !(v.found & (1 << k)));
-    if (i === undefined) return;
-    const id = i === 4 ? (SakuraQuest.hasKey(v) ? 'aoi_dir_lab' : 'aoi_dir_key') : ['aoi_dir_metro', 'aoi_dir_school', 'aoi_dir_karaoke', 'aoi_dir_canal'][i]!;
-    this.voice.say(id, { kind: 'direction', delay, valid: () => !(this.view.found & (1 << i)) && (id !== 'aoi_dir_key' || !SakuraQuest.hasKey(this.view)) });
-  }
-
-  /**
-   * The operation: the next step of Aoi's quest, where she would send you (the order her directions follow: the charms
-   * from the metro out, the keycard before the lab, then the tree, the scroll, the lanterns in the poem's order, the bell).
-   */
-  private eggStep(v: QuestView): { x: number; z: number; label: string; what: string } | null {
-    const s = this.spots;
-    if (v.phase === 'charms') {
-      const i = [0, 1, 2, 3, 4].find((k) => !(v.found & (1 << k)));
-      if (i === 4 && !SakuraQuest.hasKey(v)) return { x: s.key.x, z: s.key.z, label: 'KEYCARD', what: 'the lab keycard, at the freight yard office' };
-      if (i !== undefined) {
-        const names = [['LOST AND FOUND', 'her charm at the metro lost and found'], ['MUSIC ROOM', 'her charm in the school music room piano'], ['KARAOKE', 'her charm on the karaoke mirror ball'], ['SUNKEN BOAT', 'her charm on the sunken boat, from the canal bank'], ['SAMPLE FRIDGE', 'her charm in the lab sample fridge']] as const;
-        return { x: s.charms[i]!.x, z: s.charms[i]!.z, label: names[i]![0], what: names[i]![1] };
-      }
-      return { x: s.tree.x, z: s.tree.z, label: 'SACRED TREE', what: 'tie the five charms to the sacred tree' };
-    }
-    if (v.phase === 'lanterns') {
-      const n = this.notes[0];
-      if (!this.poemRead && n) return { x: n.x, z: n.z, label: 'FESTIVAL SCROLL', what: 'read the festival scroll at the shrine hall' };
-      const j = v.order[Math.min(4, v.lit)]!;
-      return { x: s.lanterns[j]!.x, z: s.lanterns[j]!.z, label: `${LANTERN_SIGNS[j]!.word} LANTERN`, what: `light the lanterns in the poem's order: ${orderWords(v)}` };
-    }
-    if (v.phase === 'bell') return { x: s.bell.x, z: s.bell.z, label: 'THE BELL', what: 'ring the shrine bell' };
-    return null;
   }
 
   /** Her moment: the theatre's doors open, she is on her stage, and the Court knows. */
@@ -728,10 +679,6 @@ export class SakuraRuntime {
     const s = g.session;
     const d = g.level.data;
     if (s.extraction.phase === 'extracted') return null;
-    if (s.defense.status !== 'complete' && !SakuraQuest.powered(this.view)) {
-      const f = this.spots.fuses.find((_, i) => !(this.view.marks & (FUSE_BIT << i)));
-      if (f) return at(f.x, f.z, f.y > 2.5 ? f.y - 1.4 : 0);
-    }
     if (s.defense.status !== 'complete') return at(d.defense.x, d.defense.z);
     if (s.hunt.status !== 'complete') {
       const b = g.zombies.boss;
@@ -916,22 +863,6 @@ export class SakuraRuntime {
         st.objectives.unshift({ id: 'kaika', title: `${i + 1}/${CHAPTERS.length}  ${ch.title}`, detail: goal, state: 'active', progress: i / CHAPTERS.length, tracked: true, distance: dist });
         if (tg) md.markers.push({ id: 'kaika', kind: 'objective', x: tg.x, z: tg.z, label: tg.label, color: '#ff9ec8', visible: true, compass: true, pulse: true });
       }
-    } else if (!SakuraQuest.powered(v) && this.g.session.defense.status !== 'complete') {
-      // the operation: the relay has no power until the metro's substation is back
-      const i = [0, 1, 2].find((k) => !(v.marks & (FUSE_BIT << k))) ?? 0;
-      const f = this.spots.fuses[i]!;
-      st.objectives.unshift({ id: 'power', title: 'RESTORE POWER', detail: `The relay feeds from the metro substation: fuses ${SakuraQuest.fuses(v)}/3`, state: 'active', progress: SakuraQuest.fuses(v) / 3, tracked: true, distance: Math.round(Math.hypot(f.x - this.g.player.x, f.z - this.g.player.z)) });
-      md.markers.push({ id: 'fuse', kind: 'objective', x: f.x, z: f.z, label: `FUSE ${SakuraQuest.fuses(v) + 1}/3`, color: '#ffd040', visible: true, compass: true, pulse: true });
-    }
-    if (!this.campaign && (v.found || v.phase !== 'charms' || this.voice.said.has('aoi_call'))) {
-      // the operation: Aoi's quest is on the side, and shows once she has called (or any of it is done). The petal trail
-      // stays on the contracts; where Aoi is sending you has its own pink marker, so what she says always matches
-      // something you can see
-      const step = v.phase === 'bloom' ? null : this.eggStep(v);
-      const p = this.g.player;
-      const dist = step ? Math.round(Math.hypot(step.x - p.x, step.z - p.z)) : -1;
-      st.objectives.push({ id: 'lanterns', title: 'THE THOUSAND LANTERNS', detail: step ? `Optional - Aoi: ${step.what}` : SakuraQuest.status(v), state: v.phase === 'bloom' ? 'complete' : 'active', progress: -1, tracked: false, distance: dist });
-      if (step) md.markers.push({ id: 'aoi', kind: 'objective', x: step.x, z: step.z, label: `AOI: ${step.label}`, color: '#ff9ec8', visible: true, compass: true, pulse: false });
     }
     if (this.bloomed) md.markers.push({ id: 'ghost-train', kind: 'landmark', x: this.h.kisaragi.boardStreet.x, z: this.h.kisaragi.boardStreet.z, label: 'GHOST TRAIN', color: '#9fe8ff', visible: true, compass: true, pulse: true });
   }
@@ -1219,10 +1150,9 @@ export class SakuraRuntime {
       if (powered && !silent) {
         g.audio.play('defense_start', { priority: 3 });
         g.audio.play('station_chime', { priority: 2, volume: 0.9 });
-        g.banner('POWER RESTORED', this.campaign ? 'The metro\'s lights are back on' : 'The relay has power - start the uplink at the shrine', 'good', 4);
+        g.banner('POWER RESTORED', 'The metro\'s lights are back on', 'good', 4);
         // the station's tapes wake with the lights (and say where the last train goes); Command sees the relay go live
         this.voice.sayAll(['pa_delay_ja', 'pa_delay_en', 'yuzu_kisaragi_pa'], { kind: 'story', delay: 1.2 });
-        if (!this.campaign) this.voice.say('cmd_power_op', { kind: 'system', delay: 1 });
         if (!this.follow) this.dir.draw(LURES.power);
       }
     }
@@ -1233,7 +1163,6 @@ export class SakuraRuntime {
       g.audio.play('pickup_plate', { priority: 2 });
       g.banner('LAB KEYCARD', 'Kurenai Biotech, level B2 - the stairs behind the clinic are open', 'good', 4);
       this.voice.sayAll(['hana_key', 'yuzu_key'], { kind: 'story' });
-      if (!this.campaign) this.aoiNext(1);
       if (!this.follow) this.dir.draw(LURES.key);
     }
     // charms found: lanterns rise where each one was
@@ -1251,7 +1180,6 @@ export class SakuraRuntime {
         // whose charm it was: told whenever it is taken, in whatever order
         this.voice.say(`aoi_charm_${i}`, { kind: 'story', delay: 0.8 });
         if (n === 5) this.voice.say('aoi_all', { kind: 'story', delay: 1 });
-        else if (!this.campaign) this.aoiNext(1);
         if (!this.follow) this.dir.draw(LURES.charm[i]!);
         this.hud.card('THE THOUSAND LANTERNS', `Omamori ${n}/5`, n === 5 ? 'All five. Tie them to the sacred tree at the shrine.' : 'Aoi\'s charm. The sacred tree at the shrine has knots for five.', 8);
       }
@@ -1317,7 +1245,7 @@ export class SakuraRuntime {
     g.audio.play('bloom_swell', { priority: 3 });
     g.audio.play('ghost_train', { pos: { x: this.h.kisaragi.ghost.x, y: 2, z: this.h.kisaragi.ghost.z }, priority: 2 });
     g.banner('THE THOUSAND LANTERNS', 'The dead of Sakuragi are seen home. A train is waiting at the station.', 'good', 7);
-    this.voice.sayAll(this.campaign ? ['yuzu_bloom', 'aoi_bloom'] : ['yuzu_bloom', 'cmd_bloom_op', 'aoi_op_bloom'], { kind: 'story' });
+    this.voice.sayAll(['yuzu_bloom', 'aoi_bloom'], { kind: 'story' });
     if (!this.follow) this.dir.draw(LURES.bloom);
     g.fadeThroughBlack(0.8);
   }

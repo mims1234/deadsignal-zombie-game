@@ -57,15 +57,12 @@ const L = (id: string, who: Speaker, text: string, tag: string, match?: string):
 
 export const LINES: readonly VoiceLine[] = [
   // ---- COMMAND: the operation's calls (the mission's own radio, voiced) ----
-  L('cmd_brief_op', 'COMMAND', "Hanabi unit, you're on the ground. Seven years of silence, and last night the shrine relay started transmitting on its own. We need that uplink - but the relay draws from the station substation, and the grid's been dead since the fall. Get down into the metro and put the power back.", 'calm, clipped, a briefing'),
   L('cmd_brief_kaika', 'COMMAND', "Hanabi unit, you're on the ground. We ran the voice on the shrine relay. Aoi Kisaragi - the shrine keeper, missing seven years. Listen to her. The bird doesn't fly in until whatever she started is finished.", 'calm, clipped, a briefing with a trace of unease'),
-  L('cmd_power_op', 'COMMAND', "Power's flowing. The relay's live on our board. Get to the shrine and start the uplink - every infected in the ward will hear it.", 'satisfied, brisk'),
   L('cmd_nopower', 'COMMAND', "Relay's dead, Hanabi. No current. Restore the substation under the metro first.", 'firm, brief'),
   L('cmd_uplink', 'COMMAND', "Uplink running. Hold that courtyard until it's through - they'll come for the signal.", 'urgent, focused', 'Uplink initiated. Stay inside the marked area. They will come for the signal.'),
   L('cmd_uplink_co', 'COMMAND', 'Uplink running. One of you stays in that zone at all times - it counts for the whole squad.', 'urgent, focused', 'Uplink initiated. One of you stays in that zone at all times - it counts for the whole squad.'),
   L('cmd_outside', 'COMMAND', "You're outside the relay zone. Get back in there.", 'sharp', "You're outside the relay zone. Get back in there."),
   L('cmd_relay_done', 'COMMAND', 'Uplink complete. We have the whole district on the board. Nice work.', 'pleased, steady', 'Relay restored. Nice work.'),
-  L('cmd_empress_next', 'COMMAND', "Next, the Empress. Kurenai Theatre, north side. The Court guards her - and the Court shoots back.", 'clipped, a warning'),
   L('cmd_empress_down', 'COMMAND', 'Confirmed kill. The Crimson Empress is down.', 'relieved, clipped', 'Confirmed kill. The crimson empress is down.'),
   L('cmd_both', 'COMMAND', 'Both contracts complete. Get to the hilltop and radio the bird.', 'brisk', 'Both contracts complete. Move to LZ HILLTOP and radio the bird.'),
   L('cmd_called', 'COMMAND', "Bird's inbound. Hold the perimeter - everything nearby is heading your way.", 'urgent', 'Bird is inbound. Hold the perimeter - everything nearby is heading your way.'),
@@ -75,8 +72,6 @@ export const LINES: readonly VoiceLine[] = [
   L('cmd_glow', 'COMMAND', 'Something glowing where that one fell - whatever this place was cooking, it is on our side for once. Walk through it.', 'puzzled, then dry'),
   L('cmd_lost_hana', 'COMMAND', "We lost Hana. Keep the other one breathing.", 'grim, controlled', 'We lost Hana. Keep the other one breathing.'),
   L('cmd_lost_yuzu', 'COMMAND', "We lost Yuzu. Keep the other one breathing.", 'grim, controlled', 'We lost Yuzu. Keep the other one breathing.'),
-  L('cmd_aoi_ignore', 'COMMAND', 'Whoever that is, she is not your mission. Stick to the contracts, Hanabi.', 'flat, dismissive'),
-  L('cmd_bloom_op', 'COMMAND', 'Hanabi, every reading in the ward just went red. What did you do?', 'alarmed'),
   L('pilot_approach', 'PILOT', 'Bird on approach. Mark your position.', 'tense, over rotors', 'Bird on approach. Mark your position.'),
   L('pilot_hot', 'PILOT', 'Coming in hot - clear the pad!', 'shouting over rotors', 'Coming in hot - clear the pad!'),
   L('pilot_ground', 'PILOT', "We're on the ground - get aboard, now!", 'shouting, urgent', "We're on the ground - get aboard, now!"),
@@ -85,8 +80,6 @@ export const LINES: readonly VoiceLine[] = [
   L('hana_boss', 'HANA', "That's her - the Empress. She hits like a truck. Head shots, and don't let her close.", 'tense, focused', "That's her - the Empress. She hits like a truck. Head shots, and don't let her close."),
   L('hana_hit', 'HANA', "I'm hit bad - cover me!", 'in pain, urgent', "I'm hit bad - cover me!"),
   L('yuzu_hit', 'YUZU', "I'm hit bad - cover me!", 'in pain, frightened', "I'm hit bad - cover me!"),
-  L('hana_aoi', 'HANA', "Aoi Kisaragi. She went missing seven years ago. That's who's on the relay?", 'quiet, unsettled'),
-  L('yuzu_aoi', 'YUZU', 'Five charms. She sounds so sure of it. Maybe we keep an ear out.', 'curious, half joking'),
   L('hana_start_kaika', 'HANA', "If she's leading, we follow. Look at the ground - petals. She's marking the way.", 'quiet, decided'),
   L('yuzu_metro', 'YUZU', "First stop, the metro. It's pitch black down there - three fuses on the walls. Lovely.", 'wry, nervous'),
   L('yuzu_kisaragi_pa', 'YUZU', "Did the announcement just say Kisaragi? There's no Kisaragi on this line.", 'unnerved, whispering'),
@@ -161,7 +154,6 @@ export const LINES: readonly VoiceLine[] = [
   L('aoi_home', 'AOI', 'They are going home. So am I. Thank you, all of you. Go back to your own home now.', 'peaceful, tearful, warm'),
   L('aoi_procession', 'AOI', 'They heard the bell. Every one of them is coming up the hill to go home - and they will take you with them.', 'frightened, urgent'),
   L('aoi_procession_2', 'AOI', 'Hold until the bird lands. What Kisaragi gave you is for this.', 'steady, encouraging'),
-  L('aoi_op_bloom', 'AOI', 'Thank you. They can go home now - but they will all come up the hill to do it. Be ready when you call your helicopter.', 'grateful, quiet'),
 
   // ---- the station's speakers ----
   { ...L('pa_delay_ja', 'PA', '21時47分発、きさらぎ行き各駅停車は、ただいま遅れております。', 'calm, measured, a station announcement in Japanese'), say: '[calm, measured, a station announcement] 21時47分発、きさらぎ行き各駅停車は、ただいま遅れております。ご迷惑をおかけしております。' },
