@@ -12,6 +12,7 @@ import { addBox, building, groundDecal, groundRect } from '../../structures';
 import { stairwellDown } from '../storeys';
 import type { Ctx } from '../util';
 import { SITES, ZONES } from './consts';
+import { trimBlock } from './facades';
 import { MAT, cherryTree, grass, ivy, jpSignMaterial, lanternString, nobori, pagoda, petals, signBoard, stoneLantern, wallWords } from './props';
 
 /** The lab's stairwell, behind the clinic: its doorway facing south into the clinic yard. */
@@ -120,12 +121,37 @@ export function buildTheatre(c: Ctx, lab: { area: number; x: number; z: number; 
     r.updateMatrixWorld(true);
   }
   addBox(b, MAT.blackLacquer(), 20, 13.4, -57, 45, 0.5, 0.6);
+  // its frame: dark timber posts between the doors and the posters, a plinth, a cornice under the great roof
+  trimBlock(b, {
+    x0: 0, z0: -64, x1: 40, z1: -50, h: 9, pilasterEvery: 4, material: MAT.woodDark(),
+    clear: { S: [[12, 3.4], [28, 3.4], [20, 4.2], [4, 2.4], [9, 2.4], [31, 2.4], [36, 2.4]], E: [[-56.6, 2.4]] },
+  });
+  // the hisashi: a tiled eave along the front over the doors and the posters, on lacquered brackets (open over the
+  // gallery window in the middle)
+  for (const [ex0, ex1] of [[-0.4, 17.6], [22.4, 40.4]] as const) {
+    const L = ex1 - ex0;
+    const ecx = (ex0 + ex1) / 2;
+    const eave = addBox(b, MAT.tileRoof(), ecx, 4.95, -48.95, L, 0.16, 2.3);
+    eave.rotation.x = 0.26;
+    eave.updateMatrixWorld(true);
+    addBox(b, MAT.blackLacquer(), ecx, 4.62, -47.85, L, 0.22, 0.1);
+    for (let x = ex0 + 1; x < ex1; x += 3.2) addBox(b, MAT.blackLacquer(), x, 4.55, -49.3, 0.14, 0.3, 1.4);
+  }
+  // the yagura: the drum tower over the entrance that says a show is on (white cloth, a tiled cap, three spears)
+  addBox(b, MAT.paper(), 20, 10.55, -49.7, 2.8, 1.3, 2.2);
+  for (const [dx, dz] of [[-1.45, -1.15], [1.45, -1.15], [-1.45, 1.15], [1.45, 1.15]] as const) addBox(b, MAT.woodDark(), 20 + dx, 10.5, -49.7 + dz, 0.16, 2.0, 0.16);
+  addBox(b, MAT.tileRoof(), 20, 11.55, -49.7, 3.5, 0.22, 2.9);
+  addBox(b, MAT.vermilion(), 20, 10.25, -48.55, 2.9, 0.35, 0.05);
+  for (const dx of [-0.9, 0, 0.9]) {
+    addBox(b, MAT.woodDark(), 20 + dx, 12.4, -49.7, 0.06, 1.6, 0.06);
+    addBox(b, MAT.paper(), 20 + dx, 13.1, -49.7, 0.3, 0.45, 0.3);
+  }
   // the façade: the name, Sayo's posters, red banners and lanterns
   signBoard(b, { x: 20, z: -49.85, y: 8.0, rot: 0, w: 12, h: 1.6, text: '紅劇場', sign: { bg: '#1a0608', fg: '#f0c050', sub: 'THE CRIMSON THEATRE', glow: 0.1, worn: 0.6 } });
   const poster = posterMaterial();
   for (const x of [4, 9, 31, 36]) {
     const p = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 3.3), poster);
-    p.position.set(x, 3.2, -49.85);
+    p.position.set(x, 2.85, -49.85);
     b.addDynamic(p);
   }
   for (let x = 2; x <= 38; x += 6) nobori(b, { x, z: -48.6, text: '紅小夜', color: '#a8141e', torn: rng.f() < 0.4 });
@@ -204,6 +230,36 @@ export function buildTheatre(c: Ctx, lab: { area: number; x: number; z: number; 
     sides: { E: { openings: [{ at: 4, width: 2, height: 2.6, kind: 'door' }] }, S: { openings: [{ at: 6, width: 2.2, height: 2.6, kind: 'door' }] } },
     tag: 'clinic',
   });
+  // the clinic's dress: ribbon windows, a canopy on the door, the vent stacks the outbreak came up through
+  trimBlock(b, { x0: -16, z0: -64, x1: -4, z1: -50, h: 5, material: 'steelDark' });
+  {
+    const glass = b.mats.get('glassDark');
+    const ribbon = (x: number, z: number, len: number, alongX: boolean): void => {
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(len, 1.15), glass);
+      pane.position.set(x, 1.95, z);
+      pane.rotation.y = alongX ? 0 : Math.PI / 2;
+      pane.updateMatrixWorld(true);
+      b.add(pane, { cast: false, receive: false });
+      const o = 0.07;
+      addBox(b, 'steelDark', alongX ? x : x + o, 2.58, alongX ? z + o : z, alongX ? len + 0.2 : 0.14, 0.1, alongX ? 0.14 : len + 0.2);
+      addBox(b, 'steelDark', alongX ? x : x + o, 1.32, alongX ? z + o : z, alongX ? len + 0.3 : 0.2, 0.1, alongX ? 0.2 : len + 0.3);
+      for (let t = -len / 2 + 1.4; t < len / 2 - 0.5; t += 1.4) addBox(b, 'steelDark', alongX ? x + t : x + o / 2, 1.95, alongX ? z + o / 2 : z + t, 0.06, 1.15, 0.06);
+    };
+    ribbon(-13.6, -49.97, 4, true);
+    ribbon(-6.4, -49.97, 4, true);
+    ribbon(-3.97, -62.2, 2.6, false);
+    ribbon(-3.97, -54.4, 7.2, false);
+    addBox(b, 'concreteDark', -10, 2.95, -49.2, 3.6, 0.2, 1.7);
+    for (const [vx, vz] of [[-13, -60], [-9.5, -61.5], [-6.5, -58]] as const) {
+      const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 2.6, 10), b.mats.get('steel'));
+      stack.position.set(vx, 6.3, vz);
+      stack.castShadow = stack.receiveShadow = true;
+      stack.updateMatrixWorld(true);
+      b.add(stack);
+      addBox(b, 'steelDark', vx, 7.75, vz, 0.95, 0.12, 0.95);
+    }
+    for (const x of [-14.2, -13.1]) addBox(b, MAT.white(), x, 5.6, -52.5, 0.85, 0.6, 0.45);
+  }
   signBoard(b, { x: -10, z: -49.85, y: 4.3, rot: 0, w: 8, h: 0.8, text: '紅バイオ クリニック', sign: { bg: '#f0f0ee', fg: '#a8141e', sub: 'KURENAI BIOTECH WELLNESS', worn: 0.7 } });
   groundDecal(b, 'biohazard', -6, -46, 2.4, 2.4, 0.3);
   tent(b, { x: -4, z: -44, rot: 1.2, kind: 'medical', w: 5, d: 3.4 });

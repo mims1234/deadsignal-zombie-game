@@ -213,7 +213,7 @@ export interface TrimSpec {
   faces?: FaceSide[];
   /** Doorways and windows to keep pilasters off, per face: the world x (N, S) or z (E, W) of the gap, and its width. */
   clear?: Partial<Record<FaceSide, [number, number][]>>;
-  material?: MaterialName;
+  material?: MaterialName | THREE.Material;
 }
 
 /**
@@ -222,7 +222,7 @@ export interface TrimSpec {
  */
 export function trimBlock(b: LevelBuilder, s: TrimSpec): void {
   const g = new THREE.Group();
-  const mat = m(b, s.material ?? 'concreteDark');
+  const mat = typeof s.material === 'object' ? s.material : m(b, s.material ?? 'concreteDark');
   const box = (x: number, y: number, z: number, sx: number, sy: number, sz: number): void => {
     const mesh = new THREE.Mesh(GEO.box, mat);
     mesh.position.set(x, y, z);

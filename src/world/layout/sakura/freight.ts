@@ -10,7 +10,8 @@ import { straightStairs } from '../storeys';
 import type { Ctx } from '../util';
 import { CH, CW } from '../util';
 import { ZONES } from './consts';
-import { cherryTree, grass, petals, rails, signBoard, wallWords } from './props';
+import * as THREE from 'three';
+import { MAT, cherryTree, grass, petals, rails, signBoard, wallWords } from './props';
 
 export interface FreightInfo {
   /** The two container decks (areas, `floors.ts`) and their centres: where the Court's snipers watch from. */
@@ -76,6 +77,53 @@ export function buildFreight(c: Ctx): FreightInfo {
   petals(b, { x: 92.5, z: -60, r: 3 });
   cherryTree(c, { x: 116, z: -30, scale: 0.9, rot: 2 });
   debris(b, { x: 104, z: -48, radius: 5, density: 0.5, seed: 51 });
+
+  // ---- the railway's own: catenary masts down the line, the signal gantry at the gate, the yard office ----
+  for (let z = -62; z <= -34; z += 9.3) {
+    addBox(b, 'steelDark', 101.7, 3.6, z, 0.26, 7.2, 0.26);
+    addBox(b, 'steelDark', 102.9, 6.55, z, 2.6, 0.12, 0.12);
+    addBox(b, 'steelDark', 102.4, 5.9, z, 1.6, 0.08, 0.08);
+    addBox(b, MAT.white(), 104, 6.2, z, 0.12, 0.45, 0.12);
+    b.collideBox(101.7, z, 0.36, 0.36, 7.2, { mapKind: 'prop', tag: 'catenary-mast', surface: 'metal' });
+  }
+  addBox(b, 'steelDark', 104, 5.95, -48, 0.04, 0.04, 30);
+  addBox(b, 'steelDark', 104, 6.55, -48, 0.03, 0.03, 30);
+  {
+    // the signal gantry over the line where it leaves the yard: two lattice legs, a beam, the signals stuck at red
+    const gz = -31;
+    for (const x of [100.6, 107.4]) {
+      addBox(b, 'steelDark', x, 3.3, gz, 0.4, 6.6, 0.4);
+      b.collideBox(x, gz, 0.5, 0.5, 6.6, { mapKind: 'prop', tag: 'signal-gantry', surface: 'metal' });
+    }
+    addBox(b, 'steelDark', 104, 6.7, gz, 7.6, 0.45, 0.45);
+    addBox(b, 'grating', 104, 6.98, gz - 0.35, 7.6, 0.06, 1.0);
+    for (const x of [102.6, 105.4]) {
+      addBox(b, 'paintBlack', x, 6.0, gz + 0.1, 0.5, 1.1, 0.35);
+      addBox(b, 'lampRed', x, 6.25, gz + 0.29, 0.22, 0.22, 0.05);
+      addBox(b, 'steelDark', x, 5.75, gz + 0.29, 0.22, 0.22, 0.05);
+    }
+    signBoard(b, { x: 104, z: gz + 0.25, y: 7.5, rot: 0, w: 2.6, h: 0.45, text: '北門 貨物線', sign: { bg: '#e8e4d8', fg: '#1a2a5a', sub: 'NORTHGATE FREIGHT', worn: 0.85 } });
+  }
+  {
+    // the yard office against the north wall: two site cabins, one on the other, its stair gone
+    const ox = 90;
+    const oz = -64.4;
+    for (const [y, mat] of [[1.4, 'paintWhite'], [4.2, 'metalPanel']] as const) {
+      addBox(b, mat, ox, y, oz, 7, 2.8, 2.4);
+      addBox(b, 'steelDark', ox, y + 1.45, oz, 7.2, 0.12, 2.6);
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.9), b.mats.get(y > 2 ? 'glassDark' : 'windowLit'));
+      for (const wx of [-2.2, 0, 2.2]) {
+        const p = pane.clone();
+        p.position.set(ox + wx, y + 0.3, oz + 1.22);
+        p.updateMatrixWorld(true);
+        b.add(p, { cast: false, receive: false });
+      }
+    }
+    addBox(b, 'steelDark', ox + 2.6, 1.1, oz + 1.22, 0.9, 2.1, 0.05);
+    addBox(b, MAT.white(), ox - 2.6, 6.0, oz, 0.9, 0.7, 0.5);
+    signBoard(b, { x: ox, z: oz + 1.25, y: 2.65, rot: 0, w: 3, h: 0.4, text: '構内事務所', sign: { bg: '#1a3a6a', fg: '#ffffff', sub: 'YARD OFFICE', worn: 0.8 } });
+    b.collideBox(ox, oz, 7, 2.4, 5.6, { mapKind: 'building', tag: 'yard-office', surface: 'metal' });
+  }
 
   // ---- gameplay ----
   d.crate(92, -50, 0.2, 'high');

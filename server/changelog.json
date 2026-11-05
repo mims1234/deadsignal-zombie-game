@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.336",
+      "date": "2026-11-05",
+      "title": "Sakura District: the theatre, the clinic and the freight yard dressed",
+      "notes": [
+        "The Crimson Theatre has dark timber posts between its doors and posters, a plinth and a cornice, a tiled eave along the front on lacquered brackets, and a drum tower over the entrance with white cloth, a tiled cap and three spears. The posters sit a little lower, under the eave.",
+        "The Kurenai clinic has steel-framed ribbon windows, a canopy over its door, a cornice, AC units and three vent stacks on the roof.",
+        "The freight yard has catenary masts and wires along the line, a signal gantry where the line leaves the yard (both signals stuck at red, with the yard sign), and a two-storey yard office against the north wall with a light still on downstairs.",
+        "The new buildings add only six draw batches to the whole map."
+      ]
+    },
+    {
       "version": "0.4.335",
       "date": "2026-11-05",
       "title": "Sakura District: the buildings dressed",
