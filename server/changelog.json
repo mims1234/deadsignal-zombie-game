@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.340",
+      "date": "2026-11-05",
+      "title": "Sakura District: Aoi's way has its own marker",
+      "notes": [
+        "The Operation: the petal trail and the objectives follow the mission (the power, the relay, the Empress, the helicopter). Aoi's Thousand Lanterns is optional, and wherever she tells you to go now has its own pink AOI marker on the compass and the map. Its objective says what she wants next and how far it is, for example \"Optional - Aoi: the lab keycard, at the freight yard office\". Before, her voice could send you to the freight yard while the trail led to the theatre, with nothing on screen to show where she meant."
+      ]
+    },
+    {
       "version": "0.4.339",
       "date": "2026-11-05",
       "title": "Sakura District: polish after a co-op play-test",

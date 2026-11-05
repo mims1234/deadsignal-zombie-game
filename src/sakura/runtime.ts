@@ -602,6 +602,31 @@ export class SakuraRuntime {
     this.voice.say(id, { kind: 'direction', delay, valid: () => !(this.view.found & (1 << i)) && (id !== 'aoi_dir_key' || !SakuraQuest.hasKey(this.view)) });
   }
 
+  /**
+   * The operation: the next step of Aoi's quest, where she would send you (the order her directions follow: the charms
+   * from the metro out, the keycard before the lab, then the tree, the scroll, the lanterns in the poem's order, the bell).
+   */
+  private eggStep(v: QuestView): { x: number; z: number; label: string; what: string } | null {
+    const s = this.spots;
+    if (v.phase === 'charms') {
+      const i = [0, 1, 2, 3, 4].find((k) => !(v.found & (1 << k)));
+      if (i === 4 && !SakuraQuest.hasKey(v)) return { x: s.key.x, z: s.key.z, label: 'KEYCARD', what: 'the lab keycard, at the freight yard office' };
+      if (i !== undefined) {
+        const names = [['LOST AND FOUND', 'her charm at the metro lost and found'], ['MUSIC ROOM', 'her charm in the school music room piano'], ['KARAOKE', 'her charm on the karaoke mirror ball'], ['SUNKEN BOAT', 'her charm on the sunken boat, from the canal bank'], ['SAMPLE FRIDGE', 'her charm in the lab sample fridge']] as const;
+        return { x: s.charms[i]!.x, z: s.charms[i]!.z, label: names[i]![0], what: names[i]![1] };
+      }
+      return { x: s.tree.x, z: s.tree.z, label: 'SACRED TREE', what: 'tie the five charms to the sacred tree' };
+    }
+    if (v.phase === 'lanterns') {
+      const n = this.notes[0];
+      if (!this.poemRead && n) return { x: n.x, z: n.z, label: 'FESTIVAL SCROLL', what: 'read the festival scroll at the shrine hall' };
+      const j = v.order[Math.min(4, v.lit)]!;
+      return { x: s.lanterns[j]!.x, z: s.lanterns[j]!.z, label: `${LANTERN_SIGNS[j]!.word} LANTERN`, what: `light the lanterns in the poem's order: ${orderWords(v)}` };
+    }
+    if (v.phase === 'bell') return { x: s.bell.x, z: s.bell.z, label: 'THE BELL', what: 'ring the shrine bell' };
+    return null;
+  }
+
   /** The first time into a place: what it wakes. */
   private enter(place: Place): void {
     if (place === 'kisaragi') this.voice.say('aoi_kisaragi', { kind: 'story', once: true, delay: 1 });
@@ -875,9 +900,15 @@ export class SakuraRuntime {
       st.objectives.unshift({ id: 'power', title: 'RESTORE POWER', detail: `The relay feeds from the metro substation: fuses ${SakuraQuest.fuses(v)}/3`, state: 'active', progress: SakuraQuest.fuses(v) / 3, tracked: true, distance: Math.round(Math.hypot(f.x - this.g.player.x, f.z - this.g.player.z)) });
       md.markers.push({ id: 'fuse', kind: 'objective', x: f.x, z: f.z, label: `FUSE ${SakuraQuest.fuses(v) + 1}/3`, color: '#ffd040', visible: true, compass: true, pulse: true });
     }
-    if (!this.campaign && (v.found || v.phase !== 'charms' || this.heard.size > 1)) {
-      // the quest shows once you are on its trail: once Aoi has been heard, or any of it done
-      st.objectives.push({ id: 'lanterns', title: 'THE THOUSAND LANTERNS', detail: SakuraQuest.status(v), state: v.phase === 'bloom' ? 'complete' : 'active', progress: -1, tracked: false, distance: -1 });
+    if (!this.campaign && (v.found || v.phase !== 'charms' || this.voice.said.has('aoi_call'))) {
+      // the operation: Aoi's quest is on the side, and shows once she has called (or any of it is done). The petal trail
+      // stays on the contracts; where Aoi is sending you has its own pink marker, so what she says always matches
+      // something you can see
+      const step = v.phase === 'bloom' ? null : this.eggStep(v);
+      const p = this.g.player;
+      const dist = step ? Math.round(Math.hypot(step.x - p.x, step.z - p.z)) : -1;
+      st.objectives.push({ id: 'lanterns', title: 'THE THOUSAND LANTERNS', detail: step ? `Optional - Aoi: ${step.what}` : SakuraQuest.status(v), state: v.phase === 'bloom' ? 'complete' : 'active', progress: -1, tracked: false, distance: dist });
+      if (step) md.markers.push({ id: 'aoi', kind: 'objective', x: step.x, z: step.z, label: `AOI: ${step.label}`, color: '#ff9ec8', visible: true, compass: true, pulse: false });
     }
     if (this.bloomed) md.markers.push({ id: 'ghost-train', kind: 'landmark', x: this.h.kisaragi.boardStreet.x, z: this.h.kisaragi.boardStreet.z, label: 'GHOST TRAIN', color: '#9fe8ff', visible: true, compass: true, pulse: true });
   }
