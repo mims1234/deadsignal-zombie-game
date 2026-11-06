@@ -308,6 +308,11 @@ export function cones(b: LevelBuilder, o: { x0: number; z0: number; x1: number; 
 
 /** Park bench (1.8 m long, seat facing local +Z). */
 export function bench(b: LevelBuilder, o: Place): void {
+  // the scanned park bench (when loaded for this map), on the same collider
+  if (modelProp(b, 'parkBench', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    collideLocal(b, o, 0, -0.05, 1.8, 0.55, 0.5, { surface: 'wood', mapKind: 'prop', tag: 'bench' });
+    return;
+  }
   const p = new Parts(o);
   const wood = b.mats.get('wood');
   const iron = b.mats.get('steelDark');

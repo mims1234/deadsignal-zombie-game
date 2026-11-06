@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.355",
+      "date": "2026-11-07",
+      "title": "Asylum: real scanned surfaces and furniture (beta)",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on in Settings, Blackwood Hill is drawn in photo-scanned materials: red brick, concrete, tarred roofs, old plank floors, worn ward tiles, gravel paths, the yard's pavers, dead grass on the hill and dirt in the cemetery.",
+        "The wards, offices and chapel get real furniture: iron beds, nightstands, chairs, bookshelves, steel desks, cabinets, carts and wheelchairs; the yard and drive get wooden benches and a car under a dust sheet.",
+        "Everything stands where the old pieces stood and blocks exactly the same, so moving, cover and co-op play as before. With the setting off, nothing changes; the new files load only for the Asylum."
+      ]
+    },
+    {
       "version": "0.4.354",
       "date": "2026-11-06",
       "title": "Squad: endless ammo, smaller pay for their kills",

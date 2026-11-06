@@ -1,5 +1,6 @@
 /** Passenger road vehicles: sedan, hatch, suv, pickup, van, jeep, ambulance. */
 import { collideLocal, stencil } from './util';
+import { modelProp } from '../../models/library';
 import {
   type VCtx,
   arch,
@@ -107,7 +108,17 @@ export function openDoor(c: VCtx, hingeX: number, len: number, y0: number, y1: n
   c.p.plane(c.dark, len, h, hingeX - len / 2, (y0 + y1) / 2, side * (zBody + 0.006), { ry: side > 0 ? 0 : Math.PI, cast: false });
 }
 
+const SEDAN_COLLIDERS = [
+  { cx: -0.01, len: 4.55, w: 1.8, h: 0.99 },
+  { cx: -0.19, len: 2.2, w: 1.5, h: 1.45 },
+];
+
 export function sedan(c: VCtx): void {
+  // under a dust sheet (the scanned covered car, when loaded for this map), on the sedan's own colliders
+  if (modelProp(c.b, 'coveredCar', c.o.x, c.o.y ?? 0, c.o.z, c.o.rot ?? 0)) {
+    for (const col of SEDAN_COLLIDERS) collideLocal(c.b, c.o, col.cx, 0, col.len, col.w, col.h, { surface: 'metal', mapKind: 'vehicle', tag: 'vehicle' });
+    return;
+  }
   boxyCar(c, {
     lower: [[-2.2, 0.3], [-2.24, 0.5], [-2.24, 0.88], [-1.92, 0.96], [-1.3, 0.99], [0.95, 0.99], [1.58, 0.93], [2.12, 0.82], [2.22, 0.7], [2.22, 0.48], [2.18, 0.3]],
     width: 1.74,
@@ -129,10 +140,7 @@ export function sedan(c: VCtx): void {
     seamY: [0.4, 0.98],
     mirror: { x: 0.7, y: 1.04 },
     belt: 0.99,
-    colliders: [
-      { cx: -0.01, len: 4.55, w: 1.8, h: 0.99 },
-      { cx: -0.19, len: 2.2, w: 1.5, h: 1.45 },
-    ],
+    colliders: SEDAN_COLLIDERS,
     plateY: 0.66,
     hinge: { x: 0.72, len: 0.95 },
   });

@@ -62,7 +62,7 @@ import { MujinRuntime } from '../mujin/runtime';
 import { HirasakaRuntime } from '../hirasaka/runtime';
 import { loadAnime, loadedAnimeScenes } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
-import { loadModels, PACKS } from '../models/library';
+import { loadModels, loadSurfaces, MAP_MODELS, mapSurfaceIds, PACKS, setModelMap } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
 import { sakuraVariantPicker } from '../sakura/director';
 import { isStory, STORIES, type StoryId } from '../sakura/missions';
@@ -433,10 +433,12 @@ export class Game implements GameCtx {
     const pack = PACKS[this.settings.modelPack];
     if (pack.length > 0) {
       this.menus.showLoading(0.2, 'LOADING MODELS');
-      await loadModels(pack);
+      // the pack's own models, plus the ones (and the scanned surfaces) only this map uses
+      await Promise.all([loadModels([...pack, ...(MAP_MODELS[this.mapId] ?? [])]), loadSurfaces(mapSurfaceIds(this.mapId))]);
     }
     this.menus.showLoading(0.25, 'BUILDING DISTRICT');
     await nextFrame();
+    setModelMap(this.mapId);
     this.level = buildLevel(this.mats, this.mapId);
     setSkyColors(this.renderer.sky);
     if (this.mapId === 'forge') {

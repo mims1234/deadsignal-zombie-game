@@ -22,6 +22,7 @@ import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
 import { BELL, LANTERNS, UPSTAIRS } from '../../asylum/nightConfig';
 import { straightStairs } from './storeys';
+import { surfaceOverrides } from '../../models/library';
 import { HALF_PI, type Ctx } from './util';
 
 export const ASYLUM_BOUNDS = { minX: -56, maxX: 56, minZ: -46, maxZ: 46 };
@@ -473,7 +474,24 @@ export interface AsylumResult {
   handles: AsylumHandles;
 }
 
+/**
+ * With a model pack on, the whole hill is drawn in scanned surfaces (`MAP_SURFACES.asylum`: brick, plaster, tile,
+ * concrete, roofs, wood, the ground) in place of the painted ones while it is built; nothing else changes.
+ */
 export function buildAsylum(c: Ctx): AsylumResult {
+  const lib = c.b.mats;
+  const scanned = surfaceOverrides('asylum');
+  if (scanned.size === 0) return buildHill(c);
+  const get = lib.get;
+  lib.get = (name) => scanned.get(name) ?? get.call(lib, name);
+  try {
+    return buildHill(c);
+  } finally {
+    lib.get = get;
+  }
+}
+
+function buildHill(c: Ctx): AsylumResult {
   const { b, d } = c;
   const B = ASYLUM_BOUNDS;
 

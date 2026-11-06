@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { lampIntensityMul } from '../render/lightPool';
+import { modelProp } from '../models/library';
 import type { LampSpec, LevelBuilder } from './builder';
 import { monitorTexture, serverFrontTexture, signMaterial } from './landmarks/tex';
 import { Assembly, Rng, cached, cylGeo, emissiveMat, glowSprite, seedFrom, unitBox } from './landmarks/util';
@@ -235,27 +236,34 @@ export function fridgeCase(b: LevelBuilder, o: Place & { length?: number }): voi
 export function officeDesk(b: LevelBuilder, o: Place & { chair?: boolean }): void {
   const rng = new Rng(seedFrom(o.x, o.z, 21));
   const asm = mk(o);
-  const wood = solid('office:wood', 0x6b5238, 0.7, 0.05);
-  const dark = solid('office:dark', 0x1c2024, 0.5, 0.3);
-  const paper = solid('office:paper', 0xd9d5c4, 0.9, 0);
-  const screenMat = cached('office:screen', () => emissiveMat(0x2a5a4a, 0.12, 0x040807));
-  asm.box(wood, 1.6, 0.05, 0.75, 0, 0.74, 0);
-  asm.box(wood, 0.04, 0.72, 0.7, -0.76, 0.36, 0);
-  asm.box(wood, 0.5, 0.72, 0.7, 0.55, 0.36, 0);
-  asm.box(wood, 1.1, 0.5, 0.03, -0.2, 0.5, -0.33);
-  for (let i = 0; i < 3; i++) {
-    asm.box(solid('office:drawer', 0x594430, 0.6, 0.1), 0.44, 0.19, 0.02, 0.55, 0.14 + i * 0.23, 0.36);
-    asm.box(dark, 0.14, 0.02, 0.02, 0.55, 0.14 + i * 0.23 + 0.04, 0.38);
+  // the scanned steel desk (when its model is loaded for this map) in place of the built one; the chair stays
+  const real = modelProp(b, 'wardDesk', o.x, o.y ?? 0, o.z, o.rot ?? 0);
+  if (real) {
+    asm.collide(b, 0, 0, 1.6, 0.76, 0.8, { mapKind: 'prop', surface: 'wood', tag: 'desk' }); // the same collider either way (co-op)
   }
-  // monitor (dead), keyboard, mug, papers, phone
-  asm.box(dark, 0.5, 0.32, 0.04, -0.3, 1.02, -0.18);
-  asm.box(screenMat, 0.46, 0.27, 0.005, -0.3, 1.02, -0.155);
-  asm.box(dark, 0.06, 0.16, 0.06, -0.3, 0.87, -0.18);
-  asm.box(dark, 0.4, 0.02, 0.14, -0.3, 0.775, 0.1);
-  asm.cyl(solid('office:mug', 0xb8b4a6, 0.5, 0.1), 0.045, 0.1, 0.25, 0.815, 0.05, 10);
-  for (let i = 0; i < 4; i++) asm.box(paper, rng.range(0.18, 0.24), 0.004, rng.range(0.26, 0.3), 0.15 + rng.range(-0.05, 0.05), 0.768 + i * 0.004, 0.18 + rng.range(-0.05, 0.05), { ry: rng.range(-0.5, 0.5) });
-  asm.box(dark, 0.18, 0.06, 0.2, 0.62, 0.8, -0.1, { ry: 0.3 });
-  asm.collide(b, 0, 0, 1.6, 0.76, 0.8, { mapKind: 'prop', surface: 'wood', tag: 'desk' });
+  const dark = solid('office:dark', 0x1c2024, 0.5, 0.3);
+  if (!real) {
+    const wood = solid('office:wood', 0x6b5238, 0.7, 0.05);
+    const paper = solid('office:paper', 0xd9d5c4, 0.9, 0);
+    const screenMat = cached('office:screen', () => emissiveMat(0x2a5a4a, 0.12, 0x040807));
+    asm.box(wood, 1.6, 0.05, 0.75, 0, 0.74, 0);
+    asm.box(wood, 0.04, 0.72, 0.7, -0.76, 0.36, 0);
+    asm.box(wood, 0.5, 0.72, 0.7, 0.55, 0.36, 0);
+    asm.box(wood, 1.1, 0.5, 0.03, -0.2, 0.5, -0.33);
+    for (let i = 0; i < 3; i++) {
+      asm.box(solid('office:drawer', 0x594430, 0.6, 0.1), 0.44, 0.19, 0.02, 0.55, 0.14 + i * 0.23, 0.36);
+      asm.box(dark, 0.14, 0.02, 0.02, 0.55, 0.14 + i * 0.23 + 0.04, 0.38);
+    }
+    // monitor (dead), keyboard, mug, papers, phone
+    asm.box(dark, 0.5, 0.32, 0.04, -0.3, 1.02, -0.18);
+    asm.box(screenMat, 0.46, 0.27, 0.005, -0.3, 1.02, -0.155);
+    asm.box(dark, 0.06, 0.16, 0.06, -0.3, 0.87, -0.18);
+    asm.box(dark, 0.4, 0.02, 0.14, -0.3, 0.775, 0.1);
+    asm.cyl(solid('office:mug', 0xb8b4a6, 0.5, 0.1), 0.045, 0.1, 0.25, 0.815, 0.05, 10);
+    for (let i = 0; i < 4; i++) asm.box(paper, rng.range(0.18, 0.24), 0.004, rng.range(0.26, 0.3), 0.15 + rng.range(-0.05, 0.05), 0.768 + i * 0.004, 0.18 + rng.range(-0.05, 0.05), { ry: rng.range(-0.5, 0.5) });
+    asm.box(dark, 0.18, 0.06, 0.2, 0.62, 0.8, -0.1, { ry: 0.3 });
+    asm.collide(b, 0, 0, 1.6, 0.76, 0.8, { mapKind: 'prop', surface: 'wood', tag: 'desk' });
+  }
   if (o.chair) {
     const cx = rng.range(-0.3, 0.2);
     const cz = 0.95;

@@ -6,6 +6,7 @@
  * a box collider for anything you could walk into. `y` is the floor (an upper storey's furniture sits on its floor).
  */
 import * as THREE from 'three';
+import { modelProp } from '../models/library';
 import type { LevelBuilder } from './builder';
 import { Assembly, cached, emissiveMat, seedFrom } from './landmarks/util';
 import type { Place } from './props';
@@ -32,6 +33,11 @@ const WOOD_DARK = (): THREE.MeshStandardMaterial => solid('woodDark', 0x3a2a1e, 
 export function ironBed(b: LevelBuilder, o: Place & { made?: boolean; seed?: number }): void {
   const r = rand(seedFrom(o.x, o.z, o.seed ?? 7));
   const a = mk(o);
+  // the scanned iron bed (when its model is loaded for this map), on the same collider
+  if (modelProp(b, 'wardBed', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 2.0, 0.95, 0.65, { mapKind: 'prop', surface: 'metal', tag: 'bed' });
+    return;
+  }
   const frame = CHIPPED();
   const ticking = solid('ticking', 0xb7b19a, 0.95, 0);
   const blanket = solid(r() < 0.5 ? 'blanketGrey' : 'blanketGreen', r() < 0.5 ? 0x5d6058 : 0x4c5a4a, 0.95, 0);
@@ -57,6 +63,7 @@ export function ironBed(b: LevelBuilder, o: Place & { made?: boolean; seed?: num
 /** A plain wooden chair (0.45 m square), facing local +Z; `tipped` lies on its back. */
 export function chair(b: LevelBuilder, o: Place & { tipped?: boolean }): void {
   const a = mk(o);
+  if (!o.tipped && modelProp(b, 'woodChair', o.x, o.y ?? 0, o.z, o.rot ?? 0)) return;
   const w = WOOD();
   if (o.tipped) {
     // on its back: the seat stands upright, the legs point along +Z
@@ -76,6 +83,10 @@ export function chair(b: LevelBuilder, o: Place & { tipped?: boolean }): void {
 /** A bedside cabinet (0.45 x 0.4 x 0.75 m), its door to local +Z, a cup or a book on top. */
 export function bedside(b: LevelBuilder, o: Place): void {
   const a = mk(o);
+  if (modelProp(b, 'nightstand', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 0.45, 0.4, 0.75, { mapKind: 'prop', surface: 'metal', tag: 'bedside' });
+    return;
+  }
   const r = rand(seedFrom(o.x, o.z, 11));
   a.box(CHIPPED(), 0.45, 0.72, 0.4, 0, 0.36, 0);
   a.box(solid('cabDoor', 0xb3b0a2, 0.6, 0.2), 0.39, 0.4, 0.02, 0, 0.3, 0.205);
@@ -89,6 +100,10 @@ export function bedside(b: LevelBuilder, o: Place): void {
 /** An old wheelchair (cane seat, big wheels), facing local +Z. */
 export function wheelchair(b: LevelBuilder, o: Place): void {
   const a = mk(o);
+  if (modelProp(b, 'wheelchair', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 0.7, 0.75, 0.9, { mapKind: 'prop', surface: 'metal', tag: 'wheelchair' });
+    return;
+  }
   const iron = IRON();
   const cane = solid('cane', 0x8a6a42, 0.85, 0);
   const rubber = solid('rubber', 0x141414, 0.9, 0);
@@ -139,6 +154,10 @@ export function filingCabinets(b: LevelBuilder, o: Place & { count?: number }): 
 /** A glass-fronted medicine cabinet (1.0 x 1.8 x 0.4 m), its front to local +Z: rows of brown bottles. */
 export function medicineCabinet(b: LevelBuilder, o: Place): void {
   const a = mk(o);
+  if (modelProp(b, 'wardCabinet', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 1.0, 0.42, 1.8, { mapKind: 'prop', surface: 'wood', tag: 'cabinet' });
+    return;
+  }
   const r = rand(seedFrom(o.x, o.z, 17));
   const body = CHIPPED();
   const glass = cached('asy:cabGlass', () => new THREE.MeshStandardMaterial({ color: 0x8aa0a0, roughness: 0.1, metalness: 0.2, transparent: true, opacity: 0.22, depthWrite: false }));
@@ -165,6 +184,10 @@ export function medicineCabinet(b: LevelBuilder, o: Place): void {
 /** A bookshelf (1.2 x 2.0 x 0.35 m), front to local +Z, with ledgers and boxes. */
 export function bookshelf(b: LevelBuilder, o: Place): void {
   const a = mk(o);
+  if (modelProp(b, 'bookshelf', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 1.2, 0.36, 2.0, { mapKind: 'prop', surface: 'wood', tag: 'shelf' });
+    return;
+  }
   const r = rand(seedFrom(o.x, o.z, 19));
   const w = WOOD_DARK();
   const spines = [0x6a2a24, 0x2a3a5a, 0x3a4a2a, 0x7a6a4a, 0x4a3a2a, 0x2a2a2a];
@@ -213,6 +236,10 @@ export function bathtub(b: LevelBuilder, o: Place): void {
 /** A nurse's trolley (0.9 x 0.5 m along local X): two trays of kidney dishes, bottles and a dropped chart. */
 export function trolley(b: LevelBuilder, o: Place): void {
   const a = mk(o);
+  if (modelProp(b, 'wardCart', o.x, o.y ?? 0, o.z, o.rot ?? 0)) {
+    a.collide(b, 0, 0, 0.95, 0.55, 0.9, { mapKind: 'prop', surface: 'metal', tag: 'trolley' });
+    return;
+  }
   const steel = solid('trolley', 0xa7aeb2, 0.35, 0.5);
   for (const y of [0.3, 0.85]) a.box(steel, 0.9, 0.03, 0.5, 0, y, 0);
   for (const x of [-0.42, 0.42]) for (const z of [-0.22, 0.22]) a.box(steel, 0.025, 0.85, 0.025, x, 0.44, z);

@@ -1,0 +1,14 @@
+Models and textures from Poly Haven (https://polyhaven.com), released under CC0 1.0 Universal (public domain):
+https://creativecommons.org/publicdomain/zero/1.0/
+
+Reduced for the web (fewer triangles, 512 px WebP textures; surfaces as colour, normal and ORM maps) with gltf-transform and Pillow.
+Used on the Asylum (Blackwood Hill) when NEW 3D MODELS (BETA) is on.
+
+Models (https://polyhaven.com/a/<name>):
+  old_bed_frame.glb, drawer_cabinet.glb, metal_office_desk.glb, industrial_storage_cart.glb, wheelchair_01.glb,
+  painted_wooden_nightstand.glb, painted_wooden_chair_02.glb, wooden_bookshelf_worn.glb, painted_wooden_bench.glb,
+  covered_car.glb
+
+Textures (tex/, https://polyhaven.com/a/<name>):
+  worn_tile_floor, red_brick_03, concrete_wall_008, dirty_concrete, tarred_gravel, old_wood_floor, gravel_floor,
+  concrete_pavers, sparse_grass, forest_ground_04, concrete_floor_worn_001
