@@ -5,7 +5,8 @@
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { makeAllyBody, SOLDIER_STATS, teamStats } from '../src/game/allyBrain';
-import { ALLY_GUN, ALLY_SUPPLY, ammoPrice, kitFired, kitPaid, kitReady, makeKit, setGun } from '../src/game/allySupply';
+import { ALLY_GUN, ALLY_SUPPLY, ammoPrice, boxGun, kitFired, kitPaid, kitReady, kitStats, makeKit, setGun } from '../src/game/allySupply';
+import { Rng } from '../src/logic/rng';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 
 describe('a squad member’s own gun', () => {
@@ -36,6 +37,17 @@ describe('a squad member’s own gun', () => {
     expect(ammoPrice('rifle')).toBe(750);
   });
 
+  it('takes a gun from a box as that gun: its numbers, never the RPG', () => {
+    const rng = new Rng(7);
+    for (let i = 0; i < 400; i++) expect(['pistol', 'shotgun', 'rifle']).toContain(boxGun(i % 2 ? 'none' : 'pistol', rng));
+    const k = makeKit('pistol', teamStats(SOLDIER_STATS, 'regular'));
+    const pistol = kitStats(k);
+    const shotgun = setGun(k, 'shotgun');
+    expect(k.mag).toBe(ALLY_GUN.shotgun.mag);
+    expect(shotgun.fireInterval).toBeCloseTo(pistol.fireInterval * ALLY_GUN.shotgun.fire, 9);
+    expect(shotgun.bodyDamage).toBeCloseTo(pistol.bodyDamage * ALLY_GUN.shotgun.damage, 9);
+  });
+
   it('is the Asylum only: Vance a rifle, Okafor a shotgun, the unarmed nothing; elsewhere no kit', () => {
     const sim = new SessionSim({ seed: 2, kind: 'mission', map: 'asylum', send: () => {} });
     const lvl = sim.level;
@@ -46,6 +58,9 @@ describe('a squad member’s own gun', () => {
     expect(okafor.kit?.gun).toBe('shotgun');
     expect(pip.kit?.gun).toBe('none');
     expect(pip.stats.range).toBe(0);
+    // who they are: Pip will not carry a gun, so she never takes one from a box (the armed survivors may)
+    expect(pip.kit?.noGuns).toBe(true);
+    expect(makeAllyBody(lvl, 'Nurse Halloway', 'survivor', 0, 0, 0, { x: 0, z: 2 }, true, 3).kit?.noGuns).toBe(false);
     // the gun they start with keeps their old numbers
     const plain = teamStats(SOLDIER_STATS, 'regular');
     expect(vance.stats.fireInterval).toBeCloseTo(plain.fireInterval, 9);

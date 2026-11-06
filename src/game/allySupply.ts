@@ -83,6 +83,8 @@ export interface AllyKit {
   base: AllyStats;
   /** The last thing they reported (so the caller says "out of ammo" once). */
   dry: boolean;
+  /** Will not carry a gun, by who they are (the Asylum's Ellie, Pip and Sister Maeve say so): never goes to a box. */
+  noGuns: boolean;
 }
 
 /** What the caller is told, and what it supplies (the boxes on the map). */
@@ -112,8 +114,8 @@ export function startGun(map: MapId, name: string, kind: AllyBody['kind'], unarm
 }
 
 /** A fresh kit with `gun` in hand. `base` are their numbers with a pistol (the reach too, even for one who starts unarmed). */
-export function makeKit(gun: AllyGun, base: AllyStats): AllyKit {
-  const k: AllyKit = { gun: 'none', mag: 0, reserve: 0, reloadT: 0, wallet: ALLY_SUPPLY.wallet, boxes: [], errand: null, lookT: 0, base: { ...base }, dry: false };
+export function makeKit(gun: AllyGun, base: AllyStats, noGuns = false): AllyKit {
+  const k: AllyKit = { gun: 'none', mag: 0, reserve: 0, reloadT: 0, wallet: ALLY_SUPPLY.wallet, boxes: [], errand: null, lookT: 0, base: { ...base }, dry: false, noGuns };
   setGun(k, gun);
   return k;
 }
@@ -168,9 +170,15 @@ export function kitLow(k: AllyKit): boolean {
   return k.gun !== 'none' && k.mag + k.reserve < ALLY_GUN[k.gun].mag;
 }
 
-/** A gun from a box for this squad member: weighted like the player's, never the one in their hands. */
+/**
+ * The guns a squad member will take from a box. Never the rocket launcher: a rocket fired by someone at your side, at
+ * the infected around you, would land in your lap (the box keeps it for the players).
+ */
+export const ALLY_BOX_GUNS = ['pistol', 'shotgun', 'rifle'] as const;
+
+/** A gun from a box for this squad member: weighted like the player's, never the one in their hands, never the RPG. */
 export function boxGun(current: AllyGun, rng: Rng): AllyGun {
-  const pool = (['pistol', 'shotgun', 'rifle', 'rpg'] as const).filter((g) => g !== current && (MYSTERY_BOX.guns[g] ?? 0) > 0);
+  const pool = ALLY_BOX_GUNS.filter((g) => g !== current && (MYSTERY_BOX.guns[g] ?? 0) > 0);
   const total = pool.reduce((s, g) => s + MYSTERY_BOX.guns[g], 0);
   let r = rng.f() * total;
   for (const g of pool) {
@@ -218,7 +226,7 @@ export function allyErrand(a: AllyBody, level: Level, zombies: { zombies: readon
       }
     }
   }
-  if (!pick && (k.gun === 'none' || k.gun === 'pistol')) {
+  if (!pick && !k.noGuns && (k.gun === 'none' || k.gun === 'pistol')) {
     let best = Infinity;
     for (const b of supply.boxes()) {
       if ((b.y ?? 0) > 0.5 || b.busy || k.boxes.includes(b.id) || boxClaimed(supply, a, b.id)) continue;

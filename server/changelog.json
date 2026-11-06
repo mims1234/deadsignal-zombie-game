@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.353",
+      "date": "2026-11-06",
+      "title": "Asylum: who carries a gun, and which one",
+      "notes": [
+        "Ellie, Pip and Sister Maeve never carry a gun - that's who they are - so they no longer go to the supply boxes. Only the squad and the survivors who fight (Nurse Halloway, Dr. Sato) take guns from them.",
+        "The squad never takes the rocket launcher from a box: a rocket fired from beside you at the infected around you would land on you. The box gives them a pistol, shotgun or rifle instead.",
+        "A gun a squad member takes is the gun they fire: its model in their hands, its sound, its rate of fire, damage, reach and magazine. Their shotgun now throws a visible spread of pellets.",
+        "Your perks only ever affect you: the squad's health, reloads and fire rate are their own."
+      ]
+    },
+    {
       "version": "0.4.352",
       "date": "2026-11-06",
       "title": "Asylum: the squad takes turns at the supply box",

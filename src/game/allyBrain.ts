@@ -344,7 +344,8 @@ export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'],
   if (squadSupplies(level.data.id)) {
     const gun = startGun(level.data.id, name, kind, unarmed);
     const g = gun === 'none' ? ALLY_GUN.pistol : ALLY_GUN[gun];
-    kit = makeKit(gun, { ...stats, range: stats.range / g.range, fireInterval: stats.fireInterval / g.fire, bodyDamage: stats.bodyDamage / g.damage, headDamage: stats.headDamage / g.damage });
+    // the ones written as people who will not carry a gun (Ellie, Pip, Sister Maeve) never take one from a box either
+    kit = makeKit(gun, { ...stats, range: stats.range / g.range, fireInterval: stats.fireInterval / g.fire, bodyDamage: stats.bodyDamage / g.damage, headDamage: stats.headDamage / g.damage }, unarmed);
     stats = kitStats(kit);
   } else if (unarmed) stats.range = 0; // unarmed: nothing is ever in range (they follow, and keep their heads down)
   return {

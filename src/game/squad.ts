@@ -172,6 +172,14 @@ export class SquadRuntime {
     else a.avatar.arm(k.gun);
   }
 
+  /** A shotgun in an ally's hands throws a spread, not one line (the gun they hold is the gun you see fire). */
+  private pellets(a: Ally, from: { x: number; y: number; z: number }, to: { x: number; y: number; z: number }): void {
+    if (a.avatar.weapon !== 'shotgun') return;
+    const g = this.g;
+    const d = Math.hypot(to.x - from.x, to.z - from.z);
+    for (let i = 0; i < 4; i++) g.fx.tracer(from, { x: to.x + (g.rng.f() - 0.5) * d * 0.12, y: to.y + (g.rng.f() - 0.5) * d * 0.08, z: to.z + (g.rng.f() - 0.5) * d * 0.12 }, 0xffd8a0);
+  }
+
   /** Co-op: the gun the simulation says an ally holds. */
   private dressRemote(a: Ally, gun: AllyGun): void {
     if (a.trapped || !a.ref.alive || a.avatar.weapon === gun) return;
@@ -445,6 +453,7 @@ export class SquadRuntime {
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       const from = a.avatar.fire(to);
       g.fx.tracer(from, to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+      this.pellets(a, from, to);
       g.audio.play(a.avatar.shotSound, { pos: from, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
       void hit;
     }
@@ -500,6 +509,7 @@ export class SquadRuntime {
         a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
         const muzzle = a.avatar.fire(shot.to);
         g.fx.tracer(muzzle, shot.to, a.kind === 'soldier' ? 0xffc070 : 0xd8e8ff);
+        this.pellets(a, muzzle, shot.to);
         g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
         if (shot.hit) {
           this.allyShooting = true;
