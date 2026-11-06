@@ -58,16 +58,32 @@ export function lanternsLit(souls: readonly number[]): number {
 }
 
 /**
- * The lantern a kill at (x, y, z) feeds: the nearest one still unlit within `LANTERNS.radius` on the same floor, or -1.
- * (The caller adds the soul: `souls[i]++`.)
+ * The lantern a kill at (x, y, z) feeds: the nearest one still unlit within `LANTERNS.radius` on the same floor; else one
+ * a player is keeping vigil at (standing within `LANTERNS.vigil` of it) with the kill within `LANTERNS.vigilReach` of
+ * it; or -1. (The caller adds the soul: `souls[i]++`.)
  */
-export function lanternFor(souls: readonly number[], x: number, y: number, z: number): number {
+export function lanternFor(souls: readonly number[], x: number, y: number, z: number, keepers: readonly { x: number; y: number; z: number }[] = []): number {
   let best = -1;
   let bestD = LANTERNS.radius;
+  const ky = Number.isFinite(y) ? y : 0;
   for (let i = 0; i < LANTERNS.spots.length; i++) {
     if (lanternLit(souls, i)) continue;
     const s = LANTERNS.spots[i]!;
-    if (Math.abs((Number.isFinite(y) ? y : 0) - s.y) > 2.5) continue;
+    if (Math.abs(ky - s.y) > 2.5) continue;
+    const d = Math.hypot(s.x - x, s.z - z);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  if (best >= 0) return best;
+  // the vigil: a keeper beside a dark lantern, and the kill (the squad's, most likely) out in the approach to it
+  bestD = LANTERNS.vigilReach;
+  for (let i = 0; i < LANTERNS.spots.length; i++) {
+    if (lanternLit(souls, i)) continue;
+    const s = LANTERNS.spots[i]!;
+    if (Math.abs(ky - s.y) > 2.5) continue;
+    if (!keepers.some((k) => Math.abs((Number.isFinite(k.y) ? k.y : 0) - s.y) <= 2.5 && Math.hypot(k.x - s.x, k.z - s.z) <= LANTERNS.vigil)) continue;
     const d = Math.hypot(s.x - x, s.z - z);
     if (d < bestD) {
       bestD = d;

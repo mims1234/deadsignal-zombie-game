@@ -1363,7 +1363,9 @@ export class SessionSim {
     if (z.isBoss && this.story && z !== this.forge?.reborn) completeHunt(this.hunt);
     // the Asylum: a vigil lantern beside it takes its soul (anyone's kill, the squad's and a nuke's too)
     if (this.asylum && this.story && !z.isBoss) {
-      const i = lanternFor(this.souls, z.x, z.y ?? 0, z.z);
+      const keepers: { x: number; y: number; z: number }[] = [];
+      for (const q of this.peers.values()) if (q.ref.alive) keepers.push({ x: q.ref.x, y: q.ref.y, z: q.ref.z });
+      const i = lanternFor(this.souls, z.x, z.y ?? 0, z.z, keepers);
       if (i >= 0 && !lanternLit(this.souls, i)) this.souls[i]!++;
     }
     if (this.allyKill && !this.nuking) {

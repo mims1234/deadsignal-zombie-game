@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.350",
+      "date": "2026-11-06",
+      "title": "Asylum: the squad can no longer starve the vigil lanterns",
+      "notes": [
+        "The vigil lanterns could be impossible to light, because your squad shot the infected long before they got close to a lantern. Now, while you stand beside a dark lantern (within about 6 m), every kill within 30 m of it feeds it, yours and the squad's. Kills right next to a lantern still count when you are elsewhere."
+      ]
+    },
+    {
       "version": "0.4.349",
       "date": "2026-11-06",
       "title": "Asylum: the vigil lanterns, the bell, and a hospital worth searching",

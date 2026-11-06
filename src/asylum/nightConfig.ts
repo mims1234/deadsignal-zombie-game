@@ -104,6 +104,10 @@ export const DAWN_RELIEF = 0.5;
 export const LANTERNS = {
   souls: 12,
   radius: 9,
+  /** A player standing this close to an unlit lantern keeps its vigil: every kill within `vigilReach` of it feeds it
+   * (the squad's too, which would otherwise shoot the infected long before they reach the lantern). */
+  vigil: 6,
+  vigilReach: 30,
   cash: 750,
   spots: [
     { id: 'cemetery', x: -41.25, y: 0, z: -7.8, place: 'the cemetery' },

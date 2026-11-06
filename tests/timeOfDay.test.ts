@@ -179,6 +179,10 @@ describe('the Asylum clock', () => {
     const [cem, nine] = LANTERNS.spots;
     expect(lanternFor(souls, cem!.x + 2, 0, cem!.z + 1)).toBe(0);
     expect(lanternFor(souls, cem!.x + LANTERNS.radius + 1, 0, cem!.z)).toBe(-1);
+    // keeping vigil: a player beside the lantern, the squad's kill out in the approach, still feeds it
+    expect(lanternFor(souls, cem!.x + 20, 0, cem!.z, [{ x: cem!.x + 2, y: 0, z: cem!.z }])).toBe(0);
+    expect(lanternFor(souls, cem!.x + LANTERNS.vigilReach + 1, 0, cem!.z, [{ x: cem!.x + 2, y: 0, z: cem!.z }])).toBe(-1);
+    expect(lanternFor(souls, cem!.x + 20, 0, cem!.z, [{ x: cem!.x + 15, y: 0, z: cem!.z }])).toBe(-1);
     // Ward Nine's is upstairs: a kill in the ward below does not reach it
     expect(lanternFor(souls, nine!.x, 0, nine!.z)).toBe(-1);
     expect(lanternFor(souls, nine!.x + 1, nine!.y, nine!.z)).toBe(1);

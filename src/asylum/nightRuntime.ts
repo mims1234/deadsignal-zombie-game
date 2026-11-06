@@ -69,7 +69,7 @@ const STEP_TEXT: Record<StepId, { title: string; detail: string; dir: string | n
   power: { title: 'RESTORE THE POWER', detail: 'Start the boiler house generators and hold the yard while they spin up', dir: 'vance_dir_power' },
   nine: { title: 'WARD NINE', detail: 'Up the east fire escape in the yard: the night register', dir: 'okafor_dir_nine' },
   morgue: { title: 'THE MORGUE', detail: "Orderly Byrne's last log, at the east end of the back walk", dir: 'vance_dir_morgue' },
-  lanterns: { title: 'THE VIGIL LANTERNS', detail: 'Kill the infected beside each vigil lantern until it burns', dir: 'okafor_dir_lanterns' },
+  lanterns: { title: 'THE VIGIL LANTERNS', detail: "Stand by each vigil lantern and kill the infected that come (the squad's kills count too)", dir: 'okafor_dir_lanterns' },
   bell: { title: 'THE CHAPEL BELL', detail: 'Pull the bell rope by the chapel altar when you are ready - she wakes', dir: 'okafor_dir_bell' },
   matron: { title: 'THE ISOLATION BLOCK', detail: 'Put the Matron to rest - her keys open the furnace', dir: 'vance_dir_matron' },
   furnace: { title: 'SHUT THE FURNACE', detail: 'Turn the damper at the foot of the crematorium stack', dir: 'okafor_dir_damper' },
@@ -525,7 +525,8 @@ export class AsylumNight {
   /** An infected died (the player's kill or the squad's): a lantern beside it takes its soul. */
   onKill(z: Zombie): void {
     if (this.follow || z.isBoss) return;
-    const i = lanternFor(this.souls, z.x, z.y ?? 0, z.z);
+    const p = this.ctx.player;
+    const i = lanternFor(this.souls, z.x, z.y ?? 0, z.z, this.ctx.playerAlive() ? [{ x: p.x, y: p.y, z: p.z }] : []);
     if (i < 0) return;
     this.souls[i]!++;
     this.wisp(new THREE.Vector3(z.x, (z.y ?? 0) + 1.1, z.z), i);
