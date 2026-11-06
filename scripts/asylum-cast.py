@@ -126,6 +126,23 @@ CAST = {
         "dye": {"male_worksuit01": {"base": (0.8, 0.8, 0.76), "blue": (0.78, 0.78, 0.74)}},
         "zombie": {"skin": (0.8, 0.8, 0.84), "grime": 0.7},
     },
+    # the Matron (the Asylum's boss): very tall and gaunt, old, porcelain-pale; a long dark dress, a shoulder cape, a
+    # yellowed apron with a bib, a starched linen cap and a linen veil down her back, dark hair pinned up; her lantern and
+    # keys are the game's own (put in her hand and at her belt)
+    "matron": {
+        "phenotype": ph(age=0.78, muscle=0.25, weight=0.18, proportions=0.85, height=1.0, cup=0.3),
+        "skin": "old_caucasian_female", "eyes_mat": "grey", "eyebrows": None,
+        "hair": "braid01", "hair_color": (0.08, 0.07, 0.06),
+        "clothes": ["shoes03"],
+        "garments": [
+            {"kind": "habit", "color": (0.15, 0.18, 0.23)},
+            {"kind": "apron", "color": (0.77, 0.74, 0.65)},
+            {"kind": "cape", "color": (0.09, 0.1, 0.15)},
+            {"kind": "veil", "color": (0.85, 0.83, 0.77), "hood": False},
+        ],
+        "cap": {"color": (0.86, 0.84, 0.78), "band": (0.29, 0.08, 0.09)},
+        "zombie": {"skin": (0.88, 0.86, 0.82), "grime": 0.45},
+    },
 }
 spec = CAST[name]
 ZOMBIE = spec.get("zombie")
@@ -417,7 +434,7 @@ def nearest_weights(points):
     return res
 
 
-def skirt(tag, ztop, zbot, offset, flare, mat, seg=28, rows=9):
+def skirt(tag, ztop, zbot, offset, flare, mat, seg=28, rows=9, arc=None):
     """A skirt, gown or robe from the waist down: rings measured around the body at each height (hips, then both legs),
     widening toward the hem; its weights blend the thighs' toward the hips' so it swings rather than splitting."""
     me = bpy.data.meshes.new(tag)
@@ -437,8 +454,8 @@ def skirt(tag, ztop, zbot, offset, flare, mat, seg=28, rows=9):
         rx_prev, ry_prev = rx, ry
         k = 1 + (flare - 1) * t * t
         ring = []
-        for i in range(seg):
-            a = 2 * math.pi * i / seg
+        for i in range(seg + (1 if arc else 0)):
+            a = arc[0] + (arc[1] - arc[0]) * i / seg if arc else 2 * math.pi * i / seg
             p = Vector((cx + math.cos(a) * rx * k, cy + math.sin(a) * ry * k, z))
             ring.append(bm.verts.new(p))
             pts.append(p)
@@ -446,7 +463,7 @@ def skirt(tag, ztop, zbot, offset, flare, mat, seg=28, rows=9):
         rings.append(ring)
     for r in range(rows - 1):
         for i in range(seg):
-            j = (i + 1) % seg
+            j = i + 1 if arc else (i + 1) % seg
             bm.faces.new((rings[r][i], rings[r][j], rings[r + 1][j], rings[r + 1][i]))
     bm.normal_update()
     bm.to_mesh(me)
@@ -539,11 +556,19 @@ for g in spec.get("garments", []):
         top = shell("garment_habit", J["hip"] - 0.02, J["neck"] + 0.01, J["wristX"] - 0.02, 0.02, mat)
         sk = skirt("garment_habit_skirt", J["hip"] + 0.02, J["ankle"] + 0.03, 0.03, 1.4, mat, rows=12)
         join([top, sk], "garment_habit")
+    elif kind == "apron":
+        # a front panel over the skirt, waist to below the knee, and a bib up the chest (the figure faces -Y)
+        sk = skirt("garment_apron", J["hip"] + 0.08, J["knee"] - 0.12, 0.06, 1.3, mat, rows=8, arc=(-math.pi * 0.85, -math.pi * 0.15))
+        bib = skirt("garment_apron_bib", J["spine"] + (J["neck"] - J["spine"]) * 0.6, J["hip"] + 0.08, 0.035, 1.0, mat, rows=6, arc=(-math.pi * 0.72, -math.pi * 0.28))
+        join([sk, bib], "garment_apron")
+    elif kind == "cape":
+        # over the shoulders and upper arms, from mid-chest up to the collar
+        shell("garment_cape", J["spine"] + (J["neck"] - J["spine"]) * 0.35, J["neck"] + 0.02, J["elbowX"] * 0.95, 0.045, mat)
     elif kind == "veil":
         # over the head and down the back, the face left open; a white band across the brow
-        brow = max((o.matrix_world @ v.co).z for o in [part(spec["eyebrows"])] for v in o.data.vertices)
+        brow = max((o.matrix_world @ v.co).z for o in [part(spec["eyebrows"])] for v in o.data.vertices) if spec.get("eyebrows") else J["head"] + (J["top"] - J["head"]) * 0.52
         face = lambda c: not (c.y < J["headY"] - 0.035 and c.z < brow + 0.02)
-        hood = shell("garment_veil", J["head"] - 0.02, J["top"] + 1, head_r + 0.05, 0.03, mat, keep=face)
+        hood = shell("garment_veil", J["head"] - 0.02, J["top"] + 1, head_r + 0.05, 0.03, mat, keep=face) if g.get("hood", True) else None
         me = bpy.data.meshes.new("drape")
         bm = bmesh.new()
         rows, seg = 7, 12
@@ -572,8 +597,10 @@ for g in spec.get("garments", []):
             uv.data[loop.index].uv = (v.x * 6, v.z * 6)
         drape = link(me, "garment_veil_drape", mat)
         skin_to(drape, [{"mixamorig:Head": 1 - min(1, t * 1.3), "mixamorig:Spine2": min(1, t * 1.3)} for t in ts])
-        join([hood, drape], "garment_veil")
-        band_ring("garment_coif", brow + 0.004, head_r + 0.036, 0.05, g["band"], arc=(0.0, 1.0), yoff=J["headY"] + 0.005)
+        if hood:
+            join([hood, drape], "garment_veil")
+        if "band" in g:
+            band_ring("garment_coif", brow + 0.004, head_r + 0.036, 0.05, g["band"], arc=(0.0, 1.0), yoff=J["headY"] + 0.005)
 
 # the nurse's cap: a starched band standing up on the crown, tilted back, with a coloured stripe; skinned to the head
 if spec.get("cap"):

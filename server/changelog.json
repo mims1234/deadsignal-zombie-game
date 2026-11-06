@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.362",
+      "date": "2026-11-07",
+      "title": "Asylum: the Matron as a real 3D person (beta)",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on, the Matron is a realistic figure too: very tall and gaunt, porcelain-pale, in a long dark dress, a shoulder cape, a stained apron, a starched cap and a linen veil, her eyes burning amber.",
+        "She keeps every one of her own movements (the too-still watch, the gliding walk, the long-armed lunge, the shriek, the slam) and still carries her lantern and keys; her head is exactly where your headshots land.",
+        "Every Asylum character now has a real-asset look with the setting on. With it off, nothing changes."
+      ]
+    },
+    {
       "version": "0.4.361",
       "date": "2026-11-07",
       "title": "Asylum: a lit lantern turns green",

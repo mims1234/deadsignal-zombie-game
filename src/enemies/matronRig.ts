@@ -17,6 +17,7 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource } from '../anime/vrm';
 import { MATRON_DEF } from './matron';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
 
@@ -496,12 +497,16 @@ export class MatronRig implements ZombieRig {
   private lastMode: ZombieMode = 'idle';
   private settled = false;
   private lampFade = 1;
+  /** A real-asset model she wears (NEW 3D MODELS): it follows these joints; her built body is hidden, lantern and keys stay. */
+  private worn: AnimeBody | null = null;
+  private wornSrc: PoseSource | null = null;
+  private readonly lampAt = new THREE.Vector3();
   // animated key points in root space
   private readonly headLocal = new THREE.Vector3();
   private readonly chestLocal = new THREE.Vector3();
   private readonly handLocal = new THREE.Vector3();
 
-  constructor(material: THREE.Material, seed: number) {
+  constructor(material: THREE.Material, seed: number, wear?: { template: AnimeTemplate; tint: AnimeTint }) {
     PARTS ??= buildParts();
     const P = PARTS;
     this.root.name = 'Zombie:matron';
@@ -584,7 +589,56 @@ export class MatronRig implements ZombieRig {
       this.lantern.add(this.halo);
     }
     this.joints = [this.body, this.pelvis, this.skirt, this.spine, this.keys, this.chest, this.neck, this.head, this.mouth, ...this.eyes, this.shL, this.elL, this.haL, this.shR, this.elR, this.haR, this.lantern, this.thL, this.knL, this.ftL, this.thR, this.knR, this.ftR];
+    if (wear) this.wear(wear.template, wear.tint);
     this.reset(seed);
+  }
+
+  /**
+   * Put on a real-asset model (as an Avatar does), scaled so ankle to head matches hers, driven from these joints each
+   * frame. Every built mesh but the lantern and the keys is hidden.
+   */
+  private wear(t: AnimeTemplate, tint: AnimeTint): void {
+    const keep = new Set<THREE.Object3D>();
+    for (const g of [this.lantern, this.keys]) g.traverse((o) => keep.add(o));
+    this.root.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && !keep.has(o)) o.visible = false;
+    });
+    // ankle to head joint spans hers, so the model's head sits where her headshots are tested (the knees take up the rest)
+    const m = t.measure;
+    const ankle = HIP - THIGH - SHIN;
+    const headY = HIP + SPINE + SPINE_LEN + CHEST_LEN + NECK_LEN;
+    const scale = (headY - ankle) / Math.max(0.1, m.headBone - m.ankle);
+    this.worn = new AnimeBody(t, { scale, offset: new THREE.Vector3(0, headY - m.headBone * scale, 0), tint, grip: 0.6, shadows: true });
+    this.body.add(this.worn.root);
+    this.wornSrc = {
+      frame: this.body,
+      pelvis: this.pelvis,
+      bob: { joint: this.pelvis, rest: new THREE.Vector3(0, HIP, 0) },
+      chest: this.chest,
+      head: this.head,
+      arms: [
+        { upper: this.shR, fore: this.elR, len: FORE },
+        { upper: this.shL, fore: this.elL, len: FORE },
+      ],
+      legs: [
+        { thigh: this.thR, shin: this.knR, len: SHIN },
+        { thigh: this.thL, shin: this.knL, len: SHIN },
+      ],
+    };
+  }
+
+  /** The worn model follows the posed joints; the lantern hangs from the model's own left hand. */
+  private followWorn(): void {
+    const w = this.worn;
+    if (!w || !this.wornSrc) return;
+    this.root.updateMatrixWorld(true);
+    w.follow(this.wornSrc);
+    const hand = w.boneNode('leftHand');
+    if (hand) {
+      hand.getWorldPosition(this.lampAt);
+      this.haL.worldToLocal(this.lampAt);
+      this.lantern.position.set(this.lampAt.x, this.lampAt.y - 0.07, this.lampAt.z - 0.004);
+    }
   }
 
   reset(seed: number): void {
@@ -623,6 +677,7 @@ export class MatronRig implements ZombieRig {
     for (let i = 0; i < NCH; i++) this.cur[i] = this.cur[i]! + (this.tgt[i]! - this.cur[i]!) * k;
     this.lastMode = s.mode;
     this.apply(s, dt);
+    this.followWorn();
     if (s.mode === 'death' && s.deathT > 2) this.settled = true;
   }
 
@@ -1028,6 +1083,8 @@ export class MatronRig implements ZombieRig {
 
   dispose(): void {
     this.root.removeFromParent();
+    this.worn?.dispose();
+    this.worn = null;
     this.glassMat.dispose();
     this.haloMat?.dispose();
   }

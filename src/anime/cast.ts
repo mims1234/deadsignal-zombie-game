@@ -74,8 +74,15 @@ const ASYLUM_KINDS: Record<Exclude<ZombieType, 'warden'>, readonly AsylumKind[]>
   runner: ['patient', 'patient2'],
   armored: ['orderly'],
 };
-/** Every file the Asylum's infected wear (loaded with the cast). */
-export const ASYLUM_HORDE: readonly string[] = Object.values(ASYLUM_INFECTED).map((k) => k.file);
+const MATRON_FILE = 'models/asylum/matron.vrm';
+/** Every file the Asylum's infected (and the Matron) wear (loaded with the cast). */
+export const ASYLUM_HORDE: readonly string[] = [...Object.values(ASYLUM_INFECTED).map((k) => k.file), MATRON_FILE];
+
+/** The Matron's real-asset model and tint (her eyes burn amber), or null while it is not loaded. */
+export function matronModel(): { template: AnimeTemplate; tint: AnimeTint } | null {
+  const template = ownModel(MATRON_FILE);
+  return template ? { template, tint: { key: 'asylum:matron', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: 0xffa040, outlines: false } } : null;
+}
 
 /** An Asylum infected's model and tint by type and seed; null for the Matron, or while its file is not loaded. */
 export function asylumInfected(type: ZombieType, seed: number): { template: AnimeTemplate; tint: AnimeTint; file: string } | null {

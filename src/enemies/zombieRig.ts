@@ -8,7 +8,7 @@ import type { ZombieType } from '../types';
 import { createDetailTexture, createZombieMaterial } from './zombie/material';
 import { disposeShapeCache } from './zombie/mesh';
 import { type TypeAssets, ZombieRigImpl, makeTypeAssets, variantGeometry } from './zombie/rig';
-import { AnimeZombieRig, asylumInfected, hordeModel } from '../anime/cast';
+import { AnimeZombieRig, asylumInfected, hordeModel, matronModel } from '../anime/cast';
 import { MatronRig } from './matronRig';
 import { hasModel } from '../models/library';
 import { ModelZombieRig } from '../models/zombieRig';
@@ -66,7 +66,8 @@ export function createZombieFactory(): ZombieFactoryExt {
     },
     /** The Asylum's boss (`matronRig.ts`). */
     createMatron(seed: number): ZombieRig {
-      const rig = new MatronRig(material, seed);
+      // in her real-asset model with NEW 3D MODELS (when loaded), else built
+      const rig = new MatronRig(material, seed, matronModel() ?? undefined);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {
