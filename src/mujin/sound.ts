@@ -43,7 +43,11 @@ export class MujinSound {
   onLine: ((id: string) => void) | null = null;
   volume = { voice: 1, music: 0.7, sfx: 0.8 };
 
-  constructor(private readonly audio: AudioEngineApi) {}
+  constructor(private readonly audio: AudioEngineApi) {
+    // the buses and the reverb (the impulse, then the convolver's FFT: tens of ms) are built in the Deploy click, never
+    // by the first sound mid-run
+    audio.whenReady?.(() => this.graph());
+  }
 
   /** Fetch and decode every line and cue (decoding needs no gesture: an offline context does it). */
   load(progress?: (done: number, total: number) => void): Promise<void> {

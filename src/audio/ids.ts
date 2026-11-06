@@ -225,6 +225,11 @@ export interface AudioEngineApi {
   /** The live AudioContext and the node a map's own sound joins (MUJIN's voices and score), once initialised. */
   readonly context?: BaseAudioContext | null;
   readonly input?: AudioNode | null;
+  /**
+   * Run `fn` once the context is up: now if it already is, else at the end of `init()` (inside the Deploy click, not a
+   * game frame). For a map's own graph whose setup is heavy (a convolver's impulse response), so it never lands mid-run.
+   */
+  whenReady?(fn: () => void): void;
   /** Where the listener stands and faces (a map's own positional sound follows it). */
   readonly listener?: { x: number; y: number; z: number; fx: number; fz: number };
   dispose(): void;

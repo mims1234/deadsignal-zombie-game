@@ -247,6 +247,7 @@ class Engine implements AudioEngineDebug {
   private readonly maxVoices: number;
   private ready = false;
   private failed = false;
+  private readonly readyFns: (() => void)[] = [];
   private disposed = false;
   private hiRate = 44100;
   private masterVol = AUDIO_DEFAULT_MASTER;
@@ -358,6 +359,21 @@ class Engine implements AudioEngineDebug {
 
   // ---- lifecycle ----
 
+  whenReady(fn: () => void): void {
+    if (this.ready && this.ctx) fn();
+    else this.readyFns.push(fn);
+  }
+
+  private runReady(): void {
+    for (const fn of this.readyFns.splice(0)) {
+      try {
+        fn();
+      } catch (err) {
+        console.warn('[audio] a ready hook failed:', err);
+      }
+    }
+  }
+
   init(): boolean {
     if (this.disposed || this.failed) return false;
     if (this.ready && this.ctx) {
@@ -389,6 +405,7 @@ class Engine implements AudioEngineDebug {
       this.initBreakdown = { context: tCtx - t0, graph: tGraph - tCtx, synth: tSynth - tGraph };
       stopPrewarm(); // everything essential is now inside AudioBuffers
       this.resume();
+      this.runReady();
       return true;
     } catch (err) {
       console.warn('[audio] initialisation failed; running silent:', err);

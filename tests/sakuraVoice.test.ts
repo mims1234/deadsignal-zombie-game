@@ -72,4 +72,45 @@ describe('the Sakura voice director', () => {
       expect(LINE[l.id]).toBe(l);
     }
   });
+
+  it('builds its sound (the hall convolver) when the engine is ready, never on the first line mid-run', () => {
+    // a stand-in context that counts the heavy work: the impulse buffer and the convolver
+    const made = { buffers: 0, convolvers: 0 };
+    const node = (): Record<string, unknown> => {
+      const n: Record<string, unknown> = { gain: { value: 1 }, frequency: { value: 0 } };
+      n.connect = (to: unknown) => to;
+      return n;
+    };
+    const ctx = {
+      sampleRate: 8000,
+      currentTime: 0,
+      createGain: node,
+      createBiquadFilter: node,
+      createConvolver: () => (made.convolvers++, node()),
+      createBuffer: (ch: number, len: number) => (made.buffers++, { getChannelData: () => new Float32Array(len), numberOfChannels: ch }),
+    };
+    let ready = false;
+    const hooks: (() => void)[] = [];
+    const audio = {
+      play: () => {},
+      get context() { return ready ? ctx : null; },
+      get input() { return ready ? node() : null; },
+      whenReady: (fn: () => void) => (ready ? fn() : hooks.push(fn)),
+    };
+    const v = new SakuraVoice(audio as never);
+    expect(made.convolvers).toBe(0); // no context yet: nothing built
+    // the Deploy click: the engine comes up and runs its ready hooks
+    ready = true;
+    for (const fn of hooks) fn();
+    expect(made.convolvers).toBe(1);
+    const built = made.buffers;
+    // a run's lines: nothing heavy is built again
+    v.say('aoi_charm_0', { kind: 'story' });
+    for (let t = 0; t <= 5; t += 0.1) v.update(+t.toFixed(1));
+    expect(made.convolvers).toBe(1);
+    expect(made.buffers).toBe(built);
+    // a director made after the engine is up (another map) builds right away
+    new SakuraVoice(audio as never);
+    expect(made.convolvers).toBe(2);
+  });
 });

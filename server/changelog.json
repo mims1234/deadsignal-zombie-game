@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.357",
+      "date": "2026-11-07",
+      "title": "No more hitch when the first voice line plays",
+      "notes": [
+        "Fixed a short freeze (about 50 ms) a couple of seconds into every Asylum run, when the first recorded line played: the voices' echo is now set up when you press Deploy, not mid-game.",
+        "The Sakura District, HIRASAKA and MUJIN set up their voice and music echo the same way and get the same fix."
+      ]
+    },
+    {
       "version": "0.4.356",
       "date": "2026-11-07",
       "title": "Asylum: Nurse Halloway as a real 3D person (beta)",

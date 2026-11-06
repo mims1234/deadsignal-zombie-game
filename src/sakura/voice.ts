@@ -102,6 +102,9 @@ export class SakuraVoice {
     private readonly bank: VoiceBank = SAKURA_BANK,
   ) {
     this.line = Object.fromEntries(bank.lines.map((l) => [l.id, l]));
+    // the bus and its hall (~30 ms: the impulse, then the convolver's FFT) are built in the Deploy click, never by the
+    // run's first line mid-game (that was a 45-55 ms frame a couple of seconds into every Asylum run)
+    audio.whenReady?.(() => this.graph());
   }
 
   /** Fetch and decode every line and cue (decoding needs no gesture: an offline context does it). */
@@ -217,7 +220,10 @@ export class SakuraVoice {
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let c = 0; c < 2; c++) {
       const d = ir.getChannelData(c);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      for (let i = 0; i < len; i++) {
+        const k = 1 - i / len;
+        d[i] = (Math.random() * 2 - 1) * k * k * k;
+      }
     }
     const verb = ctx.createConvolver();
     verb.buffer = ir;
