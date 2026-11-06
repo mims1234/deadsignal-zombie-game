@@ -219,7 +219,8 @@ function wardUpstairs(c: Ctx, cx: number, kind: 'nurses' | 'nine'): { area: numb
   });
 
   // ---- the floor (on the ward's roof) and a roof of its own ----
-  addBox(b, 'tile', cx, Y - 0.05, (z0 + z1) / 2, 14 - 2 * t, 0.1, z1 - z0 - 2 * t, 0, { cast: false });
+  // 2 cm proud of the ward's roof (whose top is exactly Y): level with it, the two flicker against each other
+  addBox(b, 'tile', cx, Y - 0.03, (z0 + z1) / 2, 14 - 2 * t, 0.1, z1 - z0 - 2 * t, 0, { cast: false });
   b.collide({ x: cx, z: (z0 + z1) / 2, hx: 7, hz: (z1 - z0) / 2, y0: Y - 0.1, y1: Y, floor: true, surface: 'concrete', mapKind: 'none', tag: `${kind}-floor` });
   addBox(b, 'roof', cx, Y + H + 0.2, (z0 + z1) / 2, 14.5, 0.4, z1 - z0 + 0.5, 0);
   b.collide({ x: cx, z: (z0 + z1) / 2, hx: 7.25, hz: (z1 - z0 + 0.5) / 2, y0: Y + H, y1: Y + H + 0.4, mapKind: 'none', tag: 'roof' });

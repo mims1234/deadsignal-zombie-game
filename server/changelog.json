@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.348",
+      "date": "2026-11-06",
+      "title": "Asylum: the upper floors stop flickering",
+      "notes": [
+        "Fixed the flickering floor upstairs on the nurses' floor and in Ward Nine. The new tiled floor sat at exactly the same height as the roof of the ward below it, so the two surfaces fought and flashed grey stripes. The tiles now sit just above the roof."
+      ]
+    },
+    {
       "version": "0.4.347",
       "date": "2026-11-06",
       "title": "Asylum: a full story through the whole hill, no timer, black fog in waves",
