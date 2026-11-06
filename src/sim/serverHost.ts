@@ -32,7 +32,7 @@ import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
-import { ALLY_GUNS, type AllySupply, allyErrand, kitPaid } from '../game/allySupply';
+import { ALLY_GUNS, type AllySupply, allyErrand } from '../game/allySupply';
 import { BOX_PHASE, type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
@@ -209,7 +209,7 @@ export class SessionSim {
   private shots: number[][] = [];
   private directorTurn = 0;
   private readonly allyWorld: AllyWorld;
-  /** The Asylum: where the squad buys its own ammo and takes guns from the boxes (`game/allySupply.ts`). */
+  /** The Asylum: where the squad takes guns from the boxes (`game/allySupply.ts`). */
   private readonly allySupply: AllySupply;
   private allyLeader: Peer | null = null;
   /** This map's deadline and escalation (the Asylum's night runs longer). */
@@ -308,9 +308,7 @@ export class SessionSim {
     this.allySupply = {
       boxes: () => this.level.data.crates.map((c, i) => ({ id: c.id, x: c.x, z: c.z, y: c.y, busy: this.loot.boxes[i]?.phase === BOX_PHASE.spin || this.loot.boxes[i]?.phase === BOX_PHASE.offer })),
       allies: () => this.allies,
-      onAmmo: (a, price) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)` }),
       onBox: (a, _box, gun) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} TOOK A ${gunName[gun]} FROM THE BOX` }),
-      onDry: (a) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} IS OUT OF AMMO - AND OF MONEY` }),
     };
     const sites = this.level.data.forge;
     if (this.map === 'forge' && sites) {
@@ -1257,7 +1255,7 @@ export class SessionSim {
           }
         }
       }
-      // the Asylum: off to a wall chalk for ammo, or to a box for a gun, when it is quiet (else with the leader)
+      // the Asylum: off to a box for a gun when it is quiet (else with the leader)
       const errand = !!leader && allyErrand(a, this.level, this.zombies, this.allySupply, this.rng, dt, { x: leader.ref.x, z: leader.ref.z });
       if (leader && !errand) {
         this.allyLeader = leader;
@@ -1268,10 +1266,8 @@ export class SessionSim {
       if (!shot) return;
       if (shot.hit && shot.target.alive && a.env) {
         this.allyKill = true;
-        this.allyShooter = a;
         allyHit(a, shot, this.zombies, a.env);
         this.allyKill = false;
-        this.allyShooter = null;
       }
       if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
     });
@@ -1371,8 +1367,6 @@ export class SessionSim {
 
   /** True while a squad member's shot is being applied (`onKill` splits its pay between the players). */
   private allyKill = false;
-  /** Whose shot it is (their wallet takes a share of the kill's worth: `allySupply.ts`). */
-  private allyShooter: AllyBody | null = null;
 
   private onKill(z: Zombie, head: boolean): void {
     // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
@@ -1386,10 +1380,9 @@ export class SessionSim {
       if (i >= 0 && !lanternLit(this.souls, i)) this.souls[i]!++;
     }
     if (this.allyKill && !this.nuking) {
-      // a squad kill pays every player an even share of the reward, rounded down (no one's own kill, no drop)
+      // a squad kill pays less than a player's (ECONOMY.squadKillShare), split evenly between the players, rounded down (no one's own kill, no drop)
       const n = this.peers.size;
-      const worth = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups));
-      if (this.allyShooter?.kit) kitPaid(this.allyShooter.kit, worth);
+      const worth = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups) * ECONOMY.squadKillShare);
       const cash = n > 0 ? Math.floor(worth / n) : 0;
       if (cash > 0) for (const q of this.peers.values()) this.send(q.id, { k: 'sk', n: z.tag ?? z.def.name, c: cash });
       return;

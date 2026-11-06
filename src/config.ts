@@ -970,6 +970,11 @@ export const ECONOMY = {
    * every kill there pays more.
    */
   mapKillMul: { asylum: 1.8 } as Partial<Record<string, number>>,
+  /**
+   * A kill by the squad (soldiers, freed survivors) pays the player this share of what the same kill pays when the
+   * player makes it (co-op: split evenly between the players, as before). Shooting is still the player's job.
+   */
+  squadKillShare: 0.4,
   crates: {
     low: { cash: [70, 140], mags: [1, 1.8], plateChance: 0.25, grenadeChance: 0.15 },
     medium: { cash: [130, 240], mags: [1.4, 2.4], plateChance: 0.4, grenadeChance: 0.3 },

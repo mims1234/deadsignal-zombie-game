@@ -1,19 +1,15 @@
 /**
- * The squad's own guns and ammunition, on the maps where they have to fend for themselves (the Asylum): each squad
- * member and freed survivor carries a gun (or none), a magazine and a reserve, reloads when the magazine is empty, and
- * keeps a wallet of their own (it starts at `ALLY_SUPPLY.wallet` and takes `walletShare` of the worth of each of their
- * own kills; the player's pay and money are never touched). When they are low on ammunition and can pay, they walk to
- * their gun's chalk on a wall and buy ammo at the player's price; when they have no gun (or only a pistol) and a supply
- * box they have not used is close by and it is quiet, they go and take a gun from it - one pull per box each, whatever
- * the player has done with it. A box serves one at a time: a squad member waits while a player's reel spins or its
- * prize is on offer (and starts again after), and two of them never pull from the same box together.
+ * The squad's own guns, on the maps where they have to fend for themselves (the Asylum): each squad member and freed
+ * survivor carries a gun (or none) and a magazine, and reloads when the magazine is empty. Their ammunition never runs
+ * out (no trips to the wall chalks). When they have no gun (or only a pistol) and a supply box they have not used is
+ * close by and it is quiet, they go and take a gun from it - one pull per box each, whatever the player has done with
+ * it. A box serves one at a time: a squad member waits while a player's reel spins or its prize is on offer (and starts
+ * again after), and two of them never pull from the same box together.
  *
  * Shared by the solo game (`squad.ts`) and the co-op simulation (`sim/serverHost.ts`); no drawing and no sound here
  * (the caller is told through `AllySupply`).
  */
 import { MYSTERY_BOX, SQUADS } from '../config';
-import { LOOP, WALL_PRICES } from '../asylum/loopConfig';
-import { WALL_BUYS } from '../asylum/loopData';
 import type { Rng } from '../logic/rng';
 import type { MapId } from '../world/layout/data';
 import type { Level } from '../world/level';
@@ -23,47 +19,37 @@ import type { AllyBody, AllyStats } from './allyBrain';
 export type AllyGun = 'none' | 'pistol' | 'shotgun' | 'rifle' | 'rpg';
 export const ALLY_GUNS: readonly AllyGun[] = ['none', 'pistol', 'shotgun', 'rifle', 'rpg'];
 
-/** Each gun in a squad member's hands: magazine, the most reserve they carry, reload seconds, and against a pistol: */
+/** Each gun in a squad member's hands: magazine (ammunition never runs out), reload seconds, and against a pistol: */
 /** seconds between shots, damage per hit and reach (multipliers). */
-export const ALLY_GUN: Record<Exclude<AllyGun, 'none'>, { mag: number; reserve: number; reload: number; fire: number; damage: number; range: number }> = {
-  pistol: { mag: 12, reserve: 48, reload: 1.8, fire: 1, damage: 1, range: 1 },
-  shotgun: { mag: 6, reserve: 24, reload: 3.2, fire: 2.1, damage: 2.6, range: 0.6 },
-  rifle: { mag: 30, reserve: 120, reload: 2.5, fire: 0.5, damage: 0.95, range: 1.15 },
-  rpg: { mag: 1, reserve: 4, reload: 3.4, fire: 3.5, damage: 7, range: 1.1 },
+export const ALLY_GUN: Record<Exclude<AllyGun, 'none'>, { mag: number; reload: number; fire: number; damage: number; range: number }> = {
+  pistol: { mag: 12, reload: 1.8, fire: 1, damage: 1, range: 1 },
+  shotgun: { mag: 6, reload: 3.2, fire: 2.1, damage: 2.6, range: 0.6 },
+  rifle: { mag: 30, reload: 2.5, fire: 0.5, damage: 0.95, range: 1.15 },
+  rpg: { mag: 1, reload: 3.4, fire: 3.5, damage: 7, range: 1.1 },
 };
 
 export const ALLY_SUPPLY = {
-  /** Maps where the squad buys its own ammo and takes its guns from the boxes. */
+  /** Maps where the squad reloads its own guns and takes them from the boxes. */
   maps: ['asylum'] as readonly MapId[],
-  /** The wallet they start with, and the share of each of their own kills' worth that goes into it. */
-  wallet: 300,
-  walletShare: 0.5,
-  /** Errands: how far (m) a chalk or a box may be, how close the nearest infected may be, seconds between looks. */
+  /** Errands: how far (m) a box may be, how close the nearest infected may be, seconds between looks. */
   reach: 45,
   calm: 8,
   every: 1.2,
-  /** Seconds at the chalk (buying) and at the box (the reel). */
-  buyTime: 1.2,
+  /** Seconds at the box (the reel). */
   boxTime: MYSTERY_BOX.spin,
   /** Give up an errand stuck this long (s), or when the leader is this far from the ally (m). */
   stuck: 4,
   leash: 55,
 } as const;
 
-/** A wall chalk's price for ammo of a gun (the player's: half the gun's price, rounded to $10). */
-export function ammoPrice(gun: AllyGun): number {
-  if (gun === 'none') return Infinity;
-  return Math.round((WALL_PRICES[gun] * LOOP.wallAmmoShare) / 10) * 10;
-}
-
 export interface AllyErrand {
-  kind: 'ammo' | 'box';
-  /** Where to stand, and (a box) its id. */
+  kind: 'box';
+  /** Where to stand, and the box's id. */
   x: number;
   z: number;
   box: string;
   path: FlowField;
-  /** Seconds at the spot (buying, the reel), and seconds making no headway. */
+  /** Seconds at the box (the reel), and seconds making no headway. */
   workT: number;
   stuckT: number;
 }
@@ -71,9 +57,7 @@ export interface AllyErrand {
 export interface AllyKit {
   gun: AllyGun;
   mag: number;
-  reserve: number;
   reloadT: number;
-  wallet: number;
   /** Boxes they have pulled from (ids). */
   boxes: string[];
   errand: AllyErrand | null;
@@ -81,8 +65,6 @@ export interface AllyKit {
   lookT: number;
   /** Their numbers with a pistol in hand (the gun's multipliers apply on top). */
   base: AllyStats;
-  /** The last thing they reported (so the caller says "out of ammo" once). */
-  dry: boolean;
   /** Will not carry a gun, by who they are (the Asylum's Ellie, Pip and Sister Maeve say so): never goes to a box. */
   noGuns: boolean;
 }
@@ -93,10 +75,8 @@ export interface AllySupply {
   boxes(): readonly { id: string; x: number; z: number; y?: number; busy?: boolean }[];
   /** The whole squad (so two never pull from one box together). */
   allies(): readonly AllyBody[];
-  /** Bought ammo at a chalk for `price`; took `gun` from box `box`; out of ammo with nowhere to buy (once each time). */
-  onAmmo(a: AllyBody, price: number): void;
+  /** Took `gun` from box `box`. */
   onBox(a: AllyBody, box: string, gun: AllyGun): void;
-  onDry(a: AllyBody): void;
 }
 
 /** Does this map make the squad fend for itself. */
@@ -115,7 +95,7 @@ export function startGun(map: MapId, name: string, kind: AllyBody['kind'], unarm
 
 /** A fresh kit with `gun` in hand. `base` are their numbers with a pistol (the reach too, even for one who starts unarmed). */
 export function makeKit(gun: AllyGun, base: AllyStats, noGuns = false): AllyKit {
-  const k: AllyKit = { gun: 'none', mag: 0, reserve: 0, reloadT: 0, wallet: ALLY_SUPPLY.wallet, boxes: [], errand: null, lookT: 0, base: { ...base }, dry: false, noGuns };
+  const k: AllyKit = { gun: 'none', mag: 0, reloadT: 0, boxes: [], errand: null, lookT: 0, base: { ...base }, noGuns };
   setGun(k, gun);
   return k;
 }
@@ -127,13 +107,11 @@ export function kitStats(k: AllyKit): AllyStats {
   return { ...k.base, range: k.base.range * g.range, fireInterval: k.base.fireInterval * g.fire, bodyDamage: k.base.bodyDamage * g.damage, headDamage: k.base.headDamage * g.damage };
 }
 
-/** A gun in their hands, with a full magazine and reserve. Returns their numbers with it (for `a.stats`). */
+/** A gun in their hands, with a full magazine. Returns their numbers with it (for `a.stats`). */
 export function setGun(k: AllyKit, gun: AllyGun): AllyStats {
   k.gun = gun;
   k.reloadT = 0;
-  k.dry = false;
   k.mag = gun === 'none' ? 0 : ALLY_GUN[gun].mag;
-  k.reserve = gun === 'none' ? 0 : ALLY_GUN[gun].reserve;
   return kitStats(k);
 }
 
@@ -143,12 +121,10 @@ export function kitReady(k: AllyKit, dt: number): boolean {
   if (k.reloadT > 0) {
     k.reloadT -= dt;
     if (k.reloadT > 0) return false;
-    const take = Math.min(ALLY_GUN[k.gun].mag - k.mag, k.reserve);
-    k.mag += take;
-    k.reserve -= take;
+    k.mag = ALLY_GUN[k.gun].mag; // ammunition never runs out: a reload always fills the magazine
   }
   if (k.mag <= 0) {
-    if (k.reserve > 0) k.reloadT = ALLY_GUN[k.gun].reload;
+    k.reloadT = ALLY_GUN[k.gun].reload;
     return false;
   }
   return true;
@@ -157,17 +133,7 @@ export function kitReady(k: AllyKit, dt: number): boolean {
 /** A round went: reload when the magazine runs dry. */
 export function kitFired(k: AllyKit): void {
   k.mag = Math.max(0, k.mag - 1);
-  if (k.mag === 0 && k.reserve > 0 && k.gun !== 'none') k.reloadT = ALLY_GUN[k.gun].reload;
-}
-
-/** Their own kill: a share of its worth into their wallet. */
-export function kitPaid(k: AllyKit, reward: number): void {
-  k.wallet += Math.max(0, Math.round(reward * ALLY_SUPPLY.walletShare));
-}
-
-/** Low on ammunition: less than a magazine left in all. */
-export function kitLow(k: AllyKit): boolean {
-  return k.gun !== 'none' && k.mag + k.reserve < ALLY_GUN[k.gun].mag;
+  if (k.mag === 0 && k.gun !== 'none') k.reloadT = ALLY_GUN[k.gun].reload;
 }
 
 /**
@@ -189,7 +155,7 @@ export function boxGun(current: AllyGun, rng: Rng): AllyGun {
 }
 
 /**
- * Look for an errand (ammo at a chalk, a gun from a box) and run one. Returns true while on an errand: the caller then
+ * Look for an errand (a gun from a box) and run one. Returns true while on an errand: the caller then
  * skips following the leader this step (they still shoot). `leader` is where the one they follow stands.
  */
 export function allyErrand(a: AllyBody, level: Level, zombies: { zombies: readonly { x: number; z: number; alive: boolean; dormant?: boolean }[] }, supply: AllySupply, rng: Rng, dt: number, leader: { x: number; z: number } | null): boolean {
@@ -205,28 +171,11 @@ export function allyErrand(a: AllyBody, level: Level, zombies: { zombies: readon
   k.lookT -= dt;
   if (k.lookT > 0) return false;
   k.lookT = ALLY_SUPPLY.every;
-  // out of ammo and out of money: say so once
-  const dry = k.gun !== 'none' && k.mag + k.reserve === 0;
-  if (dry && !k.dry && k.wallet < ammoPrice(k.gun)) supply.onDry(a);
-  k.dry = dry;
   // only when it is quiet
   for (const z of zombies.zombies) if (z.alive && !z.dormant && Math.hypot(z.x - a.ref.x, z.z - a.ref.z) < ALLY_SUPPLY.calm) return false;
   const near = (x: number, z: number): boolean => Math.hypot(x - a.ref.x, z - a.ref.z) < ALLY_SUPPLY.reach && (!leader || Math.hypot(x - leader.x, z - leader.z) < ALLY_SUPPLY.leash - 5);
-  let pick: { kind: 'ammo' | 'box'; x: number; z: number; box: string } | null = null;
-  if (kitLow(k) && k.wallet >= ammoPrice(k.gun)) {
-    let best = Infinity;
-    for (const w of WALL_BUYS) {
-      if (w.weapon !== k.gun) continue;
-      const sx = w.x + w.fx * 1.1;
-      const sz = w.z + w.fz * 1.1;
-      const d = Math.hypot(sx - a.ref.x, sz - a.ref.z);
-      if (d < best && near(sx, sz)) {
-        best = d;
-        pick = { kind: 'ammo', x: sx, z: sz, box: '' };
-      }
-    }
-  }
-  if (!pick && !k.noGuns && (k.gun === 'none' || k.gun === 'pistol')) {
+  let pick: { kind: 'box'; x: number; z: number; box: string } | null = null;
+  if (!k.noGuns && (k.gun === 'none' || k.gun === 'pistol')) {
     let best = Infinity;
     for (const b of supply.boxes()) {
       if ((b.y ?? 0) > 0.5 || b.busy || k.boxes.includes(b.id) || boxClaimed(supply, a, b.id)) continue;
@@ -268,19 +217,9 @@ function runErrand(a: AllyBody, k: AllyKit, e: AllyErrand, level: Level, supply:
   const d = Math.hypot(e.x - a.ref.x, e.z - a.ref.z);
   if (d < 0.9) {
     e.workT += dt;
-    if (e.kind === 'ammo' && e.workT >= ALLY_SUPPLY.buyTime) {
-      const price = ammoPrice(k.gun);
-      if (k.wallet >= price && k.gun !== 'none') {
-        k.wallet -= price;
-        k.reserve = ALLY_GUN[k.gun].reserve;
-        if (k.mag === 0) k.reloadT = ALLY_GUN[k.gun].reload;
-        k.dry = false;
-        supply.onAmmo(a, price);
-      }
-      k.errand = null;
-    } else if (e.kind === 'box' && !boxFree(supply, a, e.box)) {
+    if (!boxFree(supply, a, e.box)) {
       e.workT = 0; // a player's turn (or another's): wait, and start again after
-    } else if (e.kind === 'box' && e.workT >= ALLY_SUPPLY.boxTime) {
+    } else if (e.workT >= ALLY_SUPPLY.boxTime) {
       const gun = boxGun(k.gun, rng);
       k.boxes.push(e.box);
       a.stats = setGun(k, gun);

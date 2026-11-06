@@ -2135,11 +2135,10 @@ export class Game implements GameCtx {
     if (this.forge?.noReward) return; // the Forge's burnout and its sentry pay nobody
     this.mission.night?.onKill(z); // the Asylum: a vigil lantern beside it takes its soul (anyone's kill)
     if (this.squad.allyShooting) {
-      // an ally's kill: it still counts for the contract and pays the player in full, but it is not the player's kill
+      // an ally's kill: it still counts for the contract and pays the player a share (ECONOMY.squadKillShare), but it is not the player's kill
       if (z.isBoss) this.mission.onWardenKilled();
       if (this.powerups.nuking) return;
-      const reward = Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z), this.mapId) * this.powerups.cashMul);
-      this.squad.creditShooter(reward); // the Asylum: a share into their own wallet, for their ammo
+      const reward = Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z), this.mapId) * this.powerups.cashMul * ECONOMY.squadKillShare);
       this.squadKill(reward, z.tag ? `${z.tag} (INFECTED)` : z.def.name);
       return;
     }
@@ -2340,7 +2339,7 @@ export class Game implements GameCtx {
     } else this.audio.play('pickup_cash', { priority: 2 });
   }
 
-  /** Cash for a kill by the squad (solo: the full reward; co-op: the player's even share of it). Not the player's own kill. */
+  /** Cash for a kill by the squad (solo: `ECONOMY.squadKillShare` of the reward; co-op: the player's even share of that). Not the player's own kill. */
   squadKill(cash: number, name: string): void {
     if (cash <= 0) return;
     addCash(this.session.inv, cash);

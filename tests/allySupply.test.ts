@@ -1,40 +1,34 @@
 /**
- * The squad fends for itself on the Asylum (`game/allySupply.ts`): their own guns, magazines, reloads and reserves; a
- * wallet of their own for ammo at the wall chalks; one gun each from a supply box. Elsewhere they are as they were.
+ * The squad fends for itself on the Asylum (`game/allySupply.ts`): their own guns, magazines and reloads (ammunition
+ * never runs out); one gun each from a supply box. Elsewhere they are as they were. A squad kill pays the player less
+ * than their own kill would (`ECONOMY.squadKillShare`).
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { makeAllyBody, SOLDIER_STATS, teamStats } from '../src/game/allyBrain';
-import { ALLY_GUN, ALLY_SUPPLY, ammoPrice, boxGun, kitFired, kitPaid, kitReady, kitStats, makeKit, setGun } from '../src/game/allySupply';
+import { ECONOMY } from '../src/config';
+import { ALLY_GUN, boxGun, kitFired, kitReady, kitStats, makeKit, setGun } from '../src/game/allySupply';
 import { Rng } from '../src/logic/rng';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 
 describe('a squad member’s own gun', () => {
-  it('empties its magazine, reloads from the reserve, and runs dry', () => {
+  it('empties its magazine and reloads - and never runs out', () => {
     const k = makeKit('pistol', teamStats(SOLDIER_STATS, 'regular'));
     expect(k.mag).toBe(ALLY_GUN.pistol.mag);
-    expect(k.reserve).toBe(ALLY_GUN.pistol.reserve);
-    for (let i = 0; i < ALLY_GUN.pistol.mag; i++) {
-      expect(kitReady(k, 0.01)).toBe(true);
-      kitFired(k);
+    for (let round = 0; round < 20; round++) {
+      for (let i = 0; i < ALLY_GUN.pistol.mag; i++) {
+        expect(kitReady(k, 0.01)).toBe(true);
+        kitFired(k);
+      }
+      // empty: reloading, no shot until it is done (a magazine's worth of reload time, every time)
+      expect(kitReady(k, 0.01)).toBe(false);
+      expect(kitReady(k, ALLY_GUN.pistol.reload * 0.5)).toBe(false);
+      expect(kitReady(k, ALLY_GUN.pistol.reload)).toBe(true);
+      expect(k.mag).toBe(ALLY_GUN.pistol.mag);
     }
-    // empty: reloading, no shot until it is done
-    expect(kitReady(k, 0.01)).toBe(false);
-    expect(kitReady(k, ALLY_GUN.pistol.reload)).toBe(true);
-    expect(k.mag).toBe(ALLY_GUN.pistol.mag);
-    expect(k.reserve).toBe(ALLY_GUN.pistol.reserve - ALLY_GUN.pistol.mag);
-    // everything fired: dry for good
-    while (k.mag + k.reserve > 0) {
-      if (kitReady(k, 5)) kitFired(k);
-    }
-    expect(kitReady(k, 5)).toBe(false);
     // nothing in the hands: never fires
     setGun(k, 'none');
     expect(kitReady(k, 5)).toBe(false);
-    // their own kills fill their wallet (a share), and ammo costs what the player pays
-    kitPaid(k, 100);
-    expect(k.wallet).toBe(ALLY_SUPPLY.wallet + 100 * ALLY_SUPPLY.walletShare);
-    expect(ammoPrice('rifle')).toBe(750);
   });
 
   it('takes a gun from a box as that gun: its numbers, never the RPG', () => {
@@ -122,26 +116,6 @@ describe('the squad on its errands (co-op simulation)', () => {
     return { sim, out, at, run, vance };
   }
 
-  it('one low on ammo walks to the chalk and buys it with their own money', () => {
-    const { sim, at, run, vance, out } = setup();
-    at.x = -3;
-    at.z = 23;
-    run(0.5);
-    const k = vance.kit!;
-    // a pistol, nearly empty, the money for ammo
-    vance.stats = setGun(k, 'pistol');
-    k.mag = 2;
-    k.reserve = 3;
-    k.wallet = 1000;
-    k.boxes = sim.level.data.crates.map((c) => c.id); // (every box pulled already: this is about the ammo)
-    vance.ref.x = -2;
-    vance.ref.z = 25;
-    run(15);
-    expect(k.reserve).toBe(ALLY_GUN.pistol.reserve);
-    expect(k.wallet).toBe(1000 - ammoPrice('pistol'));
-    expect(out.some((m) => m.d.k === 'note' && String(m.d.t).includes('BOUGHT AMMO'))).toBe(true);
-  });
-
   it('one with no gun takes one from a box nearby - once per box - and every client hears which', () => {
     const { at, run, vance, out } = setup();
     at.x = 16;
@@ -160,5 +134,26 @@ describe('the squad on its errands (co-op simulation)', () => {
     const snap = [...out].reverse().find((m) => m.d.k === 's')!.d as { sq?: number[][] };
     const row = snap.sq!.find((r) => r[0] === 0 || r[0] === 1)!;
     expect(row.length).toBe(8);
+  });
+
+  it("pays the player less for a squad member's kill than for their own", () => {
+    expect(ECONOMY.squadKillShare).toBeGreaterThan(0);
+    expect(ECONOMY.squadKillShare).toBeLessThan(1);
+    const { sim, out, run } = setup();
+    run(0.5);
+    out.length = 0;
+    const z = sim.zombies.spawn('shambler', 4, 30, new Rng(3), { state: 'idle' });
+    // the same infected, killed once by the squad and once by the player
+    const host = sim as unknown as { allyKill: boolean; killer: string | null; onKill(z: unknown, head: boolean): void };
+    host.allyKill = true;
+    host.onKill(z, false);
+    host.allyKill = false;
+    host.killer = 'p1';
+    host.onKill(z, false);
+    const squad = Number(out.find((m) => m.d.k === 'sk')!.d.c);
+    const own = Number(out.find((m) => m.d.k === 'kill')!.d.c);
+    expect(squad).toBeGreaterThan(0);
+    expect(squad).toBeLessThan(own);
+    expect(squad).toBe(Math.floor(Math.round(own * ECONOMY.squadKillShare)));
   });
 });

@@ -57,7 +57,7 @@ export interface AllyBody {
   /** At rest: where they are looking now (a yaw), and how long until they look somewhere else. */
   lookYaw?: number;
   lookT?: number;
-  /** Where the squad fends for itself (the Asylum): their gun, ammunition and wallet (`allySupply.ts`). */
+  /** Where the squad fends for itself (the Asylum): their gun, magazine and reload (`allySupply.ts`). */
   kit?: AllyKit;
 }
 

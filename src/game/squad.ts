@@ -25,7 +25,7 @@ import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
 import { GAMEPLAY_FIELD_RANGE } from '../world/nav';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
-import { ALLY_GUNS, type AllyGun, type AllySupply, allyErrand, kitPaid } from './allySupply';
+import { ALLY_GUNS, type AllyGun, type AllySupply, allyErrand } from './allySupply';
 import type { Game } from './game';
 
 /** Milliseconds a frame may spend on one ally's flow field. */
@@ -118,14 +118,13 @@ export class SquadRuntime {
   private soldiers = false;
   private survivors = false;
   private time = 0;
-  /** True while an ally's shot is being applied (the kill is theirs, not the player's), and whose shot it is. */
+  /** True while an ally's shot is being applied (the kill is theirs, not the player's). */
   allyShooting = false;
-  private shooter: Ally | null = null;
   /** Co-op: the session simulation runs the squad; this asks it to free someone. */
   follow = false;
   requestRescue: ((name: string) => void) | null = null;
   private readonly world: AllyWorld;
-  /** The Asylum: where the squad buys its ammo and takes guns from the boxes (`allySupply.ts`). */
+  /** The Asylum: where the squad takes guns from the boxes (`allySupply.ts`). */
   private readonly supply: AllySupply;
 
   constructor(private readonly g: Game) {
@@ -144,23 +143,12 @@ export class SquadRuntime {
     this.supply = {
       boxes: () => g.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, y: c.def.y, busy: c.phase === 'spin' || c.phase === 'offer' })),
       allies: () => this.allies,
-      onAmmo: (a, price) => {
-        g.audio.play('buy_ok', { pos: { x: a.ref.x, y: a.ref.y + 1.2, z: a.ref.z }, priority: 1, volume: 0.7 });
-        g.feed(`${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)`, 'normal');
-      },
       onBox: (a, _box, gun) => {
         g.audio.play('box_reveal', { pos: { x: a.ref.x, y: a.ref.y + 1.2, z: a.ref.z }, priority: 2 });
         g.fx.sparkle({ x: a.ref.x, y: a.ref.y + 1.4, z: a.ref.z }, 0xffe08a, 14);
         g.feed(`${a.name.toUpperCase()} TOOK A ${GUN_NAME[gun]} FROM THE BOX`, 'good');
       },
-      onDry: (a) => g.feed(`${a.name.toUpperCase()} IS OUT OF AMMO - AND OF MONEY`, 'warn'),
     };
-  }
-
-  /** An ally's kill: a share of its worth into their own wallet (the player is paid as before, by the game). */
-  creditShooter(reward: number): void {
-    const k = this.shooter?.kit;
-    if (k) kitPaid(k, reward);
   }
 
   /** The gun an ally's figure holds: what their kit says (the Asylum), drawn as it changes. */
@@ -501,7 +489,7 @@ export class SquadRuntime {
         if (a.field.begin(a.ref.x, a.ref.z, GAMEPLAY_FIELD_RANGE)) a.field.advance(a.field.goalIndex < 0 ? Infinity : ALLY_FIELD_SLICE_MS);
         a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
-      // the Asylum: off to a wall chalk for ammo, or to a box for a gun, when it is quiet (else at the player's side)
+      // the Asylum: off to a box for a gun when it is quiet (else at the player's side)
       const errand = alive && allyErrand(a, g.level, g.zombies, this.supply, g.rng, dt, { x: p.x, z: p.z });
       if (alive && !errand) allyMove(a, this.world, dt, p.x, p.z, p.yaw, p.y);
       const shot = allyFight(a, this.world, dt);
@@ -513,10 +501,8 @@ export class SquadRuntime {
         g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
         if (shot.hit) {
           this.allyShooting = true;
-          this.shooter = a;
           allyHit(a, shot, g.zombies, g.zenv);
           this.allyShooting = false;
-          this.shooter = null;
         }
         if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
       }

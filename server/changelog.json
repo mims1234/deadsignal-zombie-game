@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.354",
+      "date": "2026-11-06",
+      "title": "Squad: endless ammo, smaller pay for their kills",
+      "notes": [
+        "On the Asylum the squad no longer walks off to the wall chalks to buy ammo. Their ammunition never runs out, but they still have to reload when a magazine is empty.",
+        "Kills by the squad and freed survivors now pay you 40% of what the same kill pays when you make it yourself (split between the players in co-op, as before). Your own shooting is worth the most."
+      ]
+    },
+    {
       "version": "0.4.353",
       "date": "2026-11-06",
       "title": "Asylum: who carries a gun, and which one",
