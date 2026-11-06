@@ -262,8 +262,8 @@ try {
   check('a District player following an Asylum invite lands on the Asylum', (await a.guest.evaluate(() => window.__dead.game.mapId)) === 'asylum');
   await deployBoth(a.owner, a.guest);
   const keep = () => window.__dead.setHealth(1e6, 100);
-  const day = () => { const g = window.__dead.game; return g.session.elapsed > 1 && g.mission.night.tod.phase === 'day' && g.session.hunt.status === 'available' && !g.zombies.zombies.some((z) => z.type === 'warden'); };
-  check('Asylum: it is day for both, and the Matron is nowhere', (await until(a.guest, day, null, 30000)) && (await until(a.owner, day, null, 5000)));
+  const day = () => { const g = window.__dead.game; return g.session.elapsed > 1 && g.mission.night.tod.phase === 'night' && g.mission.night.wakeAt === null && g.session.hunt.status === 'available' && !g.zombies.zombies.some((z) => z.type === 'warden'); };
+  check('Asylum: it is night for both, and the Matron sleeps until the bell', (await until(a.guest, day, null, 30000)) && (await until(a.owner, day, null, 5000)));
   const shut = () => { const g = window.__dead.game; return g.asylum.state.doors.every((d) => d === 0) && !g.level.doors.isOpen(0) && !g.asylum.powerOn; };
   check('Asylum: every door is shut and the power off, for both', (await a.owner.evaluate(shut)) && (await a.guest.evaluate(shut)));
   // the guest buys the west ward's front door (index 0)
@@ -290,6 +290,20 @@ try {
   const cashO = await a.owner.evaluate(() => window.__dead.game.session.inv.cash);
   await a.guest.evaluate(() => window.__dead.teleport(-7.8, 6.05));
   check('Asylum: a patient file one player takes is in for both, and pays each', (await until(a.owner, (c) => window.__dead.game.mission.night.records.found[0] && window.__dead.game.session.inv.cash >= c + 300, cashO, 10000)) && (await a.guest.evaluate(() => window.__dead.game.mission.night.records.found[0])));
+  // the vigil lanterns and the bell: tied off for the guest until the lanterns burn; then the guest rings it and the
+  // Matron wakes for both; each player is paid for each lantern on their own screen
+  const bellAt = () => { const d = window.__dead; d.setHealth(1e6, 100); d.teleport(-25, -39.4); d.lookAt(-25, -40.2); d.advance?.(0); const q = d.game.mission.night.bellTarget(); return q ? (q.enabled ? 'ready' : 'tied') : 'none'; };
+  await a.guest.evaluate(bellAt);
+  await sleep(600);
+  check('Asylum: the bell rope is tied off before the lanterns burn', (await a.guest.evaluate(bellAt)) === 'tied');
+  const cashL = await a.owner.evaluate(() => window.__dead.game.session.inv.cash);
+  await a.owner.evaluate(() => window.__dead.game.coop.toHost({ k: 'dev', souls: 6 }));
+  check('Asylum: lantern souls reach both', (await until(a.guest, () => window.__dead.game.mission.night.souls.every((n) => n >= 6), null, 10000)) && (await until(a.owner, () => window.__dead.game.mission.night.souls.every((n) => n >= 6), null, 5000)));
+  await a.owner.evaluate(() => window.__dead.game.coop.toHost({ k: 'dev', souls: 6 }));
+  check('Asylum: every lantern burns for both, and pays each', (await until(a.owner, (c) => window.__dead.game.mission.night.souls.every((n) => n >= 12) && window.__dead.game.session.inv.cash >= c + 2250, cashL, 10000)) && (await until(a.guest, () => window.__dead.game.mission.night.souls.every((n) => n >= 12), null, 5000)));
+  await sleep(300);
+  const rang = await a.guest.evaluate(() => { const q = window.__dead.game.mission.night.bellTarget(); if (q?.enabled) q.onUse(); return q ? q.enabled : null; });
+  check('Asylum: the guest rings the bell and the Matron wakes for both', rang === true && (await until(a.owner, () => window.__dead.game.mission.night.wakeAt !== null && window.__dead.game.session.hunt.status === 'active', null, 10000)) && (await until(a.guest, () => window.__dead.game.mission.night.wakeAt !== null, null, 5000)));
   // the boarded windows: the guest waits in the west ward for the infected to tear at a window; if none has after
   // 30 s, the owner's development set-up tears boards off the window nearest the guest
   await a.guest.evaluate(() => window.__dead.teleport(-22, 0));

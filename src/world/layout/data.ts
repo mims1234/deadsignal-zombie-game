@@ -20,6 +20,8 @@ export interface CrateDef {
   z: number;
   yaw: number;
   region: Region;
+  /** The floor it stands on (an upper storey; 0 or absent: the ground). */
+  y?: number;
   /** A paid box: costs this much to open, and closes again for the next turn once its prize is gone. */
   cost?: number;
 }
@@ -204,15 +206,16 @@ export const MAP_TEXT: Record<MapId, MapText> = {
     bossSighted: 'she will not stop for body shots. Aim for the face.',
     bossRadio: { from: 'OKAFOR', text: "That's her. That's Mourne. Don't let her scream - the whole ward comes when she does. Go for the face." },
     regions: { low: 'The front grounds', medium: 'The wards and the yard', high: 'Isolation, chapel and morgue - her rounds' },
-    kicker: 'BLACKWOOD HILL  //  ASYLUM GROUNDS  //  DUSK TILL DAWN',
+    kicker: 'BLACKWOOD HILL  //  ASYLUM GROUNDS  //  ONE NIGHT',
     signal: 'POWER OUT  -  LAST KNOWN POSITION: ISOLATION BLOCK',
-    premise: "Blackwood Hill lost its last orderly forty days ago, the night the power failed and its Head Nurse went into the dark to settle her patients. Go over the wall with two of Lantern team in the last grey hours of the afternoon and follow the hospital's own paper trail - the offices, the wards, the floors upstairs - to the woman who still does the rounds.",
-    foot: 'Close quarters: two ward wings with floors above, a walled yard, a chapel, a morgue and the isolation block. No clock: the black fog rolls out of the crematorium in waves until someone shuts its damper. Every kill pays - spend it on doors, guns, perks and the Pack-a-Punch. Vance and Dr. Okafor walk with you; the nurses, the chaplain and the last patient are still locked in, and not all of them can shoot.',
-    brief: 'Lantern team, you are inside the walls and the light is going. Blackwood kept files on what happened here. Start in the admin offices and follow them.',
+    premise: "Blackwood Hill lost its last orderly forty days ago, the night the power failed and its Head Nurse went into the dark to settle her patients. Go over the wall with two of Lantern team after dark and follow the hospital's own paper trail - the offices, the wards, the floors upstairs - to the woman who still does the rounds.",
+    foot: 'Close quarters: two ward wings with floors above, a walled yard, a chapel, a morgue and the isolation block. No clock: the black fog rolls out of the crematorium in waves until someone shuts its damper. Every kill pays - spend it on doors, guns, perks and the Pack-a-Punch, and search the rooms (upstairs too) for supply boxes. Vance and Dr. Okafor walk with you; the nurses, the chaplain and the last patient are still locked in, and not all of them can shoot.',
+    brief: 'Lantern team, you are inside the walls and it is full dark. Blackwood kept files on what happened here. Start in the admin offices and follow them.',
     rows: [
-      { tag: 'DAY', title: 'FOLLOW THE FILES', text: "The admin offices, a west ward cell, the nurses' floor upstairs: each file tells you where to go next." },
-      { tag: 'DAY', title: 'RESTORE THE POWER', text: 'Start the boiler house generators and hold the yard while they spin up. Ward Nine is locked without them.' },
-      { tag: 'NIGHT', title: 'PUT THE MATRON TO REST', text: "Read Ward Nine's register and the sun goes down. At lights-out she walks the isolation block." },
+      { tag: 'FILES', title: 'FOLLOW THE FILES', text: "The admin offices, a west ward cell, the nurses' floor upstairs: each file tells you where to go next." },
+      { tag: 'POWER', title: 'RESTORE THE POWER', text: 'Start the boiler house generators and hold the yard while they spin up. Ward Nine is locked without them.' },
+      { tag: 'CHAPEL', title: 'LIGHT THE VIGIL LANTERNS', text: 'Three lanterns - the cemetery, Ward Nine upstairs, the isolation door - burn on the infected killed beside them. Each one pays and fills your guns.' },
+      { tag: 'BELL', title: 'RING LIGHTS-OUT', text: 'With all three burning, pull the chapel bell rope when you are ready: the Matron wakes and starts her round. Put her to rest.' },
       { tag: 'FOG', title: 'SHUT THE FURNACE', text: 'The black fog comes in waves until the crematorium damper is shut - and the Matron keeps its key.' },
       { tag: 'DAWN', title: 'HOLD UNTIL DAWN', text: 'Radio from the lawn and hold it until first light, when the bird can land.' },
     ],
@@ -378,8 +381,8 @@ export class LevelDataBuilder {
     return s;
   }
 
-  crate(x: number, z: number, yaw: number, region: Region, cost?: number): void {
-    this.crates.push({ id: `crate-${this.crates.length + 1}`, x, z, yaw, region, ...(cost ? { cost } : {}) });
+  crate(x: number, z: number, yaw: number, region: Region, cost?: number, y?: number): void {
+    this.crates.push({ id: `crate-${this.crates.length + 1}`, x, z, yaw, region, ...(cost ? { cost } : {}), ...(y ? { y } : {}) });
   }
 
   spawn(region: Region, group: SpawnGroup, pts: [number, number][], weight = 1): void {

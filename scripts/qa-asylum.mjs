@@ -1,6 +1,6 @@
 // Blackwood Hill end to end in headless Chrome: the Asylum's story played through its steps by the story's own actions
-// (walking into each file, the generators' hold, Ward Nine upstairs, the morgue, the Matron, the furnace damper, the
-// dawn), travel time between them simulated, every line, banner and the black fog logged with its time, and a
+// (walking into each file, the generators' hold, Ward Nine upstairs, the morgue, the vigil lanterns fed with kills,
+// the chapel bell, the Matron, the furnace damper, the dawn), travel time between them simulated, every line, banner and the black fog logged with its time, and a
 // screenshot at each step. Shows where lines collide, wait or never come.
 //
 //   SC=<dir> node scripts/qa-asylum.mjs [url]      (the dev server, default http://127.0.0.1:5183/)
@@ -33,6 +33,23 @@ const beat = async (name, travel = TRAVEL) => {
   await shot(name);
 };
 const tp = (x, z, y = 0, yaw) => ev(([x, z, y, yaw]) => { const d = window.__dead; d.teleport(x, z, yaw, y); d.advance(0.3); }, [x, z, y, yaw]);
+/** Stand at (x, y, z) looking at (lx, ly, lz), and take a picture (the rooms, by eye). */
+const look = async (name, x, z, y, lx, lz, ly = y + 1.2) => {
+  await ev(([x, z, y, lx, lz, ly]) => { const d = window.__dead; d.teleport(x, z, 0, y); d.lookAt(lx, lz, ly); d.advance(0.2); }, [x, z, y, lx, lz, ly]);
+  await shot(name);
+};
+/** Kill `n` infected beside lantern `i` (as if shot there). */
+const feed = (i, n) => ev(([i, n]) => {
+  const g = window.__dead.game;
+  const l = g.mission.night.souls && [[-41.25, 0, -7.8], [22, 5, -5.6], [-6.5, 0, -27.8]][i];
+  for (let k = 0; k < n; k++) {
+    const a = k * 0.9;
+    const z = g.zombies.spawn('shambler', l[0] + Math.cos(a) * 3, l[2] + Math.sin(a) * 3, g.rng, { y: l[1] });
+    g.zombies.damage(z, 1e6, false, g.zenv, 0, 0, 0);
+  }
+  window.__dead.advance(1);
+  return g.mission.night.souls.join(',');
+}, [i, n]);
 try {
   await ev(() => { localStorage.setItem('deadsignal.map.v1', 'asylum'); localStorage.setItem('deadsignal.settings.v1', JSON.stringify({ quality: 'medium', qualityAuto: false })); });
   await page.reload({ waitUntil: 'load' });
@@ -76,9 +93,18 @@ try {
   await tp(13.9, -19.3, 5, -Math.PI / 2); await shot('ward9-open');
   await tp(22, -6, 5, 0); await shot('ward9-inside');
   await tp(S[3].x, S[3].z, 5); await beat('file-nine', 15);
-  await beat('dusk', 30);
-  await beat('night', 15);
   await tp(S[4].x, S[4].z, 0); await beat('file-morgue', 20);
+  // the bell before the lanterns: tied off
+  await ev(() => { const d = window.__dead; d.teleport(-25, -39.4, Math.PI, 0); d.advance(0.3); return d.game.mission.night.bellTarget()?.text; }).then((t) => console.log('bell before:', t));
+  await beat('bell-tied', 5);
+  // the vigil lanterns: the cemetery, Ward Nine upstairs, the isolation door
+  await tp(-41.25, -4.5, 0); console.log('souls', await feed(0, 6)); await beat('lantern-cemetery-half', 3);
+  console.log('souls', await feed(0, 6)); await beat('lantern-cemetery-lit', 6);
+  await tp(22, -2.5, 5); console.log('souls', await feed(1, 12)); await beat('lantern-nine-lit', 6);
+  await tp(-6.5, -25, 0); console.log('souls', await feed(2, 12)); await beat('lantern-isolation-lit', 6);
+  // the bell
+  await ev(() => { const d = window.__dead; d.teleport(-25, -39.4, Math.PI, 0); d.advance(0.3); const t = d.game.mission.night.bellTarget(); if (t && t.enabled) t.onUse(); return t?.text; }).then((t) => console.log('bell:', t));
+  await beat('bell-rung', 12);
   // the Matron
   await ev(() => { const g = window.__dead.game; const b = g.zombies.boss; window.__dead.teleport(0, -27); if (b) window.__dead.lookAt(b.x, b.z, 2); });
   await beat('matron-near', 4);
@@ -93,6 +119,25 @@ try {
   await beat('lz', 4);
   await ev(() => { const g = window.__dead.game; g.mission.callExtraction(); return g.session.extraction.phase; });
   await beat('called', 70);
+  // the rooms, by eye (after the run: the lamps and furniture as they stand)
+  await look('room-west-cell', -24.2, -12, 0, -28.6, -14.5, 0.8);
+  await look('room-hydrotherapy', -24.2, 7, 0, -28, 7, 0.8);
+  await look('room-dispensary', 24.2, -17, 0, 27.5, -21, 1);
+  await look('room-east-cell', 24.2, -2, 0, 28.6, -4.5, 0.8);
+  await look('room-admin-west', -6, 9, 0, -11, 6, 1);
+  await look('room-admin-east', 6, 9, 0, 11, 6, 1);
+  await look('room-front-hall', 0, 16.5, 0, -6, 11.5, 1);
+  await look('room-chapel', -28, -30.5, 0, -28, -40.6, 2);
+  await look('room-isolation', 0, -31, 0, 0, -40, 1);
+  await look('room-morgue', 30, -31, 0, 22, -40, 1);
+  await look('room-boiler', 41, -10, 0, 48, -17, 1.5);
+  await look('room-gatehouse', -7.5, 41, 0, -12, 40, 1);
+  await look('room-stores', 32, 31, 0, 40, 34, 1);
+  await look('up-nurses-dorm', -22, -12.5, 5, -22, 1, 5.8);
+  await look('up-nurses-office', -22, 3, 5, -28, 8, 5.8);
+  await look('up-nurses-station', -16.5, -15, 5, -27, -21, 5.8);
+  await look('up-ward-nine', 22, -13, 5, 22, 6, 5.8);
+  await look('up-ward-nine-station', 22, -15, 5, 18, -21, 5.8);
   const log = await ev(() => window.__log);
   writeFileSync(`${SC}/log.json`, JSON.stringify(log, null, 1));
   for (const e of log) console.log(String(e.t).padStart(6), e.type === 'radio' ? 'R' : 'B', (e.who || '').padEnd(18).slice(0, 18), e.text.slice(0, 110));

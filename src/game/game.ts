@@ -715,6 +715,8 @@ export class Game implements GameCtx {
       this.radioHook = (who, text) => night.onRadio(who, text);
       night.canTalk = (name) => this.squad.canTalk(name);
       this.interaction.providers.push(() => night.damperTarget());
+      this.interaction.providers.push(() => night.bellTarget());
+      night.roam = () => this.flying;
     }
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
@@ -1331,7 +1333,7 @@ export class Game implements GameCtx {
         else if (isStory(kind)) this.banner(`CO-OP  //  ${STORIES[kind].title}`, STORIES[kind].banner, 'info', 5);
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
-        this.banner('BLACKWOOD HILL', "Late afternoon. Follow the hospital's files, room by room - no clock, but the black fog comes in waves.", 'info', 5);
+        this.banner('BLACKWOOD HILL', "Night on the hill. Follow the hospital's files, room by room - no clock, but the black fog comes in waves.", 'info', 5);
       } else if ((this.mapId === 'mujin' || this.mapId === 'hirasaka') && !roam) {
         // the station (the island) says its own name (`mujin/runtime.ts`, `hirasaka/runtime.ts`)
       } else if (this.mapId === 'aurelia' && !roam) {
@@ -2131,6 +2133,7 @@ export class Game implements GameCtx {
 
   private onZombieKilled(z: Zombie, head: boolean): void {
     if (this.forge?.noReward) return; // the Forge's burnout and its sentry pay nobody
+    this.mission.night?.onKill(z); // the Asylum: a vigil lantern beside it takes its soul (anyone's kill)
     if (this.squad.allyShooting) {
       // an ally's kill: it still counts for the contract and pays the player in full, but it is not the player's kill
       if (z.isBoss) this.mission.onWardenKilled();

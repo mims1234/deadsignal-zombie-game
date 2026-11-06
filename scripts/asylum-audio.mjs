@@ -3,7 +3,7 @@
 //   node --experimental-strip-types scripts/asylum-audio.mjs voices [ids...]   every line in src/asylum/lines.ts
 //   node --experimental-strip-types scripts/asylum-audio.mjs music [ids...]    every cue
 //
-// Voices: ElevenLabs v4 (by voice name) or Fish Audio Drama 3, several takes each; every take is judged by an audio
+// Voices: ElevenLabs v4 Turbo (by voice name) or Fish Audio Drama 3, several takes each; every take is judged by an audio
 // model (does it say the words, are the direction tags left unspoken, does it fit), the best is trimmed, levelled and
 // saved as public/asylum/voice/<id>.mp3 (mono, 64 kbps). Music: Lyria 3 clips, a few takes each, the steadiest (or the
 // best built, for the cues that rise) by its loudness curve, saved as public/asylum/music/<id>.mp3.
@@ -16,6 +16,8 @@ import { join } from 'node:path';
 import { ASY_CUES as CUES, ASY_LINES as LINES } from '../src/asylum/lines.ts';
 
 const API = 'https://openrouter.ai/api/v1';
+// ElevenLabs v4 Turbo by default (v4 full costs far more); ASYLUM_VOICE_MODEL picks another (ask the user first)
+const VOICE_MODEL = process.env.ASYLUM_VOICE_MODEL || 'elevenlabs/eleven-v4-turbo';
 function key() {
   if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
   const file = process.env.OPENROUTER_ENV;
@@ -63,7 +65,7 @@ const ff = (args) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error
 // ---------------------------------------------------------------------------------------------
 
 async function speak(line) {
-  const body = { model: 'elevenlabs/eleven-v4', input: line.say ?? line.text, voice: line.voice, response_format: 'mp3' };
+  const body = { model: VOICE_MODEL, input: line.say ?? line.text, voice: line.voice, response_format: 'mp3' };
   const r = await fetch(`${API}/audio/speech`, { method: 'POST', headers: H, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${line.id}: ${r.status} ${(await r.text()).slice(0, 200)}`);
   const buf = Buffer.from(await r.arrayBuffer());

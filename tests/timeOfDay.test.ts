@@ -3,8 +3,8 @@
  * difficulty, the Matron's hunt that only opens at night, and a mission clock that always leaves room to finish.
  */
 import { describe, expect, it } from 'vitest';
-import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, FOG, NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
-import { asylumHour, cycleClock, damperOpen, fogAt, nightTrigger, storyStep } from '../src/asylum/story';
+import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, FOG, LANTERNS, NIGHTFALL, PHASE_TUNING, TUNING } from '../src/asylum/nightConfig';
+import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit, lanternsLit, STEPS, storyStep } from '../src/asylum/story';
 import { FORGE_STORY, MISSION, ZOMBIE_DIFFICULTY } from '../src/config';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { activateDefense, completeHunt, createDefense, createHunt, updateDefense } from '../src/logic/contracts';
@@ -161,42 +161,83 @@ describe('the Asylum clock', () => {
     expect(surgeStartTime(null, c)).toBe(Infinity);
   });
 
-  it('can be finished at any pace: the story steps through the night to the dawn', () => {
+  it('is night from the first second; the dawn comes only with the bird', () => {
+    for (const e of [0, 1, 60, 600, 6000]) expect(asylumHour(e, null).phase).toBe('night');
+    expect(asylumHour(100, 40).phase).toBe('dawn');
+    expect(asylumHour(40 + ASYLUM_CYCLE.dawnLength + 1, 40).t).toBe(1);
+    // restless until the bell, the full night after it
+    expect(asylumTuning(asylumHour(10, null), false)).toBe(TUNING.restless);
+    expect(asylumTuning(asylumHour(10, null), true)).toBe(TUNING.awake);
+    expect(TUNING.awake.count).toBeGreaterThan(TUNING.restless.count);
+    // the hunt opens with the bell, not with the clock
+    expect(huntClock(null)).toBeLessThan(NIGHTFALL);
+    expect(huntClock(123)).toBe(NIGHTFALL);
+  });
+
+  it('lights a vigil lantern with the kills beside it, on its own floor only', () => {
+    const souls = LANTERNS.spots.map(() => 0);
+    const [cem, nine] = LANTERNS.spots;
+    expect(lanternFor(souls, cem!.x + 2, 0, cem!.z + 1)).toBe(0);
+    expect(lanternFor(souls, cem!.x + LANTERNS.radius + 1, 0, cem!.z)).toBe(-1);
+    // Ward Nine's is upstairs: a kill in the ward below does not reach it
+    expect(lanternFor(souls, nine!.x, 0, nine!.z)).toBe(-1);
+    expect(lanternFor(souls, nine!.x + 1, nine!.y, nine!.z)).toBe(1);
+    for (let k = 0; k < LANTERNS.souls; k++) souls[lanternFor(souls, cem!.x, 0, cem!.z)]!++;
+    expect(lanternLit(souls, 0)).toBe(true);
+    // a lit lantern takes no more
+    expect(lanternFor(souls, cem!.x, 0, cem!.z)).toBe(-1);
+    expect(lanternsLit(souls)).toBe(1);
+  });
+
+  it('can be finished at any pace: the files, the lanterns, the bell, the Matron, the damper, the dawn', () => {
     for (const pace of [1, 3]) {
       const def = createDefense();
       const hunt = createHunt();
       const ex = createExtraction();
       const records = [false, false, false, false, false];
-      let nightAt: number | null = null;
+      const souls = LANTERNS.spots.map(() => 0);
+      let wakeAt: number | null = null;
       let damper = false;
       let e = 0;
       const step = 0.25;
-      gateHunt(hunt, cycleClock(e, nightAt));
+      gateHunt(hunt, huntClock(wakeAt));
       let called = false;
       let landedAt = -1;
+      const seen: number[] = [];
       while (e < 4000 * pace) {
         e += step;
         // the files and the power at the player's pace; the register (file 4) needs the power
         for (let i = 0; i < 5; i++) if (!records[i] && e >= (i + 1) * 60 * pace && (i < 3 || def.status === 'complete')) records[i] = true;
         if (e >= 200 * pace && def.status === 'available') activateDefense(def);
         if (def.status === 'active') updateDefense(def, step, true, true);
-        const facts = { records, power: def.status === 'complete', matron: hunt.status === 'complete', damper };
-        if (nightAt === null && nightTrigger(facts)) nightAt = e;
-        // by day the Matron never walks, however long it takes
-        if (nightAt === null) expect(asylumHour(e, nightAt, null).phase).toBe('day');
-        if (gateHunt(hunt, cycleClock(e, nightAt))) expect(nightAt).not.toBeNull();
-        if (hunt.status === 'active' && nightAt !== null && e >= nightAt + 160) completeHunt(hunt);
-        if (damperOpen(facts) && e >= (nightAt ?? 0) + 200) damper = true;
+        // a kill by a lantern now and then
+        if (e > 330 * pace && Math.round(e / step) % 8 === 0) {
+          const i = souls.findIndex((_, k) => !lanternLit(souls, k));
+          if (i >= 0) souls[i]!++;
+        }
+        const facts = { records, power: def.status === 'complete', souls, bell: wakeAt !== null, matron: hunt.status === 'complete', damper };
+        const st = storyStep(facts);
+        if (seen[seen.length - 1] !== st) seen.push(st);
+        expect(asylumHour(e, null).phase).toBe('night');
+        // the bell, once it can be rung, at the player's pace
+        if (wakeAt === null && bellReady(facts) && e > 600 * pace) wakeAt = e;
+        // she never walks before the bell, however long it takes
+        if (gateHunt(hunt, huntClock(wakeAt))) expect(wakeAt).not.toBeNull();
+        if (wakeAt === null) expect(hunt.status).toBe('available');
+        if (hunt.status === 'active' && wakeAt !== null && e >= wakeAt + 160) completeHunt(hunt);
+        if (damperOpen(facts) && wakeAt !== null && e >= wakeAt + 200) damper = true;
         unlockExtraction(ex, def.status === 'complete' && hunt.status === 'complete' && damper);
         if (!called && ex.phase === 'available') called = callExtraction(ex, e, true, true);
         if (called) for (const ev of updateExtraction(ex, step)) if (ev === 'touchdown') landedAt = e;
         if (landedAt >= 0) break;
       }
-      expect(storyStep({ records, power: true, matron: true, damper })).toBe(8);
+      // every step in order, none skipped
+      expect(seen).toEqual(STEPS.map((_, i) => i));
+      expect(storyStep({ records, power: true, souls, bell: true, matron: true, damper })).toBe(STEPS.length - 1);
       expect(landedAt).toBeGreaterThan(0);
       // first light comes with the bird
-      expect(asylumHour(landedAt, nightAt, ex.calledAt).phase).toBe('dawn');
-      expect(asylumHour(landedAt, nightAt, ex.calledAt).t).toBeGreaterThan(0.99);
+      expect(asylumHour(landedAt, ex.calledAt).phase).toBe('dawn');
+      expect(asylumHour(landedAt, ex.calledAt).t).toBeGreaterThan(0.99);
     }
   });
 

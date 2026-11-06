@@ -60,7 +60,7 @@ export const RECORD_NOTES: readonly RecordNote[] = [
       'Every line in the same careful hand for the last twenty years: the date, the beds, "lamps lit, all settled. - A.M."\n\n' +
       'The last line is shakier than the rest.\n\n' +
       '"Lamps out at sundown. I am going in to settle them. Ellie - stay in bed."',
-    lines: ['okafor_file_nine', 'vance_sun'],
+    lines: ['okafor_file_nine'],
   },
   {
     title: 'INCIDENT - ISOLATION BLOCK',
@@ -81,8 +81,6 @@ export const NIGHT_LINES = {
   recordsDoneTitle: 'THE PAPER TRAIL IS COMPLETE',
   nightTitle: 'NIGHTFALL',
   nightSub: 'More of them now - faster, and they see further in the dark',
-  duskTitle: 'THE SUN IS GOING',
-  duskSub: 'Lights-out soon - the infected are stirring',
   wakeTitle: 'LIGHTS OUT',
   wakeSub: 'The Matron begins her round in the isolation block',
   callTitle: 'HOLD UNTIL DAWN',

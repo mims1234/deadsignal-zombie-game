@@ -10,9 +10,10 @@
  * nobody is left standing, won when the helicopter leaves with someone aboard.
  *
  * Every map: power-up drops (rolled on the players' kills, taken by walking through them, insta-kill / double points
- * timers, the nuke and the carpenter carried out here). The Asylum also runs here: the time of day (the Matron only
- * walks at night), the patient files, the buyable doors and the power (`asylum/loop.ts`), and the boarded windows
- * (`asylum/barricadeDirector.ts`).
+ * timers, the nuke and the carpenter carried out here). The Asylum also runs here: its story (the patient files, the
+ * vigil lanterns, the chapel bell that wakes the Matron, the black fog and its damper, `asylum/story.ts`), the upper
+ * floors' sleepers (`asylum/upstairsRush.ts`), the buyable doors and the power (`asylum/loop.ts`), and the boarded
+ * windows (`asylum/barricadeDirector.ts`).
  *
  * Cash: every player keeps their own wallet on their own client. What the squad earns arrives as 'cash' / 'kill' /
  * 'fixed' / 'pw' messages; what a player buys from the shared world (a door) is a request: the simulation checks the
@@ -41,7 +42,7 @@ import { POWERUPS } from '../logic/powerupConfig';
 import { type PowerupDrop, POWERUP_KINDS, applyPowerup, cashMultiplier, createPowerups, filterDamage, nukeTargets, resetPowerups, rollDrop, tickPowerups } from '../logic/powerups';
 import { createRecords, pickUpRecord } from '../logic/records';
 import { Rng } from '../logic/rng';
-import { gateHunt, phaseTuning, timeOfDay } from '../logic/timeOfDay';
+import { gateHunt } from '../logic/timeOfDay';
 import { BARRICADE } from '../asylum/barricadeConfig';
 import { BarricadeDirector } from '../asylum/barricadeDirector';
 import { findBarricades, sideOf } from '../asylum/barricadeLayout';
@@ -49,8 +50,9 @@ import { anyDamaged, createPurse, payRepair, repairAll, repairBoard, type Repair
 import { createLoopState, doorState, isPowerOn, resetLoopState, setPower, spawnAllowed } from '../asylum/loop';
 import { LOOP } from '../asylum/loopConfig';
 import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
-import { ASYLUM_CYCLE, FOG, RECORDS, STORY } from '../asylum/nightConfig';
-import { asylumHour, cycleClock, damperOpen, fogAt, nightTrigger } from '../asylum/story';
+import { BELL, FOG, LANTERNS, RECORDS, STORY } from '../asylum/nightConfig';
+import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit } from '../asylum/story';
+import { UpstairsRush } from '../asylum/upstairsRush';
 import { setWard9Open } from '../asylum/upstairs';
 import { ASYLUM } from '../world/layout/asylum';
 import type { ZombieType } from '../types';
@@ -286,6 +288,7 @@ export class SessionSim {
       this.zombies.spawnAllowed = (x, z) => spawnAllowed(this.loop, x, z);
       this.barricades = new BarricadeDirector(findBarricades(this.level.world, this.level.nav), this.zombies);
       this.barricades.install();
+      this.rush = new UpstairsRush(this.zombies, this.level);
     }
     this.carriers = CARRIERS.map((def, index) => {
       const base = ZOMBIES[def.base];
@@ -478,8 +481,8 @@ export class SessionSim {
     this.defense = createDefense();
     this.zombies.clearAll();
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.difficulty.zombies];
-    // the Asylum's run starts in the afternoon: the population is made sleepy and few
-    if (this.asylum) this.zombies.setPhaseTuning(phaseTuning(timeOfDay(0)));
+    // the Asylum's night: restless until the chapel bell
+    if (this.asylum) this.zombies.setPhaseTuning(asylumTuning(asylumHour(0, null), false));
     this.zombies.namer = null;
     this.zombies.sleepFar = this.story;
     for (const u of this.carriers) {
@@ -501,9 +504,12 @@ export class SessionSim {
     this.shots = [];
     this.loot = createLoot(this.level.data.crates.length, this.level.data.crates.map((c) => !!c.cost));
     this.records = createRecords();
-    this.nightAt = null;
+    this.wakeAt = null;
     this.fogStopAt = null;
+    this.souls = LANTERNS.spots.map(() => 0);
     if (this.asylum) setWard9Open(this.level, this.kind === 'roam');
+    // the upper floors' sleepers (not in free roam: nobody is infected there)
+    if (this.asylum && this.story) this.rush?.reset(this.rng);
     this.barricades?.reset();
     this.purses.clear();
     resetPowerups(this.powerups);
@@ -533,22 +539,26 @@ export class SessionSim {
       if (this.level.hirasaka) this.level.hirasaka.aditLink.closed = true;
     }
     if (this.asylum && this.story) {
-      // by day there is nobody to hunt: the Matron wakes at nightfall
+      // the Matron sleeps until the chapel bell
       gateHunt(this.hunt, 0);
       this.keepBossAway();
     }
   }
 
-  /** The Asylum's story (`asylum/story.ts`): when the sun started going, and when the furnace damper was shut. */
-  private nightAt: number | null = null;
+  /** The Asylum's story (`asylum/story.ts`): when the chapel bell was rung, and when the furnace damper was shut. */
+  private wakeAt: number | null = null;
   private fogStopAt: number | null = null;
+  /** What each vigil lantern has burned. */
+  private souls: number[] = LANTERNS.spots.map(() => 0);
+  /** The Asylum's upper floors: their sleepers and the ones that climb in. */
+  private rush: UpstairsRush | null = null;
 
   /** The Asylum's story facts as the simulation has them. */
-  private asylumFacts(): { records: readonly boolean[]; power: boolean; matron: boolean; damper: boolean } {
-    return { records: this.records.found, power: this.defense.status === 'complete', matron: this.hunt.status === 'complete', damper: this.fogStopAt !== null };
+  private asylumFacts(): { records: readonly boolean[]; power: boolean; souls: readonly number[]; bell: boolean; matron: boolean; damper: boolean } {
+    return { records: this.records.found, power: this.defense.status === 'complete', souls: this.souls, bell: this.wakeAt !== null, matron: this.hunt.status === 'complete', damper: this.fogStopAt !== null };
   }
 
-  /** The Asylum by day: the Matron is not on the hill while her hunt is closed. */
+  /** The Asylum before the bell: the Matron is not on the hill while her hunt is closed. */
   private keepBossAway(): void {
     const b = this.zombies.boss;
     if (this.hunt.status === 'available' && b && b.alive) this.zombies.remove(b);
@@ -883,6 +893,13 @@ export class SessionSim {
         pickUpRecord(this.records, i);
         return;
       }
+      case 'abell': {
+        // the Asylum: the chapel's lights-out bell, once the lanterns burn (the Matron wakes)
+        if (!this.asylum || !this.story || !up || !bellReady(this.asylumFacts()) || Math.hypot(BELL.x - p.ref.x, BELL.z - p.ref.z) > BELL.reach + 3) return;
+        this.wakeAt = this.elapsed;
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} RANG THE BELL` });
+        return;
+      }
       case 'damper': {
         // the Asylum: the crematorium's damper, shut with the Matron's keys (every client pays itself once)
         const D = ASYLUM.damper;
@@ -914,13 +931,17 @@ export class SessionSim {
         return;
       }
       case 'dev': {
-        // the QA script's set-ups (development only, the owner only): a power-up 3 m in front of them, boards torn off
+        // the QA script's set-ups (development only, the owner only): a power-up 3 m in front of them, boards torn off,
+        // souls into the Asylum's lanterns
         if (!this.dev || !owner || !this.story) return;
         const kind = POWERUP_KINDS[Number(d.drop)];
         if (kind) this.powerups.drops.push({ id: this.powerups.nextId++, kind, x: p.ref.x - Math.sin(p.yaw) * 3, z: p.ref.z - Math.cos(p.yaw) * 3, age: 0 });
         const w = this.barricades?.state;
         const i = Number(d.tear);
         if (w && i >= 0 && i < w.boards.length) w.boards[i] = Math.max(0, w.boards[i]! - 3);
+        // the Asylum: souls into every vigil lantern (as if that many were killed beside each)
+        const n = Number(d.souls);
+        if (this.asylum && n > 0) for (let k = 0; k < this.souls.length; k++) this.souls[k] = Math.min(LANTERNS.souls, this.souls[k]! + n);
         return;
       }
       case 'fix': {
@@ -1111,13 +1132,13 @@ export class SessionSim {
       this.sakuraDir?.tick(dt);
     }
 
-    // the Asylum: the story's clock (the light holds until Ward Nine's register is read), the Matron only at night,
+    // the Asylum: night, the Matron only after the chapel bell, the upper floors' sleepers,
     // the black fog's waves driving the infected, Ward Nine's door with the power (`asylum/story.ts`)
     if (this.asylum) {
-      if (this.story && this.nightAt === null && nightTrigger(this.asylumFacts())) this.nightAt = this.elapsed;
-      const night = this.story ? this.nightAt : 0;
-      this.zombies.setPhaseTuning(phaseTuning(asylumHour(this.elapsed, night, this.extraction.calledAt)));
-      gateHunt(this.hunt, cycleClock(this.elapsed, night));
+      const wake = this.story ? this.wakeAt : 0;
+      this.zombies.setPhaseTuning(asylumTuning(asylumHour(this.elapsed, this.extraction.calledAt), wake !== null));
+      gateHunt(this.hunt, huntClock(wake));
+      if (this.story) this.rush?.update(dt, peers.map((q) => ({ x: q.ref.x, y: q.ref.y, z: q.ref.z, alive: q.ref.alive })), this.rng);
       this.keepBossAway();
       const fog = this.story ? fogAt(this.elapsed, this.fogStopAt) : null;
       const out = !!fog && fog.radius > 0.5;
@@ -1340,6 +1361,11 @@ export class SessionSim {
     // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
     if (this.forge?.noReward) return;
     if (z.isBoss && this.story && z !== this.forge?.reborn) completeHunt(this.hunt);
+    // the Asylum: a vigil lantern beside it takes its soul (anyone's kill, the squad's and a nuke's too)
+    if (this.asylum && this.story && !z.isBoss) {
+      const i = lanternFor(this.souls, z.x, z.y ?? 0, z.z);
+      if (i >= 0 && !lanternLit(this.souls, i)) this.souls[i]!++;
+    }
     if (this.allyKill && !this.nuking) {
       // a squad kill pays every player an even share of the reward, rounded down (no one's own kill, no drop)
       const n = this.peers.size;
@@ -1403,7 +1429,7 @@ export class SessionSim {
       out.dr = this.loot.drops.map((q) => [q.id, q.kind, q.x, q.z]);
       if (this.asylum) {
         out.rc = bits(this.records.found); // the patient files taken
-        out.an = [this.nightAt === null ? -1 : r1(this.nightAt), this.fogStopAt === null ? -1 : r1(this.fogStopAt)]; // the story's clock
+        out.an = [this.wakeAt === null ? -1 : r1(this.wakeAt), this.fogStopAt === null ? -1 : r1(this.fogStopAt), ...this.souls]; // the bell, the damper, the lanterns
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
       }
       if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
@@ -1448,10 +1474,12 @@ export class SessionSim {
     powerups: ReturnType<typeof createPowerups>;
     /** Move the mission clock. */
     setElapsed(t: number): void;
-    /** The Asylum: full night now (as if Ward Nine's register was read a dusk ago). */
-    nightNow(): void;
-    /** The Asylum: the story's clock (when the sun started going, when the damper was shut). */
-    story(): { nightAt: number | null; fogStopAt: number | null };
+    /** The Asylum: every vigil lantern burns. */
+    lightLanterns(): void;
+    /** The Asylum: the chapel bell rings now (the Matron wakes). */
+    wakeNow(): void;
+    /** The Asylum: the story (when the bell rang, when the damper was shut, the lanterns). */
+    story(): { wakeAt: number | null; fogStopAt: number | null; souls: readonly number[] };
   } {
     return {
       defense: this.defense,
@@ -1463,8 +1491,9 @@ export class SessionSim {
       barricades: this.barricades,
       powerups: this.powerups,
       setElapsed: (t) => void (this.elapsed = t),
-      nightNow: () => void (this.nightAt = this.elapsed - ASYLUM_CYCLE.duskLength - 0.01),
-      story: () => ({ nightAt: this.nightAt, fogStopAt: this.fogStopAt }),
+      lightLanterns: () => void this.souls.fill(LANTERNS.souls),
+      wakeNow: () => void (this.wakeAt = this.elapsed),
+      story: () => ({ wakeAt: this.wakeAt, fogStopAt: this.fogStopAt, souls: this.souls }),
     };
   }
 }

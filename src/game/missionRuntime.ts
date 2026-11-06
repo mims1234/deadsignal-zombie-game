@@ -438,7 +438,7 @@ export class MissionRuntime implements MissionApi {
     // ---- hunt contract ----
     if (!this.follow && dt > 0 && s.hunt.status === 'active') {
       // never unwinnable: a Warden who died uncredited completes it; one who is gone is back at his lair
-      // (the Asylum's hunt is only `active` at night, so the Matron is never brought back by day)
+      // (the Asylum's hunt is only `active` after the chapel bell, so the Matron is never brought back before it)
       const b = ctx.zombies.boss;
       if (b && !b.alive) this.onWardenKilled();
       else if (!b) ctx.zombies.spawnWarden(ctx.rng);
@@ -563,7 +563,7 @@ export class MissionRuntime implements MissionApi {
     const s = ctx.session;
     const data = ctx.level.data;
     s.elapsed = m.elapsed;
-    // the Asylum's hunt is closed by day and opens at nightfall: follow the simulation (a finished hunt stays finished)
+    // the Asylum's hunt is closed until the chapel bell: follow the simulation (a finished hunt stays finished)
     if (m.huntStatus !== 'complete' && s.hunt.status !== 'complete') {
       s.hunt.status = m.huntStatus;
       if (m.huntStatus === 'available') s.hunt.identified = false;

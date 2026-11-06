@@ -1,6 +1,6 @@
 /**
  * Everything Blackwood Hill says aloud. Each line is a file in `public/asylum/voice/` (`<id>.mp3`, made by
- * `scripts/asylum-audio.mjs`: ElevenLabs v4 through OpenRouter, the best of several takes, each judged by an audio
+ * `scripts/asylum-audio.mjs`: ElevenLabs v4 (the newer lines v4 Turbo) through OpenRouter, the best of several takes, each judged by an audio
  * model). `text` is the caption, `say` what the generator is given (direction in brackets), `how` the delivery asked
  * for. They are played one at a time by the voice director (`sakura/voice.ts`, given this bank), by kind, so none is
  * lost when the player does two things at once.
@@ -77,7 +77,7 @@ const L = (id: string, who: AsySpeaker, text: string, tag: string, match?: strin
 
 export const ASY_LINES: readonly AsyLine[] = [
   // ---- the way in ----
-  L('okafor_brief', 'OKAFOR', "Blackwood Hill. I worked these wards before the fall - I know where they kept the paper. Start in the admin offices, up the drive. If anyone wrote down what happened here, it's in there.", 'calm briefing, a trace of dread', 'Lantern team, you are inside the walls and the light is going. Blackwood kept files on what happened here. Start in the admin offices and follow them.'),
+  L('okafor_brief', 'OKAFOR', "Blackwood Hill. I worked these wards before the fall - I know where they kept the paper. Start in the admin offices, up the drive. If anyone wrote down what happened here, it's in there.", 'calm briefing, a trace of dread', 'Lantern team, you are inside the walls and it is full dark. Blackwood kept files on what happened here. Start in the admin offices and follow them.'),
   L('vance_brief', 'VANCE', "Quiet for a madhouse. I don't like quiet. Every one of them we drop pays - spend it on doors and guns.", 'dry, wary'),
   L('vance_boards', 'VANCE', "They're pulling the boards off the windows. Hold E at one to nail it back - and it pays.", 'quick, practical', 'They are pulling the boards off the windows - that is how they got into the wards the first time. Hold E at a window to nail them back.'),
 
@@ -86,7 +86,6 @@ export const ASY_LINES: readonly AsyLine[] = [
   L('okafor_file_ward', 'OKAFOR', "Ellie Crane. Sixteen. Mourne moved her upstairs, to the night nurses' floor. There's a fire escape from the yard - their floor is up there.", 'gentle, then focused'),
   L('okafor_file_nurses', 'OKAFOR', "Her day book. When the generators die, Ward Nine's door seals itself. We need the boiler house running before we can get in there.", 'reading quickly, alarmed'),
   L('okafor_file_nine', 'OKAFOR', "Lamps out at sundown. I am going in to settle them. That's the last thing she wrote.", 'quiet, shaken'),
-  L('vance_sun', 'VANCE', "And there goes the sun. Whatever we haven't done by dark, we do in the dark.", 'grim, matter-of-fact'),
   L('byrne_tape', 'BYRNE', "Byrne. Forty days. She walks at lights-out, same round, every night. I lit the furnace for the dead and it won't stop smoking. The damper's chained - the key's on her ring. God help whoever finds this.", 'whispering into a tape recorder, terrified, exhausted'),
   L('okafor_file_morgue', 'OKAFOR', "Her keys open the damper. Put her to rest, take the keys, shut the flue - and the black fog stops for good.", 'resolute'),
 
@@ -96,6 +95,8 @@ export const ASY_LINES: readonly AsyLine[] = [
   L('vance_dir_power', 'VANCE', 'Boiler house is out past the east ward. Get those generators turning and hold the yard while they spin up.', 'brisk, focused'),
   L('okafor_dir_nine', 'OKAFOR', "Ward Nine is the top floor of the east wing - the fire escape on the yard side. The door should open now.", 'urgent, hopeful'),
   L('vance_dir_morgue', 'VANCE', "Before we knock on her door - the morgue. Back walk, east end. Byrne left something.", 'low, careful'),
+  L('okafor_dir_lanterns', 'OKAFOR', "Lights-out here was the chapel bell, and the sisters never rang it until the three vigil lanterns were burning. They burn on the dead - kill those things close to a lantern. Light all three.", 'thoughtful, then decisive'),
+  L('okafor_dir_bell', 'OKAFOR', "All three are burning. The bell rope is in the chapel, by the altar. Ring it when you're ready - she'll answer it.", 'quiet, steeling herself'),
   L('vance_dir_matron', 'VANCE', "Isolation block, back of the grounds. She'll be on her round. Head shots.", 'hard, focused'),
   L('okafor_dir_damper', 'OKAFOR', "The damper is at the foot of the stack, behind the morgue. Her keys - turn the wheel.", 'urgent'),
   L('okafor_lawn', 'OKAFOR', "That's everything. The lawn - radio the bird.", 'relieved, firm', 'Both contracts complete. Move to THE LAWN and radio the bird.'),
@@ -106,6 +107,13 @@ export const ASY_LINES: readonly AsyLine[] = [
   L('vance_gens_out', 'VANCE', "You've left the generators - get back in that yard!", 'sharp', "You're outside the relay zone. Get back in there."),
   L('okafor_power', 'OKAFOR', "Power's back. The perk machines are awake, and Ward Nine's door just let go.", 'pleased, quick', 'Relay restored. Nice work.'),
   L('vance_locked', 'VANCE', "Door's mag-locked. No power, no Ward Nine.", 'flat, annoyed'),
+
+  // ---- the vigil lanterns and the bell ----
+  L('maeve_lanterns', 'MAEVE', 'The vigil lanterns. We lit one for every soul that left this hill. Give them something to burn, child.', 'gentle, knowing'),
+  L('vance_lantern_one', 'VANCE', "That's one burning. Don't ask me how.", 'dry, uneasy'),
+  L('okafor_lantern_two', 'OKAFOR', 'Two lanterns lit. One more.', 'focused, encouraging'),
+  L('okafor_bell_locked', 'OKAFOR', "The rope's tied off. The sisters never rang it before the lanterns were lit.", 'matter-of-fact'),
+  L('vance_bell', 'VANCE', 'Well. Everyone heard that.', 'dry, tense, readying her rifle'),
 
   // ---- the night and the Matron ----
   L('matron_lightsout', 'MATRON', 'Lights out, my dears. Into your beds, now. Matron is coming round.', 'tender, slow, a lullaby voice through crackling loudspeakers'),

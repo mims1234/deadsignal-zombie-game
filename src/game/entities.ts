@@ -46,7 +46,7 @@ export class CrateRuntime {
     this.reelFaces = reelFor(relics);
     this.cost = def.cost ?? 0;
     this.mark = createBoxMark();
-    this.mark.position.set(def.x, 1.55, def.z);
+    this.mark.position.set(def.x, 1.55 + (def.y ?? 0), def.z);
   }
 
   reset(): void {
@@ -79,7 +79,7 @@ export class CrateRuntime {
       g.add(m);
       this.faces.push(m);
     }
-    g.position.set(this.def.x, 0.7, this.def.z);
+    g.position.set(this.def.x, 0.7 + (this.def.y ?? 0), this.def.z);
     parent.add(g);
     return g;
   }
@@ -93,7 +93,7 @@ export class CrateRuntime {
   spin(prize: BoxPrize, parent: THREE.Object3D, mats: MaterialLib): void {
     this.reel ??= this.buildReel(parent, mats);
     this.reel.visible = true;
-    this.reel.position.y = 0.7;
+    this.reel.position.y = 0.7 + (this.def.y ?? 0);
     this.reel.scale.setScalar(1);
     this.prize = prize;
     this.phase = 'spin';
@@ -109,7 +109,7 @@ export class CrateRuntime {
     if (this.phase === 'gone' && this.cost > 0 && (this.goneFor += dt) >= MYSTERY_BOX.paidRearm) return 'rearm';
     if (this.phase === 'closed') {
       if (!this.mark.visible) return null;
-      this.mark.position.y = 1.55 + Math.sin(time * 2.2 + this.def.x) * 0.08;
+      this.mark.position.y = 1.55 + (this.def.y ?? 0) + Math.sin(time * 2.2 + this.def.x) * 0.08;
       return null;
     }
     if (!reel || this.phase === 'gone') {
@@ -126,7 +126,7 @@ export class CrateRuntime {
     reel.rotation.y += dt * (this.phase === 'spin' ? 5 : 1.4);
     if (this.phase === 'spin') {
       const k = Math.min(1, this.t / MYSTERY_BOX.spin);
-      reel.position.y = 0.7 + 0.8 * (1 - (1 - k) * (1 - k));
+      reel.position.y = 0.7 + (this.def.y ?? 0) + 0.8 * (1 - (1 - k) * (1 - k));
       if (this.t >= MYSTERY_BOX.spin) {
         this.show(Math.max(0, this.reelFaces.findIndex((p) => prizeKey(p) === prizeKey(this.prize!))));
         this.phase = 'offer';
@@ -142,7 +142,7 @@ export class CrateRuntime {
       return null;
     }
     // offer: the prize bobs over the open box until it is taken or the time runs out
-    reel.position.y = 1.5 + Math.sin(time * 2.6) * 0.06;
+    reel.position.y = 1.5 + (this.def.y ?? 0) + Math.sin(time * 2.6) * 0.06;
     if (this.t >= MYSTERY_BOX.offer) {
       this.phase = 'gone';
       this.t = 0;
@@ -203,7 +203,7 @@ export class Entities {
     ctx.worldRoot.add(this.root);
     for (const def of ctx.level.data.crates) {
       const model = createLootCrate(def.region, ctx.mats);
-      model.root.position.set(def.x, 0, def.z);
+      model.root.position.set(def.x, def.y ?? 0, def.z); // an upper floor's box stands on that floor
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);
       const c = new CrateRuntime(def, model, MYSTERY_BOX.relicMaps.includes(ctx.level.data.id));

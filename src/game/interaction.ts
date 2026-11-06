@@ -191,6 +191,7 @@ export class Interaction {
       if (c.phase === 'gone') continue;
       const d = Math.hypot(c.def.x - px, c.def.z - pz);
       if (d > PLAYER.interactReach + (c.phase === 'offer' ? 0.6 : 0) || !facing(c.def.x, c.def.z, d)) continue;
+      if (Math.abs((c.def.y ?? 0) - ctx.player.y) > 1.8) continue; // a box on the floor above or below
       if (c.phase === 'closed') {
         const afford = !c.cost || ctx.session.inv.cash >= c.cost;
         targets.push({

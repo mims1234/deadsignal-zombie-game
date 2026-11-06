@@ -1,13 +1,13 @@
 /**
- * The co-op session simulation on the Asylum (and the power-ups on every map): the time of day and the Matron's
- * hours, the patient files, the buyable doors and the power, the boarded windows and the power-up drops - everything
+ * The co-op session simulation on the Asylum (and the power-ups on every map): the night, the vigil lanterns, the
+ * chapel bell and the Matron's waking, the upper floors' sleepers, the patient files, the buyable doors and the power, the boarded windows and the power-up drops - everything
  * the simulation owns for the squad and reports in its snapshot.
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { BARRICADE } from '../src/asylum/barricadeConfig';
 import { ASYLUM_DOORS, POWER_LEVER } from '../src/asylum/loopData';
-import { NIGHTFALL, PHASE_TUNING, RECORDS } from '../src/asylum/nightConfig';
+import { BELL, LANTERNS, RECORDS, TUNING, UPSTAIRS } from '../src/asylum/nightConfig';
 import { ASYLUM } from '../src/world/layout/asylum';
 import { MATRON_DEF } from '../src/enemies/matron';
 import { killReward } from '../src/logic/economy';
@@ -26,13 +26,13 @@ function setup(map: MapId = 'asylum', kind: SessionKind = 'mission') {
   sim.players([{ id: 'p1', name: 'One' }, { id: 'p2', name: 'Two' }]);
   sim.begin();
   const st = sim.level.data.playerStart;
-  const where: Record<string, { x: number; z: number; st: number }> = {
+  const where: Record<string, { x: number; z: number; st: number; y?: number }> = {
     p1: { x: st.x, z: st.z, st: LIFE.up },
     p2: { x: st.x + 1.5, z: st.z, st: LIFE.up },
   };
   const report = (id: string): void => {
     const w = where[id]!;
-    sim.message(id, { k: 'p', x: w.x, y: 0, z: w.z, yaw: 0, up: w.st === LIFE.up, st: w.st, hp: 100 }, false);
+    sim.message(id, { k: 'p', x: w.x, y: w.y ?? 0, z: w.z, yaw: 0, up: w.st === LIFE.up, st: w.st, hp: 100 }, false);
   };
   const run = (seconds: number): void => {
     for (let i = 0; i < Math.max(1, Math.round(seconds * 30)); i++) {
@@ -41,8 +41,8 @@ function setup(map: MapId = 'asylum', kind: SessionKind = 'mission') {
     }
   };
   /** Put a player somewhere and let the simulation hear it. */
-  const at = (id: string, x: number, z: number): void => {
-    where[id] = { x, z, st: LIFE.up };
+  const at = (id: string, x: number, z: number, y = 0): void => {
+    where[id] = { x, z, st: LIFE.up, y };
     report(id);
   };
   /** The next snapshot (a few short ticks until one goes out). */
@@ -55,25 +55,24 @@ function setup(map: MapId = 'asylum', kind: SessionKind = 'mission') {
   return { sim, out, where, run, at, snap, sent };
 }
 
-describe('co-op simulation on the Asylum: day and night', () => {
-  it('by day the Matron is not on the hill and the infected are sleepy; at nightfall she wakes', () => {
+describe('co-op simulation on the Asylum: the night, the lanterns and the bell', () => {
+  it('is night from the start; the Matron sleeps until the bell, however long it takes', () => {
     const { sim, run, snap } = setup();
     run(2);
     expect(sim.zombies.boss).toBeNull();
     expect(sim.debug.hunt.status).toBe('available');
-    expect(sim.zombies.phaseTuning.speed).toBeCloseTo(PHASE_TUNING.day.speed);
+    expect(sim.zombies.phaseTuning.speed).toBeCloseTo(TUNING.restless.speed);
     expect(snap().ms![1]).toBe(0); // the hunt is reported closed
-    // however long the afternoon lasts, she does not walk until the story brings the night
-    sim.debug.setElapsed(NIGHTFALL + 600);
+    sim.debug.setElapsed(60 * 60);
     run(0.5);
     expect(sim.zombies.boss).toBeNull();
-    sim.debug.nightNow();
+    sim.debug.wakeNow();
     run(0.5);
     const boss = sim.zombies.boss!;
     expect(boss?.alive).toBe(true);
     expect(boss.def).toBe(MATRON_DEF);
     expect(sim.debug.hunt.status).toBe('active');
-    expect(sim.zombies.phaseTuning.speed).toBeCloseTo(PHASE_TUNING.night.speed);
+    expect(sim.zombies.phaseTuning.speed).toBeCloseTo(TUNING.awake.speed);
     expect(snap().ms![1]).toBe(1);
   });
 
@@ -85,18 +84,33 @@ describe('co-op simulation on the Asylum: day and night', () => {
     expect(sim.finished).toBe(false);
   });
 
-  it("the sun goes when Ward Nine's register is read; the damper needs the Matron at rest", () => {
+  it('a kill beside a vigil lantern feeds it, for everyone; the bell only rings once all three burn', () => {
     const { sim, run, at, snap } = setup();
     run(0.5);
-    expect(sim.debug.story().nightAt).toBeNull();
-    // Ward Nine's register (file 3) - taken by whoever stands at it
-    const nine = RECORDS.spots[3]!;
-    at('p1', nine.x, nine.z);
-    sim.message('p1', { k: 'rec', i: 3 }, false);
-    run(0.2);
-    expect(sim.debug.story().nightAt).not.toBeNull();
+    const cem = LANTERNS.spots[0]!;
+    const z = sim.zombies.spawn('shambler', cem.x + 2, cem.z, new Rng(3));
+    sim.zombies.onKill(z, false);
+    expect(sim.debug.story().souls[0]).toBe(1);
+    expect((snap() as { an?: number[] }).an!.slice(2)).toEqual([1, 0, 0]);
+    // far from every lantern: nothing
+    const far = sim.zombies.spawn('shambler', 0, 38, new Rng(4));
+    sim.zombies.onKill(far, false);
+    expect(sim.debug.story().souls).toEqual([1, 0, 0]);
+    // the bell: tied off until they burn
+    at('p1', BELL.x, BELL.z + 0.6);
+    sim.message('p1', { k: 'abell' }, false);
+    expect(sim.debug.story().wakeAt).toBeNull();
+    sim.debug.lightLanterns();
+    sim.message('p1', { k: 'abell' }, false);
+    expect(sim.debug.story().wakeAt).not.toBeNull();
+    run(0.5);
+    expect(sim.debug.hunt.status).toBe('active');
     expect((snap() as { an?: number[] }).an![0]).toBeGreaterThanOrEqual(0);
-    // the damper: chained until she is at rest
+  });
+
+  it('the damper needs the Matron at rest', () => {
+    const { sim, run, at, snap } = setup();
+    run(0.5);
     at('p1', ASYLUM.damper.x, ASYLUM.damper.z + 1);
     sim.message('p1', { k: 'damper' }, false);
     expect(sim.debug.story().fogStopAt).toBeNull();
@@ -104,6 +118,22 @@ describe('co-op simulation on the Asylum: day and night', () => {
     sim.message('p1', { k: 'damper' }, false);
     expect(sim.debug.story().fogStopAt).not.toBeNull();
     expect((snap() as { an?: number[] }).an![1]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('the upper floors have sleepers from the start, and more climb in while someone is up there', () => {
+    const { sim, run, at } = setup();
+    run(0.5);
+    const upstairs = (): number => sim.zombies.zombies.filter((q) => q.alive && (q.y ?? 0) > UPSTAIRS.y - 1).length;
+    expect(upstairs()).toBeGreaterThanOrEqual(8);
+    for (const q of [...sim.zombies.zombies]) if ((q.y ?? 0) > UPSTAIRS.y - 1) sim.zombies.remove(q);
+    expect(upstairs()).toBe(0);
+    // nobody up there: nobody comes
+    run(8);
+    expect(upstairs()).toBe(0);
+    // somebody in Ward Nine: they climb in through the far windows
+    at('p1', 22, -2, UPSTAIRS.y);
+    run(14);
+    expect(upstairs()).toBeGreaterThanOrEqual(2);
   });
 });
 

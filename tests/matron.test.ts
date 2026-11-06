@@ -5,7 +5,7 @@ import { MATRON, MATRON_DEF, shriekAlert } from '../src/enemies/matron';
 import type { NetZombie, Zombie } from '../src/enemies/zombie';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { Rng } from '../src/logic/rng';
-import { NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
+import { PHASE_TUNING } from '../src/asylum/nightConfig';
 import { createNullRigFactory } from '../src/sim/nullRig';
 import { LIFE, SessionSim, type SessionDifficulty } from '../src/sim/serverHost';
 import type { MapId } from '../src/world/layout/data';
@@ -22,10 +22,9 @@ function setup(map: MapId = 'asylum', difficulty?: SessionDifficulty) {
       sim.tick(1 / 30);
     }
   };
-  // she only walks at night: start the Asylum's run at nightfall (one tick wakes her at her post)
+  // she sleeps until the chapel bell: ring it (one tick wakes her at her post)
   if (map === 'asylum') {
-    sim.debug.setElapsed(NIGHTFALL);
-    sim.debug.nightNow();
+    sim.debug.wakeNow();
     run(1 / 30);
   }
   return { sim, where, run };

@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.349",
+      "date": "2026-11-06",
+      "title": "Asylum: the vigil lanterns, the bell, and a hospital worth searching",
+      "notes": [
+        "Blackwood Hill is night from the first second now - no afternoon, no sunset. The dawn still comes with the helicopter.",
+        "You choose when the Matron wakes. Three vigil lanterns - in the cemetery, upstairs in Ward Nine and at the isolation block door - burn on the infected you kill beside them. Each lit lantern pays $750 and fills every gun. With all three burning, pull the bell rope by the chapel altar: lights-out, and she starts her round. The story now has 11 steps.",
+        "The upper floors fight back: patients sleep in the beds up there from the start, and more climb in through the windows while anyone is upstairs. Each upper floor also has a supply box, and Ward Nine holds one of the lanterns.",
+        "The rooms are furnished: iron beds, bedside cabinets, chairs, wheelchairs, filing cabinets, bookshelves, medicine cabinets, a hydrotherapy room, a dispensary, nurse's trolleys, the chapel's cross, candles and lectern, padded mattresses in isolation, and a boiler in the boiler house. Supply boxes are hidden in rooms across the hill.",
+        "Freed survivors who don't carry a gun now walk with their hands down instead of holding them up.",
+        "Fixed the ward cots that stuck into the outer walls.",
+        "Seven new voiced lines for the lanterns and the bell."
+      ]
+    },
+    {
       "version": "0.4.348",
       "date": "2026-11-06",
       "title": "Asylum: the upper floors stop flickering",

@@ -1,16 +1,16 @@
 /**
- * Blackwood Hill by day and by night: every number the Asylum's time of day, its story and its black fog use. Pure
- * data (no THREE, no DOM): the browser game and the co-op simulation read the same values.
+ * Blackwood Hill at night: every number the Asylum's hour, its story and its black fog use. Pure data (no THREE, no
+ * DOM): the browser game and the co-op simulation read the same values.
  *
- * The run has no deadline. It is a story in steps (`story.ts`): the light holds at late afternoon until Ward Nine's
- * register is read, then the sun goes (DUSK, 40 s) and the Matron walks (NIGHT). The black fog leaves the crematorium
- * in waves (`FOG`) until someone shuts its damper. Calling the helicopter starts the DAWN: the sky pales over the
- * extraction countdown and the bird lands at first light.
+ * The run has no deadline and no daylight: it is night from the first second (`story.ts`). It is a story in steps: the
+ * three vigil lanterns burn on the infected killed beside them (`LANTERNS`), and once they burn the chapel bell can be
+ * rung (`BELL`): lights-out, and the Matron wakes. The black fog leaves the crematorium in waves (`FOG`) until someone
+ * shuts its damper. Calling the helicopter starts the DAWN: the sky pales over the extraction countdown and the bird
+ * lands at first light.
  */
 
-/** The cycle, in seconds of mission time. */
+/** The cycle `logic/timeOfDay.ts` runs on (the Asylum's clock starts at `NIGHTFALL`: there is no day any more). */
 export const ASYLUM_CYCLE = {
-  /** Late afternoon under an overcast sky: the infected are sluggish and few. */
   dayEnd: 300,
   /** The sun goes down behind the pines and the lamps come on. */
   duskLength: 40,
@@ -18,7 +18,7 @@ export const ASYLUM_CYCLE = {
   dawnLength: 60,
 };
 
-/** The elapsed second at which night falls (the Matron wakes, the hunt opens). */
+/** Where the night starts on the cycle's clock (the Asylum's run starts there). */
 export const NIGHTFALL = ASYLUM_CYCLE.dayEnd + ASYLUM_CYCLE.duskLength;
 
 /**
@@ -81,14 +81,50 @@ export interface PhaseTuning {
 }
 
 export const PHASE_TUNING: { day: PhaseTuning; night: PhaseTuning } = {
-  /** Slower in the grey daylight: a few fewer, short-sighted, softer hits (the afternoon is long: there is work to do). */
+  /** Toward the dawn's light (the dawn blends from the night toward this). */
   day: { hp: 1, damage: 0.8, speed: 0.85, sight: 0.7, count: 0.85 },
   /** After dark: more of them, faster, sharper-eyed, harder hitting. */
   night: { hp: 1, damage: 1.15, speed: 1.12, sight: 1.25, count: 1.3 },
 };
 
+/** The infected through the night: restless while the Matron sleeps, the full night once the bell has rung. */
+export const TUNING: { restless: PhaseTuning; awake: PhaseTuning } = {
+  restless: { hp: 1, damage: 0.95, speed: 1, sight: 1.05, count: 1.05 },
+  awake: PHASE_TUNING.night,
+};
+
 /** How far the light has come back by first light (0 = full night tuning, 1 = full day). */
 export const DAWN_RELIEF = 0.5;
+
+/**
+ * The vigil lanterns: iron lanterns the sisters lit for every soul that left the hill. Each burns on the infected
+ * killed within `radius` of it (on its floor), by anyone (the squad's kills too); `souls` lights it. Each lit pays
+ * `cash` and fills every gun. All three lit: the chapel bell can be rung.
+ */
+export const LANTERNS = {
+  souls: 12,
+  radius: 9,
+  cash: 750,
+  spots: [
+    { id: 'cemetery', x: -41.25, y: 0, z: -7.8, place: 'the cemetery' },
+    { id: 'nine', x: 22, y: 5, z: -5.6, place: 'Ward Nine, upstairs in the east ward' },
+    { id: 'isolation', x: -6.5, y: 0, z: -27.8, place: 'the isolation block door' },
+  ] as readonly { id: string; x: number; y: number; z: number; place: string }[],
+};
+
+/** The chapel bell's rope, by the altar: ring it (hold E) and the Matron wakes. */
+export const BELL = { x: -25, z: -40.2, reach: 2.4, hold: 2.5 };
+
+/**
+ * The upper floors are the sundown cases' own: some sleep up there from the start, and while anyone is up there more
+ * climb in through the windows (one every `every` seconds while fewer than `cap` are up on that floor).
+ */
+export const UPSTAIRS_RUSH = {
+  every: 6,
+  cap: 6,
+  /** Runners among them (the rest shamble). */
+  runners: 0.35,
+};
 
 /** The patient files (RECOVER THE RECORDS). Positions are on the Asylum layout (`world/layout/asylum.ts`). */
 export interface RecordSpot {

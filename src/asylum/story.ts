@@ -3,25 +3,28 @@
  * simulation (`sim/serverHost.ts`) read the same rules, so every screen agrees on what to do next, on the hour and on
  * the black fog from a handful of shared facts.
  *
- *   1 THE ADMIN OFFICES   the Lantern Program memo (front grounds)
- *   2 THE WEST WARD       Ellie Crane's admission card (a west ward cell)
- *   3 THE NURSES' FLOOR   the Matron's day book (upstairs in the west ward, up the fire escape in the yard)
- *   4 THE POWER           start the generators in the boiler house yard and hold while they spin up
- *   5 WARD NINE           the night register (upstairs in the east ward; its door needs the power). The sun goes.
- *   6 THE MORGUE          Orderly Byrne's last log (the back walk)
- *   7 THE ISOLATION BLOCK the Matron walks after dark: put her to rest (her keys open the damper)
- *   8 THE FURNACE         shut the crematorium's damper: the black fog stops for good
- *   9 FIRST LIGHT         call the bird from the lawn and hold until dawn
+ *    1 THE ADMIN OFFICES   the Lantern Program memo (front grounds)
+ *    2 THE WEST WARD       Ellie Crane's admission card (a west ward cell)
+ *    3 THE NURSES' FLOOR   the Matron's day book (upstairs in the west ward, up the fire escape in the yard)
+ *    4 THE POWER           start the generators in the boiler house yard and hold while they spin up
+ *    5 WARD NINE           the night register (upstairs in the east ward; its door needs the power)
+ *    6 THE MORGUE          Orderly Byrne's last log (the back walk)
+ *    7 THE VIGIL LANTERNS  three lanterns (the cemetery, Ward Nine, the isolation block's door) burn on the infected
+ *                          killed beside them; any time, in any order (`LANTERNS`)
+ *    8 THE CHAPEL BELL     ring lights-out when you are ready: the Matron wakes and starts her round
+ *    9 THE MATRON          put her to rest (her keys open the damper)
+ *   10 THE FURNACE         shut the crematorium's damper: the black fog stops for good
+ *   11 FIRST LIGHT         call the bird from the lawn and hold until dawn
  *
- * There is no deadline. The light holds at late afternoon until Ward Nine's register is read (`nightAt`); then dusk
- * and night follow on the usual cycle (`logic/timeOfDay.ts`, fed a shifted clock). The black fog comes in waves from
- * the stack (`FOG`) until the damper is shut (`fogStopAt`).
+ * It is night on the hill from the first second (`asylumHour`); the helicopter's call brings the dawn. There is no
+ * deadline. The infected are restless until the bell (`TUNING.restless`), then the full night (`TUNING.awake`). The
+ * black fog comes in waves from the stack (`FOG`) until the damper is shut (`fogStopAt`).
  */
-import { timeOfDay, type TimeOfDay } from '../logic/timeOfDay';
-import { ASYLUM_CYCLE, FOG } from './nightConfig';
+import { phaseTuning, timeOfDay, type PhaseTuning, type TimeOfDay } from '../logic/timeOfDay';
+import { FOG, LANTERNS, NIGHTFALL, TUNING } from './nightConfig';
 
-export type StepId = 'office' | 'westWard' | 'nurses' | 'power' | 'nine' | 'morgue' | 'matron' | 'furnace' | 'dawn';
-export const STEPS: readonly StepId[] = ['office', 'westWard', 'nurses', 'power', 'nine', 'morgue', 'matron', 'furnace', 'dawn'];
+export type StepId = 'office' | 'westWard' | 'nurses' | 'power' | 'nine' | 'morgue' | 'lanterns' | 'bell' | 'matron' | 'furnace' | 'dawn';
+export const STEPS: readonly StepId[] = ['office', 'westWard', 'nurses', 'power', 'nine', 'morgue', 'lanterns', 'bell', 'matron', 'furnace', 'dawn'];
 
 /** The patient files, by name (indices into `RECORDS.spots`). */
 export const FILE = { admin: 0, ward: 1, nurses: 2, nine: 3, morgue: 4 } as const;
@@ -32,23 +35,61 @@ export interface StoryFacts {
   records: readonly boolean[];
   /** The generators are running (RESTORE THE POWER complete). */
   power: boolean;
+  /** What each vigil lantern has burned (in `LANTERNS.spots` order). */
+  souls: readonly number[];
+  /** The chapel bell has been rung (the Matron is awake). */
+  bell: boolean;
   /** The Matron is at rest. */
   matron: boolean;
   /** The furnace damper is shut. */
   damper: boolean;
 }
 
+/** A lantern is burning. */
+export function lanternLit(souls: readonly number[], i: number): boolean {
+  return (souls[i] ?? 0) >= LANTERNS.souls;
+}
+
+/** How many lanterns burn. */
+export function lanternsLit(souls: readonly number[]): number {
+  let n = 0;
+  for (let i = 0; i < LANTERNS.spots.length; i++) if (lanternLit(souls, i)) n++;
+  return n;
+}
+
+/**
+ * The lantern a kill at (x, y, z) feeds: the nearest one still unlit within `LANTERNS.radius` on the same floor, or -1.
+ * (The caller adds the soul: `souls[i]++`.)
+ */
+export function lanternFor(souls: readonly number[], x: number, y: number, z: number): number {
+  let best = -1;
+  let bestD = LANTERNS.radius;
+  for (let i = 0; i < LANTERNS.spots.length; i++) {
+    if (lanternLit(souls, i)) continue;
+    const s = LANTERNS.spots[i]!;
+    if (Math.abs((Number.isFinite(y) ? y : 0) - s.y) > 2.5) continue;
+    const d = Math.hypot(s.x - x, s.z - z);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
 /** The first step not done yet (index into `STEPS`; `STEPS.length - 1` once only the dawn is left). */
 export function storyStep(f: StoryFacts): number {
   const r = (i: number): boolean => !!f.records[i];
-  const done = [r(FILE.admin), r(FILE.ward), r(FILE.nurses), f.power, r(FILE.nine), r(FILE.morgue), f.matron, f.damper];
+  const lit = lanternsLit(f.souls) >= LANTERNS.spots.length;
+  // the bell (and the lanterns before it) are done once she is awake, or at rest
+  const done = [r(FILE.admin), r(FILE.ward), r(FILE.nurses), f.power, r(FILE.nine), r(FILE.morgue), lit || f.bell || f.matron, f.bell || f.matron, f.matron, f.damper];
   const i = done.findIndex((d) => !d);
   return i < 0 ? STEPS.length - 1 : i;
 }
 
-/** Ward Nine's register read: the moment the sun starts going down. */
-export function nightTrigger(f: StoryFacts): boolean {
-  return !!f.records[FILE.nine];
+/** The bell can be rung: every lantern burns and she is still asleep. */
+export function bellReady(f: Pick<StoryFacts, 'souls' | 'bell' | 'matron'>): boolean {
+  return !f.bell && !f.matron && lanternsLit(f.souls) >= LANTERNS.spots.length;
 }
 
 /** The damper can be turned once the Matron is at rest (her keys). */
@@ -56,24 +97,22 @@ export function damperOpen(f: Pick<StoryFacts, 'matron' | 'damper'>): boolean {
   return f.matron && !f.damper;
 }
 
-/** The light holds here (seconds into the day cycle) until the night is triggered: a low sun over the pines. */
-const DAY_HOLD = ASYLUM_CYCLE.dayEnd * 0.82;
-
-/**
- * The cycle's clock for this moment: the held afternoon, or (after `nightAt`) dusk, night and dawn as the cycle runs
- * them. What the hunt gate and the infected's tuning follow.
- */
-export function cycleClock(elapsed: number, nightAt: number | null): number {
-  const e = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
-  if (nightAt === null || !Number.isFinite(nightAt)) return Math.min(e, DAY_HOLD);
-  return ASYLUM_CYCLE.dayEnd + Math.max(0, e - nightAt);
+/** The hunt's clock: closed until the bell (`gateHunt` opens it from `NIGHTFALL`). */
+export function huntClock(wakeAt: number | null): number {
+  return wakeAt !== null && Number.isFinite(wakeAt) ? NIGHTFALL : 0;
 }
 
-/** The hour on Blackwood Hill (`timeOfDay` on the story's clock; the call time shifted the same way). */
-export function asylumHour(elapsed: number, nightAt: number | null, calledAt: number | null): TimeOfDay {
-  const v = cycleClock(elapsed, nightAt);
-  const called = calledAt !== null && nightAt !== null && Number.isFinite(calledAt) ? ASYLUM_CYCLE.dayEnd + Math.max(0, calledAt - nightAt) : null;
-  return timeOfDay(v, called);
+/** The hour on Blackwood Hill: night from the start; the helicopter's call brings the dawn. */
+export function asylumHour(elapsed: number, calledAt: number | null): TimeOfDay {
+  const e = Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
+  const called = calledAt !== null && Number.isFinite(calledAt) ? NIGHTFALL + Math.max(0, calledAt) : null;
+  return timeOfDay(NIGHTFALL + e, called);
+}
+
+/** How the infected are now: restless until the bell, the full night after it, easing as the dawn comes. */
+export function asylumTuning(tod: TimeOfDay, awake: boolean): PhaseTuning {
+  if (tod.phase === 'dawn') return phaseTuning(tod);
+  return awake ? TUNING.awake : TUNING.restless;
 }
 
 // ---------------------------------------------------------------------------------------------

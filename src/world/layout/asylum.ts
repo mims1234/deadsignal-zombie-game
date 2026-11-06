@@ -15,11 +15,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { buildZoneWalls } from '../../asylum/zoneWalls';
 import { helipad, quarantineGate, spire, transmitterSite, type SpireHandle, type TransmitterHandle } from '../landmarks';
 import { bench, corpse, crateGroup, debris, deadTree, generator, barrelGroup, streetLamp, vehicle } from '../props';
-import { ceilingLight, emergencyLight, gurney, labBench, lockerRow, officeDesk } from '../interiors';
+import { ceilingLight, emergencyLight, gurney, labBench, lockerRow, officeDesk, pipeRun, storeShelf } from '../interiors';
+import { bathtub, bedside, bookshelf, candles, candleStand, chair, filingCabinets, floorMattress, ironBed, lanternPost, lectern, medicineCabinet, papers, trolley, wallCross, wheelchair } from '../asylumFurniture';
 import { addBox, building, groundRect, perimeterWall, wall, wallDecal, type Opening } from '../structures';
 import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
-import { UPSTAIRS } from '../../asylum/nightConfig';
+import { BELL, LANTERNS, UPSTAIRS } from '../../asylum/nightConfig';
 import { straightStairs } from './storeys';
 import { HALF_PI, type Ctx } from './util';
 
@@ -46,6 +47,8 @@ export interface AsylumHandles {
   areas: { nurses: number; nine: number };
   /** The furnace damper: the wheel turns when it is shut. */
   damper: { root: THREE.Group; wheel: THREE.Object3D; x: number; z: number };
+  /** The chapel's bell rope: it swings when the bell is rung. */
+  bell: THREE.Object3D;
 }
 
 const DOOR = 1.6;
@@ -182,13 +185,52 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string, boards: { i
     for (const side of ['L', 'R'] as const) {
       const vestibule = (side === 'L') === (inner === 'W') ? k === 5 || k === 2 : k === 1;
       if (vestibule) continue;
-      if ((k + (side === 'L' ? 0 : 1)) % 3 === 0) gurney(b, { x: wallX(side), z: mid(k) - 1.3, rot: 0, covered: k % 2 === 0 });
+      if ((k + (side === 'L' ? 0 : 1)) % 3 === 0) gurney(b, { x: side === 'L' ? ix0 + 1.05 : ix1 - 1.05, z: mid(k) - 1.3, rot: 0, covered: k % 2 === 0 }); // 2 m long: clear of the wall
       else if (k === 3) lockerRow(b, { x: wallX(side) + (side === 'L' ? 0.1 : -0.1), z: mid(k) + 1.2, rot: side === 'L' ? HALF_PI : -HALF_PI, count: 3 });
       if (k % 2 === 1) ceilingLight(b, { x: cellX(side), z: mid(k), y: H - 0.05, kind: 'panel', mode: k === 1 ? 'flicker' : 'steady', color: 0xe6efe0, intensity: 22 });
     }
   }
   wallDecal(b, 'mold', cx - 1.5, 2.2, mid(1), 2.4, 1.6, HALF_PI);
   wallDecal(b, 'grime', cx + 1.5, 1.6, mid(4), 3, 1.4, -HALF_PI);
+
+  // the rest of each cell: an iron bed where there is no cot, a bedside cabinet, a chair by the door, now and then a
+  // wheelchair or a dropped file; the west's hydrotherapy room and the east's dispensary. Nothing stands in the band
+  // from a cell's window to its door (z = mid +- 0.85): the infected climb in through those windows.
+  for (let k = 0; k < 6; k++) {
+    for (const side of ['L', 'R'] as const) {
+      const vestibule = (side === 'L') === (inner === 'W') ? k === 5 || k === 2 : k === 1;
+      if (vestibule) continue;
+      const m = mid(k);
+      const sg = side === 'L' ? 1 : -1; // inward from the outside wall
+      const e = side === 'L' ? ix0 : ix1; // the outside wall's inner face
+      const cw = side === 'L' ? corridorL - 0.11 : corridorR + 0.11; // the corridor wall's face
+      const cot = (k + (side === 'L' ? 0 : 1)) % 3 === 0;
+      const lockers = !cot && k === 3;
+      const h = (k * 7 + (side === 'L' ? 1 : 4) + (inner === 'E' ? 0 : 5)) % 6;
+      const tub = inner === 'E' && side === 'L' && k === 5;
+      const dispensary = inner === 'W' && side === 'R' && k === 0;
+      const box = (inner === 'E' && side === 'L' && k === 0) || (inner === 'W' && side === 'L' && k === 4);
+      if (tub) {
+        bathtub(b, { x: e + sg * 0.95, z: m - 1.6, rot: 0 });
+        bathtub(b, { x: e + sg * 0.95, z: m + 1.6, rot: 0 });
+        trolley(b, { x: cw - sg * 0.6, z: m + 1.9, rot: HALF_PI });
+        continue;
+      }
+      if (dispensary) {
+        medicineCabinet(b, { x: e + sg * 1.6, z: iz0 + 0.22, rot: 0 });
+        medicineCabinet(b, { x: e + sg * 2.75, z: iz0 + 0.22, rot: 0 });
+        trolley(b, { x: e + sg * 3.3, z: m + 2.15, rot: 0 });
+        papers(b, { x: e + sg * 2.4, z: m - 0.2, n: 8, spread: 1 });
+        continue;
+      }
+      if (!cot && !lockers) ironBed(b, { x: e + sg * 1.05, z: m - 1.55, rot: side === 'L' ? 0 : Math.PI, seed: k * 3 + (side === 'L' ? 0 : 1) });
+      if (!lockers) bedside(b, { x: e + sg * 0.3, z: m + 2.1, rot: side === 'L' ? HALF_PI : -HALF_PI });
+      if (box) c.d.crate(cw - sg * 0.75, m + 1.75, 0.2, 'medium');
+      else chair(b, { x: cw - sg * 0.55, z: m + 1.9, rot: side === 'L' ? -HALF_PI : HALF_PI, tipped: h === 2 });
+      if (h === 1 || h === 4) wheelchair(b, { x: cw - sg * 0.6, z: m - 1.9, rot: side === 'L' ? -HALF_PI + 0.3 : HALF_PI - 0.3 });
+      if (h === 0 || h === 3) papers(b, { x: e + sg * 2.8, z: m - 1.4, n: 5 });
+    }
+  }
 }
 
 /**
@@ -292,13 +334,25 @@ function wardUpstairs(c: Ctx, cx: number, kind: 'nurses' | 'nine'): { area: numb
     part(2, 6.6);
     officeDesk(b, { x: cx + 3.6, z: -18.5, y: Y, rot: Math.PI / 2, chair: true });
     lockerRow(b, { x: x0 + 1, z: -18, y: Y, rot: HALF_PI, count: 4 });
+    medicineCabinet(b, { x: cx - 3.5, z: z0 + t + 0.22, y: Y, rot: 0 });
+    trolley(b, { x: cx + 0.5, z: z0 + t + 0.7, y: Y, rot: 0 });
+    c.d.crate(x0 + 1.4, -15.3, 0.4, 'medium', undefined, Y);
+    // the dormitory: iron beds down both walls, a cabinet between some
     for (let k = 0; k < 4; k++) {
-      gurney(b, { x: x0 + 1.4, z: -8 + k * 2.6, y: Y, rot: 0, covered: false });
-      gurney(b, { x: x1 - 1.4, z: -8 + k * 2.6, y: Y, rot: 0, covered: k === 2 });
+      ironBed(b, { x: x0 + t + 1.05, z: -8 + k * 2.6, y: Y, rot: 0, seed: 40 + k });
+      ironBed(b, { x: x1 - t - 1.05, z: -8 + k * 2.6, y: Y, rot: Math.PI, seed: 50 + k });
+      if (k < 3) bedside(b, { x: x0 + t + 0.3, z: -6.7 + k * 2.6, y: Y, rot: HALF_PI });
     }
+    wheelchair(b, { x: cx + 2.6, z: -11.6, y: Y, rot: 2.4 });
     officeDesk(b, { x: -25.2, z: -11.9, y: Y, rot: 0, chair: false }); // the day book lies on it (`RECORDS`)
+    // the Matron's office: her desk, her books, her files, and her strongbox
     officeDesk(b, { x: cx, z: 7.6, y: Y, rot: Math.PI, chair: true }); // the Matron's
     lockerRow(b, { x: x1 - 0.6, z: 5, y: Y, rot: -HALF_PI, count: 3 });
+    // between the outer wall's windows (theirs at z 2.5 and 5.9, 1.2 m wide), never in front of one
+    bookshelf(b, { x: x0 + t + 0.18, z: 4.2, y: Y, rot: HALF_PI });
+    filingCabinets(b, { x: x0 + t + 0.32, z: 8.6, y: Y, rot: HALF_PI, count: 2 });
+    chair(b, { x: cx - 1.6, z: 5.6, y: Y, rot: 0.4 });
+    c.d.crate(x1 - 1.3, 8.6, 0.3, 'high', undefined, Y);
     ceilingLight(b, { x: cx, z: -18, y: lampY, kind: 'panel', color: 0xfff0d8, intensity: 24 });
     ceilingLight(b, { x: cx, z: -6, y: lampY, kind: 'tube', rot: HALF_PI, mode: 'flicker', color: 0xe8f0e0, intensity: 24 });
     ceilingLight(b, { x: cx, z: 6, y: lampY, kind: 'caged', color: 0xffd8a0, intensity: 28 });
@@ -308,11 +362,19 @@ function wardUpstairs(c: Ctx, cx: number, kind: 'nurses' | 'nine'): { area: numb
     part(-14, 6.6);
     for (let k = 0; k < 5; k++) {
       const z = -11 + k * 3.2;
-      gurney(b, { x: x0 + 1.4, z, y: Y, rot: 0, covered: k % 3 === 1 });
-      gurney(b, { x: x1 - 1.4, z, y: Y, rot: 0, covered: k % 3 === 2 });
+      ironBed(b, { x: x0 + t + 1.05, z, y: Y, rot: 0, made: k % 2 === 0, seed: 60 + k });
+      ironBed(b, { x: x1 - t - 1.05, z, y: Y, rot: Math.PI, made: k % 2 === 1, seed: 70 + k });
+      if (k < 4) {
+        bedside(b, { x: x0 + t + 0.3, z: z + 1.6, y: Y, rot: HALF_PI });
+        bedside(b, { x: x1 - t - 0.3, z: z + 1.6, y: Y, rot: -HALF_PI });
+      }
     }
     officeDesk(b, { x: 22, z: 4.7, y: Y, rot: Math.PI, chair: true }); // the night register (`RECORDS`)
+    papers(b, { x: 20.6, z: 6.4, y: Y, n: 7 });
     lockerRow(b, { x: x1 - 0.6, z: -18, y: Y, rot: -HALF_PI, count: 3 });
+    medicineCabinet(b, { x: 25.2, z: -14.32, y: Y, rot: Math.PI });
+    trolley(b, { x: 18.6, z: -15.0, y: Y, rot: 0 });
+    c.d.crate(19.6, -20.7, 0.2, 'high', undefined, Y);
     for (const z of [-10, -2, 6]) ceilingLight(b, { x: cx, z, y: lampY, kind: 'caged', color: 0xffc070, intensity: 30, mode: z === -2 ? 'flicker' : 'steady' });
     ceilingLight(b, { x: cx, z: -18, y: lampY, kind: 'tube', rot: HALF_PI, mode: 'fail', color: 0xe8f0e0 });
     wallDecal(b, 'bloodOld1', inX1 - 0.05, Y + 1.3, -6, 2.2, 1.4, -HALF_PI);
@@ -381,6 +443,30 @@ function damperWheel(c: Ctx): { root: THREE.Group; wheel: THREE.Object3D; x: num
   return { root, wheel, x, z };
 }
 
+/** The lights-out bell's rope through the chapel ceiling, a red and white sally to pull (swung at run time). */
+function bellRope(c: Ctx): THREE.Object3D {
+  const { b } = c;
+  const top = 6.45;
+  const g = new THREE.Group();
+  g.position.set(BELL.x, top, BELL.z);
+  const hemp = new THREE.MeshStandardMaterial({ color: 0x9a8058, roughness: 0.95 });
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, top - 0.9, 6), hemp);
+  rope.position.y = -(top - 0.9) / 2;
+  const red = new THREE.MeshStandardMaterial({ color: 0x8a1e1a, roughness: 0.8 });
+  const white = new THREE.MeshStandardMaterial({ color: 0xd8d0bc, roughness: 0.85 });
+  for (let i = 0; i < 6; i++) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.12, 8), i % 2 ? white : red);
+    band.position.y = -(top - 2.2) - i * 0.12;
+    g.add(band);
+  }
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 6, 14), b.mats.get('steelDark'));
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = -0.02;
+  g.add(rope, ring);
+  b.addDynamic(g);
+  return g;
+}
+
 export interface AsylumResult {
   transmitter: TransmitterHandle;
   spire: SpireHandle;
@@ -441,6 +527,8 @@ export function buildAsylum(c: Ctx): AsylumResult {
     tag: 'gatehouse',
   });
   ceilingLight(b, { x: -10, z: 41, y: 3.35, kind: 'caged', color: 0xffd8a0, intensity: 40 });
+  officeDesk(b, { x: -10, z: 39.35, rot: 0, chair: true });
+  filingCabinets(b, { x: -12.78, z: 42, rot: HALF_PI, count: 2 });
   // the fountain in the turning circle
   const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.6, 0.7, 20), b.mats.get('concreteWall'));
   basin.position.set(0, 0.35, 29);
@@ -474,6 +562,8 @@ export function buildAsylum(c: Ctx): AsylumResult {
     tag: 'stores',
   });
   ceilingLight(b, { x: 36, z: 33, y: 3.55, kind: 'caged', color: 0xffd8a0, intensity: 45 });
+  storeShelf(b, { x: 40.15, z: 33, rot: -HALF_PI, length: 3 });
+  storeShelf(b, { x: 33.6, z: 36.15, rot: Math.PI, length: 2.4 });
   crateGroup(b, { x: 50, z: 40, rot: 0.4, count: 4, radius: 1.3, seed: 305 });
   barrelGroup(b, { x: 50, z: 25, rot: 0, count: 4, radius: 1.2, seed: 306, colors: ['rust', 'green'] });
   d.station({ kind: 'buy', name: 'GROUNDSKEEPER STORES', x: 26, z: 30, yaw: HALF_PI, region: 'low' });
@@ -520,6 +610,14 @@ export function buildAsylum(c: Ctx): AsylumResult {
   officeDesk(b, { x: 9, z: 6.4, rot: Math.PI - 0.4, chair: false });
   officeDesk(b, { x: 0, z: 14.4, rot: 0, chair: true }); // reception
   lockerRow(b, { x: -11.2, z: 14.5, rot: HALF_PI, count: 4 });
+  // the offices: files, books, a box nobody emptied; a row of chairs in the front hall
+  filingCabinets(b, { x: -4.42, z: 8.6, rot: -HALF_PI, count: 2 });
+  filingCabinets(b, { x: 4.42, z: 8.6, rot: HALF_PI, count: 2 });
+  bookshelf(b, { x: -10.4, z: 10.72, rot: Math.PI });
+  bookshelf(b, { x: 10.4, z: 10.72, rot: Math.PI });
+  papers(b, { x: 2, z: 7.5, n: 9, spread: 1.2 });
+  for (const x of [-5.6, -5, -4.4]) chair(b, { x, z: 11.45, rot: 0 });
+  d.crate(-10.6, 5.3, 0.3, 'low');
 
   // ---- the ward wings ----
   // the boarded windows avoid the cells whose cot or lockers stand under the sill
@@ -563,6 +661,15 @@ export function buildAsylum(c: Ctx): AsylumResult {
   generator(b, { x: 41, z: -12, rot: 0, running: false });
   generator(b, { x: 47, z: -12, rot: Math.PI, running: false });
   ceilingLight(b, { x: 44, z: -14, y: 4.95, kind: 'caged', mode: 'flicker', color: 0xffd8a0 });
+  // the boiler under its chimney, its pipes, the fitters' bench, a box of spares
+  const boiler = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2.8, 18), new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.7, metalness: 0.5 }));
+  boiler.position.set(47.8, 1.4, -16.9);
+  b.add(boiler, { cast: false });
+  b.collideBox(47.8, -16.9, 2, 2, 2.8, { mapKind: 'prop', surface: 'metal', tag: 'boiler' });
+  pipeRun(b, { x0: 47.8, y0: 2.8, z0: -16.9, x1: 47.8, y1: 4.9, z1: -16.9, radius: 0.18 });
+  pipeRun(b, { x0: 46.8, y0: 2.2, z0: -16.9, x1: 39, y1: 4.2, z1: -16.9, radius: 0.08 });
+  labBench(b, { x: 39.2, z: -16.4, rot: HALF_PI, length: 2.4 });
+  d.crate(49, -10.3, 0.1, 'medium');
   const power = transmitterSite(b, { x: ASYLUM.power.x, z: ASYLUM.power.z, rot: 0, radius: ASYLUM.power.radius });
   barrelGroup(b, { x: 53, z: -4, rot: 0.3, count: 5, radius: 1.3, seed: 331, colors: ['rust', 'yellow'] });
   crateGroup(b, { x: 33, z: 12, rot: 0, count: 3, radius: 1.2, seed: 332 });
@@ -592,6 +699,12 @@ export function buildAsylum(c: Ctx): AsylumResult {
   b.collideBox(-28, -40.2, 3, 0.9, 1.1, { mapKind: 'prop', tag: 'altar' });
   b.light({ x: -28, y: 1.8, z: -39.6, color: 0xffb060, intensity: 45, distance: 10 });
   b.light({ x: -33, y: 2.4, z: -35, color: 0xff9a40, intensity: 18, distance: 7, mode: 'flicker' });
+  // the cross over the altar, its candles, a stand of them, the lectern; the lights-out bell's rope (`BELL`)
+  wallCross(b, { x: -28, y: 3.7, z: -40.5 });
+  candles(b, { x: -28, y: 1.1, z: -40.2, n: 7, spread: 1.2 });
+  candleStand(b, { x: -31, z: -39.8 });
+  lectern(b, { x: -26.2, z: -38.3, rot: 0.3 });
+  d.crate(-34.5, -30.2, 1.2, 'high');
   // the bell tower
   addBox(b, 'brick', -18, 8, -40, 3.2, 16, 3.2);
   const steeple = new THREE.Mesh(new THREE.ConeGeometry(2.4, 5, 4), b.mats.get('roof'));
@@ -617,6 +730,9 @@ export function buildAsylum(c: Ctx): AsylumResult {
   ceilingLight(b, { x: 5, z: -33.5, y: 4.75, kind: 'tube', mode: 'fail', color: 0xc8f0d8, rot: HALF_PI });
   emergencyLight(b, { x: 0, y: 4.4, z: -30.6 });
   gurney(b, { x: -8, z: -32, rot: HALF_PI, covered: true });
+  for (const x of [-7.2, -2.4, 2.4, 7.2]) floorMattress(b, { x, z: -41.05, rot: 0 });
+  trolley(b, { x: 7, z: -31.1, rot: 0 });
+  wheelchair(b, { x: -5.4, z: -30.9, rot: 2.6 });
   wallDecal(b, 'bloodOld1', -6, 1.4, -37.2, 2.4, 1.6, 0);
   wallDecal(b, 'mold', 6, 2.2, -37.2, 3, 1.8, 0);
 
@@ -633,6 +749,9 @@ export function buildAsylum(c: Ctx): AsylumResult {
   addBox(b, 'steel', 33.4, 1.3, -40.2, 3.6, 2.6, 0.7);
   b.collideBox(33.4, -40.2, 3.6, 0.7, 2.6, { mapKind: 'prop', tag: 'drawers' });
   ceilingLight(b, { x: 25.5, z: -35, y: 4.35, kind: 'panel', color: 0xd8f0ff, intensity: 34 });
+  medicineCabinet(b, { x: 22.4, z: -40.38, rot: 0 });
+  trolley(b, { x: 29.4, z: -33.6, rot: HALF_PI });
+  d.crate(34.6, -30.4, 0.6, 'high');
   ceilingLight(b, { x: 33.5, z: -35, y: 4.35, kind: 'panel', mode: 'flicker', color: 0xc8e8ff, intensity: 30 });
   const stack = spire(b, { x: ASYLUM.stack.x, z: ASYLUM.stack.z, rot: 0, height: 34 });
   debris(b, { x: 40, z: -30, radius: 2.6, seed: 341, big: true });
@@ -641,6 +760,10 @@ export function buildAsylum(c: Ctx): AsylumResult {
   d.crate(-52, -42, 0.3, 'high');
   d.crate(14, -44, 0.9, 'high');
   d.crate(52, -30, 0, 'high');
+
+  // ---- the vigil lanterns' posts (their flames are the story's, `asylum/nightRuntime.ts`) and the bell rope ----
+  for (const l of LANTERNS.spots) lanternPost(b, { x: l.x, y: l.y, z: l.z });
+  const rope = bellRope(c);
 
   // ---- the zone walls and boarded doorways of the purchasable loop (src/asylum/zoneWalls.ts) ----
   buildZoneWalls(b);
@@ -659,5 +782,5 @@ export function buildAsylum(c: Ctx): AsylumResult {
   d.zombies('high', 'armored', [[34, -35], [-12, -40], [18, -30]]);
 
   const damper = damperWheel(c);
-  return { transmitter: power, spire: stack, handles: { ward9: { ...w9, area: nine.area, link: nine.link }, areas: { nurses: nurses.area, nine: nine.area }, damper } };
+  return { transmitter: power, spire: stack, handles: { ward9: { ...w9, area: nine.area, link: nine.link }, areas: { nurses: nurses.area, nine: nine.area }, damper, bell: rope } };
 }

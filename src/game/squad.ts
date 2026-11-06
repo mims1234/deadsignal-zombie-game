@@ -342,7 +342,9 @@ export class SquadRuntime {
     const g = this.g;
     const who = survivorRoster(g.mapId).find((q) => q.name === a.name);
     const unarmed = !!who?.unarmed;
+    // armed: a pistol comes up; unarmed: hands down, an easy walk (no longer the cage's hands-up crouch)
     if (!unarmed) a.avatar.arm();
+    else a.avatar.cowering = false;
     g.audio.play('contract_complete', { priority: 3, volume: 0.8 });
     g.fx.sparkle({ x: a.ref.x, y: 1.2, z: a.ref.z }, 0x8fd18a, 18);
     const freed = this.allies.filter((q) => q.kind === 'survivor' && !q.trapped).length;
