@@ -527,10 +527,16 @@ function buildHill(c: Ctx): AsylumResult {
   const X = B.maxX - 0.6;
   const Z = B.maxZ - 0.6;
   perimeterWall(b, -X, -Z, X, -Z, 5.5, 'brick');
-  perimeterWall(b, -X, Z, X, Z, 5.5, 'brick');
+  // the front wall stops either side of the gate, which stands in its line looking out down the hill
+  const gateHalf = 5; // the gate's piers (1.25 m, centred 4.6 m out) close the ends
+  perimeterWall(b, -X, Z, -gateHalf, Z, 5.5, 'brick');
+  perimeterWall(b, gateHalf, Z, X, Z, 5.5, 'brick');
   perimeterWall(b, -X, -Z, -X, Z, 5.5, 'brick');
   perimeterWall(b, X, -Z, X, Z, 5.5, 'brick');
-  quarantineGate(b, { x: 0, z: Z - 1.8, rot: Math.PI, width: 8, open: 0 });
+  quarantineGate(b, { x: 0, z: Z, rot: Math.PI, width: 8, open: 0 });
+  // shut: nobody walks out through the leaves' gap (shots and sight still pass the bars)
+  b.collide({ x: 0, z: Z, hx: 4, hz: 0.3, y1: 4.2, blocksShots: false, mapKind: 'fence', surface: 'metal', tag: 'gate-shut' });
+  groundRect(b, 'gravel', -3, Z, 3, B.maxZ + 5.5, 0.012); // the drive going on out of the gate
   wallDecal(b, 'stencilQuarantine', 14, 2.6, Z - 0.62, 8, 2.2, Math.PI);
   wallDecal(b, 'stencilKeepOut', -X + 0.62, 2.6, -10, 8, 2.2, HALF_PI);
   b.collide({ x: 0, z: -B.maxZ - 6, hx: 90, hz: 2, y1: 30, mapKind: 'none' });

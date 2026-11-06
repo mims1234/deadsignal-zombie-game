@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.359",
+      "date": "2026-11-07",
+      "title": "Asylum: the front gate looks out",
+      "notes": [
+        "The quarantine gate now stands in the line of the hospital's front wall instead of in front of it, so through its bars you see the drive running on down the hill and the pines beyond, not a brick wall.",
+        "It is still shut: nobody walks out through it, while shots and sight pass the bars as before."
+      ]
+    },
+    {
       "version": "0.4.358",
       "date": "2026-11-07",
       "title": "Asylum: the whole Lantern team and every survivor as real 3D people (beta)",
