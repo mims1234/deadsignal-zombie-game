@@ -264,6 +264,8 @@ try {
   const keep = () => window.__dead.setHealth(1e6, 100);
   const day = () => { const g = window.__dead.game; return g.session.elapsed > 1 && g.mission.night.tod.phase === 'night' && g.mission.night.wakeAt === null && g.session.hunt.status === 'available' && !g.zombies.zombies.some((z) => z.type === 'warden'); };
   check('Asylum: it is night for both, and the Matron sleeps until the bell', (await until(a.guest, day, null, 30000)) && (await until(a.owner, day, null, 5000)));
+  // the squad carries its own guns here: the guest draws what the simulation says they hold (Vance a rifle, Okafor a shotgun)
+  check('Asylum: the squad holds its own guns for the guest', await until(a.guest, () => { const f = window.__dead.game.squad.figures(); return f.length >= 2 && f[0].weapon === 'rifle' && f[1].weapon === 'shotgun'; }, null, 10000), await a.guest.evaluate(() => window.__dead.game.squad.figures().map((f) => f.weapon).join(',')));
   const shut = () => { const g = window.__dead.game; return g.asylum.state.doors.every((d) => d === 0) && !g.level.doors.isOpen(0) && !g.asylum.powerOn; };
   check('Asylum: every door is shut and the power off, for both', (await a.owner.evaluate(shut)) && (await a.guest.evaluate(shut)));
   // the guest buys the west ward's front door (index 0)

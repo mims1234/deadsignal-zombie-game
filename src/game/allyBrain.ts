@@ -14,6 +14,7 @@ import type { FloorLink, Traveller } from '../world/floors';
 import type { MapId } from '../world/layout/data';
 import type { Level } from '../world/level';
 import { FlowField } from '../world/nav';
+import { ALLY_GUN, type AllyKit, kitFired, kitReady, kitStats, makeKit, squadSupplies, startGun } from './allySupply';
 
 export interface AllyStats {
   hp: number;
@@ -56,6 +57,8 @@ export interface AllyBody {
   /** At rest: where they are looking now (a yaw), and how long until they look somewhere else. */
   lookYaw?: number;
   lookT?: number;
+  /** Where the squad fends for itself (the Asylum): their gun, ammunition and wallet (`allySupply.ts`). */
+  kit?: AllyKit;
 }
 
 export interface AllyWorld {
@@ -210,6 +213,8 @@ function idleLook(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number,
  * with `allyHit`), or null.
  */
 export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | null {
+  // their own gun: a round in it and not reloading (the reload runs on whether or not there is a target)
+  const ready = a.kit ? kitReady(a.kit, dt) : true;
   a.pickT -= dt;
   if (a.pickT <= 0 || (a.target && !a.target.active)) {
     a.pickT = 0.3;
@@ -229,8 +234,9 @@ export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | nul
   if (!t) return null;
   a.yaw = Math.atan2(-(t.x - a.ref.x), -(t.z - a.ref.z));
   a.shootT -= dt;
-  if (a.shootT > 0) return null;
+  if (a.shootT > 0 || !ready) return null;
   a.shootT = a.stats.fireInterval * (0.8 + w.rng.f() * 0.5);
+  if (a.kit) kitFired(a.kit);
   const dist = Math.hypot(t.x - a.ref.x, t.z - a.ref.z);
   const hit = w.rng.f() < (dist < 10 ? a.stats.hitNear : a.stats.hitFar);
   const head = hit && w.rng.f() < a.stats.headChance;
@@ -331,10 +337,18 @@ export function cageSpots(level: Level, rng: Rng, count: number): { x: number; z
  */
 /** A fresh ally (positions and stats only; no model). */
 export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number, skill: TeamSkill = 'regular'): AllyBody {
-  const stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
-  // unarmed: nothing is ever in range (they follow, and keep their heads down)
-  if (kind === 'survivor' && survivorUnarmed(level.data.id, name)) stats.range = 0;
+  let stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
+  const unarmed = kind === 'survivor' && survivorUnarmed(level.data.id, name);
+  // where the squad fends for itself: their own gun and ammunition (the numbers above are for the gun they start with)
+  let kit: AllyKit | undefined;
+  if (squadSupplies(level.data.id)) {
+    const gun = startGun(level.data.id, name, kind, unarmed);
+    const g = gun === 'none' ? ALLY_GUN.pistol : ALLY_GUN[gun];
+    kit = makeKit(gun, { ...stats, range: stats.range / g.range, fireInterval: stats.fireInterval / g.fire, bodyDamage: stats.bodyDamage / g.damage, headDamage: stats.headDamage / g.damage });
+    stats = kitStats(kit);
+  } else if (unarmed) stats.range = 0; // unarmed: nothing is ever in range (they follow, and keep their heads down)
   return {
+    ...(kit ? { kit } : {}),
     name,
     kind,
     stats,

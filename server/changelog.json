@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.351",
+      "date": "2026-11-06",
+      "title": "Asylum: the squad pays its own way",
+      "notes": [
+        "On Blackwood Hill the squad and the freed survivors no longer have bottomless guns. Each one carries a real gun with a magazine and a reserve, reloads when it runs dry, and can run out.",
+        "Each of them keeps a wallet: it starts at $300 and gets half the value of every kill they make. Your money is never touched, and you are still paid for their kills as before.",
+        "When they are low on ammo and can pay, they walk to their gun's chalk on a wall and buy ammo at your price, then come back. If they are out of both ammo and money, the feed tells you.",
+        "Guns come from the supply boxes: when it is quiet, a survivor with no gun (or anyone holding only a pistol) goes to a nearby box and takes a gun from it. Each of them gets one pull per box, whatever you have done with that box.",
+        "Your perks (Ironhide, Quickhand, Rapid Fire, Second Wind) only ever affected you, and that is unchanged.",
+        "All of this works in co-op: every player sees what each squad member holds, and gets the feed lines."
+      ]
+    },
+    {
       "version": "0.4.350",
       "date": "2026-11-06",
       "title": "Asylum: the squad can no longer starve the vigil lanterns",

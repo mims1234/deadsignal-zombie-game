@@ -25,6 +25,7 @@ import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
 import { GAMEPLAY_FIELD_RANGE } from '../world/nav';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
+import { ALLY_GUNS, type AllyGun, type AllySupply, allyErrand, kitPaid } from './allySupply';
 import type { Game } from './game';
 
 /** Milliseconds a frame may spend on one ally's flow field. */
@@ -36,8 +37,11 @@ interface Ally extends AllyBody {
 }
 
 /** What the co-op simulation reports for one ally: [index, x, z, yaw, state (0 dead, 1 fighting, 2 caged), hp]. */
-/** [index, x, z, yaw, state (0 dead, 1 up, 2 caged), hp, y (on a floor above the street; absent from older hosts)] */
-export type AllyRow = [number, number, number, number, number, number, number?];
+/**
+ * [index, x, z, yaw, state (0 dead, 1 up, 2 caged), hp, y (on a floor above the street; absent from older hosts),
+ * gun (where the squad carries its own: an index into `ALLY_GUNS`)]
+ */
+export type AllyRow = [number, number, number, number, number, number, number?, number?];
 
 interface Cage {
   root: THREE.Group;
@@ -45,6 +49,8 @@ interface Cage {
   beam: THREE.Object3D;
   openT: number;
 }
+
+const GUN_NAME: Record<AllyGun, string> = { none: 'NOTHING', pistol: 'PISTOL', shotgun: 'SHOTGUN', rifle: 'RIFLE', rpg: 'ROCKET LAUNCHER' };
 
 export const THANKS = [
   'Took you long enough! I have your back.',
@@ -112,12 +118,15 @@ export class SquadRuntime {
   private soldiers = false;
   private survivors = false;
   private time = 0;
-  /** True while an ally's shot is being applied (the kill is theirs, not the player's). */
+  /** True while an ally's shot is being applied (the kill is theirs, not the player's), and whose shot it is. */
   allyShooting = false;
+  private shooter: Ally | null = null;
   /** Co-op: the session simulation runs the squad; this asks it to free someone. */
   follow = false;
   requestRescue: ((name: string) => void) | null = null;
   private readonly world: AllyWorld;
+  /** The Asylum: where the squad buys its ammo and takes guns from the boxes (`allySupply.ts`). */
+  private readonly supply: AllySupply;
 
   constructor(private readonly g: Game) {
     this.world = {
@@ -132,6 +141,41 @@ export class SquadRuntime {
       },
       followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
     };
+    this.supply = {
+      boxes: () => g.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, y: c.def.y })),
+      onAmmo: (a, price) => {
+        g.audio.play('buy_ok', { pos: { x: a.ref.x, y: a.ref.y + 1.2, z: a.ref.z }, priority: 1, volume: 0.7 });
+        g.feed(`${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)`, 'normal');
+      },
+      onBox: (a, _box, gun) => {
+        g.audio.play('box_reveal', { pos: { x: a.ref.x, y: a.ref.y + 1.2, z: a.ref.z }, priority: 2 });
+        g.fx.sparkle({ x: a.ref.x, y: a.ref.y + 1.4, z: a.ref.z }, 0xffe08a, 14);
+        g.feed(`${a.name.toUpperCase()} TOOK A ${GUN_NAME[gun]} FROM THE BOX`, 'good');
+      },
+      onDry: (a) => g.feed(`${a.name.toUpperCase()} IS OUT OF AMMO - AND OF MONEY`, 'warn'),
+    };
+  }
+
+  /** An ally's kill: a share of its worth into their own wallet (the player is paid as before, by the game). */
+  creditShooter(reward: number): void {
+    const k = this.shooter?.kit;
+    if (k) kitPaid(k, reward);
+  }
+
+  /** The gun an ally's figure holds: what their kit says (the Asylum), drawn as it changes. */
+  private dress(a: Ally): void {
+    const k = a.kit;
+    if (!k || a.trapped || !a.ref.alive) return;
+    if (a.avatar.weapon === k.gun) return;
+    if (k.gun === 'none') a.avatar.setWeapon('none');
+    else a.avatar.arm(k.gun);
+  }
+
+  /** Co-op: the gun the simulation says an ally holds. */
+  private dressRemote(a: Ally, gun: AllyGun): void {
+    if (a.trapped || !a.ref.alive || a.avatar.weapon === gun) return;
+    if (gun === 'none') a.avatar.setWeapon('none');
+    else a.avatar.arm(gun);
   }
 
   get active(): boolean {
@@ -361,7 +405,7 @@ export class SquadRuntime {
   applyRemote(rows: readonly AllyRow[], shots: readonly number[][]): void {
     if (!this.follow) return;
     const g = this.g;
-    for (const [i, x, z, yaw, state, hp, y] of rows) {
+    for (const [i, x, z, yaw, state, hp, y, gun] of rows) {
       const a = this.allies[i];
       if (!a) continue;
       if (!a.cage && a.kind === 'soldier' && !a.avatar.root.visible && !a.avatar.fallen && state !== 0) {
@@ -391,6 +435,7 @@ export class SquadRuntime {
       a.ref.y = y !== undefined && y > 0.5 ? y : g.level.world.floorHeight(x, z, 0.2); // upstairs: the host's height
       a.yaw = yaw;
       a.hp = hp;
+      if (gun !== undefined && ALLY_GUNS[gun]) this.dressRemote(a, ALLY_GUNS[gun]!);
     }
     for (const [i, tx, ty, tz, hit] of shots) {
       const a = this.allies[i!];
@@ -446,7 +491,9 @@ export class SquadRuntime {
         if (a.field.begin(a.ref.x, a.ref.z, GAMEPLAY_FIELD_RANGE)) a.field.advance(a.field.goalIndex < 0 ? Infinity : ALLY_FIELD_SLICE_MS);
         a.fieldT = QUALITY[g.settings.quality].allyPathEvery;
       }
-      if (alive) allyMove(a, this.world, dt, p.x, p.z, p.yaw, p.y);
+      // the Asylum: off to a wall chalk for ammo, or to a box for a gun, when it is quiet (else at the player's side)
+      const errand = alive && allyErrand(a, g.level, g.zombies, this.supply, g.rng, dt, { x: p.x, z: p.z });
+      if (alive && !errand) allyMove(a, this.world, dt, p.x, p.z, p.yaw, p.y);
       const shot = allyFight(a, this.world, dt);
       if (shot) {
         a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
@@ -455,11 +502,14 @@ export class SquadRuntime {
         g.audio.play(a.avatar.shotSound, { pos: muzzle, volume: 0.45, priority: 1, rate: 1.04 + g.rng.f() * 0.06 });
         if (shot.hit) {
           this.allyShooting = true;
+          this.shooter = a;
           allyHit(a, shot, g.zombies, g.zenv);
           this.allyShooting = false;
+          this.shooter = null;
         }
         if (g.rng.f() < 0.15) g.zombies.emitNoise(a.ref.x, a.ref.z, 26);
       }
+      this.dress(a);
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
     }

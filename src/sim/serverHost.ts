@@ -32,6 +32,7 @@ import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
+import { ALLY_GUNS, type AllySupply, allyErrand, kitPaid } from '../game/allySupply';
 import { type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
@@ -208,6 +209,8 @@ export class SessionSim {
   private shots: number[][] = [];
   private directorTurn = 0;
   private readonly allyWorld: AllyWorld;
+  /** The Asylum: where the squad buys its own ammo and takes guns from the boxes (`game/allySupply.ts`). */
+  private readonly allySupply: AllySupply;
   private allyLeader: Peer | null = null;
   /** This map's deadline and escalation (the Asylum's night runs longer). */
   private readonly clock: MissionClock;
@@ -300,6 +303,13 @@ export class SessionSim {
       zombies: this.zombies,
       rng: this.rng,
       followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
+    };
+    const gunName = { none: 'NOTHING', pistol: 'PISTOL', shotgun: 'SHOTGUN', rifle: 'RIFLE', rpg: 'ROCKET LAUNCHER' } as const;
+    this.allySupply = {
+      boxes: () => this.level.data.crates.map((c) => ({ id: c.id, x: c.x, z: c.z, y: c.y })),
+      onAmmo: (a, price) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)` }),
+      onBox: (a, _box, gun) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} TOOK A ${gunName[gun]} FROM THE BOX` }),
+      onDry: (a) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} IS OUT OF AMMO - AND OF MONEY` }),
     };
     const sites = this.level.data.forge;
     if (this.map === 'forge' && sites) {
@@ -1246,7 +1256,9 @@ export class SessionSim {
           }
         }
       }
-      if (leader) {
+      // the Asylum: off to a wall chalk for ammo, or to a box for a gun, when it is quiet (else with the leader)
+      const errand = !!leader && allyErrand(a, this.level, this.zombies, this.allySupply, this.rng, dt, { x: leader.ref.x, z: leader.ref.z });
+      if (leader && !errand) {
         this.allyLeader = leader;
         allyMove(a, this.allyWorld, dt, leader.ref.x, leader.ref.z, leader.yaw, leader.ref.y);
         this.allyLeader = null;
@@ -1255,8 +1267,10 @@ export class SessionSim {
       if (!shot) return;
       if (shot.hit && shot.target.alive && a.env) {
         this.allyKill = true;
+        this.allyShooter = a;
         allyHit(a, shot, this.zombies, a.env);
         this.allyKill = false;
+        this.allyShooter = null;
       }
       if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
     });
@@ -1356,6 +1370,8 @@ export class SessionSim {
 
   /** True while a squad member's shot is being applied (`onKill` splits its pay between the players). */
   private allyKill = false;
+  /** Whose shot it is (their wallet takes a share of the kill's worth: `allySupply.ts`). */
+  private allyShooter: AllyBody | null = null;
 
   private onKill(z: Zombie, head: boolean): void {
     // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
@@ -1371,7 +1387,9 @@ export class SessionSim {
     if (this.allyKill && !this.nuking) {
       // a squad kill pays every player an even share of the reward, rounded down (no one's own kill, no drop)
       const n = this.peers.size;
-      const cash = n > 0 ? Math.floor(Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups)) / n) : 0;
+      const worth = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups));
+      if (this.allyShooter?.kit) kitPaid(this.allyShooter.kit, worth);
+      const cash = n > 0 ? Math.floor(worth / n) : 0;
       if (cash > 0) for (const q of this.peers.values()) this.send(q.id, { k: 'sk', n: z.tag ?? z.def.name, c: cash });
       return;
     }
@@ -1418,7 +1436,13 @@ export class SessionSim {
       const ex = this.extraction;
       out.ms = [r1(this.elapsed), RELAY_STATUSES.indexOf(this.hunt.status), this.hunt.identified ? 1 : 0, EXTRACTION_PHASES.indexOf(ex.phase), r1(ex.countdown), r1(ex.windowLeft), ex.calledAt === null ? -1 : r1(ex.calledAt), this.outcome ? (this.outcome.won ? 1 : 2) : 0];
       if (this.outcome) out.why = this.outcome.reason;
-      out.sq = this.allies.map((a, i) => (a.ref.y > 0.5 ? [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp), r1(a.ref.y)] : [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]));
+      // [i, x, z, yaw, state, hp, y?, gun?]: the height when upstairs, and where the squad carries its own guns, the gun
+      out.sq = this.allies.map((a, i) => {
+        const row = [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)];
+        if (a.ref.y > 0.5 || a.kit) row.push(r1(a.ref.y));
+        if (a.kit) row.push(ALLY_GUNS.indexOf(a.kit.gun));
+        return row;
+      });
       out.sh = this.shots;
       if (this.aurelia) out.au = aureliaRow(this.aurelia);
       this.shots = [];

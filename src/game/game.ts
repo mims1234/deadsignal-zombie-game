@@ -2138,7 +2138,9 @@ export class Game implements GameCtx {
       // an ally's kill: it still counts for the contract and pays the player in full, but it is not the player's kill
       if (z.isBoss) this.mission.onWardenKilled();
       if (this.powerups.nuking) return;
-      this.squadKill(Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z), this.mapId) * this.powerups.cashMul), z.tag ? `${z.tag} (INFECTED)` : z.def.name);
+      const reward = Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z), this.mapId) * this.powerups.cashMul);
+      this.squad.creditShooter(reward); // the Asylum: a share into their own wallet, for their ammo
+      this.squadKill(reward, z.tag ? `${z.tag} (INFECTED)` : z.def.name);
       return;
     }
     const s = this.session;
