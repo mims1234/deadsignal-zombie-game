@@ -4,7 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import { ASYLUM_CAST, HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } from '../anime/cast';
+import { ASYLUM_CAST, ASYLUM_HORDE, HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } from '../anime/cast';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
@@ -506,7 +506,7 @@ export class Game implements GameCtx {
     if (this.mapId === 'asylum' && pack.length > 0 && ASYLUM_CAST.length > 0) {
       // NEW 3D MODELS (BETA): the Asylum's people in their real-asset models (anyone without one keeps the built figure)
       this.menus.showLoading(0.66, 'WAKING THE NIGHT STAFF');
-      await loadAnimeFiles(ASYLUM_CAST).catch(() => undefined);
+      await loadAnimeFiles([...ASYLUM_CAST, ...ASYLUM_HORDE]).catch(() => undefined);
     }
     if (this.mapId === 'aurelia') {
       // Aurelia's model (a stand-in from the cast until she has her own; without it she wears the stock figure)
@@ -548,6 +548,8 @@ export class Game implements GameCtx {
     }
     // MUJIN's infected wear the anime cast too: the far ones are drawn in the far crowd
     if (this.mapId === 'mujin' || this.mapId === 'hirasaka') this.zombies.beforeUpdate = () => farCrowd().begin();
+    // the Asylum's lost in real-asset models (NEW 3D MODELS): the far ones too
+    if (this.mapId === 'asylum' && PACKS[this.settings.modelPack].length > 0) this.zombies.beforeUpdate = () => farCrowd().begin();
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Sakura District's Court shooting the infected: the fight pays you too

@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.360",
+      "date": "2026-11-07",
+      "title": "Asylum: the infected as real 3D people (beta)",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on, Blackwood Hill's infected are realistic too: night nurses in stained uniforms and caps, patients in filthy gowns with long or braided hair, and heavy orderlies in grimy whites, all with grey skin and the Asylum's glowing eyes.",
+        "They walk, run, swipe and fall exactly as before; far away they turn into the light crowd the anime maps use.",
+        "A big horde costs a little more frame time than the built infected. With the setting off, nothing changes. The Matron is next."
+      ]
+    },
+    {
       "version": "0.4.359",
       "date": "2026-11-07",
       "title": "Asylum: the front gate looks out",

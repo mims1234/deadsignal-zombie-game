@@ -8,7 +8,7 @@ import type { ZombieType } from '../types';
 import { createDetailTexture, createZombieMaterial } from './zombie/material';
 import { disposeShapeCache } from './zombie/mesh';
 import { type TypeAssets, ZombieRigImpl, makeTypeAssets, variantGeometry } from './zombie/rig';
-import { AnimeZombieRig, hordeModel } from '../anime/cast';
+import { AnimeZombieRig, asylumInfected, hordeModel } from '../anime/cast';
 import { MatronRig } from './matronRig';
 import { hasModel } from '../models/library';
 import { ModelZombieRig } from '../models/zombieRig';
@@ -44,10 +44,14 @@ export function createZombieFactory(): ZombieFactoryExt {
       const def = ZOMBIES[type];
       const dims = { radius: def.radius, height: def.height, headRadius: def.headRadius };
       const anime = theme === 'sakura' ? hordeModel(type, seed, variant) : null;
+      // the Asylum's lost in real-asset models (NEW 3D MODELS, when loaded), a little smaller like the built ones
+      const lost = theme === 'asylum' ? asylumInfected(type, seed) : null;
       const stock = theme === 'sakura' ? undefined : theme;
       // a model pack's infected (Settings) on the maps with the standard look; the Warden keeps his own frame
       const model = !theme && type !== 'warden' && hasModel('zombie');
-      const rig: ZombieRig = anime
+      const rig: ZombieRig = lost
+        ? new AnimeZombieRig(type, lost.template, { ...dims, height: dims.height * (type === 'armored' ? 0.93 : 0.95) }, seed, '', { tint: lost.tint, wants: lost.file })
+        : anime
         ? new AnimeZombieRig(type, anime, dims, seed, variant)
         : model
           ? new ModelZombieRig(type, dims.radius, dims.height, dims.headRadius, seed)

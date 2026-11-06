@@ -88,8 +88,47 @@ CAST = {
         "garments": [{"kind": "coat", "color": (0.93, 0.93, 0.91)}],
         "glasses": (0.08, 0.08, 0.09),
     },
+    # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
+    # a night nurse who stayed: dingy uniform, cap, a loose bob
+    "inf_nurse": {
+        "phenotype": ph(age=0.5, muscle=0.4, weight=0.42, proportions=0.6, height=0.48, cup=0.45),
+        "skin": "young_caucasian_female", "eyes_mat": "grey", "eyebrows": None,
+        "hair": "bob02", "hair_color": (0.28, 0.22, 0.17),
+        "clothes": ["female_elegantsuit01", "shoes03"],
+        "dye": {"female_elegantsuit01": {"base": (0.8, 0.78, 0.73)}},
+        "cap": {"color": (0.82, 0.8, 0.76), "band": (0.55, 0.3, 0.3)},
+        "zombie": {"skin": (0.8, 0.82, 0.88), "grime": 0.55},
+    },
+    # a patient never let go: a washed-out gown, long dark hair, barefoot
+    "inf_patient": {
+        "phenotype": ph(age=0.42, muscle=0.3, weight=0.32, proportions=0.6, height=0.42, cup=0.4),
+        "skin": "young_caucasian_female2", "eyes_mat": "grey", "eyebrows": None,
+        "hair": "long01", "hair_color": (0.1, 0.09, 0.1),
+        "clothes": [],
+        "garments": [{"kind": "gown", "color": (0.6, 0.7, 0.76)}],
+        "zombie": {"skin": (0.82, 0.84, 0.88), "grime": 0.6},
+    },
+    # another patient: a pale green gown, a fraying braid
+    "inf_patient2": {
+        "phenotype": ph(age=0.48, muscle=0.35, weight=0.4, proportions=0.6, height=0.45, cup=0.45),
+        "skin": "middleage_caucasian_female", "eyes_mat": "grey", "eyebrows": None,
+        "hair": "braid01", "hair_color": (0.42, 0.3, 0.2),
+        "clothes": [],
+        "garments": [{"kind": "gown", "color": (0.64, 0.74, 0.66)}],
+        "zombie": {"skin": (0.84, 0.84, 0.86), "grime": 0.6},
+    },
+    # an orderly: broad and heavy, stained whites (work overalls), short hair, boots
+    "inf_orderly": {
+        "phenotype": ph(age=0.55, muscle=0.8, weight=0.68, proportions=0.5, height=0.62, cup=0.5),
+        "skin": "middleage_caucasian_female", "eyes_mat": "grey", "eyebrows": None,
+        "hair": "short02", "hair_color": (0.2, 0.16, 0.12),
+        "clothes": ["male_worksuit01", "shoes03"],
+        "dye": {"male_worksuit01": {"base": (0.8, 0.8, 0.76), "blue": (0.78, 0.78, 0.74)}},
+        "zombie": {"skin": (0.8, 0.8, 0.84), "grime": 0.7},
+    },
 }
 spec = CAST[name]
+ZOMBIE = spec.get("zombie")
 
 for o in list(bpy.data.objects):  # (not read_factory_settings: that unloads the extensions)
     bpy.data.objects.remove(o, do_unlink=True)
@@ -100,8 +139,8 @@ info = {
     "phenotype": spec["phenotype"],
     "rig": "mixamo",
     "eyes": "low-poly/low-poly.mhclo",
-    "eyebrows": mh(spec["eyebrows"]),
-    "eyelashes": mh("eyelashes01"),
+    "eyebrows": mh(spec["eyebrows"]) if spec.get("eyebrows") else "",
+    "eyelashes": "" if ZOMBIE else mh("eyelashes01"),
     "hair": mh(spec["hair"]) if spec.get("hair") else "",
     "proxy": "female1605/female1605.proxy",
     "clothes": [mh(c) for c in spec["clothes"]],
@@ -218,6 +257,44 @@ for key, cols in spec.get("dye", {}).items():
         a[..., c] = np.clip(np.where(blue, cols.get("blue", cols["base"])[c], base) * L, 0, 1)
     put_pixels(img, a, key)
 
+def smooth_noise(h, w, cells, seed):
+    """Soft blotches in 0..1: random grids upsampled smoothly (bilinear), three scales summed."""
+    rg = np.random.default_rng(seed)
+    out = np.zeros((h, w), dtype=np.float32)
+    ys, xs = np.linspace(0, 1, h), np.linspace(0, 1, w)
+    for k, wt in ((cells, 0.55), (cells * 2 + 1, 0.3), (cells * 5 + 3, 0.15)):
+        g = rg.random((k, k)).astype(np.float32)
+        gy = np.linspace(0, 1, k)
+        rows = np.stack([np.interp(xs, gy, g[r]) for r in range(k)])  # k x w
+        out += wt * np.stack([np.interp(ys, gy, rows[:, c]) for c in range(w)], axis=1)
+    out -= out.min()
+    return out / max(1e-6, out.max())
+
+
+def grime(a, amount, seed):
+    """Old stains: brownish-grey blotches and a fine dirt over the cloth (alpha untouched)."""
+    h, w = a.shape[:2]
+    st = np.clip((smooth_noise(h, w, 6, seed) - 0.5) * 3.0, 0, 1) * amount
+    fine = np.random.default_rng(seed + 1).random((h, w)).astype(np.float32) * 0.08 * amount
+    tint = np.array([0.55, 0.48, 0.4], dtype=np.float32)
+    for c in range(3):
+        a[..., c] = a[..., c] * (1 - st * (1 - tint[c] * 0.8)) * (1 - fine)
+    return a
+
+
+if ZOMBIE:
+    # skin: drained of colour toward a cold grey, with darker mottling; clothes: stained
+    sk = tex_image(body)
+    a = pixels(sk)
+    L = lum(a)
+    mot = smooth_noise(a.shape[0], a.shape[1], 18, 7)
+    for c in range(3):
+        a[..., c] = np.clip((0.25 * a[..., c] + 0.75 * L) * ZOMBIE["skin"][c] * (0.82 + 0.18 * mot) * 1.05, 0, 1)
+    put_pixels(sk, a, "zskin")
+    for key in [c for c in spec["clothes"] if not c.startswith("shoes")]:
+        img = tex_image(part(key))
+        put_pixels(img, grime(pixels(img), ZOMBIE["grime"], 3), f"zg_{key}")
+
 # eyes: the iris colour
 eyes = part("low-poly")
 if eyes and spec.get("eyes_mat"):
@@ -261,6 +338,8 @@ def cloth_mat(tag, col, rough=0.85, weave=True):
     a = np.ones((S, S, 4), dtype=np.float32)
     for c in range(3):
         a[..., c] = np.clip(col[c] * g, 0, 1)
+    if ZOMBIE:
+        a = grime(a, ZOMBIE["grime"], 11)
     put_pixels(img, a, f"garment_{tag}")
     t = m.node_tree.nodes.new("ShaderNodeTexImage")
     t.image = img
@@ -595,6 +674,8 @@ for m in j["materials"]:
     if not m.get("extensions"):
         m.pop("extensions", None)
     low = m["name"].lower()
+    if ZOMBIE and "low-poly" in low:
+        m["name"] = m["name"] + ".Iris"
     if any(k in low for k in CUT):
         m.update(alphaMode="MASK", alphaCutoff=0.5, doubleSided=True)
         m.pop("normalTexture", None)

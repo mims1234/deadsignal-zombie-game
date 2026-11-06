@@ -58,6 +58,35 @@ export function personModel(file: string | undefined): AnimeTemplate | null {
  */
 export const ASYLUM_CAST: readonly string[] = [...(SQUADS.asylum?.models ?? []), ...SURVIVORS.asylum.flatMap((s) => (s.model ? [s.model] : []))];
 
+/**
+ * Blackwood's lost in real-asset models (NEW 3D MODELS): nurses and patients shamble, patients run, orderlies are the
+ * armoured; each keeps the Asylum's glowing eyes (the tint lights the irises; skin and grime are baked in the files).
+ */
+const ASYLUM_INFECTED = {
+  nurse: { file: 'models/asylum/inf_nurse.vrm', eyes: 0x8ff0d0 },
+  patient: { file: 'models/asylum/inf_patient.vrm', eyes: 0xff8ac8 },
+  patient2: { file: 'models/asylum/inf_patient2.vrm', eyes: 0xffd27a },
+  orderly: { file: 'models/asylum/inf_orderly.vrm', eyes: 0xa8d8ff },
+} as const;
+type AsylumKind = keyof typeof ASYLUM_INFECTED;
+const ASYLUM_KINDS: Record<Exclude<ZombieType, 'warden'>, readonly AsylumKind[]> = {
+  shambler: ['nurse', 'patient', 'patient2'],
+  runner: ['patient', 'patient2'],
+  armored: ['orderly'],
+};
+/** Every file the Asylum's infected wear (loaded with the cast). */
+export const ASYLUM_HORDE: readonly string[] = Object.values(ASYLUM_INFECTED).map((k) => k.file);
+
+/** An Asylum infected's model and tint by type and seed; null for the Matron, or while its file is not loaded. */
+export function asylumInfected(type: ZombieType, seed: number): { template: AnimeTemplate; tint: AnimeTint; file: string } | null {
+  if (type === 'warden') return null;
+  const kinds = ASYLUM_KINDS[type];
+  const k = ASYLUM_INFECTED[kinds[seed % kinds.length]!];
+  const template = ownModel(k.file);
+  if (!template) return null;
+  return { template, file: k.file, tint: { key: `asylum:${k.file}`, skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: k.eyes, outlines: false } };
+}
+
 /** A file's own model, or none (no stand-in): without theirs, the Asylum's people keep their built figures. */
 export function ownModel(file: string | undefined): AnimeTemplate | null {
   return file && animeSlotState(file) === 'own' ? animeModel(file) : null;
@@ -127,15 +156,15 @@ export class AnimeZombieRig implements ZombieRig {
   /** The file this infected wants (it may wear a stand-in until that file has streamed in). */
   readonly wants: string;
 
-  constructor(type: ZombieType, template: AnimeTemplate, def: { radius: number; height: number; headRadius: number }, seed: number, variant: ZombieVariant = '') {
+  constructor(type: ZombieType, template: AnimeTemplate, def: { radius: number; height: number; headRadius: number }, seed: number, variant: ZombieVariant = '', own?: { tint: AnimeTint; wants: string }) {
     this.type = type;
     this.radius = def.radius;
     this.height = def.height;
     this.headRadius = def.headRadius;
     this.look = variant && variant !== 'court' ? KIND_LOOKS[variant as SakuraKind] : null;
-    this.tint = this.look?.tint ?? TINTS[type];
+    this.tint = own?.tint ?? this.look?.tint ?? TINTS[type];
     this.voice = template.male ? 'male' : 'female';
-    this.wants = hordeFile(type, seed, variant);
+    this.wants = own?.wants ?? hordeFile(type, seed, variant);
     const m = template.measure;
     const s = def.height / m.height;
     const torso = ((m.shoulderY - m.legTop) * s) / (1 - 0.05 / 0.52);
