@@ -543,6 +543,14 @@ export class Game implements GameCtx {
     if (this.mapId === 'mujin' || this.mapId === 'hirasaka') this.zombies.beforeUpdate = () => farCrowd().begin();
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
+    // the Sakura District's Court shooting the infected: the fight pays you too
+    this.zombies.onCourtKill = (z) => {
+      if (this.mode === 'coop') return; // the simulation pays the nearest player
+      const cash = Math.round(killReward(z.def, false, this.level.regionAt(z.x, z.z)) * this.powerups.cashMul);
+      addCash(this.session.inv, cash);
+      this.hud.event({ type: 'cash', amount: cash });
+      this.feed(`+$${cash}  ${z.def.name.toUpperCase()}  (COURT KILL)`, 'normal');
+    };
     // the Asylum's Matron: her shriek on screen, the lamps failing around her, her keys (matronFx.ts)
     wireMatronFx(this.zombies.matron, this.renderer.lightPool, { listener: () => this.player, shake: (s) => this.shake(s), hud: (e) => this.hud.event(e), audio: () => this.audio });
     if (this.mapId === 'forge' || this.mapId === 'aurelia') {

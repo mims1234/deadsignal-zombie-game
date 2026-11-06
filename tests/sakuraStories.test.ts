@@ -57,7 +57,9 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
       expect(b.x).toBeGreaterThanOrEqual(-19);
       expect(b.z).toBeLessThanOrEqual(-26);
     }
-    expect(b.chasing).toBe(false);
+    // whatever she is after now (the player who ran, or the Court's gunfire), it is inside her theatre
+    expect(b.quarry.x).toBeGreaterThanOrEqual(-22);
+    expect(b.quarry.z).toBeLessThanOrEqual(-23);
   });
 
   it('KAIKA: the Empress stays off the map until the trees are red and the relics are back, whatever is done', () => {
@@ -138,5 +140,24 @@ describe('the procession', { timeout: 30000 }, () => {
     step(30 * 34); // the second and the third: oni among them
     expect(sent.filter((v) => v === 'oni').length).toBeGreaterThanOrEqual(1);
     void oni0;
+  });
+
+  it('the Court and the infected fight each other, and a Court kill pays the nearest player', () => {
+    const sent: { k: string; n?: string; c?: number }[] = [];
+    const sim = new SessionSim({ seed: 9, kind: 'mission', map: 'sakura', send: (_to, d) => sent.push(d as { k: string }) });
+    sim.players([{ id: 'p1', name: 'One' }]);
+    sim.begin();
+    const at = (x: number, z: number) => sim.message('p1', { k: 'p', x, y: 0, z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
+    // a Court member on the ground before the theatre, an infected in the open near him, the player well away
+    const c = sim.zombies.zombies.find((z) => z.alive && z.variant === 'court' && z.y < 0.5)!;
+    expect(c).toBeDefined();
+    const rng = (sim as unknown as { rng: never }).rng;
+    const prey = sim.zombies.spawn('shambler', c.x + 7, c.z + 3, rng, { variant: 'bloomed' });
+    for (let i = 0; i < 30 * 12 && prey.alive; i++) {
+      at(c.x + 40, c.z + 30);
+      sim.tick(1 / 30);
+    }
+    expect(prey.alive).toBe(false);
+    expect(sent.some((m) => m.k === 'kill' && /COURT KILL/.test(m.n ?? '') && (m.c ?? 0) > 0)).toBe(true);
   });
 });

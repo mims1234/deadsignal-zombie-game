@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.344",
+      "date": "2026-11-05",
+      "title": "Sakura District: the squad on watch, the Court at war, charms you can see",
+      "notes": [
+        "Hana and Yuzu no longer copy every turn you make. Standing by you, they keep watch: each looks out over their own side of the street, glances at you now and then, and turns at a natural pace. When an infected comes into view, they still turn on it and fire. This applies on every map with a squad.",
+        "The Kurenai Court fights the infected too. Court members shoot any infected they can see that is closer than you, their gunfire draws more of the dead, and an infected that reaches one of them bites. Infected the Court kills pay you the usual reward (marked COURT KILL in the feed; in co-op it goes to the nearest player). The Court never shoots the Empress.",
+        "Aoi's charms are much easier to find: twice the size, with a soft glow and a pink pillar of light over each, including the one on the sunken boat in the canal."
+      ]
+    },
+    {
       "version": "0.4.343",
       "date": "2026-11-05",
       "title": "Sakura District: the first flame, the station before the Empress, and a night market",

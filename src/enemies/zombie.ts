@@ -203,6 +203,8 @@ export class Zombie {
   territory: { x0: number; z0: number; x1: number; z1: number } | null = null;
   /** How long its quarry has been out of its ground. */
   outsideT = 0;
+  /** The Court: seconds until it may fire at an infected again (`ZombieManager.courtWar`). */
+  warCd = 0;
   speedScale = 1;
   /** Difficulty: damage dealt and how far it sees (set by the manager at spawn). */
   dmgScale = 1;
@@ -780,6 +782,22 @@ export class Zombie {
     const hit = env.rng.f() < chance;
     this.shotFx(env, hit);
     if (hit) env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', 0.6);
+  }
+
+  /**
+   * A Court rifle round at one of the infected (the Sakura District's Court fights them too): it turns, fires, and hits by
+   * the odds. Returns whether it hit (the manager applies the damage, with no credit to anyone).
+   */
+  courtFireAt(t: Zombie, env: ZombieEnv): boolean {
+    this.yaw = Math.atan2(-(t.x - this.x), -(t.z - this.z));
+    const dist = Math.hypot(t.x - this.x, t.z - this.z);
+    const hit = env.rng.f() < Math.max(0.25, 0.75 - dist / 40);
+    const from = { x: this.x - Math.sin(this.yaw) * 0.6, y: this.drawY + 1.45, z: this.z - Math.cos(this.yaw) * 0.6 };
+    const miss = hit ? 0 : 1.4;
+    const to = { x: t.x + (env.rng.f() - 0.5) * miss * 2, y: t.drawY + 1.2 + (env.rng.f() - 0.5) * miss, z: t.z + (env.rng.f() - 0.5) * miss * 2 };
+    env.audio.play('rifle_shot', { pos: from, volume: 0.8, priority: 1, rate: 0.95 + env.rng.f() * 0.1 });
+    env.fx.tracer(from, to, 0xffd890);
+    return hit;
   }
 
   /** The shot as seen and heard (the host's and every guest's own). */

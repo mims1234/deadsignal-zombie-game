@@ -114,6 +114,8 @@ export class ZombieManager {
   private readonly tmpHead = new THREE.Vector3();
 
   onKill: (z: Zombie, head: boolean) => void = () => {};
+  /** An infected the Sakura District's Court shot dead (the players are paid for the fight going their way). */
+  onCourtKill: ((z: Zombie) => void) | null = null;
   /** Co-op guest: damage is not applied here but reported to the host through this. */
   netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
@@ -404,6 +406,63 @@ export class ZombieManager {
     return this.boss;
   }
 
+  private warT = 0;
+
+  /**
+   * The Sakura District's Kurenai Court are living people, at war with the infected as much as with you: each picks off
+   * the infected it can see (when one is the nearer threat than the player), its shots are noise that draws more of them,
+   * and an infected that reaches one bites. A Court kill pays the players (`onCourtKill`) but counts as nobody's kill for
+   * the story, and the Court never shoots the Empress, whom they serve.
+   */
+  private courtWar(dt: number, env: ZombieEnv): void {
+    this.warT -= dt;
+    if (this.warT > 0) return;
+    const step = 0.25;
+    this.warT = step;
+    const court: Zombie[] = [];
+    const dead: Zombie[] = [];
+    for (const z of this.zombies) {
+      if (!z.alive || z.dormant || z.curable) continue;
+      if (z.variant === 'court') court.push(z);
+      else if (!z.isBoss) dead.push(z);
+    }
+    if (court.length === 0 || dead.length === 0) return;
+    const p = env.player;
+    for (const c of court) {
+      // bitten by any infected on him
+      for (const d of dead) {
+        if (Math.abs(d.x - c.x) > 1.9 || Math.abs(d.z - c.z) > 1.9 || Math.abs(d.y - c.y) > 2) continue;
+        if (Math.hypot(d.x - c.x, d.z - c.z) > 1.9) continue;
+        d.yaw = Math.atan2(-(c.x - d.x), -(c.z - d.z));
+        if (c.takeDamage(d.def.damage * d.dmgScale * step * 0.9, false, env, d.yaw, 1)) c.diedAt = this.simTime;
+        if (!c.alive) break;
+      }
+      if (!c.alive) continue;
+      c.warCd -= step;
+      if (c.warCd > 0) continue;
+      const toPlayer = p.alive ? Math.hypot(p.x - c.x, p.z - c.z) : Infinity;
+      let best: Zombie | null = null;
+      let bd = Math.min(30, toPlayer * 0.9);
+      for (const d of dead) {
+        const dd = Math.hypot(d.x - c.x, d.z - c.z);
+        if (dd >= bd || Math.abs(d.y - c.y) > 4) continue;
+        if (env.world.segmentBlocked(c.x, c.y + 1.5, c.z, d.x, d.y + 1.2, d.z, 'shots')) continue;
+        bd = dd;
+        best = d;
+      }
+      if (!best) continue;
+      c.warCd = 0.9 + env.rng.f() * 0.9;
+      if (c.courtFireAt(best, env)) {
+        best.aggro(c.x, c.z);
+        if (best.takeDamage(26, env.rng.f() < 0.2, env, c.yaw, 1)) {
+          best.diedAt = this.simTime;
+          this.onCourtKill?.(best);
+        }
+      }
+      this.emitNoise(c.x, c.z, 24);
+    }
+  }
+
   /**
    * Those with a territory stay in it: they cannot step out of it, and once whoever they are after has been outside it
    * for a few seconds (and out of a shooter's reach) they stand down and walk back in. The Court holds its yard and
@@ -530,6 +589,7 @@ export class ZombieManager {
     const players = envs ? envs.map((e) => e.player) : [p];
     if (aiEnabled) this.guardLair(dt, players);
     if (aiEnabled) this.keepTerritories(dt);
+    if (aiEnabled && this.level.data.id === 'sakura') this.courtWar(dt, env);
     if (aiEnabled) this.matron?.update(dt, this.boss, this.zombies, players, env);
     else this.matron?.watch(dt, this.boss);
 

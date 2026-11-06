@@ -251,13 +251,37 @@ export class SakuraRuntime {
       c.add(p, k);
       return c;
     };
-    // the five charms where Aoi left them
+    // the five charms where Aoi left them: big enough to see, a soft glow round each, and a pale pillar of light over it
+    // that shows from across the district (the boat's rises out of the canal)
+    const soft = (() => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const x = cv.getContext('2d')!;
+      const gr = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,1)');
+      gr.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      x.fillStyle = gr;
+      x.fillRect(0, 0, 64, 64);
+      const t = new THREE.CanvasTexture(cv);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    })();
+    glowMat.map = soft;
+    glowMat.opacity = 0.9;
+    const pillarGeo = new THREE.CylinderGeometry(0.3, 0.55, 6, 14, 1, true);
+    pillarGeo.translate(0, 3, 0);
     for (const at of s.charms) {
       const c = makeCharm();
-      c.scale.setScalar(1.6);
+      c.scale.setScalar(3);
       const glow = new THREE.Sprite(glowMat);
       glow.scale.setScalar(0.5);
       c.add(glow);
+      const pillar = new THREE.Mesh(pillarGeo, new THREE.MeshBasicMaterial({ color: 0xff8ab4, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+      pillar.scale.setScalar(1 / 3);
+      pillar.position.y = -0.05;
+      pillar.name = 'charm-pillar';
+      c.add(pillar);
       c.position.set(at.x, at.y, at.z);
       g.worldRoot.add(c);
       this.charms.push(c);
@@ -552,6 +576,8 @@ export class SakuraRuntime {
     for (const c of this.charms) {
       c.rotation.y += dt * 1.2;
       c.position.y += Math.sin(this.time * 2 + c.position.x) * 0.0015;
+      const pillar = c.getObjectByName('charm-pillar') as THREE.Mesh | undefined;
+      if (pillar) (pillar.material as THREE.MeshBasicMaterial).opacity = 0.3 + 0.16 * (0.5 + 0.5 * Math.sin(this.time * 2.2 + c.position.x));
     }
     for (let i = 0; i < this.flames.length; i++) this.flames[i]!.scale.setScalar(1 + Math.sin(this.time * 13 + i * 2) * 0.08);
     for (const r of this.relicMeshes) r.children[0]!.rotation.y += dt * 0.8;

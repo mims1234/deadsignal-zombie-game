@@ -259,6 +259,21 @@ export class SessionSim {
       this.zombies.bossHpMul = EMPRESS_HP;
     }
     this.zombies.onKill = (z, head) => this.onKill(z, head);
+    // the Sakura District's Court shooting the infected: the nearest player is paid for it
+    this.zombies.onCourtKill = (z) => {
+      let p: Peer | null = null;
+      let bd = Infinity;
+      for (const q of this.peers.values()) {
+        const d = Math.hypot(q.ref.x - z.x, q.ref.z - z.z);
+        if (q.ref.alive && d < bd) {
+          bd = d;
+          p = q;
+        }
+      }
+      if (!p || !this.story) return;
+      const cash = Math.round(killReward(z.def, false, this.level.regionAt(z.x, z.z)) * cashMultiplier(this.powerups));
+      this.send(p.id, { k: 'kill', n: `${z.def.name} (COURT KILL)`, h: false, c: cash, x: r1(z.x), zz: r1(z.z), dc: 0 });
+    };
     // insta-kill: any hit kills (not bosses, not carriers)
     this.zombies.damageFilter = (z, amount) => filterDamage(this.powerups, amount, z);
     this.clock = missionClock(this.map, this.kind);

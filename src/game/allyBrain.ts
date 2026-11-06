@@ -53,6 +53,9 @@ export interface AllyBody {
   /** Crossing stairs or a stairwell after the leader (`floors.ts`), and its handle on the ally's position. */
   crossing?: { link: FloorLink; from: number; prog: { s: number } } | null;
   traveller?: Traveller;
+  /** At rest: where they are looking now (a yaw), and how long until they look somewhere else. */
+  lookYaw?: number;
+  lookT?: number;
 }
 
 export interface AllyWorld {
@@ -148,7 +151,7 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const sameFloor = myArea === leaderArea;
   // close enough: at the slot, or (following from behind) on the leader's heels; one who goes ahead (Aurelia) keeps on
   if (sameFloor && (d < 1.2 || (toLeader < 2.6 && a.slot.z >= 0))) {
-    if (!a.target) a.yaw = pyaw;
+    if (!a.target) idleLook(a, w, dt, px, pz, pyaw);
     return;
   }
   let gx = tx;
@@ -171,7 +174,35 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   a.ref.z = step.z;
   a.ref.y = w.level.world.floorBelow(step.x, step.z, 0.2, a.ref.y); // up a foundry's deck after the leader (floors may stack)
   a.ref.eyeY = a.ref.y + 1.6;
-  if (!a.target) a.yaw = Math.atan2(-sx, -sz);
+  if (!a.target) turnTo(a, Math.atan2(-sx, -sz), 7 * dt);
+  a.lookT = 0;
+}
+
+/** Turn toward `yaw` by at most `step` radians (the short way round). */
+function turnTo(a: AllyBody, yaw: number, step: number): void {
+  let d = yaw - a.yaw;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  a.yaw += Math.max(-step, Math.min(step, d));
+}
+
+/**
+ * At rest with nothing to shoot: a person on watch, not a mirror of the player. Every few seconds they look somewhere
+ * else - at the leader now and then, otherwise out over the street to either side or behind (where the leader is not
+ * looking) - and turn there at a walking head's pace.
+ */
+function idleLook(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number, pyaw: number): void {
+  a.lookT = (a.lookT ?? 0) - dt;
+  if (a.lookYaw === undefined || a.lookT <= 0) {
+    const r = w.rng.f();
+    const toLeader = Math.atan2(-(px - a.ref.x), -(pz - a.ref.z));
+    // the side of the leader this one stands on watches that side; the rear one watches behind
+    const side = a.slot.x === 0 ? Math.PI : a.slot.x > 0 ? -Math.PI / 2 : Math.PI / 2;
+    if (r < 0.3) a.lookYaw = toLeader;
+    else if (r < 0.75) a.lookYaw = pyaw + side + (w.rng.f() - 0.5) * 1.1;
+    else a.lookYaw = pyaw + (w.rng.f() - 0.5) * 2.4;
+    a.lookT = 2.5 + w.rng.f() * 4;
+  }
+  turnTo(a, a.lookYaw, 2.2 * dt);
 }
 
 /**
