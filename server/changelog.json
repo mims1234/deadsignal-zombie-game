@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.352",
+      "date": "2026-11-06",
+      "title": "Asylum: the squad takes turns at the supply box",
+      "notes": [
+        "A supply box still serves one person at a time, but it is not used up. After you have opened it, each squad member and freed survivor can come and take a gun from it, one after another. They never pull while your spin is running or your prize is waiting, and two of them never pull at the same moment."
+      ]
+    },
+    {
       "version": "0.4.351",
       "date": "2026-11-06",
       "title": "Asylum: the squad pays its own way",

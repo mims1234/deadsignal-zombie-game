@@ -142,7 +142,8 @@ export class SquadRuntime {
       followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
     };
     this.supply = {
-      boxes: () => g.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, y: c.def.y })),
+      boxes: () => g.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, y: c.def.y, busy: c.phase === 'spin' || c.phase === 'offer' })),
+      allies: () => this.allies,
       onAmmo: (a, price) => {
         g.audio.play('buy_ok', { pos: { x: a.ref.x, y: a.ref.y + 1.2, z: a.ref.z }, priority: 1, volume: 0.7 });
         g.feed(`${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)`, 'normal');

@@ -56,6 +56,39 @@ describe('a squad member’s own gun', () => {
 });
 
 describe('the squad on its errands (co-op simulation)', () => {
+  it("waits its turn at a box: never during a player's spin, never two at once", () => {
+    const { sim, at, run } = setup();
+    at.x = 16;
+    at.z = 40;
+    run(0.5);
+    const squad = sim.debug.allies.filter((a) => a.kit && !a.trapped);
+    const box = sim.level.data.crates.findIndex((c) => Math.hypot(c.x - 18, c.z - 44) < 0.5);
+    const loot = (sim as unknown as { loot: { boxes: { phase: number; t: number }[] } }).loot;
+    for (const a of squad) {
+      a.stats = setGun(a.kit!, 'none');
+      a.kit!.boxes = sim.level.data.crates.filter((_, i) => i !== box).map((c) => c.id);
+      a.ref.x = 15 + squad.indexOf(a);
+      a.ref.z = 41;
+    }
+    // a player's reel on it the whole time: nobody pulls
+    for (let i = 0; i < 12 * 30; i += 15) {
+      loot.boxes[box]!.phase = 1;
+      loot.boxes[box]!.t = 0;
+      run(0.5);
+    }
+    expect(squad.every((a) => a.kit!.gun === 'none')).toBe(true);
+    // free again: they take turns, one pull at a time
+    loot.boxes[box]!.phase = 0;
+    let together = false;
+    for (let i = 0; i < 40; i++) {
+      run(0.5);
+      const at2 = squad.filter((a) => a.kit!.errand?.kind === 'box' && a.kit!.errand.workT > 0).length;
+      if (at2 > 1) together = true;
+    }
+    expect(together).toBe(false);
+    expect(squad.every((a) => a.kit!.gun !== 'none')).toBe(true);
+  });
+
   function setup() {
     const out: { to: string; d: Record<string, unknown> }[] = [];
     const sim = new SessionSim({ seed: 9, kind: 'mission', map: 'asylum', send: (to, d) => out.push({ to, d }) });

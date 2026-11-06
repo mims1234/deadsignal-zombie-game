@@ -4,8 +4,9 @@
  * keeps a wallet of their own (it starts at `ALLY_SUPPLY.wallet` and takes `walletShare` of the worth of each of their
  * own kills; the player's pay and money are never touched). When they are low on ammunition and can pay, they walk to
  * their gun's chalk on a wall and buy ammo at the player's price; when they have no gun (or only a pistol) and a supply
- * box they have not used is close by and it is quiet, they go and take a gun from it - one pull per box each, beside
- * whatever the player does with it.
+ * box they have not used is close by and it is quiet, they go and take a gun from it - one pull per box each, whatever
+ * the player has done with it. A box serves one at a time: a squad member waits while a player's reel spins or its
+ * prize is on offer (and starts again after), and two of them never pull from the same box together.
  *
  * Shared by the solo game (`squad.ts`) and the co-op simulation (`sim/serverHost.ts`); no drawing and no sound here
  * (the caller is told through `AllySupply`).
@@ -86,8 +87,10 @@ export interface AllyKit {
 
 /** What the caller is told, and what it supplies (the boxes on the map). */
 export interface AllySupply {
-  /** Supply boxes a squad member may pull from (on the ground). */
-  boxes(): readonly { id: string; x: number; z: number; y?: number }[];
+  /** Supply boxes a squad member may pull from (on the ground); `busy` while a player's reel spins or its prize waits. */
+  boxes(): readonly { id: string; x: number; z: number; y?: number; busy?: boolean }[];
+  /** The whole squad (so two never pull from one box together). */
+  allies(): readonly AllyBody[];
   /** Bought ammo at a chalk for `price`; took `gun` from box `box`; out of ammo with nowhere to buy (once each time). */
   onAmmo(a: AllyBody, price: number): void;
   onBox(a: AllyBody, box: string, gun: AllyGun): void;
@@ -218,7 +221,7 @@ export function allyErrand(a: AllyBody, level: Level, zombies: { zombies: readon
   if (!pick && (k.gun === 'none' || k.gun === 'pistol')) {
     let best = Infinity;
     for (const b of supply.boxes()) {
-      if ((b.y ?? 0) > 0.5 || k.boxes.includes(b.id)) continue;
+      if ((b.y ?? 0) > 0.5 || b.busy || k.boxes.includes(b.id) || boxClaimed(supply, a, b.id)) continue;
       const d = Math.hypot(b.x - a.ref.x, b.z - a.ref.z);
       if (d >= best || !near(b.x, b.z)) continue;
       const at = level.nav.randomFreeNear(b.x, b.z + 1.2, 1.2, () => rng.f());
@@ -236,6 +239,17 @@ export function allyErrand(a: AllyBody, level: Level, zombies: { zombies: readon
 }
 
 const steer = { x: 0, z: 0 };
+
+/** Another squad member is on their way to (or at) box `id`. */
+function boxClaimed(supply: AllySupply, a: AllyBody, id: string): boolean {
+  return supply.allies().some((o) => o !== a && o.ref.alive && o.kit?.errand?.kind === 'box' && o.kit.errand.box === id);
+}
+
+/** Box `id` is free for this squad member now: no player's reel or prize, nobody else of the squad at it first. */
+function boxFree(supply: AllySupply, a: AllyBody, id: string): boolean {
+  if (supply.boxes().some((b) => b.id === id && b.busy)) return false;
+  return !supply.allies().some((o) => o !== a && o.ref.alive && o.kit?.errand?.kind === 'box' && o.kit.errand.box === id && o.kit.errand.workT > 0);
+}
 
 function runErrand(a: AllyBody, k: AllyKit, e: AllyErrand, level: Level, supply: AllySupply, rng: Rng, dt: number, leader: { x: number; z: number } | null): boolean {
   // the leader went on without them: leave it and catch up
@@ -256,6 +270,8 @@ function runErrand(a: AllyBody, k: AllyKit, e: AllyErrand, level: Level, supply:
         supply.onAmmo(a, price);
       }
       k.errand = null;
+    } else if (e.kind === 'box' && !boxFree(supply, a, e.box)) {
+      e.workT = 0; // a player's turn (or another's): wait, and start again after
     } else if (e.kind === 'box' && e.workT >= ALLY_SUPPLY.boxTime) {
       const gun = boxGun(k.gun, rng);
       k.boxes.push(e.box);

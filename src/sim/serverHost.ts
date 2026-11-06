@@ -33,7 +33,7 @@ import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
 import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { ALLY_GUNS, type AllySupply, allyErrand, kitPaid } from '../game/allySupply';
-import { type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
+import { BOX_PHASE, type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
 import { type ContractStatus, activateDefense, allContractsComplete, completeHunt, createDefense, createHunt, updateDefense, updateHunt } from '../logic/contracts';
 import { killReward } from '../logic/economy';
@@ -306,7 +306,8 @@ export class SessionSim {
     };
     const gunName = { none: 'NOTHING', pistol: 'PISTOL', shotgun: 'SHOTGUN', rifle: 'RIFLE', rpg: 'ROCKET LAUNCHER' } as const;
     this.allySupply = {
-      boxes: () => this.level.data.crates.map((c) => ({ id: c.id, x: c.x, z: c.z, y: c.y })),
+      boxes: () => this.level.data.crates.map((c, i) => ({ id: c.id, x: c.x, z: c.z, y: c.y, busy: this.loot.boxes[i]?.phase === BOX_PHASE.spin || this.loot.boxes[i]?.phase === BOX_PHASE.offer })),
+      allies: () => this.allies,
       onAmmo: (a, price) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} BOUGHT AMMO  ($${price} OF THEIR OWN)` }),
       onBox: (a, _box, gun) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} TOOK A ${gunName[gun]} FROM THE BOX` }),
       onDry: (a) => this.send('all', { k: 'note', t: `${a.name.toUpperCase()} IS OUT OF AMMO - AND OF MONEY` }),
