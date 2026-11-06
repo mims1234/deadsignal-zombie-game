@@ -13,6 +13,7 @@ import { stairwellDown, storeyBuilding } from '../storeys';
 import type { Ctx } from '../util';
 import { ARCADE, ZONES } from './consts';
 import { streetFace, trimBlock } from './facades';
+import { hokora, nightMarket } from './dress';
 import { MAT, cherryTree, grass, ivy, jpSignMaterial, lanternString, petals, shopFront, signBoard, vendingMachine, wallWords } from './props';
 
 /** The shotengai's metro stairwell: its doorway on the south side of the lane, facing north into the arcade. */
@@ -260,6 +261,18 @@ export function buildShotengai(c: Ctx, metro: { area: number; x: number; z: numb
   ivy(b, { x: 104, z: ARCADE.z1 - 0.1, rot: Math.PI, w: 6, h: 12 });
   vendingMachine(b, { x: 98.5, z: -2.2, rot: Math.PI, color: 'red', dead: false, seed: 7 });
   d.station({ kind: 'buy', name: 'IZAKAYA ROW', x: 90, z: -4.5, yaw: yawFacing(0, 1), region: 'medium' });
+  // the first flame's roadside shrine before Okada's izakaya (the flame is the runtime's, `sakura/runtime.ts`)
+  hokora(b, { x: 116, z: -7.45, rot: 0 });
+  signBoard(b, { x: 116, z: -7.88, y: 3.9, rot: 0, w: 2.2, h: 0.5, text: '岡田', sign: { bg: '#3a1a12', fg: '#f0d8b0', sub: 'OKADA', worn: 0.8 } });
+
+  // ---- the Hanami night market down the lane (never finished): stalls clear of everything already there ----
+  nightMarket(c, [
+    ...[-96, -40, 6, 58, 104].map((x) => [x, -4.5] as [number, number]), // the trees through the roof
+    [-110, -4.5], [-34, -6], [52, -6.5], [120, -4.4], [90, -4.5], [-15, -4.5], [60, -4], [64, -6], [64.5, -2.5], // crates, the station, the van, the barrier
+    [4.2, -6.8], [7, -6.8], [9.8, -6.8], [2.5, -7.5], [11.5, -7.5], // the pachinko's sandbags and doors
+    [26, -7], [29, -7], [32, -7], [35, -7], [38, -7], [30, -2], [33, -2], [36, -2], [39, -2], // the karaoke house and the kissaten
+    [48, -1.5], [-59.5, -1.5], [-53.5, -1.5], [-66.5, -1], [98.5, -2.2], [116, -6.6], // the metro stairs, the konbini, the vending machines, the flame
+  ]);
 
   // ---- gameplay ----
   d.crate(-110, -4.5, 0.2, 'low');

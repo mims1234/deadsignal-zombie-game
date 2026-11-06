@@ -177,6 +177,8 @@ export class ZombieManager {
    * and the Kurenai Court's figures (living people, not infected rigs; the game sets it, the simulation does not draw).
    */
   pickVariant: ((type: ZombieType, x: number, z: number, y: number, rng: Rng) => ZombieVariant) | null = null;
+  /** The boss's health, times the Warden's (the Sakura District's Empress: `sakura/director.ts` EMPRESS_HP). */
+  bossHpMul = 1;
   /** The ground a new infected keeps to, if any (the Sakura District's Empress and Court: `sakura/director.ts`). */
   territoryOf: ((z: Zombie) => { x0: number; z0: number; x1: number; z1: number } | null) | null = null;
   courtRig: ((seed: number) => ZombieRig) | null = null;
@@ -398,7 +400,7 @@ export class ZombieManager {
     const h = this.level.data.hunt;
     this.lair = { x: h.wardenX, z: h.wardenZ, yaw: Math.PI };
     this.strayT = 0;
-    this.boss = this.spawn('warden', h.wardenX, h.wardenZ, rng, { boss: true, ambient: true, yaw: Math.PI });
+    this.boss = this.spawn('warden', h.wardenX, h.wardenZ, rng, { boss: true, ambient: true, yaw: Math.PI, hpScale: this.bossHpMul });
     return this.boss;
   }
 

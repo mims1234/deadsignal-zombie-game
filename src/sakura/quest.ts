@@ -25,7 +25,7 @@ export const QUEST_PHASES = ['charms', 'lanterns', 'bell', 'bloom'] as const;
 export type QuestPhase = (typeof QUEST_PHASES)[number];
 
 /** Within reach of a charm, the tree, a lantern or the bell (m). The boat's charm is reached from the bank. */
-export const QUEST_REACH = { charm: 2.2, boat: 4.2, tree: 3.4, lantern: 2.4, bell: 3, key: 2.6 };
+export const QUEST_REACH = { charm: 2.2, boat: 4.2, tree: 3.4, lantern: 2.4, bell: 3, key: 2.6, flame: 2.6 };
 
 export interface QuestView {
   phase: QuestPhase;
@@ -44,6 +44,9 @@ export interface QuestView {
 export type QuestEvent =
   | { kind: 'charm'; i: number }
   | { kind: 'key' }
+  | { kind: 'flame' }
+  | { kind: 'relic' }
+  | { kind: 'noFlame' }
   | { kind: 'tied'; n: number; all: boolean }
   | { kind: 'lit'; lantern: number; n: number }
   | { kind: 'wrong'; lantern: number }
@@ -56,6 +59,10 @@ export interface QuestSpots {
   fuses: { x: number; y: number; z: number }[];
   /** The lab keycard, on the hook inside the yard office's door at the freight yard. */
   key: { x: number; z: number };
+  /** The first flame, burning in the little shrine before Okada's izakaya on the arcade's east end. */
+  flame: { x: number; z: number };
+  /** Where the ghost train is boarded at Sakuragi station (it runs after the bloom). */
+  train: { x: number; z: number };
   tree: { x: number; z: number };
   lanterns: { x: number; z: number }[];
   bell: { x: number; z: number };
@@ -64,6 +71,9 @@ export interface QuestSpots {
 const ALL = 0b11111;
 /** `QuestView.marks`: bit 0 the lab keycard (the lab's stairs open for everyone), bits 1-3 the metro's fuses. */
 export const KEY_BIT = 0b1;
+/** Bit 4: someone carries the first flame (the lanterns take nothing else); bit 5: someone has taken a Kisaragi relic. */
+export const FLAME_BIT = 0b10000;
+export const RELIC_BIT = 0b100000;
 export const FUSE_BIT = 0b10;
 export const FUSES_ALL = 0b1110;
 const bits = (v: number): number => {
@@ -146,6 +156,10 @@ export class SakuraQuest {
     const l = this.spots.lanterns[j];
     if (v.phase !== 'lanterns' || !l || Math.hypot(l.x - x, l.z - z) > QUEST_REACH.lantern) return false;
     if (v.order.indexOf(j) < v.lit) return false; // already burning
+    if (!(v.marks & FLAME_BIT)) {
+      this.events.push({ kind: 'noFlame' });
+      return false;
+    }
     if (v.order[v.lit] === j) {
       v.lit++;
       this.events.push({ kind: 'lit', lantern: j, n: v.lit });
@@ -201,6 +215,31 @@ export class SakuraQuest {
     return true;
   }
 
+  /** Take the first flame from the shrine before Okada's izakaya (someone at (x, z)). */
+  takeFlame(x: number, z: number): boolean {
+    const f = this.spots.flame;
+    if (this.view.marks & FLAME_BIT || Math.hypot(f.x - x, f.z - z) > QUEST_REACH.flame) return false;
+    this.view.marks |= FLAME_BIT;
+    this.events.push({ kind: 'flame' });
+    return true;
+  }
+
+  /** Someone took a relic at Kisaragi (only after the bloom: the ghost train runs only then). */
+  takeRelic(): boolean {
+    if (this.view.phase !== 'bloom' || this.view.marks & RELIC_BIT) return false;
+    this.view.marks |= RELIC_BIT;
+    this.events.push({ kind: 'relic' });
+    return true;
+  }
+
+  static hasFlame(v: QuestView): boolean {
+    return (v.marks & FLAME_BIT) !== 0;
+  }
+
+  static hasRelic(v: QuestView): boolean {
+    return (v.marks & RELIC_BIT) !== 0;
+  }
+
   /** The lab's stairs are open (someone has the keycard). */
   static hasKey(v: QuestView): boolean {
     return (v.marks & KEY_BIT) !== 0;
@@ -223,7 +262,7 @@ export class SakuraQuest {
       case 'charms':
         return v.found === 0 ? 'The sacred tree at the shrine stands bare.' : `Omamori found ${bits(v.found)}/5, tied to the sacred tree ${bits(v.tied)}/5.`;
       case 'lanterns':
-        return `The charms are on the tree. Great lanterns lit ${v.lit}/5 - the order is in the festival scroll, on the offering box at the shrine hall.`;
+        return v.marks & FLAME_BIT ? `The first flame is here. Great lanterns lit ${v.lit}/5 - the order is in the festival scroll at the shrine hall.` : 'The charms are on the tree. The lanterns need the first flame, from Okada\'s izakaya on the arcade.';
       case 'bell':
         return 'Every lantern burns. Ring the shrine bell.';
       case 'bloom':

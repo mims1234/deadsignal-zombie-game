@@ -20,6 +20,8 @@ export function questSpots(h: SakuraHandles): QuestSpots {
     ],
     fuses: h.under.metro.fuses.map((f) => ({ ...f })),
     key: { x: 92.6, z: -62.3 }, // the yard office's door (`freight.ts`)
+    flame: { x: 116, z: -6.4 }, // before Okada's izakaya, the arcade's east end (`shotengai.ts`)
+    train: { x: h.kisaragi.boardStreet.x, z: h.kisaragi.boardStreet.z },
     tree: { x: h.canal.sacredTree.x, z: h.canal.sacredTree.z },
     lanterns: h.canal.lanterns.map((l) => ({ x: l.x, z: l.z })),
     bell: { x: 122, z: 39 },

@@ -17,7 +17,7 @@ import type { HirasakaKind, MujinKind, ZombieVariant } from '../enemies/variants
 import type { Rng } from '../logic/rng';
 import type { Level } from '../world/level';
 import { ZONES } from '../world/layout/sakura/consts';
-import { FUSE_BIT, LANTERN_SIGNS, type QuestSpots, type QuestView, SakuraQuest } from './quest';
+import { FLAME_BIT, FUSE_BIT, LANTERN_SIGNS, type QuestSpots, type QuestView, SakuraQuest } from './quest';
 
 /** A line in `lines.ts` (the voice director says it). */
 export type LineId = string;
@@ -235,10 +235,13 @@ const charm = (i: number, label: string) => (q: QuestSpots): { x: number; z: num
  *   2-5  four charms: the metro, the school, the arcade, the canal
  *   6  the lab keycard at the freight yard (the army sealed the lab and kept the key at its checkpoint)
  *   7  the fifth charm in the lab
- *   8-10  the tree, the lanterns, the bell: the bloom (the ghost train, Kisaragi's relics)
- *   11  the Empress, with what Kisaragi gave you
- *   12  the relay, if it is not up (the helicopter needs it)
- *   13  home: the helicopter, and the procession up the hill
+ *   8  the tree
+ *   9  the first flame, from the izakaya row on the arcade (the lanterns take nothing else)
+ *   10-11  the lanterns, the bell: the bloom
+ *   12  Kisaragi: the ghost train from the station, the relics (the Empress wakes only once they are taken)
+ *   13  the Empress, with what Kisaragi gave you
+ *   14  the relay, if it is not up (the helicopter needs it)
+ *   15  home: the helicopter, and the procession up the hill
  */
 export const CHAPTERS: readonly Chapter[] = [
   {
@@ -325,6 +328,16 @@ export const CHAPTERS: readonly Chapter[] = [
     kinds: ['miko'],
   },
   {
+    id: 'flame',
+    title: 'THE FIRST FLAME',
+    place: 'shotengai',
+    goal: 'Arcade: bring the first flame from the izakaya row',
+    done: (s) => (s.quest.marks & FLAME_BIT) !== 0 || s.quest.phase === 'bell' || s.quest.phase === 'bloom',
+    target: (q) => ({ x: q.flame.x, z: q.flame.z, label: 'THE FIRST FLAME' }),
+    intro: ['aoi_tied_flame'],
+    kinds: ['bloomed', 'idol'],
+  },
+  {
     id: 'lanterns',
     title: 'THE THOUSAND LANTERNS',
     place: 'shrine',
@@ -344,6 +357,16 @@ export const CHAPTERS: readonly Chapter[] = [
     goal: 'Shrine: ring the bell',
     done: (s) => s.quest.phase === 'bloom',
     target: (q) => ({ x: q.bell.x, z: q.bell.z, label: 'THE BELL' }),
+    intro: [],
+    kinds: [],
+  },
+  {
+    id: 'kisaragi',
+    title: 'THE STOP ON NO MAP',
+    place: 'station',
+    goal: 'Station: ride the ghost train to Kisaragi, take the relics',
+    done: (s) => SakuraQuest.hasRelic(s.quest) || s.hunt === 'complete',
+    target: (q) => ({ x: q.train.x, z: q.train.z, label: 'GHOST TRAIN' }),
     intro: [],
     kinds: [],
   },

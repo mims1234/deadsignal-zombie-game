@@ -32,7 +32,7 @@ import { PetalFall } from './petalFall';
 import { type RouteGoal, RouteTrail } from './trail';
 import { metroPower } from '../world/layout/sakura/metro';
 import { CHARM_PLACES, decodeQuest, FUSE_BIT, LANTERN_SIGNS, QUEST_REACH, type QuestSpots, type QuestView, SakuraQuest } from './quest';
-import { empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from './director';
+import { EMPRESS_HP, empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from './director';
 import { BY_TEXT, LINE } from './lines';
 import { type LineKind, SakuraVoice } from './voice';
 import { LAB_KIOSK } from '../world/layout/sakura/theatre';
@@ -66,7 +66,7 @@ function storyProgress(v: QuestView, defense: string, hunt: string): number {
 }
 
 /** What a player asks of the quest (co-op: the simulation does it). */
-type QuestAct = 'charm' | 'fuse' | 'tie' | 'light' | 'ring' | 'key';
+type QuestAct = 'charm' | 'fuse' | 'tie' | 'light' | 'ring' | 'key' | 'flame' | 'relic';
 
 interface NoteView {
   n: SakuraNote;
@@ -120,6 +120,8 @@ export class SakuraRuntime {
   private readonly met = new Set<string>();
   /** The lab keycard on the yard office's door (gone once taken). */
   private readonly keycard: THREE.Group;
+  /** The first flame in its little shrine before Okada's izakaya (gone once carried). */
+  private readonly flame: THREE.Group;
   /** Everything said aloud, one line at a time (`voice.ts`), and the score. */
   readonly voice: SakuraVoice;
   /** The district's pressure and its lures (solo: here; co-op: the simulation's). */
@@ -162,6 +164,7 @@ export class SakuraRuntime {
     this.trail = new RouteTrail(g.level, g.worldRoot);
     this.buildFuses();
     this.keycard = this.buildKeycard();
+    this.flame = this.buildFlame();
     this.voice = new SakuraVoice(g.audio);
     this.voice.onCaption = (who, text, dur) => g.hud.event({ type: 'radio', speaker: who, text, duration: dur });
     this.voice.canSpeak = (who) => !((who === 'HANA' || who === 'YUZU') && g.squad.lost(who));
@@ -169,6 +172,7 @@ export class SakuraRuntime {
     this.dir = new SakuraDirector(g.zombies);
     g.zombies.pickVariant = sakuraVariantPicker(g.level, () => this.dir.kinds);
     g.zombies.territoryOf = sakuraTerritory();
+    g.zombies.bossHpMul = EMPRESS_HP;
     g.menus.pauseTab = () => ({ label: 'FIELD FILE', build: () => buildFieldFile({ story: this.fieldStory(), seen: new Set(this.progress.seen), poem: this.poemRead ? SakuraQuest.poem(this.view.order) : null }) });
   }
 
@@ -492,7 +496,7 @@ export class SakuraRuntime {
     }
     // the Empress's hunt: shut (and she off the map) until her moment, then the curtain rises (co-op: the simulation's)
     const s = g.session;
-    const awake = empressAwake(this.campaign, this.view.phase, s.defense.status);
+    const awake = empressAwake(this.view.phase, this.view.marks);
     if (!this.follow && s.hunt.status !== 'complete') {
       if (!awake) {
         s.hunt.status = 'available';
@@ -601,6 +605,14 @@ export class SakuraRuntime {
     if (!this.follow) this.dir.draw(LURES.key);
   }
 
+  /** Where a chapter points: its own target, but Kisaragi's relics once you are there (not the train back). */
+  private chapterTarget(ch: (typeof CHAPTERS)[number], st: ReturnType<SakuraRuntime['campaignState']>): { x: number; z: number; y?: number; label: string } | null {
+    const p = this.g.player;
+    const k = this.h.kisaragi;
+    if (ch.id === 'kisaragi' && this.g.level.floors.areaAt(p.x, p.y, p.z) === k.area) return { x: k.plinths[0]!.x, z: k.plinths[0]!.z, label: 'THE RELICS' };
+    return ch.target(this.spots, st);
+  }
+
   /** The first time into a place: what it wakes. */
   private enter(place: Place): void {
     if (place === 'kisaragi') this.voice.say('aoi_kisaragi', { kind: 'story', once: true, delay: 1 });
@@ -672,7 +684,7 @@ export class SakuraRuntime {
     };
     if (this.campaign) {
       const ch = CHAPTERS[this.chapter];
-      const t = ch?.target(this.spots, this.campaignState());
+      const t = ch ? this.chapterTarget(ch, this.campaignState()) : null;
       if (t) return at(t.x, t.z, t.y ?? 0);
       if (!ch || ch.id !== 'home') return null;
     }
@@ -685,6 +697,22 @@ export class SakuraRuntime {
       return b && b.alive ? at(b.x, b.z, b.y) : at(d.hunt.searchX, d.hunt.searchZ);
     }
     return at(d.extraction.lzX, d.extraction.lzZ);
+  }
+
+  /** The first flame: a paper lantern burning in a little roadside shrine (a hokora) before Okada's izakaya. */
+  private buildFlame(): THREE.Group {
+    const g = this.g;
+    const f = this.spots.flame;
+    const grp = new THREE.Group();
+    const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.42, 12, 1, true), new THREE.MeshStandardMaterial({ color: 0xfff0d0, roughness: 0.8, emissive: 0xff8a30, emissiveIntensity: 2.2, side: THREE.DoubleSide }));
+    shade.position.y = 1.25;
+    grp.add(shade);
+    const core = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), new THREE.MeshStandardMaterial({ color: 0xffd080, emissive: 0xffa040, emissiveIntensity: 4 }));
+    core.position.y = 1.22;
+    grp.add(core);
+    grp.position.set(f.x, 0, f.z - 0.75);
+    g.worldRoot.add(grp);
+    return grp;
   }
 
   /** The lab keycard on the yard office's door: a white card glowing on its hook until someone takes it. */
@@ -858,7 +886,7 @@ export class SakuraRuntime {
       if (ch) {
         const s = this.campaignState();
         const goal = ch.id === 'lanterns' ? (this.poemRead ? `${ch.goal}: ${orderWords(v)}` : `${ch.goal} (read the scroll at the shrine hall)`) : ch.id === 'tree' ? `${ch.goal} (${SakuraQuest.held(v)} carried)` : ch.goal;
-        const tg = ch.target(this.spots, s);
+        const tg = this.chapterTarget(ch, s);
         const dist = tg ? Math.round(Math.hypot(tg.x - this.g.player.x, tg.z - this.g.player.z)) : -1;
         st.objectives.unshift({ id: 'kaika', title: `${i + 1}/${CHAPTERS.length}  ${ch.title}`, detail: goal, state: 'active', progress: i / CHAPTERS.length, tracked: true, distance: dist });
         if (tg) md.markers.push({ id: 'kaika', kind: 'objective', x: tg.x, z: tg.z, label: tg.label, color: '#ff9ec8', visible: true, compass: true, pulse: true });
@@ -902,6 +930,11 @@ export class SakuraRuntime {
       if (d > (i === 3 ? QUEST_REACH.boat : QUEST_REACH.charm) - 0.15 || Math.abs(c.y - p.y) > 2.4) return;
       out.push({ id: `charm:${i}`, dist: d * 0.5, text: 'TAKE THE OMAMORI', sub: i === 3 ? 'Reach over the rail for it' : 'A shrine charm', tone: 'good', hold: 0.5, enabled: true, onUse: () => this.act('charm', i) });
     });
+    // the first flame
+    if (!SakuraQuest.hasFlame(v)) {
+      const df = near(s.flame.x, s.flame.z, 0, QUEST_REACH.flame - 0.2);
+      if (df >= 0) out.push({ id: 'flame', dist: df * 0.5, text: 'TAKE THE FIRST FLAME', sub: v.tied === 0b11111 ? 'For the great lanterns' : 'Still burning, after seven years', tone: 'good', hold: 1, enabled: true, onUse: () => this.act('flame', 0) });
+    }
     // the lab keycard at the yard office, and the lab's stairs while they are sealed
     if (!SakuraQuest.hasKey(v)) {
       const dk = near(s.key.x, s.key.z, 0, QUEST_REACH.key - 0.2);
@@ -931,6 +964,7 @@ export class SakuraRuntime {
       const sign = LANTERN_SIGNS[j]!;
       const lit = v.order.indexOf(j) < v.lit || v.phase === 'bell' || v.phase === 'bloom';
       if (lit) out.push({ id: `lantern:${j}`, dist: d, text: `${sign.kanji}  ${sign.word} LANTERN`, sub: 'Burning', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
+      else if (v.phase === 'lanterns' && !SakuraQuest.hasFlame(v)) out.push({ id: `lantern:${j}`, dist: d, text: `${sign.kanji}  ${sign.word} LANTERN`, sub: 'It needs the first flame, from the izakaya row', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
       else if (v.phase === 'lanterns') out.push({ id: `lantern:${j}`, dist: d, text: `LIGHT THE ${sign.kanji} ${sign.word} LANTERN`, sub: `${v.lit}/5 lit`, tone: 'good', hold: 0.8, enabled: true, onUse: () => this.act('light', j) });
       else out.push({ id: `lantern:${j}`, dist: d, text: `${sign.kanji}  ${sign.word} LANTERN`, sub: 'It will not take the flame', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
     });
@@ -1004,6 +1038,8 @@ export class SakuraRuntime {
     else if (a === 'tie') q.tie(p.x, p.z);
     else if (a === 'light') q.light(i, p.x, p.z);
     else if (a === 'key') q.takeKey(p.x, p.z);
+    else if (a === 'flame') q.takeFlame(p.x, p.z);
+    else if (a === 'relic') q.takeRelic();
     else q.ring(p.x, p.z);
     this.consumeLocal();
     this.present(false);
@@ -1021,6 +1057,7 @@ export class SakuraRuntime {
         g.banner('THE LANTERNS GO OUT', 'Wrong. The dead come for the shrine.', 'danger', 4);
         this.voice.sayAll(['yuzu_wrong', 'aoi_again'], { kind: 'story' });
       }
+      if (e.kind === 'noFlame') this.voice.say('hana_noflame', { kind: 'place' });
     }
   }
 
@@ -1093,6 +1130,7 @@ export class SakuraRuntime {
     }
     if (r.swapped) g.weapons.cancelActions();
     this.relicTaken[i] = true;
+    this.act('relic', i);
     this.relicMeshes[i]!.visible = false;
     g.audio.play('box_reveal', { priority: 2 });
     g.banner(WEAPONS[id].name.toUpperCase(), r.message, 'good', 4);
@@ -1159,6 +1197,14 @@ export class SakuraRuntime {
     // the lab's stairs: sealed until someone has the keycard
     this.h.theatre.labLink.closed = !SakuraQuest.hasKey(v);
     this.keycard.visible = !SakuraQuest.hasKey(v);
+    // the first flame: in its shrine until someone carries it; then the lanterns will take it
+    this.flame.visible = !SakuraQuest.hasFlame(v);
+    if (SakuraQuest.hasFlame(v) && !SakuraQuest.hasFlame(was) && !silent) {
+      g.audio.play('lantern_light', { pos: { x: s.flame.x, y: 1.4, z: s.flame.z }, priority: 2 });
+      g.banner('THE FIRST FLAME', 'Carry it to the shrine - the lanterns will take it', 'good', 4);
+      this.voice.sayAll(['yuzu_flame', 'aoi_flame', 'aoi_tied'], { kind: 'story' });
+      if (!this.follow) this.dir.draw(LURES.flame);
+    }
     if (SakuraQuest.hasKey(v) && !SakuraQuest.hasKey(was) && !silent) {
       g.audio.play('pickup_plate', { priority: 2 });
       g.banner('LAB KEYCARD', 'Kurenai Biotech, level B2 - the stairs behind the clinic are open', 'good', 4);
@@ -1191,7 +1237,7 @@ export class SakuraRuntime {
       g.audio.play('omamori_chime', { pos: { x: s.tree.x, y: 2, z: s.tree.z }, priority: 2 });
       g.banner('THE SACRED TREE', all ? 'All five charms are tied. The lanterns are waiting.' : `${bitsOf(v.tied)}/5 charms tied`, 'good', 4);
       if (all) {
-        this.voice.sayAll(['hana_tree', 'aoi_tied'], { kind: 'story' });
+        this.voice.say('hana_tree', { kind: 'story' });
         if (!this.follow) this.dir.draw(LURES.tied);
       }
     }

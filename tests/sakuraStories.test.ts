@@ -33,7 +33,9 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
 
   it('a co-op session is KAIKA: the Empress wakes on her stage once the trees are red, and never leaves her theatre', () => {
     const sim = run('mission');
-    (sim as unknown as { sakura: { view: { phase: string } } }).sakura.view.phase = 'bloom';
+    const sv = (sim as unknown as { sakura: { view: { phase: string; marks: number } } }).sakura.view;
+    sv.phase = 'bloom';
+    sv.marks |= 0b100000; // a relic back from Kisaragi
     const d = sim.debug as unknown as { defense: { status: string }; hunt: { status: string } };
     const at = (x: number, z: number) => sim.message('p1', { k: 'p', x, y: 0, z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
     // the bloom: she is there, on the stage inside the theatre (the relay need not be up)
@@ -44,6 +46,9 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
     const b = sim.zombies.boss!;
     expect(b).not.toBeNull();
     expect(Math.hypot(b.x - 20, b.z - -57.5)).toBeLessThan(3);
+    expect(b.maxHp).toBeGreaterThan(0);
+    const warden = sim.zombies.bossHpMul;
+    expect(warden).toBe(2); // twice the Warden's health
     // someone close draws her out; then they run down the street, and she stays on her ground
     b.aggro(20, -30);
     for (let i = 0; i < 30 * 40; i++) {
@@ -55,7 +60,7 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
     expect(b.chasing).toBe(false);
   });
 
-  it('KAIKA: the Empress stays off the map until the trees are red, whatever is done', () => {
+  it('KAIKA: the Empress stays off the map until the trees are red and the relics are back, whatever is done', () => {
     const sim = run('kaika');
     const s = sim as unknown as { sakura: { view: { phase: string } } };
     const d = sim.debug as unknown as { defense: { status: string }; hunt: { status: string } };
@@ -70,6 +75,9 @@ describe('the Sakura District operation and story', { timeout: 30000 }, () => {
     expect(d.hunt.status).toBe('available');
     expect(sim.zombies.boss).toBeNull();
     s.sakura.view.phase = 'bloom';
+    tick(10);
+    expect(d.hunt.status).toBe('available'); // the trees are red, but nobody has been to Kisaragi
+    (s.sakura.view as unknown as { marks: number }).marks |= 0b100000;
     tick(10);
     expect(d.hunt.status).toBe('active');
     expect(sim.zombies.boss).not.toBeNull();

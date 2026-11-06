@@ -66,12 +66,15 @@ export function sakuraTerritory(): (z: { isBoss: boolean; variant: string; x: nu
 }
 
 /**
- * The Empress's hunt opens at her moment, not before (she is not on the map until then): in the operation once the
- * relay is up (Command sends you to her), in KAIKA once the trees are red (Aoi sends you, with what Kisaragi gave you).
+ * The Empress's hunt opens at her moment, not before (she is not on the map until then): once the trees are red and
+ * someone has brought back what Kisaragi kept (a relic), so she is faced with it.
  */
-export function empressAwake(kaika: boolean, phase: string, defense: string): boolean {
-  return kaika ? phase === 'bloom' : defense === 'complete';
+export function empressAwake(phase: string, marks: number): boolean {
+  return phase === 'bloom' && (marks & 0b100000) !== 0;
 }
+
+/** The Empress's health, against the Warden's (she has been fed for seven years). */
+export const EMPRESS_HP = 2;
 
 /** A run's start: the Court's sentries up on the container decks and round the fires before the theatre. */
 export function populateSakura(zm: ZombieManager, level: Level, rng: Rng): void {
@@ -140,6 +143,7 @@ export const LURES = {
     { t: 40, mul: 2.2, cap: 4, kinds: { armored: 'oni', runner: 'jorogumo' } },
   ],
   key: { t: 30, mul: 1.8, cap: 3, kinds: {} },
+  flame: { t: 45, mul: 2, cap: 4, kinds: { shambler: 'bloomed', runner: 'rooted' } },
   lab: { t: 40, mul: 2, cap: 3, kinds: { armored: 'oni', runner: 'jorogumo' } },
   tied: { t: 30, mul: 1.8, cap: 3, kinds: { shambler: 'miko' } },
   wrong: { t: 25, mul: 3, cap: 6, kinds: {} },

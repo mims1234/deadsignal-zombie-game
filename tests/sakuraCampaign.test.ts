@@ -36,14 +36,18 @@ describe('KAIKA', { timeout: 30000 }, () => {
     expect(chapterIndex(state({ found: 0b1111, marks: P }))).toBe(5); // the lab keycard next
     expect(CHAPTERS[5]!.id).toBe('key');
     expect(chapterIndex(state({ found: 0b1111, marks: P | KEY_BIT }))).toBe(6); // the lab
-    // the lanterns and the bell before the Empress (the relics are for her), the relay and home after
-    expect(chapterIndex(state({ found: 0b11111, tied: 0b11111, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the lanterns
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }, { hunt: 'complete' }))).toBe(8); // the Empress early changes nothing
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 }))).toBe(9); // the bell
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }))).toBe(10); // the Empress
-    expect(CHAPTERS[10]!.id).toBe('curtain');
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete' }))).toBe(11); // the relay, if it was never restored
-    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete' }))).toBe(12);
+    // the tree, the first flame, the lanterns and the bell; Kisaragi's relics before the Empress; the relay and home after
+    expect(chapterIndex(state({ found: 31, tied: 0, phase: 'charms', marks: P | 1 }))).toBe(7); // the tree
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 }))).toBe(8); // the first flame
+    expect(CHAPTERS[8]!.id).toBe('flame');
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'lanterns', marks: P | 1 | 16 }))).toBe(9); // the lanterns
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bell', lit: 5, marks: P | 1 | 16 }))).toBe(10); // the bell
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 | 16 }))).toBe(11); // Kisaragi
+    expect(CHAPTERS[11]!.id).toBe('kisaragi');
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 | 16 | 32 }))).toBe(12); // the Empress
+    expect(CHAPTERS[12]!.id).toBe('curtain');
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 | 16 | 32 }, { hunt: 'complete' }))).toBe(13); // the relay, if it was never restored
+    expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 | 16 | 32 }, { hunt: 'complete', defense: 'complete' }))).toBe(14);
     expect(chapterIndex(state({ found: 31, tied: 31, phase: 'bloom', lit: 5, marks: P | 1 }, { hunt: 'complete', defense: 'complete', extracted: true }))).toBe(CHAPTERS.length);
   });
 

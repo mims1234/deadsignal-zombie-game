@@ -2,6 +2,18 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.343",
+      "date": "2026-11-05",
+      "title": "Sakura District: the first flame, the station before the Empress, and a night market",
+      "notes": [
+        "New chapter, THE FIRST FLAME: after the charms are tied to the tree, Aoi tells you the lanterns will only take the first flame. It still burns in a little roadside shrine before Okada's izakaya, at the covered market's east end. Carry it back through the market (the dead can smell it); until then the lanterns will not light.",
+        "New chapter, THE STOP ON NO MAP: after the bell, Aoi sends you to Sakuragi station, where the ghost train waits to take you to Kisaragi for the weapons. The Crimson Empress wakes only once someone has brought a relic back, so you face her with them.",
+        "The Crimson Empress has twice the health.",
+        "The covered market is a Hanami night market now: festival stalls (takoyaki, yakisoba, candy apples, goldfish, shaved ice, masks and more) with striped awnings, lanterns, goods and stools, and the festival's litter in the lane.",
+        "The streets have zebra crossings at every junction, lane lines, manholes, red post boxes on the corners and bollards at the market's entrances."
+      ]
+    },
+    {
       "version": "0.4.342",
       "date": "2026-11-05",
       "title": "Sakura District: one story, KAIKA",

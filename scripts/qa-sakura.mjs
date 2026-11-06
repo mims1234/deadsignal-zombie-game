@@ -57,6 +57,7 @@ try {
     await beat(`charm${i}`, () => null);
   }
   await tpAct(spots.tree.x, 0, spots.tree.z + 2, 'tie', 0); await beat('tie', () => null, 12);
+  await tpAct(spots.flame.x, 0, spots.flame.z + 0.6, 'flame', 0); await beat('flame', () => null, 20);
   await ev(() => { const s = window.__dead.game.sakura; const n = s.notes[0]; window.__dead.teleport(n.x, n.z); window.__dead.advance(0.2); s.read(n.n); }); await beat('scroll', () => null, 10);
   const order = await ev(() => window.__dead.game.sakura.view.order);
   for (const j of order) { const l = spots.lanterns[j]; await tpAct(l.x + 1, 0, l.z, 'light', j); await beat(`lantern${j}`, () => null, 6); }

@@ -66,6 +66,12 @@ describe('the Thousand Lanterns', { timeout: 30000 }, () => {
     const t = spots.tree;
     expect(q.tie(t.x, t.z)).toBe(true);
     expect(q.view.phase).toBe('lanterns');
+    // the lanterns take nothing but the first flame, from the shrine before Okada's izakaya (from beside it)
+    const [l0] = q.view.order;
+    expect(q.light(l0!, spots.lanterns[l0!]!.x, spots.lanterns[l0!]!.z)).toBe(false);
+    expect(q.takeFlame(0, 0)).toBe(false);
+    expect(q.takeFlame(spots.flame.x, spots.flame.z)).toBe(true);
+    expect(SakuraQuest.hasFlame(q.view)).toBe(true);
     // a wrong lantern puts them out
     const [first, second] = q.view.order;
     const L = (j: number): [number, number] => [spots.lanterns[j]!.x, spots.lanterns[j]!.z];

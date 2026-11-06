@@ -9,6 +9,7 @@ import { CANAL, type Rect, SITES } from './consts';
 import { buildFreight, type FreightInfo } from './freight';
 import { buildKisaragi, type KisaragiInfo } from './kisaragi';
 import { buildSakuraGround } from './ground';
+import { streetDress } from './dress';
 import { buildSchool, type SchoolInfo } from './school';
 import { buildShotengai, SHOTENGAI_KIOSK, type ShotengaiInfo } from './shotengai';
 import { buildStation, STATION_KIOSK } from './station';
@@ -47,6 +48,7 @@ export function buildSakura(c: Ctx): SakuraHandles {
   const areas = underAreas(c);
   const holes: Rect[] = [{ x0: CANAL.x0, z0: CANAL.z0, x1: CANAL.x1, z1: CANAL.z1 }, ...[STATION_KIOSK, SHOTENGAI_KIOSK, CANAL_KIOSK, LAB_KIOSK].map(kioskHole)];
   buildSakuraGround(c, holes);
+  streetDress(c);
   const metro = (f: { x: number; z: number; yaw: number }) => ({ area: areas.metro, ...f });
   buildStation(c, metro(UNDER_FEET.station));
   const school = buildSchool(c);
