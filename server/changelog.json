@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.356",
+      "date": "2026-11-07",
+      "title": "Asylum: Nurse Halloway as a real 3D person (beta)",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on, Nurse Halloway is a realistic person instead of the built figure: auburn hair tied back in a braid, green eyes, a cream nurse's uniform, black shoes and a starched cap.",
+        "She moves exactly as before: cowering in her cage, following you and shooting once freed.",
+        "Made from MakeHuman's free (CC0) people kit; the other Asylum characters can follow the same way. With the setting off, nothing changes."
+      ]
+    },
+    {
       "version": "0.4.355",
       "date": "2026-11-07",
       "title": "Asylum: real scanned surfaces and furniture (beta)",

@@ -88,7 +88,8 @@ const pending = new Map<string, Promise<AnimeTemplate | null>>();
 let loader: GLTFLoader | null = null;
 
 async function fetchModel(file: string): Promise<AnimeTemplate | null> {
-  const res = await fetch(`anime/${file}`).catch(() => null);
+  // VRoid files live in `anime/`; the real-asset people (`models/...`, made by scripts/asylum-cast.py) under `models/`
+  const res = await fetch(file.startsWith('models/') ? file : `anime/${file}`).catch(() => null);
   if (!res?.ok) return null;
   const buf = await res.arrayBuffer();
   // a missing file can come back as the dev server's index page: check for the glTF magic

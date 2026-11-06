@@ -4,7 +4,7 @@
  * States: 'title' (live backdrop) -> 'playing' <-> 'paused' -> 'ending' (death cam / boarding cinematic) -> 'results'.
  * The simulation only advances in 'playing' and 'ending'. dt is clamped, so pausing / tab switches never produce a jump.
  */
-import { HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } from '../anime/cast';
+import { ASYLUM_CAST, HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } from '../anime/cast';
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
@@ -60,7 +60,7 @@ import { AureliaRuntime } from '../aurelia/runtime';
 import { AURELIA_MODEL } from '../aurelia/look';
 import { MujinRuntime } from '../mujin/runtime';
 import { HirasakaRuntime } from '../hirasaka/runtime';
-import { loadAnime, loadedAnimeScenes } from '../anime/vrm';
+import { loadAnime, loadAnimeFiles, loadedAnimeScenes } from '../anime/vrm';
 import { farCrowd } from '../anime/farCrowd';
 import { loadModels, loadSurfaces, MAP_MODELS, mapSurfaceIds, PACKS, setModelMap } from '../models/library';
 import { CourtRig } from '../sakura/courtRig';
@@ -502,6 +502,11 @@ export class Game implements GameCtx {
       // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
       this.menus.showLoading(0.66, this.mapId === 'mujin' ? 'THE PASSENGERS ARE WAITING' : this.mapId === 'hirasaka' ? 'THE NIGHT SHIFT IS WAITING' : 'DRESSING THE CAST');
       await loadAnimeCast(this.mapId === 'mujin' ? MUJIN_CAST : this.mapId === 'hirasaka' ? HIRASAKA_CAST : undefined);
+    }
+    if (this.mapId === 'asylum' && pack.length > 0 && ASYLUM_CAST.length > 0) {
+      // NEW 3D MODELS (BETA): the Asylum's people in their real-asset models (anyone without one keeps the built figure)
+      this.menus.showLoading(0.66, 'WAKING THE NIGHT STAFF');
+      await loadAnimeFiles(ASYLUM_CAST).catch(() => undefined);
     }
     if (this.mapId === 'aurelia') {
       // Aurelia's model (a stand-in from the cast until she has her own; without it she wears the stock figure)

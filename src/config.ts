@@ -1406,7 +1406,7 @@ export const SURVIVORS = {
   // gun once freed; the others follow you unarmed (keep them alive to the end: they pay at extraction like the rest).
   // `freed`: what each says when the cage opens (voiced, `asylum/lines.ts`).
   asylum: [
-    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, freed: "Mary Halloway, night sister. Give me that pistol - I've waited forty days to use one.", look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
+    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, model: 'models/asylum/halloway.vrm', freed: "Mary Halloway, night sister. Give me that pistol - I've waited forty days to use one.", look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
     { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, unarmed: true, freed: "You're not her. You're real. She checks on me every night - please don't let her find me awake.", look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
     { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, unarmed: true, freed: "Oh thank God. Pip - trainee. I'm useless with a gun, so I'll stay right behind you, alright?", look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
     { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, unarmed: true, freed: "Bless you. I'll not carry a gun, child, but I'll walk with you - and I'll pray loudly.", look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },

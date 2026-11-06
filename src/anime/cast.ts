@@ -5,7 +5,7 @@
  * body, colours and gear (`looks.ts`).
  */
 import * as THREE from 'three';
-import { ANIME_CAST } from '../config';
+import { ANIME_CAST, SQUADS, SURVIVORS } from '../config';
 import type { ZombieVariant } from '../enemies/variants';
 import type { ZombieAnimState, ZombieRig } from '../enemies/zombieRigTypes';
 import type { ZombieType } from '../types';
@@ -50,6 +50,17 @@ export function loadWholeCast(): Promise<void> {
 /** The model a squad member or survivor wears: their own file, else any other person's, else none. */
 export function personModel(file: string | undefined): AnimeTemplate | null {
   return animeModel(file, PEOPLE);
+}
+
+/**
+ * The Asylum's real-asset people (grounded MakeHuman models, `scripts/asylum-cast.py`), loaded with NEW 3D MODELS
+ * (BETA): every file its squad and survivors name.
+ */
+export const ASYLUM_CAST: readonly string[] = [...(SQUADS.asylum?.models ?? []), ...SURVIVORS.asylum.flatMap((s) => (s.model ? [s.model] : []))];
+
+/** A file's own model, or none (no stand-in): without theirs, the Asylum's people keep their built figures. */
+export function ownModel(file: string | undefined): AnimeTemplate | null {
+  return file && animeSlotState(file) === 'own' ? animeModel(file) : null;
 }
 
 /** The model a co-op teammate wears on the Sakura District (by seat): their own file, else any other person's. */
