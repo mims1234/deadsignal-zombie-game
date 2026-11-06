@@ -1295,6 +1295,8 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
     weapons: ['rifle', 'shotgun'],
     helmets: [false, false],
     colors: [0x47523f, 0xeef0ec],
+    // NEW 3D MODELS (BETA): their real-asset models (`scripts/asylum-cast.py`)
+    models: ['models/asylum/vance.vrm', 'models/asylum/okafor.vrm'],
     looks: [
       { female: true, outfit: 'tactical', hair: 'ponytail', hairColor: 0x2b1b12, skin: 0xe8c3a2, eyes: 0x3a2a1a, accent: 0x2a2e32 },
       { female: true, outfit: 'coat', hair: 'puff', hairColor: 0x1b120d, skin: 0x8a5634, eyes: 0x24160e, accent: 0x5f8fa8 },
@@ -1407,10 +1409,10 @@ export const SURVIVORS = {
   // `freed`: what each says when the cage opens (voiced, `asylum/lines.ts`).
   asylum: [
     { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, model: 'models/asylum/halloway.vrm', freed: "Mary Halloway, night sister. Give me that pistol - I've waited forty days to use one.", look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
-    { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, unarmed: true, freed: "You're not her. You're real. She checks on me every night - please don't let her find me awake.", look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
-    { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, unarmed: true, freed: "Oh thank God. Pip - trainee. I'm useless with a gun, so I'll stay right behind you, alright?", look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
-    { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, unarmed: true, freed: "Bless you. I'll not carry a gun, child, but I'll walk with you - and I'll pray loudly.", look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },
-    { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, freed: "Yuki Sato, resident. Hand me something with a trigger. I'll watch your back.", look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
+    { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, model: 'models/asylum/ellie.vrm', unarmed: true, freed: "You're not her. You're real. She checks on me every night - please don't let her find me awake.", look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
+    { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, model: 'models/asylum/pip.vrm', unarmed: true, freed: "Oh thank God. Pip - trainee. I'm useless with a gun, so I'll stay right behind you, alright?", look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
+    { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, model: 'models/asylum/maeve.vrm', unarmed: true, freed: "Bless you. I'll not carry a gun, child, but I'll walk with you - and I'll pray loudly.", look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },
+    { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, model: 'models/asylum/sato.vrm', freed: "Yuki Sato, resident. Hand me something with a trigger. I'll watch your back.", look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
   ] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook; unarmed?: boolean; freed?: string }[],
   forge: [
     { name: 'tomoe', tag: 'VULCAN', color: 0xb5501a },

@@ -4,6 +4,16 @@
     {
       "version": "0.4.357",
       "date": "2026-11-07",
+      "title": "Asylum: the whole Lantern team and every survivor as real 3D people (beta)",
+      "notes": [
+        "With NEW 3D MODELS (BETA) on, everyone you meet on Blackwood Hill now looks like Nurse Halloway: realistic people instead of the built figures.",
+        "Vance in field kit with a plate vest and Dr. Okafor in a white coat over scrubs fight beside you; Ellie in her hospital gown, Pip in a pink nurse's uniform and cap, Sister Maeve in her habit and veil, and Dr. Sato in a lab coat and glasses wait in the cages.",
+        "They move, aim and cower exactly as before. The new people add about 25 MB to the Asylum's download with the setting on; with it off, nothing changes. The infected and the Matron come next."
+      ]
+    },
+    {
+      "version": "0.4.357",
+      "date": "2026-11-07",
       "title": "No more hitch when the first voice line plays",
       "notes": [
         "Fixed a short freeze (about 50 ms) a couple of seconds into every Asylum run, when the first recorded line played: the voices' echo is now set up when you press Deploy, not mid-game.",
