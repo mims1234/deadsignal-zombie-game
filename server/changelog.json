@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.361",
+      "date": "2026-11-07",
+      "title": "Asylum: a lit lantern turns green",
+      "notes": [
+        "The vigil lanterns glow amber while you feed them and turn green once they burn, so you can see from across the grounds which ones are done."
+      ]
+    },
+    {
       "version": "0.4.360",
       "date": "2026-11-07",
       "title": "Asylum: the infected as real 3D people (beta)",

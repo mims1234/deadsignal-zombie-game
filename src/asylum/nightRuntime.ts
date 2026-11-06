@@ -37,6 +37,12 @@ import { asylumHour, asylumTuning, bellReady, damperOpen, FILE, fogAt, huntClock
 import { UpstairsRush } from './upstairsRush';
 import { setWard9Open, ward9Open } from './upstairs';
 
+/** A vigil lantern's light: amber while it is fed, green once it burns (done). */
+const LANTERN_FILL = 0xffb04a;
+const LANTERN_GLOW = 0xffa040;
+const LANTERN_FILL_GLASS = 0xff9a30;
+const LANTERN_DONE = 0x1aff5a; // saturated: the bloom whitens anything paler
+
 interface FolderModel {
   root: THREE.Group;
   folder: THREE.Object3D;
@@ -126,7 +132,7 @@ export class AsylumNight {
   /** The upper floors' sleepers are in their beds (placed on the first frame of a run that has infected). */
   private residents = false;
   /** The lanterns' flames: a flame, its glow, the glass. */
-  private readonly flames: { flame: THREE.Mesh; glow: THREE.Sprite; glass: THREE.MeshStandardMaterial; shown: number }[] = [];
+  private readonly flames: { flame: THREE.Mesh; glow: THREE.Sprite; glass: THREE.MeshStandardMaterial; shown: number; done: boolean }[] = [];
   /** Souls on their way into a lantern. */
   private readonly wisps: { s: THREE.Sprite; from: THREE.Vector3; to: number; t: number }[] = [];
 
@@ -166,20 +172,20 @@ export class AsylumNight {
       this.folders.push({ root, folder, halo, beam });
     }
     // the vigil lanterns' glass and flame (their iron posts are the layout's: the cage is 1.75 m up)
-    const flameMat = new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     const flameGeo = new THREE.ConeGeometry(0.06, 0.2, 8);
     for (const l of LANTERNS.spots) {
-      const glass = new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.55, emissive: 0xff9a30, emissiveIntensity: 0, depthWrite: false });
+      const glass = new THREE.MeshStandardMaterial({ color: 0x3a3428, roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.55, emissive: LANTERN_FILL_GLASS, emissiveIntensity: 0, depthWrite: false });
       const pane = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.28), glass);
       pane.position.set(l.x, l.y + 1.77, l.z);
-      const flame = new THREE.Mesh(flameGeo, flameMat);
+      // each its own flame: amber while it fills, the vigil's green once it burns (`LANTERN_DONE`)
+      const flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({ color: LANTERN_FILL, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       flame.position.set(l.x, l.y + 1.72, l.z);
       flame.scale.setScalar(0.001);
-      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: 0xffa040, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex(), color: LANTERN_GLOW, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       glow.position.set(l.x, l.y + 1.75, l.z);
       glow.scale.setScalar(2.4);
       this.root.add(pane, flame, glow);
-      this.flames.push({ flame, glow, glass, shown: 0 });
+      this.flames.push({ flame, glow, glass, shown: 0, done: false });
     }
     this.rush = new UpstairsRush(ctx.zombies, ctx.level);
   }
@@ -553,7 +559,7 @@ export class AsylumNight {
     ctx.hudEvent({ type: 'cash', amount: a.cash });
     ctx.audio.play('lantern_light', { priority: 3, pos: { x: l.x, y: l.y + 1.8, z: l.z } });
     ctx.audio.play('powerup_max_ammo', { priority: 2, volume: 0.7 });
-    ctx.fx.sparkle({ x: l.x, y: l.y + 1.8, z: l.z }, 0xffb050, 26);
+    ctx.fx.sparkle({ x: l.x, y: l.y + 1.8, z: l.z }, LANTERN_DONE, 26);
     ctx.banner(n >= total ? 'THE LANTERNS BURN' : `VIGIL LANTERN ${n}/${total}`, n >= total ? `The chapel bell can be rung   +$${a.cash.toLocaleString('en-US')}  FULL AMMO` : `${l.place} - it burns   +$${a.cash.toLocaleString('en-US')}  FULL AMMO`, 'good', 4.5);
     ctx.feed(`LANTERN ${n}/${total}  +$${a.cash}  FULL AMMO`, 'good');
     if (n === 1) this.voice.say('vance_lantern_one', { kind: 'story', delay: 1 });
@@ -659,9 +665,16 @@ export class AsylumNight {
       const fl = 0.85 + 0.15 * Math.sin(time * 13 + i * 2) * Math.sin(time * 7.3 + i);
       f.flame.scale.set(0.4 + 0.6 * k, (0.3 + 0.9 * k) * fl, 0.4 + 0.6 * k);
       f.flame.visible = k > 0;
-      f.glass.emissiveIntensity = (lit ? 2.2 : 0.15 + 1.2 * k) * fl;
-      (f.glow.material as THREE.SpriteMaterial).opacity = (lit ? 0.95 : 0.15 + 0.5 * k) * fl;
+      f.glass.emissiveIntensity = (lit ? 0.9 : 0.15 + 1.2 * k) * fl;
+      (f.glow.material as THREE.SpriteMaterial).opacity = (lit ? 0.7 : 0.15 + 0.5 * k) * fl;
       f.glow.scale.setScalar(lit ? 3.2 : 1.6 + 1.2 * k);
+      // a burning lantern turns green, so it reads as done from across the grounds (and dark again on a new run)
+      if (lit !== f.done) {
+        f.done = lit;
+        (f.flame.material as THREE.MeshBasicMaterial).color.setHex(lit ? LANTERN_DONE : LANTERN_FILL);
+        (f.glow.material as THREE.SpriteMaterial).color.setHex(lit ? LANTERN_DONE : LANTERN_GLOW);
+        f.glass.emissive.setHex(lit ? LANTERN_DONE : LANTERN_FILL_GLASS);
+      }
     }
     for (let i = 0; i < this.wisps.length; i++) {
       const w = this.wisps[i]!;
