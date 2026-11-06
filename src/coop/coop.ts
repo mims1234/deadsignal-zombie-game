@@ -458,6 +458,9 @@ export class CoopSession {
       case 'kill':
         g.creditKill(Number(d.c) || 0, String(d.n || 'INFECTED'), d.h === true, Number(d.x), Number(d.zz), Number(d.dc) || 0);
         return;
+      case 'sk':
+        g.squadKill(Number(d.c) || 0, String(d.n || 'INFECTED'));
+        return;
       case 'cash':
         g.coopCash(Number(d.c) || 0, String(d.t || ''), Number(d.pl) || 0);
         return;

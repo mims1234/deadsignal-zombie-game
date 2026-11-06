@@ -2125,8 +2125,10 @@ export class Game implements GameCtx {
   private onZombieKilled(z: Zombie, head: boolean): void {
     if (this.forge?.noReward) return; // the Forge's burnout and its sentry pay nobody
     if (this.squad.allyShooting) {
-      // an ally's kill: it still counts for the contract, but it is not the player's
+      // an ally's kill: it still counts for the contract and pays the player in full, but it is not the player's kill
       if (z.isBoss) this.mission.onWardenKilled();
+      if (this.powerups.nuking) return;
+      this.squadKill(Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z)) * this.powerups.cashMul), z.tag ? `${z.tag} (INFECTED)` : z.def.name);
       return;
     }
     const s = this.session;
@@ -2324,6 +2326,14 @@ export class Game implements GameCtx {
       this.banner(title, `+$${cash}${plates > 0 ? `   +${plates} ARMOR PLATES` : ''}`, 'good', 4);
       this.audio.play('contract_complete', { priority: 3 });
     } else this.audio.play('pickup_cash', { priority: 2 });
+  }
+
+  /** Cash for a kill by the squad (solo: the full reward; co-op: the player's even share of it). Not the player's own kill. */
+  squadKill(cash: number, name: string): void {
+    if (cash <= 0) return;
+    addCash(this.session.inv, cash);
+    this.hud.event({ type: 'cash', amount: cash });
+    this.feed(`+$${cash}  ${name.toUpperCase()}  (SQUAD KILL)`, 'normal');
   }
 
   /** The simulation confirmed one of this player's kills (and may leave a pickup where the body fell). */

@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.346",
+      "date": "2026-11-06",
+      "title": "Squad kills pay you, on every map",
+      "notes": [
+        "When your squad or a freed survivor kills an infected, you now get the cash for it (shown as SQUAD KILL in the feed). It does not count as one of your own kills.",
+        "In co-op the reward is split evenly between all the players, rounded down, so nobody gets more than their share."
+      ]
+    },
+    {
       "version": "0.4.345",
       "date": "2026-11-05",
       "title": "Asylum: no more black screens by the perk machines, cheaper perks",

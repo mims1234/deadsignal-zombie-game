@@ -1199,7 +1199,11 @@ export class SessionSim {
       }
       const shot = allyFight(a, this.allyWorld, dt);
       if (!shot) return;
-      if (shot.hit && shot.target.alive && a.env) allyHit(a, shot, this.zombies, a.env);
+      if (shot.hit && shot.target.alive && a.env) {
+        this.allyKill = true;
+        allyHit(a, shot, this.zombies, a.env);
+        this.allyKill = false;
+      }
       if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
     });
   }
@@ -1296,10 +1300,20 @@ export class SessionSim {
     this.send('all', { k: 'pw', id: d.id, w: POWERUP_KINDS.indexOf(d.kind), x: r1(d.x), z: r1(d.z), n: p.name, c: Math.round(e.cash * cashMultiplier(this.powerups)) });
   }
 
+  /** True while a squad member's shot is being applied (`onKill` splits its pay between the players). */
+  private allyKill = false;
+
   private onKill(z: Zombie, head: boolean): void {
     // the Forge's burnout: the virus ending pays nobody (and the reborn is not the hunt's boss)
     if (this.forge?.noReward) return;
     if (z.isBoss && this.story && z !== this.forge?.reborn) completeHunt(this.hunt);
+    if (this.allyKill && !this.nuking) {
+      // a squad kill pays every player an even share of the reward, rounded down (no one's own kill, no drop)
+      const n = this.peers.size;
+      const cash = n > 0 ? Math.floor(Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)) / n) : 0;
+      if (cash > 0) for (const q of this.peers.values()) this.send(q.id, { k: 'sk', n: z.tag ?? z.def.name, c: cash });
+      return;
+    }
     const p = this.killer ? this.peers.get(this.killer) : null;
     // a nuke's kills pay nothing and drop nothing (the nuke pays)
     if (!p || this.nuking) return;
