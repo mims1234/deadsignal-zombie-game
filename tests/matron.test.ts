@@ -25,6 +25,7 @@ function setup(map: MapId = 'asylum', difficulty?: SessionDifficulty) {
   // she only walks at night: start the Asylum's run at nightfall (one tick wakes her at her post)
   if (map === 'asylum') {
     sim.debug.setElapsed(NIGHTFALL);
+    sim.debug.nightNow();
     run(1 / 30);
   }
   return { sim, where, run };

@@ -965,6 +965,11 @@ export const ECONOMY = {
   platePrice: 350,
   /** Cash for a headshot kill bonus is per-zombie; this multiplies all kill cash globally. */
   killCashMul: 0.45,
+  /**
+   * Kill cash on top of that, by map: the Asylum is a horde map with a shop on every wall (doors, perks, the press), so
+   * every kill there pays more.
+   */
+  mapKillMul: { asylum: 1.8 } as Partial<Record<string, number>>,
   crates: {
     low: { cash: [70, 140], mags: [1, 1.8], plateChance: 0.25, grenadeChance: 0.15 },
     medium: { cash: [130, 240], mags: [1.4, 2.4], plateChance: 0.4, grenadeChance: 0.3 },
@@ -1392,14 +1397,16 @@ export const SURVIVORS = {
     { name: '.maidlover.', tag: 'VULCAN', color: 0xb8202a },
     { name: 'Anya', tag: 'VULCAN', color: 0x9a3d1c },
   ],
-  // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`)
+  // Blackwood's staff were all women, and so was its last patient (see `asylum/lore.ts`). Only two of them take up a
+  // gun once freed; the others follow you unarmed (keep them alive to the end: they pay at extraction like the rest).
+  // `freed`: what each says when the cage opens (voiced, `asylum/lines.ts`).
   asylum: [
-    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
-    { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
-    { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
-    { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },
-    { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
-  ],
+    { name: 'Nurse Halloway', tag: 'NIGHT NURSE', color: 0xf4f1ea, freed: "Mary Halloway, night sister. Give me that pistol - I've waited forty days to use one.", look: { female: true, outfit: 'nurse', hair: 'bun', hairColor: 0x8c3a1e, skin: 0xf1d3bd, eyes: 0x2a5a3a, accent: 0xd8404e } },
+    { name: 'Ellie Crane', tag: 'PATIENT 117', color: 0xbfe2e4, unarmed: true, freed: "You're not her. You're real. She checks on me every night - please don't let her find me awake.", look: { female: true, outfit: 'gown', hair: 'long', hairColor: 0xdcdce8, skin: 0xf6e0d2, eyes: 0x5a6ab0, accent: 0x9cc8cc } },
+    { name: 'Pip Arden', tag: 'TRAINEE NURSE', color: 0xffd3e2, unarmed: true, freed: "Oh thank God. Pip - trainee. I'm useless with a gun, so I'll stay right behind you, alright?", look: { female: true, outfit: 'nurse', hair: 'twintails', hairColor: 0xf0a2c4, skin: 0xf7dfcc, eyes: 0x6a2a4a, accent: 0xe0607e } },
+    { name: 'Sister Maeve', tag: 'CHAPLAIN', color: 0x23232c, unarmed: true, freed: "Bless you. I'll not carry a gun, child, but I'll walk with you - and I'll pray loudly.", look: { female: true, outfit: 'habit', hair: 'veil', skin: 0xf0d6c2, eyes: 0x3a4a6a } },
+    { name: 'Dr. Yuki Sato', tag: 'RESIDENT', color: 0xf3f3ef, freed: "Yuki Sato, resident. Hand me something with a trigger. I'll watch your back.", look: { female: true, outfit: 'coat', hair: 'bob', hairColor: 0x16161c, skin: 0xf2d8c0, eyes: 0x2a1a14, glasses: true, accent: 0x6c8fae } },
+  ] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook; unarmed?: boolean; freed?: string }[],
   forge: [
     { name: 'tomoe', tag: 'VULCAN', color: 0xb5501a },
     { name: 'Athy', tag: 'VULCAN', color: 0x8a4a22 },

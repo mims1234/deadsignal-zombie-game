@@ -141,6 +141,8 @@ export interface HudState {
   vignette: number;
   /** 0..1 toxic overlay strength. */
   toxic: number;
+  /** The overlay's look while `toxic`: the green front (default) or the Asylum's black fog. */
+  toxicTint?: 'toxic' | 'black';
 }
 
 export type HudEvent =

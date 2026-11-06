@@ -35,6 +35,8 @@ export interface AsylumHost extends GameCtx {
   readonly interaction: Interaction;
   /** The infected's flow field must be recomputed (a door changed). */
   invalidateFlow(): void;
+  /** Free roam (the lever throws the power; in the story the generators' hold does). */
+  readonly flying: boolean;
 }
 
 /** What the in-game machine for the Pack-a-Punch is called. */
@@ -265,7 +267,7 @@ export class AsylumLoopRuntime {
       const d = ASYLUM_DOORS[i]!;
       md.markers.push({ id: `asy-door:${d.id}`, kind: 'gate', x: d.x, z: d.z, label: `$${d.cost}`, visible: true });
     }
-    if (!on) md.markers.push({ id: 'asy-power', kind: 'objective', x: POWER_LEVER.x, z: POWER_LEVER.z, label: 'POWER', visible: true });
+    if (!on && this.g.flying) md.markers.push({ id: 'asy-power', kind: 'objective', x: POWER_LEVER.x, z: POWER_LEVER.z, label: 'POWER', visible: true });
     for (const m of PERK_MACHINES) {
       const def = PERK_DEFS[m.perk];
       md.markers.push({ id: `asy-perk:${m.perk}`, kind: 'buy', x: m.x, z: m.z, label: def.name, color: hex(def.color), visible: true, dim: !on });
@@ -330,7 +332,8 @@ export class AsylumLoopRuntime {
       const L = POWER_LEVER;
       const dist = this.frontDist(L, 0.3);
       if (dist <= reach && looking(L.x, L.z, dist)) {
-        out.push({ id: 'asy-lever', dist, text: 'THROW THE POWER SWITCH', sub: 'Wake the perk machines and the press', tone: 'warn', hold: LOOP.leverHold, enabled: true, onUse: () => this.throwLever() });
+        if (this.g.flying) out.push({ id: 'asy-lever', dist, text: 'THROW THE POWER SWITCH', sub: 'Wake the perk machines and the press', tone: 'warn', hold: LOOP.leverHold, enabled: true, onUse: () => this.throwLever() });
+        else out.push({ id: 'asy-lever', dist, text: 'NO CURRENT', sub: 'Start the generators in the yard outside first', tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
       }
     }
 

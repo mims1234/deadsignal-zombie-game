@@ -16,7 +16,11 @@ import { buildZoneWalls } from '../../asylum/zoneWalls';
 import { helipad, quarantineGate, spire, transmitterSite, type SpireHandle, type TransmitterHandle } from '../landmarks';
 import { bench, corpse, crateGroup, debris, deadTree, generator, barrelGroup, streetLamp, vehicle } from '../props';
 import { ceilingLight, emergencyLight, gurney, labBench, lockerRow, officeDesk } from '../interiors';
-import { addBox, building, groundRect, perimeterWall, wallDecal, type Opening } from '../structures';
+import { addBox, building, groundRect, perimeterWall, wall, wallDecal, type Opening } from '../structures';
+import type { BoxCollider } from '../collision';
+import type { FloorLink } from '../floors';
+import { UPSTAIRS } from '../../asylum/nightConfig';
+import { straightStairs } from './storeys';
 import { HALF_PI, type Ctx } from './util';
 
 export const ASYLUM_BOUNDS = { minX: -56, maxX: 56, minZ: -46, maxZ: 46 };
@@ -30,7 +34,19 @@ export const ASYLUM = {
   matron: { x: 0, z: -33.5 },
   /** The crematorium stack: the black fog comes from here. */
   stack: { x: 46, z: -40 },
+  /** The furnace's damper wheel, at the foot of the stack (shut it and the fog stops); you stand on its +Z side. */
+  damper: { x: 49.5, z: -33.4 },
 };
+
+/** What the Asylum's story moves at run time (`asylum/upstairs.ts`). */
+export interface AsylumHandles {
+  /** Ward Nine's door at the top of the east fire escape: locked until the power is on. */
+  ward9: { collider: BoxCollider; panel: THREE.Object3D; lamp: THREE.MeshStandardMaterial; area: number; link: FloorLink };
+  /** The two upper floors (area ids). */
+  areas: { nurses: number; nine: number };
+  /** The furnace damper: the wheel turns when it is shut. */
+  damper: { root: THREE.Group; wheel: THREE.Object3D; x: number; z: number };
+}
 
 const DOOR = 1.6;
 const DOOR_H = 2.4;
@@ -144,7 +160,7 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string, boards: { i
     partitions.push({ x0: corridorR + 0.11, z0: z, x1: ix1, z1: z, material: 'plaster' as const, thickness: 0.2 });
   }
   building(b, {
-    x: cx, z: (z0 + z1) / 2, w, d: z1 - z0, height: H, wallMaterial: 'brick', roofMaterial: 'roof', floorMaterial: 'tile', ceilingMaterial: 'plaster', parapet: 0.4,
+    x: cx, z: (z0 + z1) / 2, w, d: z1 - z0, height: H, wallMaterial: 'brick', roofMaterial: 'roof', floorMaterial: 'tile', ceilingMaterial: 'plaster',
     sides: {
       [inner]: { openings: board(innerOpen, inner, boards.inner) },
       [outer]: { openings: board(outerOpen, outer, boards.outer) },
@@ -155,7 +171,6 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string, boards: { i
     partitions,
     tag,
   });
-  upperStorey(c, cx, (z0 + z1) / 2, w, z1 - z0, H + 0.4, 3.6, tag.length * 97);
   // the corridor: tube lights, some failing; an emergency beacon at each end
   for (let k = 0; k < 6; k++) ceilingLight(b, { x: cx, z: mid(k), y: H - 0.05, kind: 'tube', rot: HALF_PI, mode: k === 2 ? 'fail' : k === 4 ? 'flicker' : 'steady', color: 0xd8e6dc, intensity: 26 });
   emergencyLight(b, { x: cx, y: H - 0.3, z: iz0 + 0.3, phase: cx });
@@ -176,9 +191,199 @@ function wardWing(c: Ctx, cx: number, inner: 'E' | 'W', tag: string, boards: { i
   wallDecal(b, 'grime', cx + 1.5, 1.6, mid(4), 3, 1.4, -HALF_PI);
 }
 
+/**
+ * A ward wing's upper floor, reached by a steel fire escape from the yard: brick walls with windows, a tiled floor on
+ * the ward's roof, rooms of its own, and a door off the landing. `kind` 'nurses' is the night nurses' floor (west),
+ * 'nine' Ward Nine, the Lantern Ward (east). Returns its area, the stairs and the doorway.
+ */
+function wardUpstairs(c: Ctx, cx: number, kind: 'nurses' | 'nine'): { area: number; link: FloorLink; door: { x: number; z: number } } {
+  const { b, floors } = c;
+  const Y = UPSTAIRS.y;
+  const H = 3.4;
+  const t = 0.4;
+  const x0 = cx - 7;
+  const x1 = cx + 7;
+  const z0 = -22;
+  const z1 = 10;
+  const s = cx < 0 ? 1 : -1; // toward the yard
+  const innerX = cx + s * 7; // the face toward the yard
+  const fe = kind === 'nurses' ? UPSTAIRS.west : UPSTAIRS.east;
+  const lane = 1.4;
+  // the landing reaches from the wall out over the stairs
+  const landOut = fe.x + s * (lane / 2);
+  const area = floors.addArea(kind === 'nurses' ? "the nurses' floor" : 'Ward Nine', 'upper', Y, {
+    minX: Math.min(x0, landOut) - 0.6,
+    maxX: Math.max(x1, landOut) + 0.6,
+    minZ: z0 - 0.6,
+    maxZ: z1 + 0.6,
+  });
+
+  // ---- the floor (on the ward's roof) and a roof of its own ----
+  addBox(b, 'tile', cx, Y - 0.05, (z0 + z1) / 2, 14 - 2 * t, 0.1, z1 - z0 - 2 * t, 0, { cast: false });
+  b.collide({ x: cx, z: (z0 + z1) / 2, hx: 7, hz: (z1 - z0) / 2, y0: Y - 0.1, y1: Y, floor: true, surface: 'concrete', mapKind: 'none', tag: `${kind}-floor` });
+  addBox(b, 'roof', cx, Y + H + 0.2, (z0 + z1) / 2, 14.5, 0.4, z1 - z0 + 0.5, 0);
+  b.collide({ x: cx, z: (z0 + z1) / 2, hx: 7.25, hz: (z1 - z0 + 0.5) / 2, y0: Y + H, y1: Y + H + 0.4, mapKind: 'none', tag: 'roof' });
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(14 - 2 * t, z1 - z0 - 2 * t), b.mats.get('plaster'));
+  ceil.rotation.x = Math.PI / 2;
+  ceil.position.set(cx, Y + H - 0.02, (z0 + z1) / 2);
+  b.add(ceil, { cast: false });
+  addBox(b, 'concreteDark', cx, Y + H + 0.5, (z0 + z1) / 2, 14.7, 0.2, z1 - z0 + 0.7, 0, { cast: false }); // cornice
+
+  // ---- walls: windows all round, the door off the landing ----
+  const winAt = (len: number, skip: (at: number) => boolean, lit: number[]): Opening[] => {
+    const out: Opening[] = [];
+    const n = Math.floor((len - 1.5) / 3.4);
+    for (let i = 0; i < n; i++) {
+      const at = (len - (n - 1) * 3.4) / 2 + i * 3.4;
+      if (skip(at)) continue;
+      out.push({ at, width: 1.2, height: 1.5, sill: 1.0, kind: 'window', frame: 'steelDark', lit: lit.includes(i) });
+    }
+    return out;
+  };
+  const W = (ax: number, az: number, bx: number, bz: number, openings: Opening[]): void => {
+    wall(b, { x0: ax, z0: az, x1: bx, z1: bz, height: H, thickness: t, material: 'brick', openings, y0: Y, mapKind: 'building', tag: `${kind}-wall` });
+  };
+  const zi0 = z0 + t;
+  const zi1 = z1 - t;
+  W(x0, z0 + t / 2, x1, z0 + t / 2, winAt(14, () => false, []));
+  W(x1, z1 - t / 2, x0, z1 - t / 2, winAt(14, () => false, [1]));
+  // the inner wall runs from the north end: its door is `fe.doorZ - zi0` along it
+  const doorAt = fe.doorZ - zi0;
+  W(innerX - s * (t / 2), zi0, innerX - s * (t / 2), zi1, [{ at: doorAt, width: 1.6, height: 2.4, kind: 'door', frame: 'wood' }, ...winAt(zi1 - zi0, (a) => Math.abs(a - doorAt) < 2.2, kind === 'nine' ? [3, 5] : [2])]);
+  const outerX = cx - s * 7;
+  W(outerX + s * (t / 2), zi0, outerX + s * (t / 2), zi1, winAt(zi1 - zi0, () => false, kind === 'nine' ? [1, 4, 7] : [6]));
+
+  // ---- the fire escape: steel stairs up from the yard, a landing by the door ----
+  const top = straightStairs(c, { x: fe.x, z: fe.z, dx: 0, dz: -1, width: lane, y0: 0, y1: Y, lower: 0, upper: area, mat: 'grating' });
+  const link = floors.links[floors.links.length - 1]!;
+  const lzA = top.z; // the landing's near edge (the top step)
+  const lzB = fe.doorZ - 1.6;
+  const lxA = innerX; // the wall's face
+  const lxB = landOut;
+  const lx = (lxA + lxB) / 2;
+  const lw = Math.abs(lxB - lxA);
+  addBox(b, 'grating', lx, Y - 0.06, (lzA + lzB) / 2, lw, 0.12, lzA - lzB, 0);
+  b.collide({ x: lx, z: (lzA + lzB) / 2, hx: lw / 2, hz: (lzA - lzB) / 2, y0: Y - 0.24, y1: Y, floor: true, surface: 'metal', mapKind: 'none', tag: 'fire-escape' });
+  // posts under it, and its rails (the open sides)
+  for (const [px, pz] of [[lxB, lzB], [lxB, lzA], [lxA + s * 0.15, lzB]] as const) addBox(b, 'steelDark', px, Y / 2, pz, 0.12, Y, 0.12, 0);
+  const rail = (rx: number, rz: number, w2: number, d2: number): void => {
+    addBox(b, 'steelDark', rx, Y + 1.0, rz, Math.max(w2, 0.05), 0.05, Math.max(d2, 0.05), 0, { cast: false });
+    addBox(b, 'steelDark', rx, Y + 0.5, rz, Math.max(w2, 0.03), 0.03, Math.max(d2, 0.03), 0, { cast: false });
+    b.collide({ x: rx, z: rz, hx: Math.max(w2, 0.08) / 2, hz: Math.max(d2, 0.08) / 2, y0: Y - 0.3, y1: Y + 1.1, blocksShots: false, mapKind: 'none', tag: 'stair-rail' });
+  };
+  rail(lxB, (lzA + lzB) / 2, 0.08, lzA - lzB); // the far side
+  rail(lx, lzB, lw, 0.08); // the end
+  const gapW = Math.abs(fe.x - s * (lane / 2) - lxA); // between the wall and the stairs, at the top step
+  rail(lxA + (s * gapW) / 2, lzA, gapW, 0.08);
+  // a lamp over the door
+  ceilingLight(b, { x: innerX + s * 0.6, z: fe.doorZ, y: Y + 2.9, kind: 'caged', color: 0xffc880, intensity: 18, mode: kind === 'nine' ? 'flicker' : 'steady' });
+
+  // ---- inside ----
+  const inX0 = x0 + t;
+  const inX1 = x1 - t;
+  const part = (z: number, at: number): void => {
+    wall(b, { x0: inX0, z0: z, x1: inX1, z1: z, height: H - 0.05, thickness: 0.2, material: 'plaster', openings: [{ at, width: 1.6, height: 2.3, kind: 'door', frame: 'wood' }], y0: Y, mapKind: 'none', tag: 'partition', cast: false });
+  };
+  const lampY = Y + H - 0.05;
+  if (kind === 'nurses') {
+    // the night station by the door, the dormitory, the Matron's office at the far end
+    part(-14, 6.6);
+    part(2, 6.6);
+    officeDesk(b, { x: cx + 3.6, z: -18.5, y: Y, rot: Math.PI / 2, chair: true });
+    lockerRow(b, { x: x0 + 1, z: -18, y: Y, rot: HALF_PI, count: 4 });
+    for (let k = 0; k < 4; k++) {
+      gurney(b, { x: x0 + 1.4, z: -8 + k * 2.6, y: Y, rot: 0, covered: false });
+      gurney(b, { x: x1 - 1.4, z: -8 + k * 2.6, y: Y, rot: 0, covered: k === 2 });
+    }
+    officeDesk(b, { x: -25.2, z: -11.9, y: Y, rot: 0, chair: false }); // the day book lies on it (`RECORDS`)
+    officeDesk(b, { x: cx, z: 7.6, y: Y, rot: Math.PI, chair: true }); // the Matron's
+    lockerRow(b, { x: x1 - 0.6, z: 5, y: Y, rot: -HALF_PI, count: 3 });
+    ceilingLight(b, { x: cx, z: -18, y: lampY, kind: 'panel', color: 0xfff0d8, intensity: 24 });
+    ceilingLight(b, { x: cx, z: -6, y: lampY, kind: 'tube', rot: HALF_PI, mode: 'flicker', color: 0xe8f0e0, intensity: 24 });
+    ceilingLight(b, { x: cx, z: 6, y: lampY, kind: 'caged', color: 0xffd8a0, intensity: 28 });
+    wallDecal(b, 'mold', inX0 + 0.05, Y + 2.2, -4, 2.4, 1.4, HALF_PI);
+  } else {
+    // Ward Nine: the long ward, beds down both walls under lamps that were never put out; the night desk at the end
+    part(-14, 6.6);
+    for (let k = 0; k < 5; k++) {
+      const z = -11 + k * 3.2;
+      gurney(b, { x: x0 + 1.4, z, y: Y, rot: 0, covered: k % 3 === 1 });
+      gurney(b, { x: x1 - 1.4, z, y: Y, rot: 0, covered: k % 3 === 2 });
+    }
+    officeDesk(b, { x: 22, z: 4.7, y: Y, rot: Math.PI, chair: true }); // the night register (`RECORDS`)
+    lockerRow(b, { x: x1 - 0.6, z: -18, y: Y, rot: -HALF_PI, count: 3 });
+    for (const z of [-10, -2, 6]) ceilingLight(b, { x: cx, z, y: lampY, kind: 'caged', color: 0xffc070, intensity: 30, mode: z === -2 ? 'flicker' : 'steady' });
+    ceilingLight(b, { x: cx, z: -18, y: lampY, kind: 'tube', rot: HALF_PI, mode: 'fail', color: 0xe8f0e0 });
+    wallDecal(b, 'bloodOld1', inX1 - 0.05, Y + 1.3, -6, 2.2, 1.4, -HALF_PI);
+  }
+  return { area, link, door: { x: innerX - s * (t / 2), z: fe.doorZ } };
+}
+
+/** Ward Nine's door: a steel fire door with a red lamp, shut until the power's back (`asylum/upstairs.ts`). */
+function ward9Door(c: Ctx, at: { x: number; z: number }): { collider: BoxCollider; panel: THREE.Object3D; lamp: THREE.MeshStandardMaterial } {
+  const { b } = c;
+  const Y = UPSTAIRS.y;
+  const panel = new THREE.Group();
+  panel.position.set(at.x, Y, at.z);
+  const steel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.38, 1.58), b.mats.get('steelDark'));
+  steel.position.y = 1.19;
+  const plate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.5), b.mats.get('hazard'));
+  plate.position.y = 1.55;
+  panel.add(steel, plate);
+  b.addDynamic(panel);
+  const lamp = new THREE.MeshStandardMaterial({ color: 0x400808, emissive: 0xff2a1a, emissiveIntensity: 2.2 });
+  const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.2), lamp);
+  bulb.position.set(at.x, Y + 2.62, at.z);
+  b.addDynamic(bulb);
+  const collider = b.collide({ x: at.x, z: at.z, hx: 0.3, hz: 0.92, y0: Y, y1: Y + 2.6, mapKind: 'none', surface: 'metal', tag: 'ward9-door' });
+  return { collider, panel, lamp };
+}
+
+/** The furnace damper: an iron wheel on the flue pipe at the foot of the crematorium stack. */
+function damperWheel(c: Ctx): { root: THREE.Group; wheel: THREE.Object3D; x: number; z: number } {
+  const { b } = c;
+  const { x, z } = ASYLUM.damper;
+  const root = new THREE.Group();
+  root.position.set(x, 0, z);
+  const iron = b.mats.get('steelDark');
+  const rust = new THREE.MeshStandardMaterial({ color: 0x6a3418, roughness: 0.85, metalness: 0.4 });
+  // the flue pipe out of the stack's plinth, its collar, the wheel on a short spindle
+  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, 2.2, 14), rust);
+  pipe.rotation.x = Math.PI / 2;
+  pipe.position.set(0, 1.1, -0.9);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.3, 14), iron);
+  collar.rotation.x = Math.PI / 2;
+  collar.position.set(0, 1.1, 0.15);
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.1, 0.5), b.mats.get('concreteDark'));
+  post.position.set(0, 0.55, -0.4);
+  const wheel = new THREE.Group();
+  wheel.position.set(0, 1.1, 0.5);
+  // a red-painted valve wheel, so it reads against the grey plinth
+  const red = new THREE.MeshStandardMaterial({ color: 0xa3241a, roughness: 0.6, metalness: 0.35 });
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.06, 8, 24), red));
+  for (let i = 0; i < 3; i++) {
+    const spoke = new THREE.Mesh(new THREE.BoxGeometry(1, 0.07, 0.07), red);
+    spoke.rotation.z = (i * Math.PI) / 3;
+    wheel.add(spoke);
+  }
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.4, 8), iron);
+  hub.rotation.x = Math.PI / 2;
+  wheel.add(hub);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.3, 0.04), b.mats.get('hazard'));
+  sign.position.set(0, 1.85, -0.2);
+  root.add(pipe, collar, post, sign);
+  b.add(root);
+  // the wheel turns (drawn on its own)
+  wheel.position.set(x, 1.1, z + 0.5);
+  b.addDynamic(wheel);
+  b.collideBox(x, z - 0.6, 1.2, 2.4, 1.7, { mapKind: 'prop', surface: 'metal', tag: 'damper' });
+  return { root, wheel, x, z };
+}
+
 export interface AsylumResult {
   transmitter: TransmitterHandle;
   spire: SpireHandle;
+  handles: AsylumHandles;
 }
 
 export function buildAsylum(c: Ctx): AsylumResult {
@@ -319,6 +524,10 @@ export function buildAsylum(c: Ctx): AsylumResult {
   // the boarded windows avoid the cells whose cot or lockers stand under the sill
   wardWing(c, -22, 'E', 'west-ward', { inner: [0, 4], outer: [2, 4, 5] });
   wardWing(c, 22, 'W', 'east-ward', { inner: [4], outer: [0, 3, 4] });
+  // their upper floors, up fire escapes from the yard: the night nurses' floor (west) and Ward Nine (east)
+  const nurses = wardUpstairs(c, -22, 'nurses');
+  const nine = wardUpstairs(c, 22, 'nine');
+  const w9 = ward9Door(c, nine.door);
 
   // ---- the yard: flagstones, a dead elm, planters and benches for cover ----
   deadTree(b, { x: 0, z: -9, scale: 1.5, seed: 311 });
@@ -329,8 +538,8 @@ export function buildAsylum(c: Ctx): AsylumResult {
   bench(b, { x: -4, z: -14, rot: 0 });
   bench(b, { x: 4, z: -3, rot: Math.PI });
   corpse(b, { x: 5, z: -12, rot: 1.2 });
-  debris(b, { x: -10, z: -20, radius: 2.2, seed: 312 });
-  for (const [x, z] of [[-12, -1], [12, -1], [-12, -20], [12, -20]] as const) streetLamp(b, { x, z, rot: x < 0 ? HALF_PI : -HALF_PI, armDir: x < 0 ? HALF_PI : -HALF_PI, style: 'cobra', on: z > -10, color: 0xbfd8c8, mode: x > 0 && z < -10 ? 'flicker' : 'steady' });
+  debris(b, { x: -6, z: -20, radius: 2.2, seed: 312 });
+  for (const [x, z] of [[-12, -1], [12, -1], [-10.5, -21], [10.5, -21]] as const) streetLamp(b, { x, z, rot: x < 0 ? HALF_PI : -HALF_PI, armDir: x < 0 ? HALF_PI : -HALF_PI, style: 'cobra', on: z > -10, color: 0xbfd8c8, mode: x > 0 && z < -10 ? 'flicker' : 'steady' });
 
   // ---- the cemetery (west grounds) ----
   for (let gx = -50; gx <= -36; gx += 3.5) {
@@ -448,5 +657,6 @@ export function buildAsylum(c: Ctx): AsylumResult {
   d.zombies('high', 'runner', [[6, -40], [-38, -40]]);
   d.zombies('high', 'armored', [[34, -35], [-12, -40], [18, -30]]);
 
-  return { transmitter: power, spire: stack };
+  const damper = damperWheel(c);
+  return { transmitter: power, spire: stack, handles: { ward9: { ...w9, area: nine.area, link: nine.link }, areas: { nurses: nurses.area, nine: nine.area }, damper } };
 }

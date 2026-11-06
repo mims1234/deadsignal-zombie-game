@@ -155,6 +155,7 @@ class Hud implements HudApi {
     if (!this.root || !this.visible) return;
 
     this.fx.setVignette(s.vignette);
+    this.fx.setToxicTint(s.toxicTint ?? 'toxic');
     this.fx.setToxic(s.toxic);
     this.crosshair.update(s.crosshair);
     this.vitals.update(s);

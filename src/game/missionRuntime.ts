@@ -31,6 +31,7 @@ import {
 } from '../logic/extraction';
 import { deadlineRemaining, escalationPhase, hazardRadius, isInsideHazard, missionClock, surgeActive, surgeStartTime, type MissionClock } from '../logic/mission';
 import { AsylumNight } from '../asylum/nightRuntime';
+import { FOG as ASYLUM_FOG } from '../asylum/nightConfig';
 import type { HudObjective, HudTimer, MapMarker } from '../ui/hudTypes';
 import {
   createAreaMarker,
@@ -145,6 +146,8 @@ export class MissionRuntime implements MissionApi {
     this.island = data.id === 'hirasaka';
     this.clock = missionClock(data.id);
     this.night = data.id === 'asylum' ? new AsylumNight(ctx) : null;
+    // the Asylum: the bird waits for the furnace to be shut as well (the story's last step before the dawn)
+    if (this.night) this.extractGate = () => this.night!.fogStopAt !== null;
     this.lz = data.extraction;
     this.toLzDist = Math.hypot(data.hazardCenter.x - this.lz.lzX, data.hazardCenter.z - this.lz.lzZ);
     ctx.worldRoot.add(this.root);
@@ -156,6 +159,7 @@ export class MissionRuntime implements MissionApi {
 
     this.wall = createContaminationWall();
     this.wall.setCenter(data.hazardCenter.x, data.hazardCenter.z);
+    if (data.id === 'asylum') this.wall.setPalette('black');
     this.wall.setIntensity(0);
     this.root.add(this.wall.root);
 
@@ -845,6 +849,11 @@ export class MissionRuntime implements MissionApi {
     const ex = s.extraction;
     const p = ctx.player;
     const data = ctx.level.data;
+    if (this.night) {
+      // the Asylum: the black fog comes and goes in waves (`asylum/story.ts`); the night runtime warns of each
+      this.burn(dt, camera, time, alive, this.night.fogRadius(), ASYLUM_FOG.dps);
+      return;
+    }
     const calledAt = ex.calledAt;
     const start = surgeStartTime(calledAt, this.clock);
     // advance warning
@@ -894,6 +903,32 @@ export class MissionRuntime implements MissionApi {
     void ZOMBIES;
   }
 
+  /** A wall of fog at radius `r` round the hazard centre: drawn, and it burns whoever is inside (the Asylum's waves). */
+  private burn(dt: number, camera: THREE.Camera, time: number, alive: boolean, r: number, dps: number): void {
+    const ctx = this.ctx;
+    const p = ctx.player;
+    const data = ctx.level.data;
+    this.hazardR = r;
+    this.wall.setRadius(r);
+    this.wall.setIntensity(clamp01(r / 6));
+    this.wall.update(dt, time, camera);
+    const inside = alive && isInsideHazard(p.x, p.z, data.hazardCenter.x, data.hazardCenter.z, r);
+    if (inside) {
+      ctx.hurtPlayer(dps * dt, null, null, { ignoreArmor: true, toxic: true });
+      this.coughTimer -= dt;
+      if (this.coughTimer <= 0) {
+        this.coughTimer = 1.4 + Math.random();
+        ctx.audio.play('cough', { priority: 2 });
+      }
+      if (!this.gasLoop) this.gasLoop = ctx.audio.startLoop('gas', { volume: 0.5, fadeIn: 0.5 });
+      if (!this.hazardWasInside) ctx.banner('IN THE BLACK FOG', 'It burns - get out of it, away from the stack', 'danger', 2.5);
+    } else if (this.gasLoop) {
+      this.gasLoop.stop(0.8);
+      this.gasLoop = null;
+    }
+    this.hazardWasInside = inside;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // HUD data
   // ---------------------------------------------------------------------------------------------
@@ -915,7 +950,7 @@ export class MissionRuntime implements MissionApi {
     if (ex.phase === 'landed') timer = { label: this.train ? 'BOARD - THE DOORS CLOSE IN' : 'BOARD - HELICOPTER LEAVES IN', seconds: ex.windowLeft, urgent: ex.windowLeft < 15 };
     else if (ex.phase === 'called' || ex.phase === 'inbound' || ex.phase === 'landing') timer = { label: this.train ? 'THE DAWN TRAIN' : 'HELICOPTER ETA', seconds: Math.max(0, ex.countdown), urgent: ex.countdown < 15 };
     else if (ex.phase === 'boarding' || ex.phase === 'extracted') timer = { label: 'EXTRACTING', seconds: Math.max(0, ex.boardLeft), urgent: false };
-    else if (this.night?.timer()) timer = this.night.timer()!;
+    else if (this.night) timer = this.night.timer();
     else {
       const left = deadlineRemaining(s.elapsed, this.clock);
       timer = { label: surgeActive(s.elapsed, ex.calledAt, this.clock) ? 'FRONT REACHES LZ IN' : this.ctx.level.data.text.sealed, seconds: left, urgent: left < 90 };

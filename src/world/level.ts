@@ -15,7 +15,7 @@ import type { SpireHandle, TransmitterHandle } from './landmarks';
 import { LevelDataBuilder, MAP_TEXT, regionAtRects, yawFacing, type LevelData, type MapId } from './layout/data';
 import { buildForge, FORGE, FORGE_BOUNDS, type ForgeHandles } from './layout/forge';
 import type { ForgeSites } from '../forge/sites';
-import { ASYLUM, ASYLUM_BOUNDS, buildAsylum } from './layout/asylum';
+import { ASYLUM, ASYLUM_BOUNDS, buildAsylum, type AsylumHandles } from './layout/asylum';
 import { AURELIA, AURELIA_BOUNDS, buildAurelia } from './layout/aurelia';
 import { buildMujin, type MujinHandles } from './layout/mujin';
 import { MUJIN, MUJIN_BOUNDS, MUJIN_SPACE } from '../mujin/places';
@@ -54,6 +54,8 @@ export interface Level {
   spire: SpireHandle;
   /** The Asylum's buyable doors (built open; the purchasable loop shuts them for a run). null on other maps. */
   doors: DoorWorld | null;
+  /** The Asylum: what its story moves (Ward Nine's door, the upper floors, the furnace damper). */
+  asylum: AsylumHandles | null;
   /** The Forge: what its story animates (doors, the seven forges, the Hearth's gate, the furnace, the billboard). */
   forgeFx: ForgeHandles | null;
   /** The Sakura District: what its story and its Easter egg use (the lanterns, the bell, the tree, the stage...). */
@@ -102,8 +104,10 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   let site: Sites;
   let forgeSites: ForgeSites | undefined;
   let forgeFx: ForgeHandles | null = null;
+  let asylumFx: AsylumHandles | null = null;
   if (asylum) {
     const r = buildAsylum(c);
+    asylumFx = r.handles;
     transmitter = r.transmitter;
     spireHandle = r.spire;
     site = {
@@ -415,6 +419,7 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     transmitter,
     spire: spireHandle,
     doors,
+    asylum: asylumFx,
     forgeFx,
     sakura: sakuraFx,
     mujin: mujinFx,

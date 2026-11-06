@@ -2,6 +2,23 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.347",
+      "date": "2026-11-06",
+      "title": "Asylum: a full story through the whole hill, no timer, black fog in waves",
+      "notes": [
+        "Blackwood Hill is now a story in nine steps that takes you everywhere on the map: the admin offices, a west ward cell, the night nurses' floor upstairs, the boiler house, Ward Nine upstairs in the east wing, the morgue, the isolation block where the Matron walks, and the crematorium. Each file you find tells you where to go next and why, and pays $500 ($1,500 more when you have all five).",
+        "The two ward wings have real upper floors now. Steel fire escapes in the Yard lead up to them, and the infected follow you up. Ward Nine's door stays locked until the generators are running.",
+        "There is no countdown any more. The afternoon lasts as long as you need: the sun only goes down once you read Ward Nine's register, and then the Matron starts her round.",
+        "The black fog comes out of the crematorium in waves instead of a deadline. You get a warning, it rolls out, burns anyone caught in it, drives a horde ahead of it, then pulls back. Each wave reaches a little further. Put the Matron to rest, take her keys, and shut the furnace damper at the foot of the stack to stop it for good ($1,500).",
+        "Every kill on the Asylum pays about 80% more, so fighting the hordes pays for doors, perks and the Pack-a-Punch along the way.",
+        "The story is fully voiced, with every character sounding different: Dr. Okafor, Vance (Scottish), the Matron on the old hospital speakers, Orderly Byrne's last tape, the pilot (Australian), and each of the people you free. Lines never talk over each other: they wait their turn, and directions you no longer need are skipped.",
+        "Fewer guns on your side: only Nurse Halloway and Dr. Sato pick up a pistol when freed. Ellie, Pip and Sister Maeve follow you unarmed, so keep them alive.",
+        "The power lever in the boiler house no longer skips the generators: start them and hold the yard to bring the power back.",
+        "The black fog looks like black smoke now, not green gas.",
+        "Lit windows (on every map) now show proper curtains: drapes with folds, a pelmet and tie-backs, instead of a flat orange panel with stripes."
+      ]
+    },
+    {
       "version": "0.4.346",
       "date": "2026-11-06",
       "title": "Squad kills pay you, on every map",

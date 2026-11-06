@@ -272,12 +272,20 @@ try {
   await sleep(500);
   await a.guest.evaluate(use, 'asy-door:westWardFront');
   check('Asylum: a door one player buys opens for the other', await until(a.owner, () => window.__dead.game.asylum.state.doors[0] === 1 && window.__dead.game.level.doors.isOpen(0), null, 10000));
-  check('Asylum: and the buyer pays for it, once', await until(a.guest, (c) => window.__dead.game.session.inv.cash === c - 750 && window.__dead.game.level.doors.isOpen(0), cashA, 10000), String(await a.guest.evaluate(() => window.__dead.game.session.inv.cash)));
-  // the owner throws the power in the boiler house
+  // (squad kills pay the buyer too while this runs: the door's price comes off once, and only once)
+  check('Asylum: and the buyer pays for it, once', await until(a.guest, (c) => { const g = window.__dead.game; const spent = g.session.inv.cashSpent; return g.level.doors.isOpen(0) && spent === 750; }, cashA, 10000), String(await a.guest.evaluate(() => window.__dead.game.session.inv.cashSpent)));
+  // the lever is no shortcut in the story: the owner starts the generators and holds the yard (RESTORE THE POWER)
   await a.owner.evaluate(() => { window.__dead.teleport(40.5, -17.2); window.__dead.lookAt(40.5, -18.35); });
   await sleep(500);
-  await a.owner.evaluate(use, 'asy-lever');
-  check('Asylum: the power switch turns the power on for both', (await until(a.guest, () => window.__dead.game.asylum.powerOn, null, 10000)) && (await until(a.owner, () => window.__dead.game.asylum.powerOn, null, 5000)));
+  const leverOn = await a.owner.evaluate(() => { const g = window.__dead.game; const t = []; g.interaction.sources.forEach((f) => f(t)); const q = t.find((x) => x.id === 'asy-lever'); return !!q && q.enabled; });
+  check('Asylum: the power lever does nothing in the story', !leverOn);
+  await a.owner.evaluate(() => { window.__dead.setHealth(1e6, 100); const c = window.__dead.game.level.transmitter.console; window.__dead.teleport(c.x + 1.2, c.z); });
+  await sleep(800); // the simulation hears where the owner is first
+  await a.owner.evaluate(() => window.__dead.game.mission.activateTransmitter());
+  await a.guest.evaluate(keep);
+  const gens = (await until(a.owner, () => (window.__dead.setHealth(1e6, 100), window.__dead.game.asylum.powerOn), null, 120000)) && (await until(a.guest, () => window.__dead.game.asylum.powerOn, null, 5000));
+  check('Asylum: the generators turn the power on for both', gens, await a.owner.evaluate(() => { const g = window.__dead.game; return JSON.stringify({ def: g.session.defense.status, prog: g.session.defense.progress, life: g.coop.life, x: Math.round(g.player.x), z: Math.round(g.player.z) }); }));
+  check("Asylum: Ward Nine's door opens with the power, for both", (await a.guest.evaluate(() => !window.__dead.game.level.asylum.ward9.collider.blocksMove)) && (await a.owner.evaluate(() => !window.__dead.game.level.asylum.ward9.collider.blocksMove)));
   // a patient file: the guest walks into it, both have it, and each is paid once
   const cashO = await a.owner.evaluate(() => window.__dead.game.session.inv.cash);
   await a.guest.evaluate(() => window.__dead.teleport(-7.8, 6.05));

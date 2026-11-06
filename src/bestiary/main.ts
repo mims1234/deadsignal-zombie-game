@@ -426,8 +426,8 @@ const entries: Entry[] = [
   {
     id: 'blackwood-staff', group: 'BESIDE YOU', name: 'Blackwood staff', height: 1.8,
     tagline: 'The nurses, the chaplain, and Patient 117.',
-    lore: `Blackwood Hill was run by its nursing sisters, and some of them are still locked in behind the wards: ${SURVIVORS.asylum.map((s) => s.name).join(', ')}. Break them out and they pick up a pistol and fight beside you. Ellie Crane was the asylum's last admission - the girl who heard the sundown cases talk to the dark.`,
-    where: 'The Asylum', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
+    lore: `Blackwood Hill was run by its nursing sisters, and some of them are still locked in behind the wards: ${SURVIVORS.asylum.map((s) => s.name).join(', ')}. Break them out and they follow you: Nurse Halloway and Dr. Sato pick up a pistol and fight, the others walk with you unarmed and need keeping alive. Ellie Crane was the asylum's last admission - the girl who heard the sundown cases talk to the dark.`,
+    where: 'The Asylum', stats: [['Health', `${SURVIVORS.hp}`], ['Weapon', 'pistol (two of five)'], ['Freed', `+$${SURVIVORS.rescueCash}`], ['Extracted', `+$${SURVIVORS.extractBonus} each`]], modes: 'avatar',
     cast: SURVIVORS.asylum.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()),
     avatarModes: [...SURVIVORS.asylum.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()), 'TRAPPED', 'WALK', 'FIRE'],
     build: () => {

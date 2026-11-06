@@ -176,6 +176,9 @@ export class HazardView {
     setHidden(this.root, !show);
     if (!show) return;
     this.msg.set(h.message ?? '');
+    // the tag says what it is: the Asylum's fog burns, elsewhere the front is toxic
+    const tag = h.message?.includes('BLACK FOG') ? 'BURNING' : 'TOXIC EXPOSURE';
+    if (this.tag.textContent !== tag) this.tag.textContent = tag;
     if (h.inside !== this.inside) {
       this.inside = h.inside;
       this.root.dataset.inside = h.inside ? '1' : '0';

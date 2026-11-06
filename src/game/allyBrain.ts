@@ -280,8 +280,13 @@ export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
 }
 
 /** Who waits in the cages on a map. */
-export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number; look?: AvatarLook; model?: string }[] {
+export function survivorRoster(map: MapId): readonly { name: string; tag: string; color: number; look?: AvatarLook; model?: string; unarmed?: boolean; freed?: string }[] {
   return SURVIVORS[map];
+}
+
+/** A survivor who follows you without a gun once freed (the Asylum's patient, trainee and chaplain). */
+export function survivorUnarmed(map: MapId, name: string): boolean {
+  return !!survivorRoster(map).find((s) => s.name === name)?.unarmed;
 }
 
 /**
@@ -327,6 +332,8 @@ export function cageSpots(level: Level, rng: Rng, count: number): { x: number; z
 /** A fresh ally (positions and stats only; no model). */
 export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number, skill: TeamSkill = 'regular'): AllyBody {
   const stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
+  // unarmed: nothing is ever in range (they follow, and keep their heads down)
+  if (kind === 'survivor' && survivorUnarmed(level.data.id, name)) stats.range = 0;
   return {
     name,
     kind,

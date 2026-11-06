@@ -168,6 +168,13 @@ export class ScreenFx {
     }
   }
 
+  /** The toxic overlay's look: the green front, or the Asylum's black fog. */
+  setToxicTint(tint: 'toxic' | 'black'): void {
+    if (this.toxic.dataset.tint === tint) return;
+    this.toxic.dataset.tint = tint;
+    this.pulse.dataset.tint = tint;
+  }
+
   setToxic(v: number): void {
     const c = clamp(v, 0, 1);
     if (this.tox.changed(c)) this.toxic.style.opacity = c.toFixed(2);

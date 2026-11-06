@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { BARRICADE } from '../src/asylum/barricadeConfig';
 import { ASYLUM_DOORS, POWER_LEVER } from '../src/asylum/loopData';
 import { NIGHTFALL, PHASE_TUNING, RECORDS } from '../src/asylum/nightConfig';
+import { ASYLUM } from '../src/world/layout/asylum';
 import { MATRON_DEF } from '../src/enemies/matron';
 import { killReward } from '../src/logic/economy';
 import { POWERUPS } from '../src/logic/powerupConfig';
@@ -62,7 +63,11 @@ describe('co-op simulation on the Asylum: day and night', () => {
     expect(sim.debug.hunt.status).toBe('available');
     expect(sim.zombies.phaseTuning.speed).toBeCloseTo(PHASE_TUNING.day.speed);
     expect(snap().ms![1]).toBe(0); // the hunt is reported closed
-    sim.debug.setElapsed(NIGHTFALL + 1);
+    // however long the afternoon lasts, she does not walk until the story brings the night
+    sim.debug.setElapsed(NIGHTFALL + 600);
+    run(0.5);
+    expect(sim.zombies.boss).toBeNull();
+    sim.debug.nightNow();
     run(0.5);
     const boss = sim.zombies.boss!;
     expect(boss?.alive).toBe(true);
@@ -72,15 +77,33 @@ describe('co-op simulation on the Asylum: day and night', () => {
     expect(snap().ms![1]).toBe(1);
   });
 
-  it('runs on the Asylum clock: the District would have been sealed by now, the hill is not', () => {
+  it('has no deadline: the hill is never sealed, however long the story takes', () => {
     const { sim, run } = setup();
     run(0.5);
-    sim.debug.setElapsed(13 * 60); // past the District's 12 minutes, before the Asylum's gates close
+    sim.debug.setElapsed(3 * 60 * 60);
     run(0.5);
     expect(sim.finished).toBe(false);
-    sim.debug.setElapsed(15 * 60 + 1);
+  });
+
+  it("the sun goes when Ward Nine's register is read; the damper needs the Matron at rest", () => {
+    const { sim, run, at, snap } = setup();
+    run(0.5);
+    expect(sim.debug.story().nightAt).toBeNull();
+    // Ward Nine's register (file 3) - taken by whoever stands at it
+    const nine = RECORDS.spots[3]!;
+    at('p1', nine.x, nine.z);
+    sim.message('p1', { k: 'rec', i: 3 }, false);
     run(0.2);
-    expect(sim.stats().outcome).toMatch(/^lost/);
+    expect(sim.debug.story().nightAt).not.toBeNull();
+    expect((snap() as { an?: number[] }).an![0]).toBeGreaterThanOrEqual(0);
+    // the damper: chained until she is at rest
+    at('p1', ASYLUM.damper.x, ASYLUM.damper.z + 1);
+    sim.message('p1', { k: 'damper' }, false);
+    expect(sim.debug.story().fogStopAt).toBeNull();
+    sim.debug.hunt.status = 'complete';
+    sim.message('p1', { k: 'damper' }, false);
+    expect(sim.debug.story().fogStopAt).not.toBeNull();
+    expect((snap() as { an?: number[] }).an![1]).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -94,18 +117,18 @@ describe('co-op simulation on the Asylum: the patient files', () => {
     expect(sim.debug.records.found[1]).toBe(false);
     at('p1', f.x, f.z);
     sim.message('p1', { k: 'rec', i: 1 }, false);
-    expect(sim.debug.records.found).toEqual([false, true, false]);
+    expect(sim.debug.records.found).toEqual([false, true, false, false, false]);
     expect(snap().rc).toBe(0b010);
     // asking again (or for a file that does not exist) changes nothing
     at('p2', f.x, f.z);
     sim.message('p2', { k: 'rec', i: 1 }, false);
     sim.message('p2', { k: 'rec', i: 7 }, false);
     expect(snap().rc).toBe(0b010);
-    for (const i of [0, 2]) {
+    for (const i of [0, 2, 3, 4]) {
       at('p2', RECORDS.spots[i]!.x, RECORDS.spots[i]!.z);
       sim.message('p2', { k: 'rec', i }, false);
     }
-    expect(snap().rc).toBe(0b111);
+    expect(snap().rc).toBe(0b11111);
     expect(sim.debug.records.bonusClaimed).toBe(true);
   });
 });
@@ -147,15 +170,12 @@ describe('co-op simulation on the Asylum: doors and the power', () => {
     expect(sim.loop.doors.every((q) => q === 0)).toBe(true);
   });
 
-  it('the power comes on with the lever (from the boiler house only)', () => {
-    const { sim, run, at, snap } = setup();
+  it('the lever is no shortcut in the story: the power is the generators hold', () => {
+    const { sim, run, at } = setup();
     run(0.5);
-    sim.message('p1', { k: 'lever' }, false);
-    expect(sim.loop.power).toBe(0);
     at('p1', POWER_LEVER.x, POWER_LEVER.z + 1);
     sim.message('p1', { k: 'lever' }, false);
-    expect(sim.loop.power).toBe(1);
-    expect(snap().lp![1]).toBe(1);
+    expect(sim.loop.power).toBe(0);
   });
 
   it('the power comes on when the generators are running (RESTORE THE POWER)', () => {

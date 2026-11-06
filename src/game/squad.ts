@@ -36,7 +36,8 @@ interface Ally extends AllyBody {
 }
 
 /** What the co-op simulation reports for one ally: [index, x, z, yaw, state (0 dead, 1 fighting, 2 caged), hp]. */
-export type AllyRow = [number, number, number, number, number, number];
+/** [index, x, z, yaw, state (0 dead, 1 up, 2 caged), hp, y (on a floor above the street; absent from older hosts)] */
+export type AllyRow = [number, number, number, number, number, number, number?];
 
 interface Cage {
   root: THREE.Group;
@@ -295,6 +296,12 @@ export class SquadRuntime {
 
   /** The cage in reach of the player, if any. */
   /** Is the soldier of this name out of the fight for good (a squad that had them, and lost them)? */
+  /** Can this helper speak: with you, alive and out of their cage (the Asylum's voice director asks). */
+  canTalk(name: string): boolean {
+    const a = this.allies.find((q) => q.name === name);
+    return !!a && a.ref.alive && !a.trapped;
+  }
+
   lost(name: string): boolean {
     const a = this.allies.find((x) => x.kind === 'soldier' && x.name.toLowerCase() === name.toLowerCase());
     return !!a && !a.ref.alive;
@@ -330,16 +337,18 @@ export class SquadRuntime {
     a.ref.z -= 1.6;
   }
 
-  /** A cage opened: the survivor takes up a weapon and says thanks. */
+  /** A cage opened: the survivor takes up a weapon (or, unarmed, just follows) and says thanks. */
   private announceFreed(a: Ally, reward: string): void {
     const g = this.g;
-    a.avatar.arm();
+    const who = survivorRoster(g.mapId).find((q) => q.name === a.name);
+    const unarmed = !!who?.unarmed;
+    if (!unarmed) a.avatar.arm();
     g.audio.play('contract_complete', { priority: 3, volume: 0.8 });
     g.fx.sparkle({ x: a.ref.x, y: 1.2, z: a.ref.z }, 0x8fd18a, 18);
     const freed = this.allies.filter((q) => q.kind === 'survivor' && !q.trapped).length;
     const total = this.allies.filter((q) => q.kind === 'survivor').length;
-    g.banner(`${a.name.toUpperCase()} FREED`, `Survivor ${freed}/${total} - they fight with you now${reward ? `   ${reward}` : ''}`, 'good', 4);
-    g.radio(a.name.toUpperCase(), THANKS[Math.floor(g.rng.f() * THANKS.length)]!, 4);
+    g.banner(`${a.name.toUpperCase()} FREED`, `Survivor ${freed}/${total} - ${unarmed ? 'unarmed: keep them alive' : 'they fight with you now'}${reward ? `   ${reward}` : ''}`, 'good', 4);
+    g.radio(a.name.toUpperCase(), who?.freed ?? THANKS[Math.floor(g.rng.f() * THANKS.length)]!, 4);
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -350,7 +359,7 @@ export class SquadRuntime {
   applyRemote(rows: readonly AllyRow[], shots: readonly number[][]): void {
     if (!this.follow) return;
     const g = this.g;
-    for (const [i, x, z, yaw, state, hp] of rows) {
+    for (const [i, x, z, yaw, state, hp, y] of rows) {
       const a = this.allies[i];
       if (!a) continue;
       if (!a.cage && a.kind === 'soldier' && !a.avatar.root.visible && !a.avatar.fallen && state !== 0) {
@@ -377,7 +386,7 @@ export class SquadRuntime {
       }
       a.ref.x = x;
       a.ref.z = z;
-      a.ref.y = g.level.world.floorHeight(x, z, 0.2); // the host sends no height: a deck's is the same here
+      a.ref.y = y !== undefined && y > 0.5 ? y : g.level.world.floorHeight(x, z, 0.2); // upstairs: the host's height
       a.yaw = yaw;
       a.hp = hp;
     }

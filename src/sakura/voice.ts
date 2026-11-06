@@ -16,9 +16,18 @@
  */
 import type { AudioEngineApi } from '../audio/ids';
 import { VERSION } from '../version';
-import { type Chain, CUES, LINE, LINES, type Speaker } from './lines';
+import { type Chain, CUES, LINES, type Speaker } from './lines';
 
-const BASE = './sakura/';
+/**
+ * What a director plays: its lines (by id), its cues and the caption names, and the folder their files are in. The
+ * Sakura District's is the default; Blackwood Hill brings its own (`asylum/lines.ts`).
+ */
+export interface VoiceBank {
+  base: string;
+  lines: readonly { id: string; who: string; text: string; chain: Chain }[];
+  cues: readonly { id: string; loop: boolean }[];
+  label: Readonly<Record<string, string>>;
+}
 
 export type LineKind = 'system' | 'story' | 'direction' | 'place' | 'bark';
 const RANK: Record<LineKind, number> = { system: 0, story: 1, direction: 2, place: 3, bark: 4 };
@@ -36,6 +45,8 @@ export const LABEL: Record<Speaker, string> = {
   MEI: '???',
   MASK: '???',
 };
+
+const SAKURA_BANK: VoiceBank = { base: './sakura/', lines: LINES, cues: CUES, label: LABEL };
 
 type Vec = { x: number; y: number; z: number };
 
@@ -79,17 +90,24 @@ export class SakuraVoice {
   /** The caption for whatever is being said (the game shows it). */
   onCaption: ((label: string, text: string, dur: number) => void) | null = null;
   /** Can this speaker still talk (the squad's dead do not)? Checked when a line's turn comes. */
-  canSpeak: ((who: Speaker) => boolean) | null = null;
+  canSpeak: ((who: string) => boolean) | null = null;
   /** Ids said this run (lines that are said once a run check it). */
   readonly said = new Set<string>();
   volume = { voice: 1, music: 0.55 };
 
-  constructor(private readonly audio: AudioEngineApi) {}
+  private readonly line: Record<string, VoiceBank['lines'][number]>;
+
+  constructor(
+    private readonly audio: AudioEngineApi,
+    private readonly bank: VoiceBank = SAKURA_BANK,
+  ) {
+    this.line = Object.fromEntries(bank.lines.map((l) => [l.id, l]));
+  }
 
   /** Fetch and decode every line and cue (decoding needs no gesture: an offline context does it). */
   load(progress?: (done: number, total: number) => void): Promise<void> {
     if (this.loading) return this.loading;
-    const files = [...LINES.map((l) => `voice/${l.id}.mp3`), ...CUES.map((c) => `music/${c.id}.mp3`)];
+    const files = [...this.bank.lines.map((l) => `voice/${l.id}.mp3`), ...this.bank.cues.map((c) => `music/${c.id}.mp3`)];
     let done = 0;
     const off = typeof OfflineAudioContext !== 'undefined' ? new OfflineAudioContext(1, 1, 44100) : null;
     this.loading = (async () => {
@@ -97,7 +115,7 @@ export class SakuraVoice {
       await Promise.all(
         files.map(async (f) => {
           try {
-            const r = await fetch(`${BASE}${f}?v=${VERSION}`);
+            const r = await fetch(`${this.bank.base}${f}?v=${VERSION}`);
             if (r.ok) this.buffers.set(f.replace(/^(voice|music)\//, '').replace(/\.mp3$/, ''), await off.decodeAudioData(await r.arrayBuffer()));
           } catch {
             /* a missing file is a caption */
@@ -121,12 +139,12 @@ export class SakuraVoice {
 
   /** A line from `lines.ts` (once a run if `once`). */
   say(id: string, o: SayOpts & { once?: boolean } = {}): void {
-    const l = LINE[id];
+    const l = this.line[id];
     if (!l) return;
     if (o.once && this.said.has(id)) return;
     if (this.queue.some((q) => q.id === id)) return;
     this.said.add(id);
-    this.push(id, LABEL[l.who], l.text, o);
+    this.push(id, this.bank.label[l.who] ?? l.who, l.text, o);
   }
 
   /** Several lines, in order (a conversation). */
@@ -159,7 +177,7 @@ export class SakuraVoice {
     }
     if (!best) return;
     this.queue.splice(this.queue.indexOf(best), 1);
-    const speaker = best.id ? LINE[best.id]?.who : undefined;
+    const speaker = best.id ? this.line[best.id]?.who : undefined;
     if ((best.valid && !best.valid()) || (speaker && this.canSpeak && !this.canSpeak(speaker))) {
       this.update(t);
       return;
@@ -221,10 +239,10 @@ export class SakuraVoice {
     const guess = Math.min(12, 1.4 + words * 0.36);
     const buf = r.id ? this.buffers.get(r.id) : undefined;
     if (!buf || !this.graph()) {
-      if (r.kind === 'system' || LINE[r.id ?? '']?.chain === 'radio') this.audio.play('radio_chirp', { priority: 1, volume: 0.5 });
+      if (r.kind === 'system' || this.line[r.id ?? '']?.chain === 'radio') this.audio.play('radio_chirp', { priority: 1, volume: 0.5 });
       return buf ? buf.duration : guess;
     }
-    const chain: Chain = LINE[r.id!]?.chain ?? 'radio';
+    const chain: Chain = this.line[r.id!]?.chain ?? 'radio';
     const ctx = this.ctx!;
     const now = ctx.currentTime;
     const src = ctx.createBufferSource();
@@ -407,7 +425,7 @@ export class SakuraVoice {
     if (!id || !buf) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.loop = CUES.find((c) => c.id === id)?.loop ?? false;
+    src.loop = this.bank.cues.find((c) => c.id === id)?.loop ?? false;
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.exponentialRampToValueAtTime(1, t + fade);

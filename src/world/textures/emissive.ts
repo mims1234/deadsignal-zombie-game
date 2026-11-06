@@ -94,33 +94,91 @@ function paintWindowLit(ctx: PaintCtx): THREE.MeshStandardMaterial {
   const w = 256;
   const h = 256;
   const { canvas, g } = makeCanvas(w, h);
-  const grad = g.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, 'rgb(255,214,140)');
-  grad.addColorStop(1, 'rgb(255,168,84)');
-  g.fillStyle = grad;
+  // the room behind: warm lamplight, brightest in the middle
+  const room = g.createRadialGradient(w / 2, h * 0.55, 10, w / 2, h * 0.55, w * 0.7);
+  room.addColorStop(0, 'rgb(255,222,150)');
+  room.addColorStop(1, 'rgb(214,132,62)');
+  g.fillStyle = room;
   g.fillRect(0, 0, w, h);
-  // curtain / interior shadow and blinds
-  g.fillStyle = 'rgba(120,60,20,0.35)';
-  g.fillRect(0, 0, 70, h);
-  g.fillStyle = 'rgba(90,40,10,0.22)';
-  for (let y = 12; y < h; y += 14) g.fillRect(0, y, w, 4);
-  // silhouette of a lamp / furniture
-  g.fillStyle = 'rgba(70,30,10,0.4)';
-  g.fillRect(150, 150, 70, 106);
-  // mullions
+  // something in the room: a lampshade and the back of a chair against the far wall
+  g.fillStyle = 'rgba(80,36,12,0.45)';
+  g.fillRect(150, 168, 58, 88);
+  g.beginPath();
+  g.moveTo(96, 120);
+  g.lineTo(124, 120);
+  g.lineTo(130, 142);
+  g.lineTo(90, 142);
+  g.closePath();
+  g.fill();
+  // the curtains: two drapes drawn back to either side, gathered at a tie-back, hanging in vertical folds
+  const drape = (left: boolean): void => {
+    const top = 22;
+    const tie = h * 0.62;
+    const wTop = 74; // how far in each drape reaches at the rail
+    const wTie = 40; // and where the tie-back gathers it
+    const edge = (y: number): number => {
+      // the inner edge: straight down from the rail, sweeping in to the tie-back, flaring out below it
+      if (y < tie) {
+        const k = (y - top) / (tie - top);
+        return wTop + (wTie - wTop) * k * k;
+      }
+      const k = (y - tie) / (h - tie);
+      return wTie + (wTop - 8 - wTie) * Math.sqrt(k);
+    };
+    g.save();
+    g.beginPath();
+    g.moveTo(left ? 0 : w, top);
+    for (let y = top; y <= h; y += 4) g.lineTo(left ? edge(y) : w - edge(y), y);
+    g.lineTo(left ? 0 : w, h);
+    g.closePath();
+    g.clip();
+    // cloth lit from behind: deep red, with folds (lighter crowns, dark troughs)
+    for (let x = 0; x < wTop + 4; x++) {
+      const fold = 0.5 + 0.5 * Math.sin((x / (wTop + 4)) * Math.PI * 6.5);
+      const r = Math.round(118 + 70 * fold);
+      const gg = Math.round(34 + 26 * fold);
+      const b = Math.round(22 + 14 * fold);
+      g.fillStyle = `rgb(${r},${gg},${b})`;
+      g.fillRect(left ? x : w - 1 - x, top, 1, h - top);
+    }
+    // shade toward the outer edge (thicker cloth), and a little at the hem
+    const sh = g.createLinearGradient(left ? 0 : w, 0, left ? wTop : w - wTop, 0);
+    sh.addColorStop(0, 'rgba(30,6,4,0.45)');
+    sh.addColorStop(1, 'rgba(30,6,4,0)');
+    g.fillStyle = sh;
+    g.fillRect(0, top, w, h - top);
+    g.restore();
+    // the tie-back: a cord across the gathered cloth
+    g.fillStyle = 'rgb(214,170,80)';
+    g.fillRect(left ? 0 : w - wTie - 2, tie - 3, wTie + 2, 6);
+  };
+  drape(true);
+  drape(false);
+  // the valance along the rail: a pleated pelmet
+  g.fillStyle = 'rgb(126,34,22)';
+  g.fillRect(0, 10, w, 22);
+  for (let x = 0; x < w; x += 16) {
+    g.fillStyle = 'rgba(40,8,4,0.45)';
+    g.fillRect(x, 10, 3, 22);
+    g.beginPath();
+    g.fillStyle = 'rgb(126,34,22)';
+    g.arc(x + 8, 32, 8, 0, Math.PI);
+    g.fill();
+  }
+  // the frame and the glazing bars
   g.fillStyle = 'rgb(22,18,14)';
   g.fillRect(0, 0, w, 10);
   g.fillRect(0, h - 10, w, 10);
   g.fillRect(0, 0, 10, h);
   g.fillRect(w - 10, 0, 10, h);
-  g.fillRect(w / 2 - 5, 0, 10, h);
-  g.fillRect(0, h / 2 - 5, w, 10);
+  g.fillRect(w / 2 - 4, 0, 8, h);
+  g.fillRect(0, h / 2 - 4, w, 8);
   const tex = ctx.track(canvasTexture(canvas));
   return new THREE.MeshStandardMaterial({
     map: tex,
     emissiveMap: tex,
     emissive: new THREE.Color(0xffffff),
-    emissiveIntensity: 1.5,
+    emissiveIntensity: 1.3,
     roughness: 0.5,
     metalness: 0,
   });

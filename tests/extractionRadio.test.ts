@@ -3,6 +3,7 @@
  * (on the Forge and the Asylum the radio stands a few metres outside the zone's circle).
  */
 import '../src/sim/stubs';
+import { ASYLUM } from '../src/world/layout/asylum';
 import { describe, expect, it } from 'vitest';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import { RADIO_REACH, atLzOrRadio } from '../src/logic/extraction';
@@ -30,6 +31,10 @@ describe('calling the extraction from the radio', () => {
     const d = sim.debug;
     d.defense.status = 'complete';
     d.hunt.status = 'complete';
+    // the Asylum's bird also waits for the furnace damper (the Matron's keys)
+    sim.message('p1', { k: 'p', x: ASYLUM.damper.x, y: 0, z: ASYLUM.damper.z + 1, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);
+    sim.message('p1', { k: 'damper' }, false);
+    expect(d.story().fogStopAt).not.toBeNull();
     const st = sim.level.data.playerStart;
     for (let i = 0; i < 10; i++) {
       sim.message('p1', { k: 'p', x: st.x, y: 0, z: st.z, yaw: 0, up: true, st: LIFE.up, hp: 100 }, false);

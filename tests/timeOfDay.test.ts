@@ -3,7 +3,8 @@
  * difficulty, the Matron's hunt that only opens at night, and a mission clock that always leaves room to finish.
  */
 import { describe, expect, it } from 'vitest';
-import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
+import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, FOG, NIGHTFALL, PHASE_TUNING } from '../src/asylum/nightConfig';
+import { asylumHour, cycleClock, damperOpen, fogAt, nightTrigger, storyStep } from '../src/asylum/story';
 import { FORGE_STORY, MISSION, ZOMBIE_DIFFICULTY } from '../src/config';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { activateDefense, completeHunt, createDefense, createHunt, updateDefense } from '../src/logic/contracts';
@@ -149,54 +150,73 @@ describe('the Asylum clock', () => {
     expect(missionClock('asylum')).toBe(ASYLUM_CLOCK);
     expect(missionClock('district')).toBe(MISSION);
     expect(missionClock('forge')).toBe(FORGE_STORY.clock); // the Forge's longer night
-    expect(escalationPhase(NIGHTFALL, ASYLUM_CLOCK)).toBe(2);
-    expect(escalationPhase(NIGHTFALL - 1, ASYLUM_CLOCK)).toBe(1);
+    expect(escalationPhase(0, ASYLUM_CLOCK)).toBe(0);
+    expect(escalationPhase(1e5, ASYLUM_CLOCK)).toBe(3);
   });
 
-  it('leaves the whole night for the hunt and the extraction, with the fog late', () => {
+  it('has no deadline and no spreading front: the black fog comes in waves instead', () => {
     const c = ASYLUM_CLOCK;
-    // the power can be restored by day with time to spare
-    expect(MISSION.defense.duration * 2).toBeLessThan(dayEnd);
-    // four clean minutes of night before the black fog, more than eight before the gates close
-    expect(c.surgeStart - MISSION.hazard.warningLead - NIGHTFALL).toBeGreaterThanOrEqual(240);
-    expect(c.deadline - NIGHTFALL).toBeGreaterThanOrEqual(480);
-    expect(surgeStartTime(null, c)).toBe(c.surgeStart);
-    expect(c.surgeStart).toBeLessThan(c.deadline);
-    expect(deadlineRemaining(NIGHTFALL, c)).toBe(c.deadline - NIGHTFALL);
+    expect(c.deadline).toBe(Infinity);
+    expect(deadlineRemaining(1e6, c)).toBe(Infinity);
+    expect(surgeStartTime(null, c)).toBe(Infinity);
   });
 
-  it('can be finished: a run that plays by the light extracts before the gates close, even with a late call', () => {
-    for (const callAt of [NIGHTFALL + 150, ASYLUM_CLOCK.deadline - 1]) {
+  it('can be finished at any pace: the story steps through the night to the dawn', () => {
+    for (const pace of [1, 3]) {
       const def = createDefense();
       const hunt = createHunt();
       const ex = createExtraction();
+      const records = [false, false, false, false, false];
+      let nightAt: number | null = null;
+      let damper = false;
       let e = 0;
       const step = 0.25;
-      gateHunt(hunt, e);
-      activateDefense(def);
+      gateHunt(hunt, cycleClock(e, nightAt));
       let called = false;
       let landedAt = -1;
-      while (e < ASYLUM_CLOCK.deadline + 200) {
+      while (e < 4000 * pace) {
         e += step;
-        updateDefense(def, step, true, true);
-        if (gateHunt(hunt, e)) expect(e).toBeGreaterThanOrEqual(NIGHTFALL);
-        if (hunt.status === 'active' && e >= NIGHTFALL + 120) completeHunt(hunt); // two minutes to put her down
-        unlockExtraction(ex, def.status === 'complete' && hunt.status === 'complete');
-        if (!called && ex.phase === 'available' && e >= callAt) {
-          // the deadline only stops a call that never happened
-          expect(deadlineRemaining(e, ASYLUM_CLOCK)).toBeGreaterThan(0);
-          called = callExtraction(ex, e, true, true);
-        }
+        // the files and the power at the player's pace; the register (file 4) needs the power
+        for (let i = 0; i < 5; i++) if (!records[i] && e >= (i + 1) * 60 * pace && (i < 3 || def.status === 'complete')) records[i] = true;
+        if (e >= 200 * pace && def.status === 'available') activateDefense(def);
+        if (def.status === 'active') updateDefense(def, step, true, true);
+        const facts = { records, power: def.status === 'complete', matron: hunt.status === 'complete', damper };
+        if (nightAt === null && nightTrigger(facts)) nightAt = e;
+        // by day the Matron never walks, however long it takes
+        if (nightAt === null) expect(asylumHour(e, nightAt, null).phase).toBe('day');
+        if (gateHunt(hunt, cycleClock(e, nightAt))) expect(nightAt).not.toBeNull();
+        if (hunt.status === 'active' && nightAt !== null && e >= nightAt + 160) completeHunt(hunt);
+        if (damperOpen(facts) && e >= (nightAt ?? 0) + 200) damper = true;
+        unlockExtraction(ex, def.status === 'complete' && hunt.status === 'complete' && damper);
+        if (!called && ex.phase === 'available') called = callExtraction(ex, e, true, true);
         if (called) for (const ev of updateExtraction(ex, step)) if (ev === 'touchdown') landedAt = e;
         if (landedAt >= 0) break;
       }
-      expect(def.status).toBe('complete');
-      expect(called).toBe(true);
+      expect(storyStep({ records, power: true, matron: true, damper })).toBe(8);
       expect(landedAt).toBeGreaterThan(0);
       // first light comes with the bird
-      expect(timeOfDay(landedAt, ex.calledAt).phase).toBe('dawn');
-      expect(timeOfDay(landedAt, ex.calledAt).t).toBeGreaterThan(0.99);
+      expect(asylumHour(landedAt, nightAt, ex.calledAt).phase).toBe('dawn');
+      expect(asylumHour(landedAt, nightAt, ex.calledAt).t).toBeGreaterThan(0.99);
     }
+  });
+
+  it('sends the black fog in waves that come and go, reach further each time, and stop for good at the damper', () => {
+    expect(fogAt(FOG.first - 1, null).radius).toBe(0);
+    expect(fogAt(FOG.first - 1, null).next).toBeCloseTo(1, 5);
+    const peak = (w: number): number => fogAt(FOG.first + w * FOG.period + FOG.rise + 1, null).radius;
+    expect(peak(0)).toBeCloseTo(FOG.reach0, 5);
+    expect(peak(1)).toBeGreaterThan(peak(0));
+    expect(peak(50)).toBe(FOG.reachMax);
+    // calm between the waves
+    expect(fogAt(FOG.first + FOG.rise + FOG.hold + FOG.fall + 1, null).radius).toBe(0);
+    // never as far as the lawn (the LZ) or the gate
+    const stack = { x: 46, z: -40 };
+    expect(Math.hypot(-38 - stack.x, 31 - stack.z)).toBeGreaterThan(FOG.reachMax + 20);
+    // the damper: it falls back and never comes again
+    const stop = FOG.first + FOG.rise + 2;
+    expect(fogAt(stop + FOG.stopFall + 0.1, stop).radius).toBe(0);
+    for (let e = stop + FOG.stopFall; e < stop + 2000; e += 7) expect(fogAt(e, stop).radius).toBe(0);
+    expect(fogAt(stop + 50, stop).stopped).toBe(true);
   });
 });
 

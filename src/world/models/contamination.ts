@@ -22,6 +22,7 @@ const WALL_VERT = /* glsl */ `
 
 const WALL_FRAG = /* glsl */ `
   uniform sampler2D uNoise; uniform float uTime; uniform float uIntensity; uniform vec3 uCam;
+  uniform vec3 uDarkC; uniform vec3 uMidC; uniform vec3 uGlowC;
   varying vec3 vW; varying vec3 vN; varying float vH;
   void main() {
     vec3 N = normalize(vN);
@@ -49,9 +50,9 @@ const WALL_FRAG = /* glsl */ `
     float edge = smoothstep(0.0, 0.45, ndv);
     float nearFade = smoothstep(0.6, 7.0, dist);
     float alpha = (0.15 + 0.55 * dens) * prof * edge * nearFade * exp(-dist * 0.0022) * uIntensity;
-    vec3 dark = vec3(0.025, 0.065, 0.02);
-    vec3 mid = vec3(0.09, 0.26, 0.06);
-    vec3 glow = vec3(0.6, 0.95, 0.28);
+    vec3 dark = uDarkC;
+    vec3 mid = uMidC;
+    vec3 glow = uGlowC;
     vec3 base = mix(dark, mid, dens);
     float baseGlow = (1.0 - smoothstep(0.0, 0.14, h)) * 0.7;
     vec3 rgb = base * alpha + glow * (vein * 0.9 + baseGlow * (0.35 + dens * 0.6)) * alpha * pulse;
@@ -70,6 +71,7 @@ const HAZE_VERT = /* glsl */ `
 
 const HAZE_FRAG = /* glsl */ `
   uniform sampler2D uNoise; uniform vec2 uC; uniform float uR; uniform float uTime; uniform float uIntensity;
+  uniform vec3 uHazeC; uniform vec3 uGlowC;
   varying vec3 vW;
   void main() {
     float d = length(vW.xz - uC);
@@ -78,12 +80,12 @@ const HAZE_FRAG = /* glsl */ `
     float n = texture2D(uNoise, nu + vec2(uTime * 0.006, -uTime * 0.004)).r * 0.6 + texture2D(uNoise, nu * 2.7 - vec2(uTime * 0.01, 0.0)).g * 0.4;
     float inside = smoothstep(-0.3, 4.0, e);
     float hazeA = inside * (0.2 + 0.26 * n) * uIntensity;
-    vec3 hazeC = vec3(0.02, 0.07, 0.02);
+    vec3 hazeC = uHazeC;
     float ring = exp(-pow(e / 0.32, 2.0));
     float outer = exp(-max(-e, 0.0) * 1.1) * 0.3 * step(e, 0.0);
     float glowIn = exp(-max(e, 0.0) * 0.45) * inside * 0.16;
     float pulse = 0.8 + 0.2 * sin(uTime * 1.6 - d * 0.08);
-    vec3 glow = vec3(0.5, 0.95, 0.25);
+    vec3 glow = uGlowC * 0.9;
     vec3 rgb = hazeC * hazeA + glow * (ring * 1.5 + outer * 0.7 + glowIn * (0.4 + n * 0.6)) * pulse * uIntensity;
     float a = hazeA;
     if (rgb.r + rgb.g + rgb.b + a < 0.003) discard;
@@ -101,6 +103,7 @@ const SHELL_VERT = /* glsl */ `
 
 const SHELL_FRAG = /* glsl */ `
   uniform sampler2D uNoise; uniform float uTime; uniform float uK; uniform float uBase;
+  uniform vec3 uDarkC; uniform vec3 uMidC;
   varying vec3 vDir;
   void main() {
     vec3 dir = normalize(vDir);
@@ -109,7 +112,7 @@ const SHELL_FRAG = /* glsl */ `
             + texture2D(uNoise, uv * 0.9 - vec2(uTime * 0.013, 0.0)).g * 0.35;
     float vert = mix(1.0, 0.5, smoothstep(0.0, 0.6, dir.y));
     float a = uBase * uK * (0.5 + 1.0 * n) * vert;
-    vec3 c = mix(vec3(0.03, 0.09, 0.02), vec3(0.2, 0.42, 0.08), n);
+    vec3 c = mix(uDarkC * 1.2, uMidC * 1.6, n);
     gl_FragColor = vec4(c * a, a);
   }
 `;
@@ -156,11 +159,16 @@ export function createContaminationWallImpl(): ContaminationWall {
     },
   );
 
+  // the palette (`setPalette`): the toxic green front, or the Asylum's black fog with embers in it
+  const palette = { dark: new THREE.Color(0.025, 0.065, 0.02), mid: new THREE.Color(0.09, 0.26, 0.06), glow: new THREE.Color(0.6, 0.95, 0.28), haze: new THREE.Color(0.02, 0.07, 0.02) };
   const uniforms = {
     uNoise: { value: shared.noise },
     uTime: { value: 0 },
     uIntensity: { value: 1 },
     uCam: { value: new THREE.Vector3() },
+    uDarkC: { value: palette.dark },
+    uMidC: { value: palette.mid },
+    uGlowC: { value: palette.glow },
   };
   const wallMat = premultiplied(
     new THREE.ShaderMaterial({
@@ -179,6 +187,8 @@ export function createContaminationWallImpl(): ContaminationWall {
     uR: { value: 14 },
     uTime: uniforms.uTime,
     uIntensity: uniforms.uIntensity,
+    uHazeC: { value: palette.haze },
+    uGlowC: uniforms.uGlowC,
   };
   const hazeMat = premultiplied(
     new THREE.ShaderMaterial({
@@ -216,7 +226,7 @@ export function createContaminationWallImpl(): ContaminationWall {
       new THREE.ShaderMaterial({
         vertexShader: SHELL_VERT,
         fragmentShader: SHELL_FRAG,
-        uniforms: { uNoise: { value: shared.noise }, uTime: uniforms.uTime, uK: shellK, uBase: { value: shellBase[i]! } },
+        uniforms: { uNoise: { value: shared.noise }, uTime: uniforms.uTime, uK: shellK, uBase: { value: shellBase[i]! }, uDarkC: uniforms.uDarkC, uMidC: uniforms.uMidC },
         transparent: true,
         depthWrite: false,
         side: THREE.BackSide,
@@ -270,6 +280,19 @@ export function createContaminationWallImpl(): ContaminationWall {
     },
     get insideFactor(): number {
       return inside;
+    },
+    setPalette(p: 'toxic' | 'black') {
+      if (p === 'black') {
+        palette.dark.setRGB(0.008, 0.007, 0.008);
+        palette.mid.setRGB(0.035, 0.03, 0.032);
+        palette.glow.setRGB(0.42, 0.16, 0.06);
+        palette.haze.setRGB(0.006, 0.005, 0.006);
+      } else {
+        palette.dark.setRGB(0.025, 0.065, 0.02);
+        palette.mid.setRGB(0.09, 0.26, 0.06);
+        palette.glow.setRGB(0.6, 0.95, 0.28);
+        palette.haze.setRGB(0.02, 0.07, 0.02);
+      }
     },
     update(_dt: number, time: number, camera: THREE.Camera) {
       uniforms.uTime.value = time;

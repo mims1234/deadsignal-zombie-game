@@ -49,7 +49,10 @@ import { anyDamaged, createPurse, payRepair, repairAll, repairBoard, type Repair
 import { createLoopState, doorState, isPowerOn, resetLoopState, setPower, spawnAllowed } from '../asylum/loop';
 import { LOOP } from '../asylum/loopConfig';
 import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
-import { RECORDS } from '../asylum/nightConfig';
+import { ASYLUM_CYCLE, FOG, RECORDS, STORY } from '../asylum/nightConfig';
+import { asylumHour, cycleClock, damperOpen, fogAt, nightTrigger } from '../asylum/story';
+import { setWard9Open } from '../asylum/upstairs';
+import { ASYLUM } from '../world/layout/asylum';
 import type { ZombieType } from '../types';
 import type { ZombieMode } from '../enemies/zombieRigTypes';
 import { encodeRoster, encodeState } from '../forge/net';
@@ -498,6 +501,9 @@ export class SessionSim {
     this.shots = [];
     this.loot = createLoot(this.level.data.crates.length, this.level.data.crates.map((c) => !!c.cost));
     this.records = createRecords();
+    this.nightAt = null;
+    this.fogStopAt = null;
+    if (this.asylum) setWard9Open(this.level, this.kind === 'roam');
     this.barricades?.reset();
     this.purses.clear();
     resetPowerups(this.powerups);
@@ -531,6 +537,15 @@ export class SessionSim {
       gateHunt(this.hunt, 0);
       this.keepBossAway();
     }
+  }
+
+  /** The Asylum's story (`asylum/story.ts`): when the sun started going, and when the furnace damper was shut. */
+  private nightAt: number | null = null;
+  private fogStopAt: number | null = null;
+
+  /** The Asylum's story facts as the simulation has them. */
+  private asylumFacts(): { records: readonly boolean[]; power: boolean; matron: boolean; damper: boolean } {
+    return { records: this.records.found, power: this.defense.status === 'complete', matron: this.hunt.status === 'complete', damper: this.fogStopAt !== null };
   }
 
   /** The Asylum by day: the Matron is not on the hill while her hunt is closed. */
@@ -868,6 +883,14 @@ export class SessionSim {
         pickUpRecord(this.records, i);
         return;
       }
+      case 'damper': {
+        // the Asylum: the crematorium's damper, shut with the Matron's keys (every client pays itself once)
+        const D = ASYLUM.damper;
+        if (!this.asylum || !this.story || !up || !damperOpen(this.asylumFacts()) || Math.hypot(D.x - p.ref.x, D.z - p.ref.z) > STORY.damperReach + 3) return;
+        this.fogStopAt = this.elapsed;
+        this.send('all', { k: 'note', t: `${p.name.toUpperCase()} SHUT THE FURNACE` });
+        return;
+      }
       case 'door': {
         // the Asylum: buy a door for the squad (the buyer's client checked its cash, and pays on the confirmation)
         const i = Number(d.i);
@@ -882,9 +905,10 @@ export class SessionSim {
         return;
       }
       case 'lever': {
-        // the Asylum: the power switch in the boiler house (free; wakes the perk machines and the press for everyone)
+        // the Asylum: the power switch in the boiler house (free; wakes the perk machines and the press for everyone).
+        // Free roam only: in the story the power is the generators' hold (RESTORE THE POWER).
         const L = POWER_LEVER;
-        if (!this.asylum || !up || isPowerOn(this.loop) || Math.hypot(L.x - p.ref.x, L.z - p.ref.z) > LOOP.reach + 2.5) return;
+        if (!this.asylum || this.kind !== 'roam' || !up || isPowerOn(this.loop) || Math.hypot(L.x - p.ref.x, L.z - p.ref.z) > LOOP.reach + 2.5) return;
         setPower(this.loop, true);
         this.send('all', { k: 'note', t: `${p.name.toUpperCase()} THREW THE POWER` });
         return;
@@ -1087,11 +1111,19 @@ export class SessionSim {
       this.sakuraDir?.tick(dt);
     }
 
-    // the Asylum: the infected follow the light, and the Matron's hunt is only open at night
+    // the Asylum: the story's clock (the light holds until Ward Nine's register is read), the Matron only at night,
+    // the black fog's waves driving the infected, Ward Nine's door with the power (`asylum/story.ts`)
     if (this.asylum) {
-      this.zombies.setPhaseTuning(phaseTuning(timeOfDay(this.elapsed, this.extraction.calledAt)));
-      gateHunt(this.hunt, this.elapsed);
+      if (this.story && this.nightAt === null && nightTrigger(this.asylumFacts())) this.nightAt = this.elapsed;
+      const night = this.story ? this.nightAt : 0;
+      this.zombies.setPhaseTuning(phaseTuning(asylumHour(this.elapsed, night, this.extraction.calledAt)));
+      gateHunt(this.hunt, cycleClock(this.elapsed, night));
       this.keepBossAway();
+      const fog = this.story ? fogAt(this.elapsed, this.fogStopAt) : null;
+      const out = !!fog && fog.radius > 0.5;
+      this.zombies.rateMul = out ? FOG.rateMul : 1;
+      this.zombies.capBonus = out ? FOG.capBonus : 0;
+      setWard9Open(this.level, this.kind === 'roam' || this.defense.status === 'complete');
     }
     // contracts (never unwinnable: an uncredited Warden death completes the hunt; a missing Warden is back home)
     if (this.hunt.status === 'active') {
@@ -1114,7 +1146,8 @@ export class SessionSim {
     this.barricades?.update();
     this.stepPowerups(dt, peers);
     // KAIKA: the helicopter waits for the bloom
-    unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt) && (!this.campaign || this.sakura?.view.phase === 'bloom'));
+    // the Asylum: the bird waits for the furnace to be shut
+    unlockExtraction(this.extraction, allContractsComplete(this.defense, this.hunt) && (!this.campaign || this.sakura?.view.phase === 'bloom') && (!this.asylum || this.fogStopAt !== null));
     this.stepExtraction(dt, up);
     this.stepAllies(dt, peers);
     this.stepAurelia(dt, peers);
@@ -1310,7 +1343,7 @@ export class SessionSim {
     if (this.allyKill && !this.nuking) {
       // a squad kill pays every player an even share of the reward, rounded down (no one's own kill, no drop)
       const n = this.peers.size;
-      const cash = n > 0 ? Math.floor(Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)) / n) : 0;
+      const cash = n > 0 ? Math.floor(Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups)) / n) : 0;
       if (cash > 0) for (const q of this.peers.values()) this.send(q.id, { k: 'sk', n: z.tag ?? z.def.name, c: cash });
       return;
     }
@@ -1318,7 +1351,7 @@ export class SessionSim {
     // a nuke's kills pay nothing and drop nothing (the nuke pays)
     if (!p || this.nuking) return;
     p.kills++;
-    const cash = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low') * cashMultiplier(this.powerups)); // double points
+    const cash = Math.round(killReward(z.def, head, this.story ? this.level.regionAt(z.x, z.z) : 'low', this.map) * cashMultiplier(this.powerups)); // double points
     // the drop is the squad's (shared below), so the killer's client does not roll its own
     this.send(p.id, { k: 'kill', n: z.tag ?? z.def.name, h: head, c: cash, x: r1(z.x), zz: r1(z.z), dc: 0 });
     if (this.story && !z.isBoss) rollKillDrop(this.loot, r1(z.x), r1(z.z), z.def.dropChance * REGIONS[this.level.regionAt(z.x, z.z)].dropMul * (ECONOMY.mapDropMul[this.level.data.id] ?? 1), this.rng);
@@ -1357,7 +1390,7 @@ export class SessionSim {
       const ex = this.extraction;
       out.ms = [r1(this.elapsed), RELAY_STATUSES.indexOf(this.hunt.status), this.hunt.identified ? 1 : 0, EXTRACTION_PHASES.indexOf(ex.phase), r1(ex.countdown), r1(ex.windowLeft), ex.calledAt === null ? -1 : r1(ex.calledAt), this.outcome ? (this.outcome.won ? 1 : 2) : 0];
       if (this.outcome) out.why = this.outcome.reason;
-      out.sq = this.allies.map((a, i) => [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]);
+      out.sq = this.allies.map((a, i) => (a.ref.y > 0.5 ? [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp), r1(a.ref.y)] : [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)]));
       out.sh = this.shots;
       if (this.aurelia) out.au = aureliaRow(this.aurelia);
       this.shots = [];
@@ -1370,6 +1403,7 @@ export class SessionSim {
       out.dr = this.loot.drops.map((q) => [q.id, q.kind, q.x, q.z]);
       if (this.asylum) {
         out.rc = bits(this.records.found); // the patient files taken
+        out.an = [this.nightAt === null ? -1 : r1(this.nightAt), this.fogStopAt === null ? -1 : r1(this.fogStopAt)]; // the story's clock
         if (this.barricades) out.bd = [...this.barricades.state.boards]; // boards up per window
       }
       if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
@@ -1412,10 +1446,26 @@ export class SessionSim {
     records: ReturnType<typeof createRecords>;
     barricades: BarricadeDirector | null;
     powerups: ReturnType<typeof createPowerups>;
-    /** Move the mission clock (nightfall on the Asylum without waiting for it). */
+    /** Move the mission clock. */
     setElapsed(t: number): void;
+    /** The Asylum: full night now (as if Ward Nine's register was read a dusk ago). */
+    nightNow(): void;
+    /** The Asylum: the story's clock (when the sun started going, when the damper was shut). */
+    story(): { nightAt: number | null; fogStopAt: number | null };
   } {
-    return { defense: this.defense, hunt: this.hunt, extraction: this.extraction, allies: this.allies, aboard: this.aboard, records: this.records, barricades: this.barricades, powerups: this.powerups, setElapsed: (t) => void (this.elapsed = t) };
+    return {
+      defense: this.defense,
+      hunt: this.hunt,
+      extraction: this.extraction,
+      allies: this.allies,
+      aboard: this.aboard,
+      records: this.records,
+      barricades: this.barricades,
+      powerups: this.powerups,
+      setElapsed: (t) => void (this.elapsed = t),
+      nightNow: () => void (this.nightAt = this.elapsed - ASYLUM_CYCLE.duskLength - 0.01),
+      story: () => ({ nightAt: this.nightAt, fogStopAt: this.fogStopAt }),
+    };
   }
 }
 

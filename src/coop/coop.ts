@@ -318,6 +318,7 @@ export class CoopSession {
         this.recordAsked[i] = now;
         this.toHost({ k: 'rec', i });
       };
+      g.mission.night.requestDamper = () => this.toHost({ k: 'damper' });
     }
     if (g.asylum) g.asylum.remote = this.started ? { door: (i) => this.toHost({ k: 'door', i }), lever: () => this.toHost({ k: 'lever' }) } : null;
     // the Forge: talking someone out, a furnace, a ledger page and riry's bell are the simulation's to decide
@@ -538,6 +539,9 @@ export class CoopSession {
     if (Array.isArray(d.bx)) g.entities.applyBoxes(d.bx as (number | string)[][]);
     if (Array.isArray(d.dr)) g.entities.applyDrops(d.dr as number[][]);
     if (typeof d.rc === 'number' && g.mission.night) g.mission.night.applyRecords(flags(d.rc, g.mission.night.records.found.length));
+    // the Asylum's story clock: when the sun started going, when the furnace was shut (-1: not yet)
+    const an = d.an as number[] | undefined;
+    if (an && g.mission.night) g.mission.night.applyStory(Number(an[0] ?? -1), Number(an[1] ?? -1));
     const lp = d.lp as number[] | undefined;
     if (lp && g.asylum) g.asylum.applyRemote(Number(lp[0]) || 0, lp[1] === 1);
     const bd = d.bd as number[] | undefined;

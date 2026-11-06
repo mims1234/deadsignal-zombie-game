@@ -68,9 +68,9 @@ export function spendCash(inv: Inventory, amount: number): boolean {
   return true;
 }
 
-export function killReward(def: ZombieDef, headshot: boolean, region: Region): number {
+export function killReward(def: ZombieDef, headshot: boolean, region: Region, map?: string): number {
   const base = def.reward + (headshot ? def.headshotBonus : 0);
-  return Math.round(base * REGIONS[region].rewardMul * ECONOMY.killCashMul);
+  return Math.round(base * REGIONS[region].rewardMul * ECONOMY.killCashMul * (map ? (ECONOMY.mapKillMul[map] ?? 1) : 1));
 }
 
 export function killRewardByType(type: ZombieType, headshot: boolean, region: Region): number {

@@ -169,6 +169,8 @@ export interface ContaminationWall {
   setRadius(r: number): void;
   /** 0..1 visibility (fades in at surge start). */
   setIntensity(k: number): void;
+  /** Its colours: the toxic green front (default), or black smoke with embers (the Asylum's black fog). */
+  setPalette(p: 'toxic' | 'black'): void;
   /** 0..1 how deep inside the toxic zone the camera is (valid after `update`); drives interior fog shells, usable for audio / overlays. */
   readonly insideFactor?: number;
   update(dt: number, time: number, camera: THREE.Camera): void;

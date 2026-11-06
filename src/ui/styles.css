@@ -268,6 +268,15 @@
 .ds-fx-toxpulse {
   background: radial-gradient(ellipse at center, rgba(60, 255, 110, 0) 25%, rgba(90, 255, 140, 0.55) 100%);
 }
+/* the Asylum's black fog: soot closing in, an ember glow at the edge */
+.ds-fx-toxic[data-tint='black'] {
+  background:
+    radial-gradient(ellipse at center, rgba(10, 6, 6, 0.2) 20%, rgba(6, 3, 3, 0.86) 100%),
+    rgba(12, 8, 8, 0.28);
+}
+.ds-fx-toxpulse[data-tint='black'] {
+  background: radial-gradient(ellipse at center, rgba(120, 40, 10, 0) 25%, rgba(150, 50, 16, 0.5) 100%);
+}
 .ds-fx-hurt {
   background: radial-gradient(ellipse at center, rgba(255, 20, 10, 0) 38%, rgba(255, 30, 20, 0.62) 100%);
 }

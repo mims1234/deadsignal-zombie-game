@@ -58,13 +58,14 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, cards: Card
     hazard: {
       active: mission.hazardRadiusNow > 0,
       inside: mission.insideHazard,
-      message: mission.hazardRadiusNow > 0 ? (mission.insideHazard ? 'TOXIC EXPOSURE - LEAVE THE ZONE' : 'CONTAMINATION SURGE - REACH EXTRACTION') : null,
+      message: mission.hazardRadiusNow > 0 ? (mission.night ? (mission.insideHazard ? 'IN THE BLACK FOG - GET AWAY FROM THE STACK' : 'THE BLACK FOG IS OUT') : mission.insideHazard ? 'TOXIC EXPOSURE - LEAVE THE ZONE' : 'CONTAMINATION SURGE - REACH EXTRACTION') : null,
     },
     boss: bossVisible ? { name: ctx.level.data.text.boss, fraction: Math.max(0, boss!.hp / boss!.maxHp), enraged: boss!.enraged } : cards.bossInfo(),
     fps,
     compassYaw: ctx.player.yaw,
     vignette: hp < 40 ? Math.min(1, (40 - hp) / 40) : 0,
     toxic: mission.insideHazard ? 1 : 0,
+    toxicTint: mission.night ? 'black' : 'toxic',
   };
 }
 

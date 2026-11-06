@@ -709,6 +709,13 @@ export class Game implements GameCtx {
     this.interaction.reviveMul = () => this.asylum?.reviveMul ?? 1;
     // the generators running (RESTORE THE POWER) throws the power on; the lever in the boiler house does it too
     this.mission.onPowerRestored = () => this.asylum?.setPower(true);
+    // the Asylum's story: every word through its voice director, the furnace damper, who can still speak
+    const night = this.mission.night;
+    if (night) {
+      this.radioHook = (who, text) => night.onRadio(who, text);
+      night.canTalk = (name) => this.squad.canTalk(name);
+      this.interaction.providers.push(() => night.damperTarget());
+    }
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
     if (this.touchMode) {
@@ -1324,7 +1331,7 @@ export class Game implements GameCtx {
         else if (isStory(kind)) this.banner(`CO-OP  //  ${STORIES[kind].title}`, STORIES[kind].banner, 'info', 5);
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
-        this.banner('BLACKWOOD HILL', 'Late afternoon. Recover the files and restore the power while it is light - at nightfall she begins her rounds.', 'info', 5);
+        this.banner('BLACKWOOD HILL', "Late afternoon. Follow the hospital's files, room by room - no clock, but the black fog comes in waves.", 'info', 5);
       } else if ((this.mapId === 'mujin' || this.mapId === 'hirasaka') && !roam) {
         // the station (the island) says its own name (`mujin/runtime.ts`, `hirasaka/runtime.ts`)
       } else if (this.mapId === 'aurelia' && !roam) {
@@ -2128,7 +2135,7 @@ export class Game implements GameCtx {
       // an ally's kill: it still counts for the contract and pays the player in full, but it is not the player's kill
       if (z.isBoss) this.mission.onWardenKilled();
       if (this.powerups.nuking) return;
-      this.squadKill(Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z)) * this.powerups.cashMul), z.tag ? `${z.tag} (INFECTED)` : z.def.name);
+      this.squadKill(Math.round(killReward(z.def, head, this.level.regionAt(z.x, z.z), this.mapId) * this.powerups.cashMul), z.tag ? `${z.tag} (INFECTED)` : z.def.name);
       return;
     }
     const s = this.session;
@@ -2136,7 +2143,7 @@ export class Game implements GameCtx {
     if (this.powerups.nuking) return; // a nuke's kills count, but pay nothing and drop nothing (the nuke pays)
     if (head) s.stats.headshots++;
     const region = this.level.regionAt(z.x, z.z);
-    const cash = Math.round(killReward(z.def, head, region) * this.powerups.cashMul); // double points
+    const cash = Math.round(killReward(z.def, head, region, this.mapId) * this.powerups.cashMul); // double points
     addCash(s.inv, cash);
     this.hud.event({ type: 'cash', amount: cash });
     this.feed(`+$${cash}  ${z.tag ? `${z.tag.toUpperCase()} (INFECTED)` : z.def.name.toUpperCase()}${head ? '  HEADSHOT' : ''}`, head ? 'good' : 'normal');
