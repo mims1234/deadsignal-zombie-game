@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.345",
+      "date": "2026-11-05",
+      "title": "Asylum: no more black screens by the perk machines, cheaper perks",
+      "notes": [
+        "Fixed the Asylum going black in places. Once the power was on, walking near a perk machine (Ironhide in the Yard, Quickhand, Second Wind, Rapid Fire) could turn the whole world black while the sky stayed lit. The machines' own lamps had no entry in the day and night lighting, so their brightness came out as an invalid number, and the graphics card draws everything that lamp touches as black. They now light normally, and the lighting is guarded so a bad value can never black out the screen again.",
+        "Cheaper perks: Ironhide $1,500 (was $2,500), Quickhand $1,800 (was $3,000), Second Wind $1,000 (was $1,500), Rapid Fire $1,200 (was $2,000). The Pack-a-Punch costs $3,000 (was $5,000)."
+      ]
+    },
+    {
       "version": "0.4.344",
       "date": "2026-11-05",
       "title": "Sakura District: the squad on watch, the Court at war, charms you can see",

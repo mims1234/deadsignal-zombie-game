@@ -117,7 +117,9 @@ export class LightPool {
         light.position.set(lamp.x, lamp.y, lamp.z);
         light.color.set(lamp.color);
         light.distance = lamp.distance;
-        light.intensity = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]! * (this.lampGain ? this.lampGain[lampIdx]! : 1) * (this.dim ? this.dim(lamp) : 1);
+        const v = lamp.intensity * lampIntensityMul(lamp, time) * this.fade[k]! * (this.lampGain?.[lampIdx] ?? 1) * (this.dim ? this.dim(lamp) : 1);
+        // a lamp gone NaN would blacken everything it reaches: dark instead
+        light.intensity = Number.isFinite(v) ? v : 0;
       } else {
         light.intensity = 0;
         if (!enabled && this.fade[k]! <= 0.003) this.assigned[k] = -1;
@@ -136,7 +138,8 @@ export class LightPool {
       const d2 = dx * dx + dz * dz + (l.y - focus.y) * (l.y - focus.y);
       const reach = l.distance * 1.15;
       if (d2 > reach * reach) continue;
-      const gain = this.lampGain ? this.lampGain[i]! : 1;
+      // a lamp added after the gains were made (the Asylum's machines, when the power comes on) has none: full
+      const gain = this.lampGain?.[i] ?? 1;
       if (gain < 0.01) continue; // switched off
       const room = this.focusIndoor ? (l.indoor ? 4 : 0.12) : l.indoor ? 0.6 : 1;
       scores.push({ i, s: ((l.weight ?? 1) * l.intensity * gain * room) / (d2 + 30) });

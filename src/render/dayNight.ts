@@ -164,6 +164,13 @@ function mixLook(out: Look, a: Look, b: Look, t: number): void {
   for (const k of NUM_KEYS) out[k] = a[k] + (b[k] - a[k]) * t;
 }
 
+/** Every number and colour channel of a look is finite. */
+function lookFinite(l: Look): boolean {
+  for (const k of NUM_KEYS) if (!Number.isFinite(l[k])) return false;
+  for (const k of COLOR_KEYS) if (!Number.isFinite(l[k].r + l[k].g + l[k].b)) return false;
+  return true;
+}
+
 const smooth = (x: number): number => {
   const t = Math.max(0, Math.min(1, x));
   return t * t * (3 - 2 * t);
@@ -260,6 +267,8 @@ export class DayNightLook {
         glowDir = this.glowRise;
         break;
     }
+    // a guard: one NaN anywhere here turns every lit surface and the fog black on the GPU (the sky, drawn apart, stays)
+    if (!lookFinite(cur)) mixLook(cur, L.night, L.night, 0);
     const r = this.renderer;
     // ---- sky ----
     const u = r.sky.userData.uniforms;
@@ -272,9 +281,10 @@ export class DayNightLook {
     if (u.uStars) u.uStars.value = cur.stars;
     // the key light is the sun while it is up, the moon once it is down; the swap happens while it is faint
     const sunUp = tod.sun >= 0.5;
-    const key = sunUp ? this.tmp.set(tod.sunDir.x, Math.max(0.06, tod.sunDir.y), tod.sunDir.z).normalize() : this.moonDir;
+    const sunOk = Number.isFinite(tod.sunDir.x + tod.sunDir.y + tod.sunDir.z);
+    const key = sunUp && sunOk ? this.tmp.set(tod.sunDir.x, Math.max(0.06, tod.sunDir.y), tod.sunDir.z).normalize() : this.moonDir;
     const keyGain = Math.max(0.12, smooth(Math.abs(tod.sun - 0.5) * 2));
-    (u.uMoonDir!.value as THREE.Vector3).copy(sunUp ? this.tmp.set(tod.sunDir.x, tod.sunDir.y, tod.sunDir.z).normalize() : this.moonDir);
+    (u.uMoonDir!.value as THREE.Vector3).copy(sunUp && sunOk ? this.tmp.set(tod.sunDir.x, tod.sunDir.y, tod.sunDir.z).normalize() : this.moonDir);
     (u.uMoonColor!.value as THREE.Color).copy(cur.disc).multiplyScalar(cur.discK);
     r.light.keyDir.copy(key);
     // ---- fog, lights, exposure ----

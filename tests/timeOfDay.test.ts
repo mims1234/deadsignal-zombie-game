@@ -199,3 +199,13 @@ describe('the Asylum clock', () => {
     }
   });
 });
+
+describe('the Asylum hour never goes NaN', () => {
+  it('an unreadable clock or call time is the night, every field finite (a NaN light blackens the world)', () => {
+    for (const [e, c] of [[NaN, null], [Infinity, null], [320, NaN], [NaN, NaN]] as const) {
+      const t = timeOfDay(e as number, c as number | null);
+      for (const v of [t.t, t.dark, t.sun, t.sunDir.x, t.sunDir.y, t.sunDir.z]) expect(Number.isFinite(v)).toBe(true);
+    }
+    expect(timeOfDay(NaN).phase).toBe('night');
+  });
+});

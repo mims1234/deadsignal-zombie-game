@@ -69,7 +69,9 @@ export function dawnStart(calledAt: number | null, cycle = ASYLUM_CYCLE): number
 }
 
 export function timeOfDay(elapsed: number, calledAt: number | null = null, cycle = ASYLUM_CYCLE): TimeOfDay {
-  const e = Math.max(0, elapsed);
+  // an unreadable clock (a report that lost it) or call time must never reach the lights as NaN
+  const e = Number.isFinite(elapsed) ? Math.max(0, elapsed) : cycle.dayEnd + cycle.duskLength;
+  if (calledAt !== null && !Number.isFinite(calledAt)) calledAt = null;
   const nightfall = cycle.dayEnd + cycle.duskLength;
   const dawn0 = dawnStart(calledAt, cycle);
   if (dawn0 !== null && e >= dawn0) {

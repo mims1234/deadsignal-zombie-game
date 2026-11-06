@@ -19,10 +19,10 @@ export interface PerkDef {
 }
 
 export const PERK_DEFS: Record<PerkId, PerkDef> = {
-  ironhide: { id: 'ironhide', name: 'IRONHIDE', mark: 'IH', blurb: 'Max health 100 -> 250', cost: 2500, color: 0xd8413a },
-  quickhand: { id: 'quickhand', name: 'QUICKHAND', mark: 'QH', blurb: 'Reload twice as fast', cost: 3000, color: 0x3fc46a },
-  secondWind: { id: 'secondWind', name: 'SECOND WIND', mark: 'SW', blurb: 'Get back up once when you would die', cost: 1500, color: 0x58b4ff },
-  rapidFire: { id: 'rapidFire', name: 'RAPID FIRE', mark: 'RF', blurb: 'Fire a third faster', cost: 2000, color: 0xf0a23a },
+  ironhide: { id: 'ironhide', name: 'IRONHIDE', mark: 'IH', blurb: 'Max health 100 -> 250', cost: 1500, color: 0xd8413a },
+  quickhand: { id: 'quickhand', name: 'QUICKHAND', mark: 'QH', blurb: 'Reload twice as fast', cost: 1800, color: 0x3fc46a },
+  secondWind: { id: 'secondWind', name: 'SECOND WIND', mark: 'SW', blurb: 'Get back up once when you would die', cost: 1000, color: 0x58b4ff },
+  rapidFire: { id: 'rapidFire', name: 'RAPID FIRE', mark: 'RF', blurb: 'Fire a third faster', cost: 1200, color: 0xf0a23a },
 };
 
 export const LOOP = {
@@ -48,7 +48,7 @@ export const LOOP = {
     secondWindReviveMul: 0.5,
   },
   pap: {
-    cost: 5000,
+    cost: 3000,
     /** Seconds the machine works on the weapon (it is upgraded at once; this is the show). */
     workTime: 3,
   },

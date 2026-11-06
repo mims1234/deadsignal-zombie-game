@@ -137,7 +137,7 @@ export class GameRenderer {
   private skyDirty = false;
 
   setSkyLevels(v: { hemi: number; key: number; fill: number; env: number; indoor: number }): void {
-    Object.assign(this.sky0, v);
+    for (const k of ['hemi', 'key', 'fill', 'env', 'indoor'] as const) if (Number.isFinite(v[k])) this.sky0[k] = v[k];
     this.skyDirty = true;
   }
 
