@@ -456,6 +456,22 @@ const entries: Entry[] = [
       return a.root;
     },
   },
+  {
+    id: 'rae-mercer', group: 'BESIDE YOU', name: 'Rae Mercer', height: 1.72,
+    tagline: '',
+    lore: '',
+    where: 'Blackwood Hill', stats: [], modes: 'avatar',
+    cast: ['RAE'],
+    avatarModes: ['RAE', 'TRAPPED', 'WALK', 'FIRE'],
+    build: () => {
+      const i = Math.max(0, SURVIVORS.asylum.findIndex((s) => s.name === 'Rae Mercer'));
+      const who = SURVIVORS.asylum[i]!;
+      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8' });
+      a.arm();
+      current!.avatar = a;
+      return a.root;
+    },
+  },
   // the Sakura District's cast: VRoid models (anime/cast.ts, public/anime/)
   {
     id: 'sakura-squad', group: 'SAKURA DISTRICT', name: 'Hana & Yuzu', height: 1.85,

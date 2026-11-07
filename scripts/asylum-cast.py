@@ -97,8 +97,8 @@ CAST = {
         "clothes": ["shoes02"],
         # a prisoner's orange pinafore, short and cut deep, over the white vest of the nurse she actually is; a cap to
         # make the joke land. No count number in play: the skirt is what carries "inmate", the vest and cap "nurse".
-        "garments": [{"kind": "vest", "color": (0.93, 0.92, 0.89), "v": 0.24},
-                     {"kind": "pinafore", "color": (0.88, 0.4, 0.1), "v": 0.40, "hem": 0.32}],
+        "garments": [{"kind": "vest", "color": (0.93, 0.92, 0.89), "v": 0.70},
+                     {"kind": "pinafore", "color": (0.88, 0.4, 0.1), "v": 0.50, "hem": 0.32}],
         "cap": {"color": (0.95, 0.94, 0.9), "band": (0.78, 0.24, 0.3)},
     },
     # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
@@ -559,7 +559,7 @@ for g in spec.get("garments", []):
         keep = None
         if g.get("v"):  # cut open at the chest: a narrow V, so the skin under it shows too
             vu = J["spine"] + (J["neck"] - J["spine"]) * g["v"]
-            keep = lambda c: not (c.y < 0.02 and c.z > vu and abs(c.x) < 0.058 + (c.z - vu) * 2.1)
+            keep = lambda c: not (c.y < 0.02 and c.z > vu and abs(c.x) < 0.03 + (c.z - vu) * 0.95)
         shell("garment_vest", J["hip"] + 0.08, J["neck"] - 0.05, J["shoulderX"] * 0.72, 0.022, mat, keep=keep, src=shirt)
     elif kind == "coat":
         top = shell("garment_coat", J["hip"] - 0.02, J["neck"] - 0.005, J["wristX"] - 0.035, 0.024, mat)
@@ -582,7 +582,7 @@ for g in spec.get("garments", []):
         # the jumpsuit peeled down: a short flared skirt, the bodice at the waist, and a deep V cut through the front
         # (the chest's front verts above the sternum, widening with height, are dropped so what is under shows)
         vlow = J["spine"] + (J["neck"] - J["spine"]) * g.get("v", 0.34)
-        open_v = lambda c: not (c.y < 0.02 and c.z > vlow and abs(c.x) < 0.085 + (c.z - vlow) * 2.6)
+        open_v = lambda c: not (c.y < 0.02 and c.z > vlow and abs(c.x) < 0.048 + (c.z - vlow) * 1.55)
         top = shell("garment_pinafore", J["hip"] + 0.10, J["neck"] - 0.055, J["shoulderX"] * 0.66, 0.019, mat, keep=open_v)
         hem = J["hip"] + (J["knee"] - J["hip"]) * g.get("hem", 0.46)
         sk = skirt("garment_pinafore_skirt", J["hip"] + 0.09, hem, 0.055, 1.5, mat, rows=7)

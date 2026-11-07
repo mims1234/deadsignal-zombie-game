@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.369",
+      "date": "2026-11-08",
+      "title": "Rae: shorter cut, and a bestiary entry",
+      "notes": [
+        "Rae's pinafore now shows a proper cleavage window instead of the whole chest, and her skirt is shorter.",
+        "Rae has her own page in the bestiary, filed under the people beside you."
+      ]
+    },
+    {
       "version": "0.4.368",
       "date": "2026-11-08",
       "title": "New survivor: Rae Mercer, prisoner 023",
