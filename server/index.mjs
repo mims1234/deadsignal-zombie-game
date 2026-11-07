@@ -10,7 +10,7 @@ import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import Fastify from 'fastify';
 import { randomBytes } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BOARD_MAPS, BOARD_METRICS, BOARD_MODES, DIFFICULTIES, MODES, boardKey, openDb } from './db.mjs';
@@ -435,6 +435,17 @@ const LIVE_VERSION = JSON.parse(readFileSync(join(here, 'changelog.json'), 'utf8
 app.get('/api/version', async (_req, reply) => {
   reply.header('cache-control', 'no-store');
   return { version: LIVE_VERSION };
+});
+
+// dev only: the game posts a canvas frame here so an automated check can look at it
+app.post('/api/__shot', { bodyLimit: 8388608 }, async (req, reply) => {
+  const body = String((req.body && req.body.png) || req.body || '');
+  const b64 = body.replace(/^data:image\/png;base64,/, '');
+  if (!b64) return reply.code(400).send({ ok: false });
+  const dir = join(here, '..', 'shots');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'live.png'), Buffer.from(b64, 'base64'));
+  return { ok: true };
 });
 
 // ---- admin -------------------------------------------------------------------------------------------

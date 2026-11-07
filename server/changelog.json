@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.368",
+      "date": "2026-11-08",
+      "title": "New survivor: Rae Mercer, prisoner 023",
+      "notes": [
+        "Rae joins the Asylum squad as a proper 3D person, with NEW 3D MODELS (BETA) on. She is a nurse doing her sentence: her old white uniform under a short, low prison pinafore, and she will tell you so.",
+        "Her rescue, her card and her voice lines work like the rest of the squad. With the beta setting off the Asylum looks exactly as it did."
+      ]
+    },
+    {
       "version": "0.4.367",
       "date": "2026-11-08",
       "title": "Mazoku: the carriers in new 3D models (beta)",

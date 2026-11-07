@@ -10,6 +10,7 @@ import type { Game } from '../game/game';
 import type { Edges } from '../player/input';
 import type { WeaponId, ZombieType } from '../types';
 import type { PowerupKind } from '../logic/powerups';
+import { animeSlotState } from '../anime/vrm';
 
 function emptyEdges(): Edges {
   return {
@@ -280,4 +281,77 @@ export function installTestApi(game: Game): void {
     },
   };
   (window as unknown as { __dead: typeof api }).__dead = api;
+  // ?dbg puts the player and squad readout in the tab title, which an automated browser can see
+  // ?map=asylum picks the map for the run (the default is whatever was last played)
+  const mp = /[?&]map=([a-z]+)/.exec(location.search);
+  if (mp) {
+    try {
+      localStorage.setItem('deadsignal.map.v1', mp[1]);
+    } catch { /* ignore */ }
+    void import('../storage').then((s) => s.saveMap(mp[1] as never));
+  }
+  // ?pack=classic|quaternius picks the model set (the beta real-asset models need quaternius)
+  const pk = /[?&]pack=(classic|quaternius)/.exec(location.search);
+  if (pk) {
+    localStorage.setItem('deadsignal.settings.v1', JSON.stringify({ ...((): Record<string, unknown> => { try { return JSON.parse(localStorage.getItem('deadsignal.settings.v1') || '{}'); } catch { return {}; } })(), modelPack: pk[1] }));
+  }
+  // ?at=x,z parks the player there a moment after the run starts (automated looks)
+  const at = /[?&]at=(-?[\d.]+),(-?[\d.]+)(?:,(-?[\d.]+))?/.exec(location.search);
+  if (at) {
+    const tx = Number(at[1]), tz = Number(at[2]), ty = at[3] === undefined ? undefined : Number(at[3]);
+    let tries = 0;
+    const id = setInterval(() => {
+      tries++;
+      if (game.state === 'title' && game.devNoLock === false) game.devStartWithoutLock();
+      if (game.state === 'playing') { game.player.teleport(tx, tz, ty); clearInterval(id); }
+      else if (tries > 120) clearInterval(id);
+    }, 500);
+  }
+  // ?find=NAME walks the camera up to that squad member wherever they spawned (automated looks)
+  const find = /[?&]find=([A-Za-z]+)/.exec(location.search);
+  if (find) {
+    const who = find[1].toLowerCase();
+    let n = 0;
+    const fid = setInterval(() => {
+      n++;
+      if (game.state === 'title') game.devStartWithoutLock();
+      const a = game.squad.devInfo().find((m) => m.name.toLowerCase().includes(who));
+      if (game.state === 'playing' && a) {
+        game.player.teleport(a.x, a.z + 3, Math.PI);
+        clearInterval(fid);
+      } else if (n > 140) clearInterval(fid);
+    }, 500);
+  }
+  // ?shot: after a moment, freeze the frame and put it on screen large, so it can be screenshotted
+  if (location.search.includes('shot')) {
+    setTimeout(() => {
+      const cv = document.querySelector('canvas') as HTMLCanvasElement | null;
+      if (!cv) { document.title = 'SHOT no canvas'; return; }
+      let url = '';
+      try { url = cv.toDataURL('image/png'); } catch (e) { document.title = 'SHOT throw ' + String(e); return; }
+      document.title = 'SHOT got ' + url.length;
+      if (location.search.includes('nav')) {
+        void fetch('/api/__shot', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ds': '1' }, body: JSON.stringify({ png: url }) });
+        return;
+      }
+
+      const box = document.createElement('div');
+      box.id = 'shotbox';
+      box.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#000;display:grid;place-items:center';
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.cssText = 'max-width:100%;max-height:100%';
+      box.appendChild(img);
+      document.body.appendChild(box);
+    }, Number((/[?&]shot=(\d+)/.exec(location.search) || [])[1] || 14000));
+  }
+  if (location.search.includes('dbg')) {
+    setInterval(() => {
+      const s = snapshot() as unknown as Record<string, unknown>;
+      const sq = game.squad.devInfo().map((a) => a.name + "@" + a.x + "," + a.z + (a.trapped ? " TRAPPED" : ""));
+      const { x, z } = game.player;
+      const tl = 'DBG slot=' + animeSlotState('models/asylum/rae.vrm') + ' pack=' + String((game as unknown as {settings:{modelPack:string}}).settings.modelPack) + ' own=' + game.squad.devInfo().map((a)=>a.name).join(',') + ' you ' + x.toFixed(1) + ',' + z.toFixed(1) + ' | ' + sq.join(' ; ') + ' | fps ' + String(s.fps) + ' draws ' + String(s.draws) + ' tris ' + String(s.triangles);
+      document.title = tl;
+    }, 700);
+  }
 }

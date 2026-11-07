@@ -236,6 +236,8 @@ export class Game implements GameCtx {
   private noLock = false;
   /** Played with on-screen controls: there is no pointer to lock, so deploy / resume start straight away. */
   readonly touchMode = isTouchDevice();
+  /** ?nolock (an automated browser that cannot capture the mouse): play without pointer lock. */
+  private readonly urlNoLock = typeof location !== 'undefined' && /[?&]nolock\b/.test(location.search);
 
   /** Flying with no damage and no HUD: free roam, a co-op free-roam session, and spectators. */
   get flying(): boolean {
@@ -1182,6 +1184,12 @@ export class Game implements GameCtx {
   // ---------------------------------------------------------------------------------------------
 
   private lockPointer(): void {
+    if (this.urlNoLock) {
+      this.noLock = true;
+      this.pendingLock = 'none';
+      if (this.state !== 'playing') this.beginPlaying(this.state === 'title');
+      return;
+    }
     const canvas = this.deps.canvas;
     try {
       const req = canvas.requestPointerLock({ unadjustedMovement: true } as PointerLockOptions) as unknown as Promise<void> | undefined;
@@ -1294,6 +1302,7 @@ export class Game implements GameCtx {
   };
 
   private beginPlaying(fresh: boolean): void {
+    if (this.urlNoLock) this.noLock = true;
     const wasTitle = this.state === 'title';
     this.state = 'playing';
     this.playingSince = performance.now();
@@ -1621,7 +1630,13 @@ export class Game implements GameCtx {
       this.beginPlaying(true);
       return;
     }
+    if (this.urlNoLock) {
+      this.noLock = true;
+      this.beginPlaying(true);
+      return;
+    }
     this.beginPlaying(true);
+    if (this.urlNoLock) { this.noLock = true; return; }
     this.pause('lost');
     const spectating = this.coop.role === 'spectator';
     this.menus.showResumePrompt(spectating ? 'THE SESSION IS LIVE. CLICK TO START WATCHING.' : 'YOUR SQUAD HAS DEPLOYED. CLICK TO JOIN THE FIGHT.', true, {
