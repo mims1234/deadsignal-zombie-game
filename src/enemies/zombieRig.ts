@@ -18,8 +18,8 @@ import type { ZombieVariant } from './variants';
 export interface ZombieFactoryExt extends ZombieFactory {
   /** Bake every appearance variant now (avoids a few ms of hitching on first spawn of each variant); with a theme, its looks instead. */
   prewarm(theme?: ZombieTheme): void;
-  /** The Asylum's boss, the Matron. */
-  createMatron(seed: number): ZombieRig;
+  /** The Asylum's boss, the Matron (`built`: never her real-asset model). */
+  createMatron(seed: number, built?: boolean): ZombieRig;
   /** Shared material (debug / harness). */
   readonly material: THREE.MeshStandardMaterial;
 }
@@ -40,12 +40,12 @@ export function createZombieFactory(): ZombieFactoryExt {
   };
   return {
     material,
-    create(type: ZombieType, seed: number, theme?: ZombieTheme, variant: ZombieVariant = ''): ZombieRig {
+    create(type: ZombieType, seed: number, theme?: ZombieTheme, variant: ZombieVariant = '', built = false): ZombieRig {
       const def = ZOMBIES[type];
       const dims = { radius: def.radius, height: def.height, headRadius: def.headRadius };
       const anime = theme === 'sakura' ? hordeModel(type, seed, variant) : null;
       // the Asylum's lost in real-asset models (NEW 3D MODELS, when loaded), a little smaller like the built ones
-      const lost = theme === 'asylum' ? asylumInfected(type, seed) : null;
+      const lost = theme === 'asylum' && !built ? asylumInfected(type, seed) : null;
       const stock = theme === 'sakura' ? undefined : theme;
       // a model pack's infected (Settings) on the maps with the standard look; the Warden keeps his own frame
       const model = !theme && type !== 'warden' && hasModel('zombie');
@@ -65,9 +65,9 @@ export function createZombieFactory(): ZombieFactoryExt {
       return rig;
     },
     /** The Asylum's boss (`matronRig.ts`). */
-    createMatron(seed: number): ZombieRig {
+    createMatron(seed: number, built = false): ZombieRig {
       // in her real-asset model with NEW 3D MODELS (when loaded), else built
-      const rig = new MatronRig(material, seed, matronModel() ?? undefined);
+      const rig = new MatronRig(material, seed, (built ? null : matronModel()) ?? undefined);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {

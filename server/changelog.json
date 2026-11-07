@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.370",
+      "date": "2026-11-08",
+      "title": "Mazoku: Noire and Miku closer to their cards, and fixes",
+      "notes": [
+        "With NEW 3D MODELS on, the carriers now wear their new models from your very first run (before, the first run still showed the old looks).",
+        "Noire has more red: crimson eyes, red ribbons in her hair, a fuller red collar and longer red frills under her skirt.",
+        "Miku now wears low twin tails, a softer pink plaid skirt and a bigger pink print on her tee.",
+        "Fixed Miku's skirt and print showing up almost white in game, and see-through parts of the new models drawing solid.",
+        "Fixed a gap opening between the top and the skirt on the carriers' usual looks when they bend over.",
+        "The bestiary now shows Variant 2 of the Asylum's infected, the Matron, the Lantern team and the Blackwood staff in their new 3D models."
+      ]
+    },
+    {
       "version": "0.4.369",
       "date": "2026-11-08",
       "title": "Rae: shorter cut, and a bestiary entry",

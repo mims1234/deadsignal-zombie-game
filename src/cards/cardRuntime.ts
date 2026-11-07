@@ -89,12 +89,12 @@ export class CardRuntime {
   private models = false;
 
   /**
-   * Load the art and build every carrier's model once. `models` (NEW 3D MODELS): their real-asset models stream in
-   * behind the game, and each carrier changes into hers at the next run start (`wear`), the built figure until then.
+   * Load the art and build every carrier's model once. `models` (NEW 3D MODELS): their real-asset models load with the
+   * game (waited for, so even the first run wears them); each carrier changes into hers at run start (`wear`).
    */
   async load(models = false): Promise<void> {
     this.models = models;
-    if (models) void loadAnimeFiles(Object.values(MAZOKU_MODELS)).catch(() => undefined);
+    const own = models ? loadAnimeFiles(Object.values(MAZOKU_MODELS)).catch(() => undefined) : null;
     const kits = await loadCardKits(CARRIERS);
     for (const id of loadCards(CARRIERS.map((c) => c.id))) this.counts[id] = 1;
     CARRIERS.forEach((def, i) => {
@@ -132,6 +132,7 @@ export class CardRuntime {
       const stats: ZombieDef = { ...base, name: def.name, hp: def.hp, speedChase: def.speedChase, damage: def.damage, bodyMul: def.bodyMul, poise: def.poise, radius: 0.3, height: def.height, headRadius: 0.18, sightRange: 30, reward: 0, headshotBonus: 0, dropChance: 0 };
       this.units.push({ def, stats, kit, rig, own: false, portrait, ring, loot, lootCard, foil, zombie: null, state: null, hintX: 0, hintZ: 0 });
     });
+    await own;
   }
 
   /**

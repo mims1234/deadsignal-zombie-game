@@ -8,7 +8,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { AnimeZombieRig, COURT_TINT, MAZOKU_MODELS, carrierModel, courtModel, hordeFile, loadWholeCast, modelStats, personModel } from '../anime/cast';
+import { ASYLUM_CAST, ASYLUM_HORDE, AnimeZombieRig, COURT_TINT, MAZOKU_MODELS, carrierModel, courtModel, hordeFile, loadWholeCast, modelStats, ownModel, personModel } from '../anime/cast';
 import { animeSlotState, loadAnimeFiles } from '../anime/vrm';
 import { ANIME_CAST, FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
 import { VARIANT_BASE, VARIANT_INFO, variantDef, type ZombieVariant } from '../enemies/variants';
@@ -204,7 +204,7 @@ const factory = createZombieFactory();
 const carrierMaterial = createZombieMaterial(createDetailTexture());
 const kits = await loadCardKits(CARRIERS).catch(() => new Map());
 /** A male VRoid model, shown here only (not in the game yet): a squad soldier and an infected. */
-await Promise.all([loadWholeCast(), loadAnimeFiles(Object.values(MAZOKU_MODELS))]).catch(() => undefined);
+await Promise.all([loadWholeCast(), loadAnimeFiles([...Object.values(MAZOKU_MODELS), ...ASYLUM_CAST, ...ASYLUM_HORDE])]).catch(() => undefined);
 
 /** The Sakura District's kinds in the bestiary: tagline and what they do. */
 const SAKURA_KINDS: readonly [Exclude<ZombieVariant, '' | 'court' | 'empress'>, string, string][] = [
@@ -225,10 +225,13 @@ const slotNote = (file: string): [string, string] => {
 };
 
 const zombie = (type: ZombieType, seed: number, theme?: ZombieTheme) => (): THREE.Object3D => {
-  const r = factory.create(type, seed, theme);
+  const r = factory.create(type, seed, theme, '', true);
   current!.rig = r;
   return r.root;
 };
+
+/** The Asylum's staff who have a real-asset model (Rae has her own entry). */
+const STAFF_V2 = SURVIVORS.asylum.filter((s) => s.model && s.name !== 'Rae Mercer');
 
 const entries: Entry[] = [
   {
@@ -275,6 +278,24 @@ const entries: Entry[] = [
     lore: 'The orderlies who held the doors of the isolation block the night the power failed. Their quilted jackets turn half of every body shot, as riot gear does, and they hit as hard as they ever restrained anyone. Patience, and headshots.',
     where: 'The Asylum', stats: zombieStats('armored'), modes: ZOMBIE_MODES, build: zombie('armored', 0, 'asylum'),
   },
+  // variant 2: Blackwood's lost in their real-asset models (NEW 3D MODELS in game: anime/cast.ts ASYLUM_INFECTED)
+  ...([
+    ['blackwood-nurses-v2', "Blackwood's night nurses - Variant 2", 'shambler', 0, 0.95],
+    ['blackwood-patients-v2', "Blackwood's patients - Variant 2", 'runner', 0, 0.95],
+    ['blackwood-patients2-v2', "Blackwood's patients - Variant 2 (second)", 'runner', 1, 0.95],
+    ['blackwood-orderlies-v2', "Blackwood's orderlies - Variant 2", 'armored', 0, 0.93],
+  ] as const).map(([id, name, type, seed, scale]): Entry => ({
+    id, group: 'THE HORDE', name, height: ZOMBIES[type].height * scale,
+    tagline: 'The real-asset look (NEW 3D MODELS).',
+    lore: 'The same infected of Blackwood Hill in their real-asset bodies, worn in game with the NEW 3D MODELS setting (beta). They fight exactly the same.',
+    where: 'The Asylum with NEW 3D MODELS (beta)', stats: zombieStats(type), modes: ZOMBIE_MODES,
+    build: () => {
+      const r = factory.create(type, seed, 'asylum');
+      current!.rig = r;
+      current!.stats = [...zombieStats(type), ...(r instanceof AnimeZombieRig ? modelStats(r.body.template) : [])];
+      return r.root;
+    },
+  })),
   {
     id: 'warden', group: 'ELITES', name: 'The Warden', height: ZOMBIES.warden.height,
     tagline: 'The compound\'s head of security, grown into something else.',
@@ -301,6 +322,19 @@ const entries: Entry[] = [
       ['The Shriek', `rouses every infected within ${MATRON.shriekRadius} m`],
       ['Bounty', `$${MATRON_DEF.reward}`],
     ],
+    modes: MATRON_MODES,
+    build: () => {
+      const r = factory.createMatron(3, true);
+      current!.rig = r;
+      return r.root;
+    },
+  },
+  {
+    id: 'matron-v2', group: 'ELITES', name: 'The Matron - Variant 2', height: MATRON_DEF.height,
+    tagline: 'Her real-asset look (NEW 3D MODELS).',
+    lore: 'The Matron in her real-asset body, worn in game with the NEW 3D MODELS setting (beta): the same rounds, the same lantern, the same scream.',
+    where: 'The Asylum with NEW 3D MODELS (beta)',
+    stats: [['Health', `${MATRON_DEF.hp}`], ['Chase speed', `${MATRON_DEF.speedChase.toFixed(1)} m/s`], ['Hits for', `${MATRON_DEF.damage}, reach ${MATRON_DEF.attackRange} m`], ['Bounty', `$${MATRON_DEF.reward}`]],
     modes: MATRON_MODES,
     build: () => {
       const r = factory.createMatron(3);
@@ -452,6 +486,42 @@ const entries: Entry[] = [
       const who = SURVIVORS.asylum[i]!;
       const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8' });
       a.arm();
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  // variant 2: the Lantern team and the staff in their real-asset models (NEW 3D MODELS in game)
+  {
+    id: 'lantern-v2', group: 'BESIDE YOU', name: 'Lantern team - Variant 2', height: 1.8,
+    tagline: 'Rin Vance and Dr. Imani Okafor, real-asset look (NEW 3D MODELS).',
+    lore: 'The Lantern team in their real-asset bodies, worn in game with the NEW 3D MODELS setting (beta).',
+    where: 'The Asylum with NEW 3D MODELS (beta)', stats: [['Health', '160'], ['Weapons', 'rifle / shotgun']], modes: 'avatar',
+    cast: ['VANCE', 'OKAFOR'],
+    avatarModes: ['VANCE', 'OKAFOR', 'IDLE', 'WALK', 'FIRE', 'FALL'],
+    build: () => {
+      const d = SQUADS.asylum!;
+      const i = Math.max(0, castIndex);
+      const t = ownModel(d.models?.[i]);
+      const a = new Avatar(d.names[i]!, i, { tag: d.tag, tagColor: d.tagColor, weapon: d.weapons[i], helmet: d.helmets[i], color: d.colors?.[i], look: d.looks?.[i], anime: t });
+      if (t) current!.stats = [['Health', '160'], ['Weapons', 'rifle / shotgun'], ...modelStats(t)];
+      current!.avatar = a;
+      return a.root;
+    },
+  },
+  {
+    id: 'blackwood-staff-v2', group: 'BESIDE YOU', name: 'Blackwood staff - Variant 2', height: 1.8,
+    tagline: 'The nurses, the chaplain and Patient 117, real-asset look (NEW 3D MODELS).',
+    lore: 'The trapped staff of Blackwood Hill in their real-asset bodies, worn in game with the NEW 3D MODELS setting (beta).',
+    where: 'The Asylum with NEW 3D MODELS (beta)', stats: [['Health', `${SURVIVORS.hp}`]], modes: 'avatar',
+    cast: STAFF_V2.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()),
+    avatarModes: [...STAFF_V2.map((s) => s.name.replace(/^(Nurse|Dr\.|Sister) /, '').split(' ')[0]!.toUpperCase()), 'TRAPPED', 'WALK', 'FIRE'],
+    build: () => {
+      const i = Math.max(0, castIndex);
+      const who = STAFF_V2[i]!;
+      const t = ownModel(who.model);
+      const a = new Avatar(who.name, SURVIVORS.asylum.indexOf(who), { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8', anime: t });
+      a.arm();
+      if (t) current!.stats = [['Health', `${SURVIVORS.hp}`], ...modelStats(t)];
       current!.avatar = a;
       return a.root;
     },

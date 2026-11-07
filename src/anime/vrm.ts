@@ -276,6 +276,9 @@ function tinted(t: AnimeTemplate, tint: AnimeTint | null): Map<THREE.Material, T
   });
   for (const src of seen) {
     const mat = src.clone() as MatLike;
+    // the clone keeps `alphaTest` but not the MToon shader's own uniform for it: cut-out parts (a print, lace) drew solid
+    const cut = (mat as MatLike & { uniforms?: { alphaTest?: { value: number } } }).uniforms?.alphaTest;
+    if (cut) cut.value = src.alphaTest;
     const name = src.name;
     if (mat.isOutline) mat.visible = tint?.outlines ?? true;
     if (tint) {

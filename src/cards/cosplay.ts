@@ -150,6 +150,8 @@ function bow(ctx: Ctx, p: THREE.Vector3, size: number, color: number, bone: numb
 /** A fitted bodice with a skirt that flares to `hem`; `under` adds a longer, contrasting petticoat. */
 function dress(ctx: Ctx, color: number, hem: number, flare: number, under?: { color: number; drop: number }): void {
   const k = ctx.D.k;
+  // a lining fitted to the torso (it bends exactly with it): no bare body shows if the skirt pulls away in a deep bend
+  torsoShell(ctx, 0.9, 1.47, hex(color).multiplyScalar(0.9), 0.003 * k, 0, 50);
   if (under) skirtShell(ctx, 0.99, hem - under.drop, hex(under.color), flare * 0.88, 0.012 * k, 51, 1);
   skirtShell(ctx, 1.47, hem, hex(color), flare, 0.008 * k, 52, 1);
 }

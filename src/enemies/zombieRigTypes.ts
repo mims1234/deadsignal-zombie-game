@@ -76,7 +76,8 @@ export type ZombieTheme = 'asylum' | 'forge' | 'sakura';
 
 export interface ZombieFactory {
   /** `variant`: the Sakura District's kind (its own body and gear there). */
-  create(type: ZombieType, seed: number, theme?: ZombieTheme, variant?: ZombieVariant): ZombieRig;
+  /** `built`: the built look even where a real-asset model is loaded (the bestiary keeps both side by side). */
+  create(type: ZombieType, seed: number, theme?: ZombieTheme, variant?: ZombieVariant, built?: boolean): ZombieRig;
   /** The Asylum's boss, the Matron (`matron.ts`): animates as a 'warden'. Absent: a Warden's model stands in. */
   createMatron?(seed: number): ZombieRig;
   dispose(): void;
