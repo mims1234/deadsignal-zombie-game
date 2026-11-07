@@ -1,5 +1,0 @@
-The Mazoku card carriers' real-asset models (kaede, selene, hana, reina, mio .vrm) are original characters built by
-scripts/asylum-cast.py in Blender with the MPFB add-on from MakeHuman's system assets (bodies, skins, eyes, hair,
-clothes), which MakeHuman released under CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/). The
-garments and the recolouring are made by the script. These files are released under CC0 1.0 as well.
-MakeHuman: http://www.makehumancommunity.org

@@ -123,7 +123,7 @@ r = await player.post('/api/runs', { mode: 'cards', map: 'district' });
 check('card hunt on: a player can', r.status === 200);
 const cardRun = r.body.id;
 await sw('cards', false);
-r = await player.post(`/api/runs/${cardRun}/card`, { card: 'kaede' });
+r = await player.post(`/api/runs/${cardRun}/card`, { card: 'shiroko' });
 check('card hunt switched off mid-run: no card recorded', r.status === 403);
 await sw('cards', true);
 

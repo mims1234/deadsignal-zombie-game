@@ -1,6 +1,6 @@
 # Assets and attribution
 
-**Most of Zombies GenXmims is drawn and synthesised in code.** It also ships: the card art, the Vulcan logo and the Ignis icon listed below; the anime cast's VRoid models (`public/anime/`, VRoid Project / pixiv sample models, credit not required); Quaternius models (`public/models/quaternius/`, CC0 1.0); the Asylum's real-asset people and infected and the Mazoku card carriers (`public/models/asylum/`, `public/models/mazoku/`, built from MakeHuman's CC0 system assets with Blender and MPFB by `scripts/asylum-cast.py`, CC0 1.0); Poly Haven models and scanned textures for the Asylum (`public/models/polyhaven/`, CC0 1.0); and the generated music and voices of the cinematics (`public/freeroam/`, `public/hollow/`) and of the MUJIN and HIRASAKA maps (`public/mujin/`, `public/hirasaka/`: ElevenLabs v4 and Fish Audio Drama 3 voices, Lyria 3 music, made by `scripts/mujin-audio.mjs` and `scripts/hirasaka-audio.mjs`). The game's CREDITS page lists them all, and `public/LICENSE.txt` carries the code's licence notices (the game's MIT licence from BridgeMind, three.js and three-vrm).
+**Most of Zombies GenXmims is drawn and synthesised in code.** It also ships: the card art, the Vulcan logo and the Ignis icon listed below; the anime cast's VRoid models (`public/anime/`, VRoid Project / pixiv sample models, credit not required); Quaternius models (`public/models/quaternius/`, CC0 1.0); the Asylum's real-asset people and infected (`public/models/asylum/`, built from MakeHuman's CC0 system assets with Blender and MPFB by `scripts/asylum-cast.py`, CC0 1.0); Poly Haven models and scanned textures for the Asylum (`public/models/polyhaven/`, CC0 1.0); and the generated music and voices of the cinematics (`public/freeroam/`, `public/hollow/`) and of the MUJIN and HIRASAKA maps (`public/mujin/`, `public/hirasaka/`: ElevenLabs v4 and Fish Audio Drama 3 voices, Lyria 3 music, made by `scripts/mujin-audio.mjs` and `scripts/hirasaka-audio.mjs`). The game's CREDITS page lists them all, and `public/LICENSE.txt` carries the code's licence notices (the game's MIT licence from BridgeMind, three.js and three-vrm).
 
 - **Geometry and models** (district, buildings, props, vehicles, weapons, hands, zombies, helicopter, stations) are built from
   Three.js primitives and procedural geometry in code.
@@ -12,12 +12,11 @@
 
 ## Card art (card recovery mode)
 
-`src/cards/art/` holds the five card images and the card-back emblem used by the card recovery mode. The five carriers
-(Kaede Mori, Selene Voss, Hana Shirase, Reina Asante, Mio Takeda) are original characters. Each card is a render of her
-real-asset model (`scripts/card-portrait.py` in Blender, framed by `scripts/card-frame.py`). The models are in
-`public/models/mazoku/`, made with `scripts/asylum-cast.py` from MakeHuman CC0 assets like the Asylum's people. Without
-NEW 3D MODELS the carriers wear built figures (`src/cards/cosplay.ts`). The mode still runs without the image files: a
-carrier with no image gets a plain generated card.
+`src/cards/art/` holds the five card images and the card-back emblem used by the card recovery mode. The cards were
+made by the repository owner. The characters on them belong to their respective owners (Blue Archive, the Nikki
+series, Otonari no Tenshi-sama, Hyperdimension Neptunia, Gotoubun no Hanayome), so keep this folder out of any public
+release. The mode still runs without the files: a carrier with no image gets a plain generated card. The carriers'
+3D models are built in code (`src/cards/cosplay.ts`) and read nothing from the images.
 
 ## Vulcan logo (the Forge)
 

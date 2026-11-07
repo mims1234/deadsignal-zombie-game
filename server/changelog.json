@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.366",
+      "date": "2026-11-07",
+      "title": "Mazoku: the original card carriers are back",
+      "notes": [
+        "Undid the 0.4.364 change: Shiroko Terror, Sofia, Mahiru Shiina, Noire and Miku Nakano are back as the card carriers, with their original card art and their original looks in game.",
+        "Kaede, Selene, Hana, Reina and Mio are removed for now."
+      ]
+    },
+    {
       "version": "0.4.365",
       "date": "2026-11-07",
       "title": "Asylum: the squad follows you down, and lets the lanterns fill",
