@@ -143,9 +143,58 @@ CAST = {
         "cap": {"color": (0.86, 0.84, 0.78), "band": (0.29, 0.08, 0.09)},
         "zombie": {"skin": (0.88, 0.86, 0.82), "grime": 0.45},
     },
+    # ---- the Mazoku card carriers (card recovery mode, every map; NEW 3D MODELS): original women, healthy skin, only the
+    # eyes glow (the iris is named for the carrier's tint); `public/models/mazoku/`
+    # Kaede Mori: a sprinter, lean and quick; a silver-white bob, an indigo track suit, white trainers
+    "kaede": {
+        "phenotype": ph(age=0.42, muscle=0.55, weight=0.38, proportions=0.68, height=0.55, cup=0.4, race=(1, 0, 0)),
+        "skin": "young_asian_female", "eyes_mat": "lightblue", "eyebrows": "eyebrow011",
+        "hair": "bob01", "hair_color": (0.84, 0.86, 0.92),
+        "clothes": ["female_sportsuit01", "shoes02"],
+        "dye": {"female_sportsuit01": {"base": (0.16, 0.17, 0.34), "blue": (0.2, 0.22, 0.42)}},
+        "carrier": {"pallor": 0.12},
+    },
+    # Selene Voss: tall and poised; long rose-pink hair, a wine blouse and skirt under a long black coat
+    "selene": {
+        "phenotype": ph(age=0.48, muscle=0.45, weight=0.42, proportions=0.75, height=0.7, cup=0.5),
+        "skin": "young_caucasian_female2", "eyes_mat": "green", "eyebrows": "eyebrow010",
+        "hair": "long01", "hair_color": (0.82, 0.46, 0.58),
+        "clothes": ["female_elegantsuit01", "shoes03"],
+        "dye": {"female_elegantsuit01": {"base": (0.4, 0.09, 0.15)}},
+        "garments": [{"kind": "coat", "color": (0.07, 0.07, 0.09)}],
+        "carrier": {"pallor": 0.12},
+    },
+    # Hana Shirase: small and gentle; a honey-blonde braid, a lavender suit
+    "hana": {
+        "phenotype": ph(age=0.4, muscle=0.38, weight=0.42, proportions=0.65, height=0.32, cup=0.45),
+        "skin": "young_caucasian_female", "eyes_mat": "brownlight", "eyebrows": "eyebrow009",
+        "hair": "braid01", "hair_color": (0.86, 0.66, 0.38),
+        "clothes": ["female_elegantsuit01", "shoes03"],
+        "dye": {"female_elegantsuit01": {"base": (0.68, 0.58, 0.84)}},
+        "carrier": {"pallor": 0.1},
+    },
+    # Reina Asante: a security officer, strong; black hair tied high, a dark red top, black trousers, boots
+    "reina": {
+        "phenotype": ph(age=0.5, muscle=0.7, weight=0.48, proportions=0.65, height=0.52, cup=0.45, race=(0, 0, 1)),
+        "skin": "young_african_female", "eyes_mat": "brown", "eyebrows": "eyebrow006",
+        "hair": "ponytail01", "hair_color": (0.05, 0.05, 0.06),
+        "clothes": ["male_casualsuit06", "shoes03"],
+        "dye": {"male_casualsuit06": {"base": (0.34, 0.06, 0.09), "blue": (0.09, 0.09, 0.1)}},
+        "carrier": {"pallor": 0.08},
+    },
+    # Mio Takeda: a student, quiet; an auburn bob, a faded blue tee and shorts (one dye: the suit is all blue), trainers
+    "mio": {
+        "phenotype": ph(age=0.38, muscle=0.4, weight=0.44, proportions=0.65, height=0.38, cup=0.45, race=(1, 0, 0)),
+        "skin": "young_asian_female", "eyes_mat": "brown", "eyebrows": "eyebrow007",
+        "hair": "bob02", "hair_color": (0.5, 0.21, 0.11),
+        "clothes": ["female_casualsuit02", "shoes02"],
+        "dye": {"female_casualsuit02": {"base": (0.26, 0.34, 0.5), "blue": (0.26, 0.34, 0.5)}},
+        "carrier": {"pallor": 0.1},
+    },
 }
 spec = CAST[name]
 ZOMBIE = spec.get("zombie")
+CARRIER = spec.get("carrier")
 
 for o in list(bpy.data.objects):  # (not read_factory_settings: that unloads the extensions)
     bpy.data.objects.remove(o, do_unlink=True)
@@ -311,6 +360,15 @@ if ZOMBIE:
     for key in [c for c in spec["clothes"] if not c.startswith("shoes")]:
         img = tex_image(part(key))
         put_pixels(img, grime(pixels(img), ZOMBIE["grime"], 3), f"zg_{key}")
+elif CARRIER and CARRIER.get("pallor"):
+    # a carrier: still herself, only a little paler (the signal shows in her eyes)
+    sk = tex_image(body)
+    a = pixels(sk)
+    L = lum(a)
+    k = CARRIER["pallor"]
+    for c in range(3):
+        a[..., c] = np.clip(a[..., c] * (1 - k) + L * k * 1.04, 0, 1)
+    put_pixels(sk, a, "cskin")
 
 # eyes: the iris colour
 eyes = part("low-poly")
@@ -695,13 +753,13 @@ b = open(out, "rb").read()
 n = struct.unpack("<I", b[12:16])[0]
 j = json.loads(b[20:20 + n])
 rest = b[20 + n:]
-CUT = ("braid", "ponytail", "bob0", "afro", "short0", "long0", "eyebrow", "eyelash", "casualsuit")
+CUT = ("braid", "ponytail", "bob0", "afro", "short0", "long0", "eyebrow", "eyelash", "casualsuit", "sportsuit")
 for m in j["materials"]:
     m.get("extensions", {}).pop("KHR_materials_clearcoat", None)
     if not m.get("extensions"):
         m.pop("extensions", None)
     low = m["name"].lower()
-    if ZOMBIE and "low-poly" in low:
+    if (ZOMBIE or CARRIER) and "low-poly" in low:
         m["name"] = m["name"] + ".Iris"
     if any(k in low for k in CUT):
         m.update(alphaMode="MASK", alphaCutoff=0.5, doubleSided=True)

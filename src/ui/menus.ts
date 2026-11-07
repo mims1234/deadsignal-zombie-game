@@ -70,7 +70,7 @@ type CodexCard = { group: string; about: string; entry: string; tone: string; ma
 const CODEX: CodexCard[] = [
   { group: 'THE HORDE', about: 'Shamblers, runners and the armoured, and what each zone has turned into them.', entry: 'shambler', tone: '#a9bf8e' },
   { group: 'ELITES', about: 'The Warden, and the worst each zone has made: better met for yourself.', entry: 'warden', tone: '#ff7a1a' },
-  { group: 'MAZOKU CARRIERS', about: 'The card carriers of the card hunt, each with their own card to collect.', entry: 'card-shiroko', tone: '#ff6fa8', needs: 'cards' },
+  { group: 'MAZOKU CARRIERS', about: 'The card carriers of the card hunt, each with their own card to collect.', entry: 'card-kaede', tone: '#ff6fa8', needs: 'cards' },
   { group: 'BESIDE YOU', about: 'Co-op operators, trapped survivors and the people who hold out with you.', entry: 'operators', tone: '#6fa8dc' },
   { group: 'VULCAN', about: 'The clan of the Forge: familiar faces, and the rest of the clan.', entry: 'vulcan-leadership', tone: '#ffb060', map: 'forge' },
   { group: 'SAKURA DISTRICT', about: 'Hana & Yuzu, the Kurenai Court, and the infected under the blossoms.', entry: 'sakura-squad', tone: '#ff9ec8', map: 'sakura' },
@@ -736,7 +736,7 @@ class Menus implements MenusApi {
     entry('PIXIV: THREE-VRM', 'Character models', 'Loads and animates the anime cast.', 'MIT LICENCE, © PIXIV INC.  ·  ', { href: 'https://github.com/pixiv/three-vrm', label: 'github.com/pixiv/three-vrm' });
     entry('VROID PROJECT (PIXIV)', 'The cast\'s base models', 'The VRoid Studio sample characters, slimmed down for the browser.', 'FREE TO USE, CREDIT NOT REQUIRED  ·  ', { href: 'https://opengameart.org/content/vroid-studio-cc0-models', label: 'opengameart.org' });
     entry('QUATERNIUS', 'Props and a zombie model', 'The zombie, barrels, cones, hydrants, tyres and pallets.', 'CC0 1.0  ·  ', { href: 'https://quaternius.com/', label: 'quaternius.com' });
-    entry('MAKEHUMAN', "The Asylum's real-asset people (beta)", "Bodies, skin, eyes, hair and clothes from MakeHuman's system assets, built in Blender with MPFB.", 'CC0 1.0  ·  ', { href: 'http://www.makehumancommunity.org/', label: 'makehumancommunity.org' });
+    entry('MAKEHUMAN', "The Asylum's real-asset people and the Mazoku carriers (beta)", "Bodies, skin, eyes, hair and clothes from MakeHuman's system assets, built in Blender with MPFB.", 'CC0 1.0  ·  ', { href: 'http://www.makehumancommunity.org/', label: 'makehumancommunity.org' });
     entry('VULCAN', 'The Vulcan logo, the Ignis icon and the community\'s names', 'Used with the community\'s go-ahead.', '', { href: 'https://vulcan.genxmims.org/', label: 'vulcan.genxmims.org' });
     entry('MUSIC AND VOICES', 'The cinematics\', MUJIN\'s and HIRASAKA\'s scores and voices','Generated with Google Lyria (music), ElevenLabs and Fish Audio (voices).', '');
     const notes = el('p', 'lead soon', page, 'The licence texts for the code: ');

@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.364",
+      "date": "2026-11-07",
+      "title": "Five new Mazoku carriers",
+      "notes": [
+        "The card hunt has five new carriers of its own: Kaede Mori, Selene Voss, Hana Shirase, Reina Asante and Mio Takeda. They replace the old five, each with the same strengths as the one she replaces.",
+        "With NEW 3D MODELS (beta) on, they are realistic people like the Asylum cast, with only their eyes glowing in their colour. Without it they wear matching built figures.",
+        "Each has a new card showing her portrait. Cards collected from the old five no longer count."
+      ]
+    },
+    {
       "version": "0.4.363",
       "date": "2026-11-07",
       "title": "A guide for making new characters",

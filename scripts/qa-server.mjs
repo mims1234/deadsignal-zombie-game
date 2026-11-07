@@ -38,13 +38,13 @@ r = await p1.get('/api/admin/overview'); check('admin API is hidden from players
 r = await p1.post('/api/runs', { mode: 'bogus' }); check('unknown mode refused', r.status === 400);
 r = await p1.post('/api/runs', { mode: 'cards', touch: true }); const run = r.body.id; check('run started', Number.isInteger(run));
 r = await p2.post(`/api/runs/${run}/end`, { outcome: 'victory', stats: {} }); check("another player cannot end someone's run", r.body.ok === false);
-r = await p2.post(`/api/runs/${run}/card`, { card: 'sofia' }); check("another player cannot add cards to someone's run", r.status === 400);
-r = await p1.post(`/api/runs/${run}/card`, { card: 'sofia' }); await p1.post(`/api/runs/${run}/card`, { card: 'sofia' }); r = await p1.post(`/api/runs/${run}/card`, { card: 'miku' });
-check('cards are counted per account', r.body.cards.sofia === 2 && r.body.cards.miku === 1, JSON.stringify(r.body.cards));
+r = await p2.post(`/api/runs/${run}/card`, { card: 'selene' }); check("another player cannot add cards to someone's run", r.status === 400);
+r = await p1.post(`/api/runs/${run}/card`, { card: 'selene' }); await p1.post(`/api/runs/${run}/card`, { card: 'selene' }); r = await p1.post(`/api/runs/${run}/card`, { card: 'mio' });
+check('cards are counted per account', r.body.cards.selene === 2 && r.body.cards.mio === 1, JSON.stringify(r.body.cards));
 r = await p1.post(`/api/runs/${run}/end`, { outcome: 'victory', reason: 'Extracted', stats: { timeSurvived: 99999, kills: 41, headshots: 9, contractsCompleted: 2, cardsRecovered: 3, cashEarned: 5200, shotsFired: 300, shotsHit: 150, highestRegion: 'high' } });
 check('run ended', r.body.ok === true);
 r = await p1.post(`/api/runs/${run}/end`, { outcome: 'defeat', stats: {} }); check('a run cannot be ended twice', r.body.ok === false);
-r = await p1.post(`/api/runs/${run}/card`, { card: 'noire' }); check('no cards after the run has ended', r.status === 400);
+r = await p1.post(`/api/runs/${run}/card`, { card: 'reina' }); check('no cards after the run has ended', r.status === 400);
 r = await p1.post('/api/runs', { mode: 'standard' }); await p1.post(`/api/runs/${r.body.id}/end`, { outcome: 'defeat', reason: 'Killed in action', stats: { timeSurvived: 0, kills: 3 } });
 r = await p1.post('/api/reports', { target: '2000000001', reason: 'self' }); check('cannot report yourself', r.status === 400);
 r = await p1.post('/api/reports', { target: '2000000002', reason: 'Blocking the helicopter door', context: 'room test' }); check('report filed', r.status === 200);

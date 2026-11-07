@@ -84,6 +84,12 @@ export function matronModel(): { template: AnimeTemplate; tint: AnimeTint } | nu
   return template ? { template, tint: { key: 'asylum:matron', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: 0xffa040, outlines: false } } : null;
 }
 
+/** A Mazoku carrier's real-asset model (her eyes glow her accent), or null while it is not loaded. */
+export function carrierModel(file: string, accent: number): { template: AnimeTemplate; tint: AnimeTint } | null {
+  const template = ownModel(file);
+  return template ? { template, tint: { key: `mazoku:${file}`, skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: accent, outlines: false } } : null;
+}
+
 /** An Asylum infected's model and tint by type and seed; null for the Matron, or while its file is not loaded. */
 export function asylumInfected(type: ZombieType, seed: number): { template: AnimeTemplate; tint: AnimeTint; file: string } | null {
   if (type === 'warden') return null;

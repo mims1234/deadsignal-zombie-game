@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import { CARD_MODE, ZOMBIES, type ZombieDef } from '../config';
 import type { Zombie, ZombieEnv } from '../enemies/zombie';
 import { ZombieRigImpl } from '../enemies/zombie/rig';
+import type { ZombieRig } from '../enemies/zombieRigTypes';
+import { AnimeZombieRig, carrierModel } from '../anime/cast';
+import { loadAnimeFiles } from '../anime/vrm';
 import type { GameCtx } from '../game/ctx';
 import {
   type CarrierState,
@@ -33,7 +36,9 @@ interface Unit {
   def: CarrierDef;
   stats: ZombieDef;
   kit: CardKit;
-  rig: ZombieRigImpl;
+  rig: ZombieRig;
+  /** Wearing her real-asset model (NEW 3D MODELS) rather than the built figure. */
+  own: boolean;
   portrait: THREE.Sprite;
   /** Shrinking ring under a downed carrier: the time left to purge it. */
   ring: THREE.Mesh;
@@ -80,8 +85,12 @@ export class CardRuntime {
     ctx.worldRoot.add(this.root);
   }
 
-  /** Load the art and build every carrier's model once. */
-  async load(): Promise<void> {
+  /**
+   * Load the art and build every carrier's model once. `models` (NEW 3D MODELS): their real-asset models stream in
+   * behind the game, and each carrier changes into hers at the next run start (`wear`), the built figure until then.
+   */
+  async load(models = false): Promise<void> {
+    if (models) void loadAnimeFiles(CARRIERS.map((c) => c.model)).catch(() => undefined);
     const kits = await loadCardKits(CARRIERS);
     for (const id of loadCards(CARRIERS.map((c) => c.id))) this.counts[id] = 1;
     CARRIERS.forEach((def, i) => {
@@ -117,7 +126,7 @@ export class CardRuntime {
 
       const base = ZOMBIES[def.base];
       const stats: ZombieDef = { ...base, name: def.name, hp: def.hp, speedChase: def.speedChase, damage: def.damage, bodyMul: def.bodyMul, poise: def.poise, radius: 0.3, height: def.height, headRadius: 0.18, sightRange: 30, reward: 0, headshotBonus: 0, dropChance: 0 };
-      this.units.push({ def, stats, kit, rig, portrait, ring, loot, lootCard, foil, zombie: null, state: null, hintX: 0, hintZ: 0 });
+      this.units.push({ def, stats, kit, rig, own: false, portrait, ring, loot, lootCard, foil, zombie: null, state: null, hintX: 0, hintZ: 0 });
     });
   }
 
@@ -130,6 +139,7 @@ export class CardRuntime {
     this.passive = passive;
     for (const u of this.units) {
       if (u.zombie && ctx.zombies.zombies.includes(u.zombie)) ctx.zombies.remove(u.zombie);
+      this.wear(u);
       u.zombie = null;
       u.state = null;
       u.portrait.visible = false;
@@ -311,9 +321,23 @@ export class CardRuntime {
   // ---------------------------------------------------------------------------------------------
 
   /** The model and stats of carrier `i`, for a guest's puppet. */
-  rigFor(i: number): { rig: ZombieRigImpl; def: ZombieDef } | null {
+  rigFor(i: number): { rig: ZombieRig; def: ZombieDef } | null {
     const u = this.units[i];
+    if (u && !u.zombie) this.wear(u);
     return u ? { rig: u.rig, def: u.stats } : null;
+  }
+
+  /** Out of play: change into her real-asset model if it has streamed in (once; the built figure is let go). */
+  private wear(u: Unit): void {
+    if (u.own) return;
+    const m = carrierModel(u.def.model, u.def.accent);
+    if (!m) return;
+    const i = this.units.indexOf(u);
+    u.rig.root.removeFromParent();
+    u.rig.dispose();
+    u.rig = new AnimeZombieRig(u.def.base, m.template, { radius: 0.3, height: u.def.height, headRadius: 0.18 }, 77 + i, '', { tint: m.tint, wants: u.def.model });
+    u.rig.setVisible(false);
+    u.own = true;
   }
 
   /** Host: put carrier `i` into the fight at (x, z). Null when she is already in play. */
