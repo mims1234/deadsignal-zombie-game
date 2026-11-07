@@ -15,6 +15,7 @@ import { ownModel, personModel } from '../anime/cast';
 import { NATSUKI_TINT } from '../anime/looks';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { squadHoldsFire } from '../asylum/story';
 import { FORGE_SQUAD, QUALITY, SQUADS, SURVIVORS, type TeamSkill } from '../config';
 import { FORGE_LINES } from '../forge/lore';
 import { vulcanLook } from '../forge/looks';
@@ -139,6 +140,12 @@ export class SquadRuntime {
         return g.rng;
       },
       followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
+      holdFire: (z, a) => {
+        const night = g.mission?.night;
+        if (!night || !g.playerAlive()) return false;
+        const p = g.player;
+        return squadHoldsFire(night.souls, z.x, z.y ?? 0, z.z, a.ref.x, a.ref.z, [{ x: p.x, y: p.y, z: p.z }]);
+      },
     };
     this.supply = {
       boxes: () => g.entities.crates.map((c) => ({ id: c.def.id, x: c.def.x, z: c.def.z, y: c.def.y, busy: c.phase === 'spin' || c.phase === 'offer' })),

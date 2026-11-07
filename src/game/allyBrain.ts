@@ -67,6 +67,8 @@ export interface AllyWorld {
   rng: Rng;
   /** A step toward the leader along their path field (false when there is none). */
   followLeader(x: number, z: number, out: { x: number; z: number }): boolean;
+  /** Leave this one be for now (the Asylum: let it walk into a dark lantern's circle, `squadHoldsFire`). */
+  holdFire?(z: Zombie, a: AllyBody): boolean;
 }
 
 export interface AllyShot {
@@ -124,7 +126,8 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
     if (at) {
       a.ref.x = at.x;
       a.ref.z = at.z;
-      a.ref.y = w.level.world.floorBelow(at.x, at.z, 0.2, Math.max(py, a.ref.y) + 0.3);
+      // on the leader's floor: from just above their feet (from the ally's height, a storey over them would catch it again)
+      a.ref.y = w.level.world.floorBelow(at.x, at.z, 0.2, (fl ? py : Math.max(py, a.ref.y)) + 0.3);
       a.ref.eyeY = a.ref.y + 1.6;
     }
     a.stuckT = 0;
@@ -170,9 +173,9 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   const speed = (d > 10 ? 6.2 : 4.4) * dt;
   const step = { x: a.ref.x + (sx / sd) * Math.min(speed, sd), z: a.ref.z + (sz / sd) * Math.min(speed, sd) };
   w.level.world.resolveCircle(step, 0.32, a.ref.y + 0.5, a.ref.y + 1.7, 3);
-  // making no headway toward a far leader means caught on geometry
+  // making no headway toward a far leader (or toward the stairs to another floor, however near) means caught on geometry
   const progress = Math.hypot(step.x - a.ref.x, step.z - a.ref.z);
-  a.stuckT = d > 6 && progress < speed * 0.25 ? a.stuckT + dt : Math.max(0, a.stuckT - dt * 2);
+  a.stuckT = (d > 6 || !sameFloor) && progress < speed * 0.25 ? a.stuckT + dt : Math.max(0, a.stuckT - dt * 2);
   a.ref.x = step.x;
   a.ref.z = step.z;
   a.ref.y = w.level.world.floorBelow(step.x, step.z, 0.2, a.ref.y); // up a foundry's deck after the leader (floors may stack)
@@ -224,6 +227,7 @@ export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | nul
       if (!z.active || z.dormant) continue;
       const d = Math.hypot(z.x - a.ref.x, z.z - a.ref.z);
       if (d >= best) continue;
+      if (w.holdFire?.(z, a)) continue;
       z.rig.getChestWorld(tmpA);
       if (w.level.world.segmentBlocked(a.ref.x, a.ref.y + 1.45, a.ref.z, tmpA.x, tmpA.y, tmpA.z, 'shots')) continue;
       best = d;

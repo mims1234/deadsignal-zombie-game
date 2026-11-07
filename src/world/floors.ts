@@ -117,6 +117,12 @@ export class Floors {
     }
   }
 
+  /** A door opened or shut somewhere (its area's grid refreshed): every kept field is out of date, so drop them all. */
+  forgetFields(): void {
+    this.fields.clear();
+    for (const e of this.live.values()) e.cell = -1;
+  }
+
   /** The nav grid an agent in an area moves on. */
   navOf(area: number): NavGrid {
     return this.areas[area]?.nav ?? this.groundNav!;

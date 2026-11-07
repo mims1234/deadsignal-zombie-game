@@ -52,7 +52,7 @@ import { createLoopState, doorState, isPowerOn, resetLoopState, setPower, spawnA
 import { LOOP } from '../asylum/loopConfig';
 import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
 import { BELL, FOG, LANTERNS, RECORDS, STORY } from '../asylum/nightConfig';
-import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit } from '../asylum/story';
+import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit, squadHoldsFire } from '../asylum/story';
 import { UpstairsRush } from '../asylum/upstairsRush';
 import { setWard9Open } from '../asylum/upstairs';
 import { ASYLUM } from '../world/layout/asylum';
@@ -303,6 +303,12 @@ export class SessionSim {
       zombies: this.zombies,
       rng: this.rng,
       followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
+      holdFire: (z, a) => {
+        if (!this.asylum || !this.story) return false;
+        const keepers: { x: number; y: number; z: number }[] = [];
+        for (const q of this.peers.values()) if (q.ref.alive) keepers.push({ x: q.ref.x, y: q.ref.y, z: q.ref.z });
+        return squadHoldsFire(this.souls, z.x, z.y ?? 0, z.z, a.ref.x, a.ref.z, keepers);
+      },
     };
     const gunName = { none: 'NOTHING', pistol: 'PISTOL', shotgun: 'SHOTGUN', rifle: 'RIFLE', rpg: 'ROCKET LAUNCHER' } as const;
     this.allySupply = {

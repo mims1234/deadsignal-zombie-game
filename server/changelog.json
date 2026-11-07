@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.365",
+      "date": "2026-11-07",
+      "title": "Asylum: the squad follows you down, and lets the lanterns fill",
+      "notes": [
+        "Fixed squad members getting stuck upstairs in Ward Nine: once the power opens its door they walk through it and down the stairs after you, and anyone caught on a wall on another floor rejoins you after a few seconds.",
+        "Standing anywhere inside a vigil lantern's circle now keeps its vigil, so the squad's kills around it count.",
+        "Near an unlit lantern the squad holds fire on far-off infected and lets them walk into the circle first (they still shoot anything that gets close to you or them)."
+      ]
+    },
+    {
       "version": "0.4.364",
       "date": "2026-11-07",
       "title": "Five new Mazoku carriers",

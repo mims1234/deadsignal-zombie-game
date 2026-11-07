@@ -18,6 +18,7 @@ export function setWard9Open(level: Level, open: boolean): void {
   w.lamp.emissive.setHex(open ? 0x3aff6a : 0xff2a1a);
   const m = 1.2;
   level.floors.navOf(w.area).refresh(level.world, c.minX - m, c.minZ - m, c.maxX + m, c.maxZ + m);
+  level.floors.forgetFields(); // routes worked out while it was shut would never lead through it
 }
 
 export function ward9Open(level: Level): boolean {

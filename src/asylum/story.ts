@@ -93,6 +93,20 @@ export function lanternFor(souls: readonly number[], x: number, y: number, z: nu
   return best;
 }
 
+/**
+ * Should the squad hold fire on the infected at (x, y, z)? Only near a dark lantern: a keeper within
+ * `LANTERNS.radius + LANTERNS.holdNear` of an unlit one on its floor, the kill would feed no lantern, and the infected is
+ * not within `LANTERNS.holdClose` of the ally at (ax, az) or of any keeper. Then it walks into the circle first.
+ */
+export function squadHoldsFire(souls: readonly number[], x: number, y: number, z: number, ax: number, az: number, keepers: readonly { x: number; y: number; z: number }[]): boolean {
+  if (keepers.length === 0) return false;
+  const near = LANTERNS.spots.some((s, i) => !lanternLit(souls, i) && keepers.some((k) => Math.abs((Number.isFinite(k.y) ? k.y : 0) - s.y) <= 2.5 && Math.hypot(k.x - s.x, k.z - s.z) <= LANTERNS.radius + LANTERNS.holdNear));
+  if (!near) return false;
+  if (lanternFor(souls, x, y, z, keepers) >= 0) return false;
+  if (Math.hypot(x - ax, z - az) < LANTERNS.holdClose) return false;
+  return !keepers.some((k) => Math.hypot(x - k.x, z - k.z) < LANTERNS.holdClose);
+}
+
 /** The first step not done yet (index into `STEPS`; `STEPS.length - 1` once only the dawn is left). */
 export function storyStep(f: StoryFacts): number {
   const r = (i: number): boolean => !!f.records[i];

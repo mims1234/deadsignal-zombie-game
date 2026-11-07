@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ASYLUM_CLOCK, ASYLUM_CYCLE, DAWN_RELIEF, FOG, LANTERNS, NIGHTFALL, PHASE_TUNING, TUNING } from '../src/asylum/nightConfig';
-import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit, lanternsLit, STEPS, storyStep } from '../src/asylum/story';
+import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit, lanternsLit, squadHoldsFire, STEPS, storyStep } from '../src/asylum/story';
 import { FORGE_STORY, MISSION, ZOMBIE_DIFFICULTY } from '../src/config';
 import { ZombieManager } from '../src/enemies/zombieManager';
 import { activateDefense, completeHunt, createDefense, createHunt, updateDefense } from '../src/logic/contracts';
@@ -191,6 +191,22 @@ describe('the Asylum clock', () => {
     // a lit lantern takes no more
     expect(lanternFor(souls, cem!.x, 0, cem!.z)).toBe(-1);
     expect(lanternsLit(souls)).toBe(1);
+  });
+
+  it('keeps the vigil anywhere in the circle, and the squad holds fire until the infected are in it', () => {
+    const souls = LANTERNS.spots.map(() => 0);
+    const cem = LANTERNS.spots[0]!;
+    // standing at the circle's edge keeps the vigil: the squad's kill 20 m out feeds it
+    expect(lanternFor(souls, cem.x + 20, 0, cem.z, [{ x: cem.x + LANTERNS.radius - 0.5, y: 0, z: cem.z }])).toBe(0);
+    // just outside the circle: the squad leaves the far one be, and shoots once it is in the circle (or close)
+    const keeper = [{ x: cem.x, y: 0, z: cem.z + LANTERNS.radius + 3 }];
+    expect(squadHoldsFire(souls, cem.x, 0, cem.z - 20, keeper[0]!.x, keeper[0]!.z, keeper)).toBe(true);
+    expect(squadHoldsFire(souls, cem.x, 0, cem.z - 4, keeper[0]!.x, keeper[0]!.z, keeper)).toBe(false);
+    expect(squadHoldsFire(souls, cem.x, 0, keeper[0]!.z + 3, keeper[0]!.x + 30, keeper[0]!.z, keeper)).toBe(false);
+    // far from every lantern, or once it burns: no holding back
+    expect(squadHoldsFire(souls, 0, 0, 40, 0, 30, [{ x: 0, y: 0, z: 30 }])).toBe(false);
+    souls[0] = LANTERNS.souls;
+    expect(squadHoldsFire(souls, cem.x, 0, cem.z - 20, keeper[0]!.x, keeper[0]!.z, keeper)).toBe(false);
   });
 
   it('can be finished at any pace: the files, the lanterns, the bell, the Matron, the damper, the dawn', () => {

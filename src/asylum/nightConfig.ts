@@ -106,7 +106,11 @@ export const LANTERNS = {
   radius: 9,
   /** A player standing this close to an unlit lantern keeps its vigil: every kill within `vigilReach` of it feeds it
    * (the squad's too, which would otherwise shoot the infected long before they reach the lantern). */
-  vigil: 6,
+  vigil: 9,
+  /** Near an unlit lantern (a keeper within `radius + holdNear`), the squad holds fire on infected whose kill would
+   * not feed it, letting them walk into its circle, unless one is within `holdClose` of the ally or a keeper. */
+  holdNear: 8,
+  holdClose: 6,
   vigilReach: 30,
   cash: 750,
   spots: [
