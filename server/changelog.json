@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.363",
+      "date": "2026-11-07",
+      "title": "A guide for making new characters",
+      "notes": [
+        "Added a written guide for building new real-asset characters the same way as the Asylum cast, so more of them can be made. Nothing changes in the game itself."
+      ]
+    },
+    {
       "version": "0.4.362",
       "date": "2026-11-07",
       "title": "Asylum: the Matron as a real 3D person (beta)",
