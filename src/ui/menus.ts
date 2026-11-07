@@ -734,7 +734,7 @@ class Menus implements MenusApi {
     );
     entry('THREE.JS', '3D engine', 'Everything you see is drawn with three.js.', 'MIT LICENCE, © THREE.JS AUTHORS  ·  ', { href: 'https://threejs.org/', label: 'threejs.org' });
     entry('PIXIV: THREE-VRM', 'Character models', 'Loads and animates the anime cast.', 'MIT LICENCE, © PIXIV INC.  ·  ', { href: 'https://github.com/pixiv/three-vrm', label: 'github.com/pixiv/three-vrm' });
-    entry('VROID PROJECT (PIXIV)', 'The cast\'s base models', 'The VRoid Studio sample characters, slimmed down for the browser.', 'FREE TO USE, CREDIT NOT REQUIRED  ·  ', { href: 'https://opengameart.org/content/vroid-studio-cc0-models', label: 'opengameart.org' });
+    entry('VROID PROJECT (PIXIV)', 'The cast\'s base models', 'The VRoid Studio sample characters, slimmed down for the browser; the Mazoku carriers\' real-asset models (beta) are built from them.', 'FREE TO USE, CREDIT NOT REQUIRED  ·  ', { href: 'https://opengameart.org/content/vroid-studio-cc0-models', label: 'opengameart.org' });
     entry('QUATERNIUS', 'Props and a zombie model', 'The zombie, barrels, cones, hydrants, tyres and pallets.', 'CC0 1.0  ·  ', { href: 'https://quaternius.com/', label: 'quaternius.com' });
     entry('MAKEHUMAN', "The Asylum's real-asset people (beta)", "Bodies, skin, eyes, hair and clothes from MakeHuman's system assets, built in Blender with MPFB.", 'CC0 1.0  ·  ', { href: 'http://www.makehumancommunity.org/', label: 'makehumancommunity.org' });
     entry('VULCAN', 'The Vulcan logo, the Ignis icon and the community\'s names', 'Used with the community\'s go-ahead.', '', { href: 'https://vulcan.genxmims.org/', label: 'vulcan.genxmims.org' });

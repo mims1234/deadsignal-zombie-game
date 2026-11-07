@@ -16,7 +16,10 @@
 made by the repository owner. The characters on them belong to their respective owners (Blue Archive, the Nikki
 series, Otonari no Tenshi-sama, Hyperdimension Neptunia, Gotoubun no Hanayome), so keep this folder out of any public
 release. The mode still runs without the files: a carrier with no image gets a plain generated card. The carriers'
-3D models are built in code (`src/cards/cosplay.ts`) and read nothing from the images.
+3D models are built in code (`src/cards/cosplay.ts`) and read nothing from the images. With NEW 3D MODELS (beta) they
+wear real-asset models instead (`public/models/mazoku/`, new faces, built in Blender from VRoid Project sample models:
+the CC0 HairSample_Female body and the Sendagaya Shino sample's hair, VRoid Hub licence, modification and
+redistribution allowed, credit not required; see the folder's LICENSE.txt).
 
 ## Vulcan logo (the Forge)
 

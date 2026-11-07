@@ -548,8 +548,8 @@ export class Game implements GameCtx {
     }
     // MUJIN's infected wear the anime cast too: the far ones are drawn in the far crowd
     if (this.mapId === 'mujin' || this.mapId === 'hirasaka') this.zombies.beforeUpdate = () => farCrowd().begin();
-    // the Asylum's lost in real-asset models (NEW 3D MODELS): the far ones too
-    if (this.mapId === 'asylum' && PACKS[this.settings.modelPack].length > 0) this.zombies.beforeUpdate = () => farCrowd().begin();
+    // real-asset models (NEW 3D MODELS: the Asylum's lost, the Mazoku carriers on any map): the far ones too
+    if (!this.zombies.beforeUpdate && PACKS[this.settings.modelPack].length > 0) this.zombies.beforeUpdate = () => farCrowd().begin();
     this.worldRoot.add(this.zombies.root);
     this.zombies.onKill = (z, head) => this.onZombieKilled(z, head);
     // the Sakura District's Court shooting the infected: the fight pays you too
@@ -578,7 +578,7 @@ export class Game implements GameCtx {
       };
     }
     this.cards = new CardRuntime(this, this.zombieFactory.material, () => this.zenv);
-    await this.cards.load();
+    await this.cards.load(PACKS[this.settings.modelPack].length > 0);
     if (this.account.user) this.cards.setCounts(this.account.cards);
     this.cards.onRecovered = (id) =>
       void this.tracker.card(id).then((counts) => {

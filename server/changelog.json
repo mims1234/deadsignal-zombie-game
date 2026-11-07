@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.367",
+      "date": "2026-11-08",
+      "title": "Mazoku: the carriers in new 3D models (beta)",
+      "notes": [
+        "With NEW 3D MODELS on, the five Mazoku card carriers now wear new detailed 3D models in their card outfits, with new faces and a light zombie touch: Mahiru with her teddy bear, Noire, Miku, Shiroko and Sofia.",
+        "While they wear the new models the name over their heads and the purge prompt read MAZOKU. The cards themselves are unchanged.",
+        "Each carrier's new look is in the bestiary as Variant 2.",
+        "With the setting off nothing changes: the carriers keep their usual looks, and they fight the same either way."
+      ]
+    },
+    {
       "version": "0.4.366",
       "date": "2026-11-07",
       "title": "Mazoku: the original card carriers are back",

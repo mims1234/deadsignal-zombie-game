@@ -8,8 +8,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { loadCardKits } from '../cards/cardArt';
 import { buildCarrierAssets } from '../cards/cosplay';
 import { CARRIERS } from '../cards/roster';
-import { AnimeZombieRig, COURT_TINT, courtModel, hordeFile, loadWholeCast, modelStats, personModel } from '../anime/cast';
-import { animeSlotState } from '../anime/vrm';
+import { AnimeZombieRig, COURT_TINT, MAZOKU_MODELS, carrierModel, courtModel, hordeFile, loadWholeCast, modelStats, personModel } from '../anime/cast';
+import { animeSlotState, loadAnimeFiles } from '../anime/vrm';
 import { ANIME_CAST, FORGE_STORY, RENDER, SQUADS, SURVIVORS, VULCAN_LEADERSHIP, ZOMBIES } from '../config';
 import { VARIANT_BASE, VARIANT_INFO, variantDef, type ZombieVariant } from '../enemies/variants';
 import { vulcanLook } from '../forge/looks';
@@ -204,7 +204,7 @@ const factory = createZombieFactory();
 const carrierMaterial = createZombieMaterial(createDetailTexture());
 const kits = await loadCardKits(CARRIERS).catch(() => new Map());
 /** A male VRoid model, shown here only (not in the game yet): a squad soldier and an infected. */
-await loadWholeCast().catch(() => undefined);
+await Promise.all([loadWholeCast(), loadAnimeFiles(Object.values(MAZOKU_MODELS))]).catch(() => undefined);
 
 /** The Sakura District's kinds in the bestiary: tagline and what they do. */
 const SAKURA_KINDS: readonly [Exclude<ZombieVariant, '' | 'court' | 'empress'>, string, string][] = [
@@ -308,7 +308,7 @@ const entries: Entry[] = [
       return r.root;
     },
   },
-  ...CARRIERS.map((def, i): Entry => ({
+  ...CARRIERS.flatMap((def, i): Entry[] => [{
     id: `card-${def.id}`, group: 'MAZOKU CARRIERS', name: def.name, height: def.height, accent: def.accent, card: kits.get(def.id)?.url,
     tagline: def.series,
     lore: `An archive card from the Mazoku collection, carried by the signal that grew a body around it. A carrier cannot be killed: empty its health and it drops; get close and hold E to purge the signal before it gets back up, then take the card. ${def.base === 'runner' ? 'This one moves like a runner.' : 'This one walks like a shambler but takes a lot more to drop.'}`,
@@ -320,7 +320,24 @@ const entries: Entry[] = [
       current!.rig = r;
       return r.root;
     },
-  })),
+  }, {
+    // variant 2: her real-asset model (NEW 3D MODELS in game, where the name over her head reads MAZOKU)
+    id: `card-${def.id}-v2`, group: 'MAZOKU CARRIERS', name: `${def.name} - Variant 2`, height: def.height, accent: def.accent, card: kits.get(def.id)?.url,
+    tagline: `${def.series} - the real-asset carrier (NEW 3D MODELS)`,
+    lore: `The same carrier in her real-asset body, worn in game with the NEW 3D MODELS setting (beta). She fights exactly the same; the name over her head reads MAZOKU until the card is yours.`,
+    where: 'Standard Mazoku with NEW 3D MODELS (beta), on every map',
+    stats: [['Health', `${def.hp} (cannot die)`], ['Chase speed', `${def.speedChase.toFixed(1)} m/s`], ['Hits for', `${def.damage}`], ['Body armour', pct(def.bodyMul)], ['Reward', 'the card + $350']],
+    modes: ZOMBIE_MODES,
+    build: () => {
+      const m = carrierModel(def.id, def.accent);
+      const dims = { radius: 0.3, height: def.height, headRadius: 0.18 };
+      const r = m ? new AnimeZombieRig(def.base, m.template, dims, 77 + i, '', { tint: m.tint, wants: m.file }) : new ZombieRigImpl(buildCarrierAssets(def, i), carrierMaterial, dims, 77 + i);
+      current!.rig = r;
+      const base: [string, string][] = [['Health', `${def.hp} (cannot die)`], ['Chase speed', `${def.speedChase.toFixed(1)} m/s`], ['Hits for', `${def.damage}`], ['Body armour', pct(def.bodyMul)], ['Reward', 'the card + $350']];
+      current!.stats = m ? [...base, ...modelStats(m.template)] : base;
+      return r.root;
+    },
+  }]),
   {
     id: 'operators', group: 'BESIDE YOU', name: 'Co-op operators', height: 1.85,
     tagline: 'The other players in your session.',

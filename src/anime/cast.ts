@@ -84,6 +84,25 @@ export function matronModel(): { template: AnimeTemplate; tint: AnimeTint } | nu
   return template ? { template, tint: { key: 'asylum:matron', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: 0xffa040, outlines: false } } : null;
 }
 
+/**
+ * The Mazoku card carriers' real-asset models (NEW 3D MODELS, `public/models/mazoku/`): VRoid-based figures in each
+ * card's outfit with new faces, by carrier id. Without them (or the setting off) the carriers wear `cards/cosplay.ts`.
+ */
+export const MAZOKU_MODELS: Readonly<Record<string, string>> = {
+  shiroko: 'models/mazoku/shiroko.vrm',
+  sofia: 'models/mazoku/sofia.vrm',
+  mahiru: 'models/mazoku/mahiru.vrm',
+  noire: 'models/mazoku/noire.vrm',
+  miku: 'models/mazoku/miku.vrm',
+};
+
+/** A Mazoku carrier's real-asset model (her eyes glow her accent), or null while it is not loaded (or she has none). */
+export function carrierModel(id: string, accent: number): { template: AnimeTemplate; tint: AnimeTint; file: string } | null {
+  const file = MAZOKU_MODELS[id];
+  const template = ownModel(file);
+  return template && file ? { template, file, tint: { key: `mazoku:${id}`, skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: accent, outlines: false } } : null;
+}
+
 /** An Asylum infected's model and tint by type and seed; null for the Matron, or while its file is not loaded. */
 export function asylumInfected(type: ZombieType, seed: number): { template: AnimeTemplate; tint: AnimeTint; file: string } | null {
   if (type === 'warden') return null;

@@ -1,0 +1,5 @@
+The Mazoku card carriers' real-asset models (shiroko, sofia, mahiru, noire, miku .vrm, worn with NEW 3D MODELS) were
+built in Blender with the VRM add-on from VRoid Studio sample models by VRoid Project / pixiv: the CC0 HairSample_Female
+body and face (https://opengameart.org/content/vroid-studio-cc0-models), and the hair of the Sendagaya Shino sample,
+whose VRoid Hub licence allows modification, redistribution and commercial use without credit. The garments, faces'
+zombie touch, recolouring and accessories were made for this game. Credit to VRoid Project / pixiv is given anyway.

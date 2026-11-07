@@ -8,6 +8,9 @@ import * as THREE from 'three';
 import { CARD_MODE, ZOMBIES, type ZombieDef } from '../config';
 import type { Zombie, ZombieEnv } from '../enemies/zombie';
 import { ZombieRigImpl } from '../enemies/zombie/rig';
+import type { ZombieRig } from '../enemies/zombieRigTypes';
+import { AnimeZombieRig, MAZOKU_MODELS, carrierModel } from '../anime/cast';
+import { loadAnimeFiles } from '../anime/vrm';
 import type { GameCtx } from '../game/ctx';
 import {
   type CarrierState,
@@ -33,7 +36,9 @@ interface Unit {
   def: CarrierDef;
   stats: ZombieDef;
   kit: CardKit;
-  rig: ZombieRigImpl;
+  rig: ZombieRig;
+  /** Wearing her real-asset model (NEW 3D MODELS) rather than the built figure: shown as MAZOKU over her head. */
+  own: boolean;
   portrait: THREE.Sprite;
   /** Shrinking ring under a downed carrier: the time left to purge it. */
   ring: THREE.Mesh;
@@ -80,8 +85,16 @@ export class CardRuntime {
     ctx.worldRoot.add(this.root);
   }
 
-  /** Load the art and build every carrier's model once. */
-  async load(): Promise<void> {
+  /** NEW 3D MODELS (BETA): each carrier changes into her real-asset model once it has streamed in (`wear`). */
+  private models = false;
+
+  /**
+   * Load the art and build every carrier's model once. `models` (NEW 3D MODELS): their real-asset models stream in
+   * behind the game, and each carrier changes into hers at the next run start (`wear`), the built figure until then.
+   */
+  async load(models = false): Promise<void> {
+    this.models = models;
+    if (models) void loadAnimeFiles(Object.values(MAZOKU_MODELS)).catch(() => undefined);
     const kits = await loadCardKits(CARRIERS);
     for (const id of loadCards(CARRIERS.map((c) => c.id))) this.counts[id] = 1;
     CARRIERS.forEach((def, i) => {
@@ -117,7 +130,7 @@ export class CardRuntime {
 
       const base = ZOMBIES[def.base];
       const stats: ZombieDef = { ...base, name: def.name, hp: def.hp, speedChase: def.speedChase, damage: def.damage, bodyMul: def.bodyMul, poise: def.poise, radius: 0.3, height: def.height, headRadius: 0.18, sightRange: 30, reward: 0, headshotBonus: 0, dropChance: 0 };
-      this.units.push({ def, stats, kit, rig, portrait, ring, loot, lootCard, foil, zombie: null, state: null, hintX: 0, hintZ: 0 });
+      this.units.push({ def, stats, kit, rig, own: false, portrait, ring, loot, lootCard, foil, zombie: null, state: null, hintX: 0, hintZ: 0 });
     });
   }
 
@@ -130,6 +143,7 @@ export class CardRuntime {
     this.passive = passive;
     for (const u of this.units) {
       if (u.zombie && ctx.zombies.zombies.includes(u.zombie)) ctx.zombies.remove(u.zombie);
+      this.wear(u);
       u.zombie = null;
       u.state = null;
       u.portrait.visible = false;
@@ -279,7 +293,7 @@ export class CardRuntime {
     for (const u of this.units) {
       if (u.state?.phase !== 'downed' || !u.zombie) continue;
       const dist = Math.hypot(u.zombie.x - p.x, u.zombie.z - p.z);
-      if (dist <= CARD_MODE.cureReach && (!best || dist < best.dist)) best = { id: u.def.id, name: u.def.name, dist };
+      if (dist <= CARD_MODE.cureReach && (!best || dist < best.dist)) best = { id: u.def.id, name: this.shown(u), dist };
     }
     return best;
   }
@@ -311,9 +325,28 @@ export class CardRuntime {
   // ---------------------------------------------------------------------------------------------
 
   /** The model and stats of carrier `i`, for a guest's puppet. */
-  rigFor(i: number): { rig: ZombieRigImpl; def: ZombieDef } | null {
+  rigFor(i: number): { rig: ZombieRig; def: ZombieDef } | null {
     const u = this.units[i];
+    if (u && !u.zombie) this.wear(u);
     return u ? { rig: u.rig, def: u.stats } : null;
+  }
+
+  /** The name over her head and in the purge prompt: MAZOKU while she wears her real-asset model (the card keeps hers). */
+  private shown(u: Unit): string {
+    return u.own ? 'MAZOKU' : u.def.name;
+  }
+
+  /** Out of play: change into her real-asset model if it has streamed in (once; the built figure is let go). */
+  private wear(u: Unit): void {
+    if (u.own || !this.models) return;
+    const m = carrierModel(u.def.id, u.def.accent);
+    if (!m) return;
+    const i = this.units.indexOf(u);
+    u.rig.root.removeFromParent();
+    u.rig.dispose();
+    u.rig = new AnimeZombieRig(u.def.base, m.template, { radius: 0.3, height: u.def.height, headRadius: 0.18 }, 77 + i, '', { tint: m.tint, wants: m.file });
+    u.rig.setVisible(false);
+    u.own = true;
   }
 
   /** Host: put carrier `i` into the fight at (x, z). Null when she is already in play. */
@@ -453,7 +486,7 @@ export class CardRuntime {
       } else if (st.phase === 'roaming' || !u.zombie) {
         out.push({ id: `card:${u.def.id}`, kind: 'hunt', x: u.hintX, z: u.hintZ, label: 'SIGNAL', color, radius: 20, visible: true, compass: false, dim: true });
       } else {
-        out.push({ id: `card:${u.def.id}`, kind: 'hunt', x: u.zombie.x, z: u.zombie.z, label: u.def.name.toUpperCase(), color, visible: true, compass: true, pulse: st.phase === 'downed' });
+        out.push({ id: `card:${u.def.id}`, kind: 'hunt', x: u.zombie.x, z: u.zombie.z, label: this.shown(u).toUpperCase(), color, visible: true, compass: true, pulse: st.phase === 'downed' });
       }
     }
   }
