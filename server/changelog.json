@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.373",
+      "date": "2026-11-08",
+      "title": "Asylum: no more skin showing through clothes",
+      "notes": [
+        "Fixed Sister Maeve's habit showing pale patches of skin, standing or kneeling in her cage, and closed the gap at her waist with a black cincture.",
+        "The same fix for the other Asylum people and infected in their new 3D models (NEW 3D MODELS): the body under their clothes no longer pokes through when they move."
+      ]
+    },
+    {
       "version": "0.4.372",
       "date": "2026-11-08",
       "title": "Asylum: the black fog hurts everyone in it",
