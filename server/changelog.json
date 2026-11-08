@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.381",
+      "date": "2026-11-08",
+      "title": "Caged survivors look right in the new models",
+      "notes": [
+        "With NEW 3D MODELS, caged survivors (Rae, Dr. Sato and the rest) no longer squat so deep that their legs push through their skirts and coats: they stand with knees slightly bent and hands up."
+      ]
+    },
+    {
       "version": "0.4.380",
       "date": "2026-11-08",
       "title": "Rae is the cook",

@@ -783,13 +783,16 @@ export class Avatar {
     // ---- legs: the thigh swings, the knee folds on the back swing; a crouch for cowering ----
     const swing = Math.sin(this.phase) * 0.55 * walk;
     const crouch = this.cowering ? 1 : 0;
+    // a worn model's skirts and coat tails are shaped standing: a deep squat drives the legs through them, so those
+    // cower with a shallow knee-bend instead
+    const squat = crouch * (this.anime ? 0.28 : 1);
     this.legs.forEach((leg, i) => {
       const s = i === 0 ? swing : -swing;
       const knee = walk * Math.max(0, Math.sin(this.phase + (i === 0 ? -1.4 : Math.PI - 1.4))) * 0.9;
-      leg.root.rotation.x = lerp(leg.root.rotation.x, s + crouch * 1.1);
-      leg.joint.rotation.x = lerp(leg.joint.rotation.x, -knee - crouch * 1.7);
+      leg.root.rotation.x = lerp(leg.root.rotation.x, s + squat * 1.1);
+      leg.joint.rotation.x = lerp(leg.joint.rotation.x, -knee - squat * 1.7);
     });
-    this.body.position.y = lerp(this.body.position.y, this.down ? 0 : crouch * -0.3 - walk * Math.abs(Math.cos(this.phase)) * 0.03);
+    this.body.position.y = lerp(this.body.position.y, this.down ? 0 : squat * -0.3 - walk * Math.abs(Math.cos(this.phase)) * 0.03);
     // ---- the aim: up after a shot, a relaxed carry otherwise, a co-op player's own view ----
     this.aimT = Math.max(0, this.aimT - dt);
     this.recoil = Math.max(0, this.recoil - dt * 9);
