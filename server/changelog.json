@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.379",
+      "date": "2026-11-08",
+      "title": "Rae's new outfit",
+      "notes": [
+        "Rae Mercer (NEW 3D MODELS) has a whole new outfit: a prison-orange uniform with long trousers under a white nurse's apron, with her nurse's cap."
+      ]
+    },
+    {
       "version": "0.4.378",
       "date": "2026-11-08",
       "title": "Rae's uniform made more decent",

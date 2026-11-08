@@ -529,7 +529,7 @@ const entries: Entry[] = [
   {
     id: 'rae-mercer', group: 'BESIDE YOU', name: 'Rae Mercer', height: 1.72,
     tagline: 'Prisoner 023. Nurse, mostly.',
-    lore: 'Six months into a sentence she still calls unfair, Rae was on the hills night rota when the lamps died, and the uniform she is doing her time in turned out to be the only nursing kit left in the building. The jumpsuit is cut down to a skirt over her old white vest - she took a pair of scissors to it the first week and dares anyone to file a complaint. Flirts with everything that moves, unarmed until someone gives her a pistol, and keeps a level head under fire.',
+    lore: 'Six months into a sentence she still calls unfair, Rae was on the hills night rota when the lamps died, and the uniform she is doing her time in turned out to be the only nursing kit left in the building. She wears the prison orange under a starched white apron and nurse cap from the linen room, and dares anyone to file a complaint. Flirts with everything that moves, unarmed until someone gives her a pistol, and keeps a level head under fire.',
     where: 'The Asylum (NEW 3D MODELS)', stats: [], modes: 'avatar',
     cast: ['RAE'],
     avatarModes: ['RAE', 'TRAPPED', 'WALK', 'FIRE'],

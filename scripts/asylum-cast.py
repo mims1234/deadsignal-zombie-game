@@ -89,19 +89,16 @@ CAST = {
         "glasses": (0.08, 0.08, 0.09),
     },
     # Rae Mercer, prisoner 023: late twenties, lean and leggy, auburn hair loose and messy, hazel eyes, an orange prison
-    # jumpsuit worn open over a pale vest (her accent is a hot red), white plimsolls
+    # uniform under a nurse's white apron and cap (her accent is a hot red), white plimsolls
     "rae": {
         "phenotype": ph(age=0.34, muscle=0.45, weight=0.27, proportions=0.9, height=0.62, cup=0.93),
         "skin": "young_caucasian_female", "eyes_mat": "brownlight", "eyebrows": "eyebrow005",
         "hair": "long01", "hair_color": (0.34, 0.13, 0.07),
-        "clothes": ["shoes02"],
-        # a prisoner's orange pinafore over the white vest of the nurse she actually is; a cap to make the joke land. No
-        # count number in play: the pinafore is what carries "inmate", the vest and cap "nurse". Kept decent: the vest is
-        # closed to the collar (no bare skin), only the pinafore opens in a V so the white vest shows through, and the
-        # skirt ends a little above the knee. (Skin would only show where NEITHER layer is.)
-        "garments": [{"kind": "vest", "color": (0.95, 0.94, 0.92), "drape": True},
-                     {"kind": "pinafore", "color": (0.89, 0.4, 0.09), "v": 0.3, "vw": 2.6, "hem": 0.4, "flare": 1.3,
-                      "offset": 0.034, "drape": True}],
+        # an inmate's orange uniform (RAE_SUIT: a real MakeHuman outfit re-dyed prison orange) under the starched white
+        # apron and cap of the nurse she actually is: the orange carries "inmate", the apron and cap "nurse"
+        "clothes": [os.environ.get("RAE_SUIT", "female_sportsuit01"), "shoes02"],
+        "dye": {os.environ.get("RAE_SUIT", "female_sportsuit01"): {"base": (0.9, 0.42, 0.1), "blue": (0.86, 0.38, 0.09)}},
+        "garments": [{"kind": "apron", "color": (0.95, 0.94, 0.92), "slim": True}],
         "cap": {"color": (0.95, 0.94, 0.9), "band": (0.78, 0.24, 0.3)},
     },
     # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
@@ -602,8 +599,12 @@ for g in spec.get("garments", []):
         join([top, sk], "garment_habit")
     elif kind == "apron":
         # a front panel over the skirt, waist to below the knee, and a bib up the chest (the figure faces -Y)
-        sk = skirt("garment_apron", J["hip"] + 0.08, J["knee"] - 0.12, 0.06, 1.3, mat, rows=8, arc=(-math.pi * 0.85, -math.pi * 0.15))
-        bib = skirt("garment_apron_bib", J["spine"] + (J["neck"] - J["spine"]) * 0.6, J["hip"] + 0.08, 0.035, 1.0, mat, rows=6, arc=(-math.pi * 0.72, -math.pi * 0.28))
+        # `slim`: a narrower, shorter, closer-fitting apron (more of the outfit under it shows)
+        sl = g.get("slim", False)
+        sk = skirt("garment_apron", J["hip"] + 0.08, J["knee"] + (0.04 if sl else -0.12), 0.03 if sl else 0.06, 1.12 if sl else 1.3, mat, rows=8,
+                   arc=(-math.pi * 0.74, -math.pi * 0.26) if sl else (-math.pi * 0.85, -math.pi * 0.15))
+        bib = skirt("garment_apron_bib", J["spine"] + (J["neck"] - J["spine"]) * 0.6, J["hip"] + 0.08, 0.035, 1.0, mat, rows=6,
+                    arc=(-math.pi * 0.64, -math.pi * 0.36) if sl else (-math.pi * 0.72, -math.pi * 0.28))
         join([sk, bib], "garment_apron")
     elif kind == "pinafore":
         # the jumpsuit peeled down: a short flared skirt, the bodice at the waist, and a deep V cut through the front
