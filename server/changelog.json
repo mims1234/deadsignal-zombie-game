@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.371",
+      "date": "2026-11-08",
+      "title": "Rae Mercer: shorter pinafore, wider scoop",
+      "notes": [
+        "Rae is back with the outfit finished: the orange prison pinafore is a short flared skirt now, and the scoop in her nurse's vest is much wider and deeper.",
+        "Nothing else about her changed - rescue, card, voice lines and her place in the Asylum squad are as they were. Needs NEW 3D MODELS (BETA) on; with it off the Asylum looks exactly as before."
+      ]
+    },
+    {
       "version": "0.4.370",
       "date": "2026-11-08",
       "title": "Mazoku: Noire and Miku closer to their cards, and fixes",
