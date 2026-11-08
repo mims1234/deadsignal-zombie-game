@@ -97,9 +97,12 @@ CAST = {
         "clothes": ["shoes02"],
         # a prisoner's orange pinafore, short and cut deep, over the white vest of the nurse she actually is; a cap to
         # make the joke land. No count number in play: the skirt is what carries "inmate", the vest and cap "nurse".
-        # The skirt is a tight micro-mini and the vest is a wide scoop, so the joke is the first thing seen.
-        "garments": [{"kind": "vest", "color": (0.95, 0.94, 0.92), "v": 0.46, "vw": 1.75},
-                     {"kind": "pinafore", "color": (0.89, 0.4, 0.09), "v": 0.27, "vw": 1.5, "hem": 0.16}],
+        # The skirt is a tight micro-mini and the vest/pinafore are cut alike: skin only shows where NEITHER layer is,
+        # so both must open at the same low point (v). v is a fraction of spine->neck, and the two layers are 6-7 cm
+        # apart at the top, so a high v on either narrows the V to a neckline slit. The 0.045 m/m taper keeps it a
+        # narrow V of cleavage instead of the wide scoop an earlier 0.10 gave (13.6 cm of bare skin at the breast).
+        "garments": [{"kind": "vest", "color": (0.95, 0.94, 0.92), "v": 0.17, "vw": 1.0},
+                     {"kind": "pinafore", "color": (0.89, 0.4, 0.09), "v": 0.17, "vw": 1.0, "hem": 0.16}],
         "cap": {"color": (0.95, 0.94, 0.9), "band": (0.78, 0.24, 0.3)},
     },
     # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
@@ -412,10 +415,16 @@ def shell(tag, zmin, zmax, xmax, offset, mat, keep=None, src=None):
     bm.from_mesh(me)
     bm.verts.ensure_lookup_table()
     dl = bm.verts.layers.deform.verify()
+    # A shaped cut (keep) needs a finer proxy than the body is: at ~4 cm vertex spacing a cut narrower
+    # than that deletes the very same vertices, so its shape never changes. Refine BEFORE cutting.
+    cut_first = bool(keep) and src is body
+    if cut_first:
+        bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=2, use_grid_fill=True, smooth=0.6)
+        bm.verts.ensure_lookup_table()
     gone = [v for v in bm.verts if v.co.z < zmin or v.co.z > zmax or abs(v.co.x) > xmax or (keep and not keep(v.co))]
     bmesh.ops.delete(bm, geom=gone, context="VERTS")
     # the proxy is coarse: one smoothed subdivision so the garment reads as cloth, not facets (weights interpolate)
-    if src is body:
+    if src is body and not cut_first:
         bmesh.ops.subdivide_edges(bm, edges=bm.edges[:], cuts=1, use_grid_fill=True, smooth=1.0)
     bm.normal_update()
     for v in bm.verts:
@@ -561,8 +570,8 @@ for g in spec.get("garments", []):
         if g.get("v"):  # cut open at the chest: a narrow V (or, with `vw`, a wide scoop), so the skin under it shows too
             vu = J["spine"] + (J["neck"] - J["spine"]) * g["v"]
             vw = g.get("vw", 1.0)
-            keep = lambda c: not (c.y < 0.02 and c.z > vu and abs(c.x) < 0.03 * vw + (c.z - vu) * 0.95 * vw)
-        shell("garment_vest", J["hip"] + 0.08, J["neck"] - 0.05, J["shoulderX"] * 0.72, 0.022, mat, keep=keep, src=shirt)
+            keep = lambda c: not (c.y < 0.02 and c.z > vu and abs(c.x) < (0.011 + max(0.0, c.z - vu) * 0.045) * vw)
+        shell("garment_vest", J["hip"] + 0.08, J["neck"] - 0.05, J["shoulderX"] * 0.92, 0.022, mat, keep=keep, src=shirt)
     elif kind == "coat":
         top = shell("garment_coat", J["hip"] - 0.02, J["neck"] - 0.005, J["wristX"] - 0.035, 0.024, mat)
         sk = skirt("garment_coat_skirt", J["hip"] + 0.05, J["knee"] - 0.02, 0.04, 1.12, mat)
@@ -585,8 +594,8 @@ for g in spec.get("garments", []):
         # (the chest's front verts above the sternum, widening with height, are dropped so what is under shows)
         vlow = J["spine"] + (J["neck"] - J["spine"]) * g.get("v", 0.34)
         vw = g.get("vw", 1.0)  # >1 opens the cut into a scoop rather than a slit
-        open_v = lambda c: not (c.y < 0.02 and c.z > vlow and abs(c.x) < (0.048 + (c.z - vlow) * 1.55) * vw)
-        top = shell("garment_pinafore", J["hip"] + 0.10, J["neck"] - 0.055, J["shoulderX"] * 0.66, 0.019, mat, keep=open_v)
+        open_v = lambda c: not (c.y < 0.02 and c.z > vlow and abs(c.x) < (0.011 + max(0.0, c.z - vlow) * 0.045) * vw)
+        top = shell("garment_pinafore", J["hip"] + 0.10, J["neck"] - 0.055, J["shoulderX"] * 0.88, 0.019, mat, keep=open_v)
         hem = J["hip"] + (J["knee"] - J["hip"]) * g.get("hem", 0.46)
         sk = skirt("garment_pinafore_skirt", J["hip"] + 0.09, hem, 0.05, g.get("flare", 1.5), mat, rows=7)
         join([top, sk], "garment_pinafore")

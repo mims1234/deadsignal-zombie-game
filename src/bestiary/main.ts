@@ -528,16 +528,18 @@ const entries: Entry[] = [
   },
   {
     id: 'rae-mercer', group: 'BESIDE YOU', name: 'Rae Mercer', height: 1.72,
-    tagline: '',
-    lore: '',
-    where: 'Blackwood Hill', stats: [], modes: 'avatar',
+    tagline: 'Prisoner 023. Nurse, mostly.',
+    lore: 'Six months into a sentence she still calls unfair, Rae was on the hills night rota when the lamps died, and the uniform she is doing her time in turned out to be the only nursing kit left in the building. The jumpsuit is cut down to a skirt over her old white vest - she took a pair of scissors to it the first week and dares anyone to file a complaint. Flirts with everything that moves, unarmed until someone gives her a pistol, and keeps a level head under fire.',
+    where: 'The Asylum (NEW 3D MODELS)', stats: [], modes: 'avatar',
     cast: ['RAE'],
     avatarModes: ['RAE', 'TRAPPED', 'WALK', 'FIRE'],
     build: () => {
       const i = Math.max(0, SURVIVORS.asylum.findIndex((s) => s.name === 'Rae Mercer'));
       const who = SURVIVORS.asylum[i]!;
-      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8' });
+      const t = ownModel(who.model);
+      const a = new Avatar(who.name, i, { color: who.color, helmet: false, look: who.look, tag: who.tag, tagColor: '#d8e6c8', anime: t });
       a.arm();
+      if (t) current!.stats = [['Health', `${SURVIVORS.hp}`], slotNote(who.model ?? ''), ...modelStats(t)];
       current!.avatar = a;
       return a.root;
     },

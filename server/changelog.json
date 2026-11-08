@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.375",
+      "date": "2026-11-08",
+      "title": "Rae's uniform sits right",
+      "notes": [
+        "Rae Mercer's prison uniform is cut properly now: a deep narrow V of cleavage over her old nurse's vest instead of a wide bare window, with both breasts still covered.",
+        "Garment edges are smooth instead of tracing the body's big polygons, so the white vest and the orange pinafore read as cloth.",
+        "Her codex card builds her real model again instead of a placeholder figure.",
+        "NEW 3D MODELS only, as before."
+      ]
+    },
+{
       "version": "0.4.374",
       "date": "2026-11-08",
       "title": "Allies keep their personal space",

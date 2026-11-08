@@ -317,7 +317,7 @@ export function installTestApi(game: Game): void {
       if (game.state === 'title') game.devStartWithoutLock();
       const a = game.squad.devInfo().find((m) => m.name.toLowerCase().includes(who));
       if (game.state === 'playing' && a) {
-        game.player.teleport(a.x, a.z + 3, Math.PI);
+        game.player.teleport(a.x, a.z - 3, 0);
         clearInterval(fid);
       } else if (n > 140) clearInterval(fid);
     }, 500);
