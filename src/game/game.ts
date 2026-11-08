@@ -178,6 +178,9 @@ export class Game implements GameCtx {
   private storyPick: StoryId | null = null;
   /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
   private builtTale: StoryId | null = null;
+  /** The mode the waiting run was set up for (leaving free roam sets up a run with no squad or cages: switching back to
+   * Standard must set it up again). */
+  private builtMode: GameMode | null = null;
 
   /** The story this run plays: the Sakura District is KAIKA, every run but free roam (solo or co-op, the card hunt or not). */
   get tale(): StoryId | null {
@@ -1233,7 +1236,7 @@ export class Game implements GameCtx {
       return;
     }
     this.audio.init(); // needs the user gesture
-    if (restart || this.dirty || this.mode === 'coop' || this.builtTale !== this.tale) this.resetRun(false);
+    if (restart || this.dirty || this.mode === 'coop' || this.builtTale !== this.tale || this.builtMode !== this.mode) this.resetRun(false);
     this.dirty = true;
     if (this.touchMode) {
       this.startWithoutLock(true);
@@ -1453,6 +1456,7 @@ export class Game implements GameCtx {
 
     // a story mission comes in somewhere of its own
     this.builtTale = this.tale;
+    this.builtMode = this.mode;
     // the clock this run is held to (the Sakura District's by its story: KAIKA gets far longer)
     this.mission.clock = missionClock(this.mapId, this.mode === 'coop' ? this.coop.kind : this.tale);
     const st = this.level.data.playerStart;
@@ -1470,6 +1474,9 @@ export class Game implements GameCtx {
     // the squad: solo runs it here; a co-op story run shows the simulation's
     const solo = this.mode === 'standard' || this.mode === 'cards';
     const coopStory = this.mode === 'coop' && this.coop.role !== 'none' && this.coop.story;
+    // the Asylum's doors stand open while the cages are placed (a spot must be walkable from the start); the last run
+    // left them shut, which ruled most spots out. The loop's reset shuts them again below (as the simulation does).
+    this.level.doors?.setAll(true);
     this.squad.reset(solo || coopStory, solo || coopStory, coopStory, this.runDifficulty.team, coopStory ? Math.max(1, this.coop.room.room?.players.length ?? 1) : 1);
     if (forgeSquad && solo) this.squad.deployForge(forgeSquad);
     // Aurelia walks with you (solo); a co-op story run shows the simulation's
@@ -2594,7 +2601,7 @@ export class Game implements GameCtx {
   /** Start playing without pointer lock (automation). */
   devStartWithoutLock(fresh = true): void {
     this.audio.init();
-    if (fresh && (this.dirty || this.mode === 'coop' || this.builtTale !== this.tale)) this.resetRun(false);
+    if (fresh && (this.dirty || this.mode === 'coop' || this.builtTale !== this.tale || this.builtMode !== this.mode)) this.resetRun(false);
     this.dirty = true;
     this.noLock = true;
     this.beginPlaying(fresh);

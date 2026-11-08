@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.376",
+      "date": "2026-11-08",
+      "title": "Asylum: every survivor's cage is back",
+      "notes": [
+        "Fixed missing survivors on the Asylum: a second game in a row (or a game after free roam) placed only a few cages, or none and no squad at all. All six cages and both soldiers are there every run now.",
+        "Co-op was not affected."
+      ]
+    },
+    {
       "version": "0.4.375",
       "date": "2026-11-08",
       "title": "Rae's uniform sits right",
