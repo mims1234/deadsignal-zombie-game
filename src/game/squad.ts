@@ -25,7 +25,7 @@ import { addCash } from '../logic/economy';
 import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
 import { GAMEPLAY_FIELD_RANGE } from '../world/nav';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
 import { ALLY_GUNS, type AllyGun, type AllySupply, allyErrand } from './allySupply';
 import type { Game } from './game';
 
@@ -526,6 +526,10 @@ export class SquadRuntime {
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       a.avatar.update(dt);
     }
+    if (this.follow) return;
+    // personal space: nobody stands inside anyone else, or inside you (after this step's moves, before they are drawn)
+    allySpread(this.allies, alive ? [p] : [], g.level, dt);
+    for (const a of this.allies) if (a.ref.alive && !a.trapped) a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
   }
 
   /** The squad's figures (HIRASAKA puts Natsuki's helmet on hers). */

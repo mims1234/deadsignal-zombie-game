@@ -31,7 +31,7 @@ import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
+import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { ALLY_GUNS, type AllySupply, allyErrand } from '../game/allySupply';
 import { BOX_PHASE, type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
@@ -1284,6 +1284,8 @@ export class SessionSim {
       }
       if (this.shots.length < 40) this.shots.push([i, r1(shot.to.x), r1(shot.to.y), r1(shot.to.z), shot.hit ? 1 : 0]);
     });
+    // personal space, as in the solo game (`allySpread`): nobody stands inside anyone else, or inside a player
+    allySpread(this.allies, peers.filter((p) => p.ref.alive).map((p) => p.ref), this.level, dt);
   }
 
   /** Aurelia follows (and so leads, a few steps ahead of) the nearest player who is up. */

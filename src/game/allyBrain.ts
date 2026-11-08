@@ -184,6 +184,77 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   a.lookT = 0;
 }
 
+/**
+ * Personal space (m, centre to centre) between two allies and between an ally and a player. Inside `hard` the bodies
+ * would show through each other, so that part is undone at once; the rest of the margin eases out at `rate`.
+ */
+export const ALLY_SPACE = { ally: 0.8, player: 1.0, hardAlly: 0.66, hardPlayer: 0.8, rate: 9 } as const;
+
+/** How far to part two bodies `d` apart this step: all of the overlap inside `hard`, a share `k` of the rest. */
+const parting = (d: number, space: number, hard: number, k: number): number => Math.max(0, hard - d) + (space - Math.max(d, hard)) * k;
+
+/**
+ * Keep allies out of each other and out of the players (run once a step, after everyone has moved). Each pair that is
+ * closer than its personal space eases apart (a share of the overlap a step, `rate`, so nobody snaps or jitters); two
+ * allies share the push, a player never moves (the ally steps aside). Only on the same floor, never mid-stairs, and
+ * walls still hold (`resolveCircle`). Solo (`squad.ts`) and the co-op simulation (`serverHost.ts`) both call this.
+ */
+export function allySpread(allies: readonly AllyBody[], players: readonly { x: number; y: number; z: number }[], level: Level, dt: number): void {
+  const k = Math.min(1, dt * ALLY_SPACE.rate);
+  const free = (a: AllyBody): boolean => a.ref.alive && !a.trapped && !a.crossing;
+  const moved = new Set<AllyBody>();
+  const push = (a: AllyBody, x: number, z: number): void => {
+    a.ref.x += x;
+    a.ref.z += z;
+    moved.add(a);
+  };
+  for (let i = 0; i < allies.length; i++) {
+    const a = allies[i]!;
+    if (!free(a)) continue;
+    for (let j = i + 1; j < allies.length; j++) {
+      const b = allies[j]!;
+      if (!free(b) || Math.abs(a.ref.y - b.ref.y) > 1) continue;
+      let dx = b.ref.x - a.ref.x;
+      let dz = b.ref.z - a.ref.z;
+      let d = Math.hypot(dx, dz);
+      if (d >= ALLY_SPACE.ally) continue;
+      if (d < 1e-4) {
+        // standing on the very same spot: part them along a fixed direction (the same on every screen)
+        const t = (i * 2.399 + j * 1.13) % (Math.PI * 2);
+        dx = Math.cos(t);
+        dz = Math.sin(t);
+        d = 1;
+      }
+      const m = parting(Math.hypot(b.ref.x - a.ref.x, b.ref.z - a.ref.z), ALLY_SPACE.ally, ALLY_SPACE.hardAlly, k) / 2 / d;
+      push(a, -dx * m, -dz * m);
+      push(b, dx * m, dz * m);
+    }
+    for (const p of players) {
+      if (Math.abs(a.ref.y - p.y) > 1) continue;
+      let dx = a.ref.x - p.x;
+      let dz = a.ref.z - p.z;
+      let d = Math.hypot(dx, dz);
+      if (d >= ALLY_SPACE.player) continue;
+      if (d < 1e-4) {
+        const t = (i * 2.399) % (Math.PI * 2);
+        dx = Math.cos(t);
+        dz = Math.sin(t);
+        d = 1;
+      }
+      const m = parting(Math.hypot(a.ref.x - p.x, a.ref.z - p.z), ALLY_SPACE.player, ALLY_SPACE.hardPlayer, k) / d;
+      push(a, dx * m, dz * m);
+    }
+  }
+  for (const a of moved) {
+    const at = { x: a.ref.x, z: a.ref.z };
+    level.world.resolveCircle(at, 0.32, a.ref.y + 0.5, a.ref.y + 1.7, 3);
+    a.ref.x = at.x;
+    a.ref.z = at.z;
+    a.ref.y = level.world.floorBelow(at.x, at.z, 0.2, a.ref.y);
+    a.ref.eyeY = a.ref.y + 1.6;
+  }
+}
+
 /** Turn toward `yaw` by at most `step` radians (the short way round). */
 function turnTo(a: AllyBody, yaw: number, step: number): void {
   let d = yaw - a.yaw;

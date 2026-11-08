@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.374",
+      "date": "2026-11-08",
+      "title": "Allies keep their personal space",
+      "notes": [
+        "Your squad and the survivors you free no longer stand inside each other or inside you: they keep a little space between themselves and step aside when you walk into them.",
+        "Works while following, standing around, crowding through doorways and fighting, in solo and in co-op."
+      ]
+    },
+    {
       "version": "0.4.373",
       "date": "2026-11-08",
       "title": "Asylum: no more skin showing through clothes",
