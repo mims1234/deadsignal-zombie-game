@@ -52,7 +52,7 @@ import { createLoopState, doorState, isPowerOn, resetLoopState, setPower, spawnA
 import { LOOP } from '../asylum/loopConfig';
 import { ASYLUM_DOORS, POWER_LEVER, ZONE_NAMES } from '../asylum/loopData';
 import { BELL, FOG, LANTERNS, RECORDS, STORY } from '../asylum/nightConfig';
-import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, lanternFor, lanternLit, squadHoldsFire } from '../asylum/story';
+import { asylumHour, asylumTuning, bellReady, damperOpen, fogAt, huntClock, inFog, lanternFor, lanternLit, squadHoldsFire } from '../asylum/story';
 import { UpstairsRush } from '../asylum/upstairsRush';
 import { setWard9Open } from '../asylum/upstairs';
 import { ASYLUM } from '../world/layout/asylum';
@@ -1159,6 +1159,13 @@ export class SessionSim {
       const out = !!fog && fog.radius > 0.5;
       this.zombies.rateMul = out ? FOG.rateMul : 1;
       this.zombies.capBonus = out ? FOG.capBonus : 0;
+      // the fog eats the infected in it, slowly (no one's kill), and hurts the squad
+      if (out && fog) {
+        const inside = (x: number, z: number): boolean => inFog(x, z, ASYLUM.stack, fog.radius);
+        const env = this.nearestEnv(ASYLUM.stack.x, ASYLUM.stack.z);
+        if (env) this.zombies.wither(dt, FOG.infectedShare, inside, env);
+        for (const a of this.allies) if (a.ref.alive && !a.trapped && inside(a.ref.x, a.ref.z)) this.hurtAlly(a, FOG.dps * dt, a.ref.x, a.ref.z + 0.5);
+      }
       setWard9Open(this.level, this.kind === 'roam' || this.defense.status === 'complete');
     }
     // contracts (never unwinnable: an uncredited Warden death completes the hunt; a missing Warden is back home)

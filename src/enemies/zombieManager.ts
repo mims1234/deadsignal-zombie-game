@@ -353,6 +353,25 @@ export class ZombieManager {
     z.tag = null;
   }
 
+  /**
+   * Something in the world wearing the infected down (the Asylum's black fog): `share` of their full health per second
+   * for each one where `inside(x, z)`. No one's kill (no `onKill`): no cash, no score. Bosses, card carriers, the dormant
+   * and the Court are spared; a co-op client leaves it to the simulation. Returns how many died.
+   */
+  wither(dt: number, share: number, inside: (x: number, z: number) => boolean, env: ZombieEnv): number {
+    if (this.netDamage || dt <= 0) return 0;
+    let kills = 0;
+    for (const z of this.zombies) {
+      if (!z.alive || !z.active || z.dormant || z.isBoss || z.carrierIdx > 0 || z.curable || z.variant === 'court') continue;
+      if (!inside(z.x, z.z)) continue;
+      if (z.takeDamage(z.maxHp * share * dt, false, env, z.yaw, 0)) {
+        z.diedAt = this.simTime;
+        kills++;
+      }
+    }
+    return kills;
+  }
+
   /** Take one enemy out of the world immediately (a purged carrier). */
   remove(z: Zombie): void {
     this.releaseZombie(z);

@@ -8,6 +8,7 @@ import { ASYLUM_CAST, ASYLUM_HORDE, HIRASAKA_CAST, loadAnimeCast, MUJIN_CAST } f
 import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
+import { FOG as ASYLUM_FOG } from '../asylum/nightConfig';
 import { createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
@@ -1753,6 +1754,7 @@ export class Game implements GameCtx {
     this.updateEnemies(dt, alive);
     this.cards.update(dt);
     this.squad.update(dt);
+    this.fogWither(dt);
     this.forge?.update(dt);
     this.aurelia?.update(dt);
     this.sakura?.update(dt);
@@ -2153,6 +2155,15 @@ export class Game implements GameCtx {
       return;
     }
     this.endRun('defeat', this.session.extraction.phase === 'landed' ? (this.mapId === 'mujin' ? 'Killed before boarding the dawn train' : 'Killed before boarding the helicopter') : 'Killed in action');
+  }
+
+  /** The Asylum's black fog eats the infected in it, slowly, and hurts the squad (co-op: the simulation does it). */
+  private fogWither(dt: number): void {
+    const night = this.mission.night;
+    if (!night || this.coop.live || night.fogRadius() <= 0.5) return;
+    const inside = (x: number, z: number): boolean => night.inFog(x, z);
+    this.zombies.wither(dt, ASYLUM_FOG.infectedShare, inside, this.zenv);
+    this.squad.fogHurt(ASYLUM_FOG.dps, dt, inside);
   }
 
   private onZombieKilled(z: Zombie, head: boolean): void {

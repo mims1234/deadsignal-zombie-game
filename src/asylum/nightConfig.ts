@@ -58,6 +58,9 @@ export const FOG = {
   capBonus: 10,
   /** Damage per second inside it (ignores armour). */
   dps: 9,
+  /** It eats the infected too, slowly: this share of their full health per second (no one's kill: no cash, no souls).
+   * The Matron and the card carriers are spared. The squad takes `dps`, through their armour. */
+  infectedShare: 0.03,
 };
 
 /** The story's rewards (cash for each step done, on top of the files), and the damper's hold. */

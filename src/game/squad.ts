@@ -308,6 +308,15 @@ export class SquadRuntime {
     return list.length > 1 ? list : undefined;
   }
 
+  /** The Asylum's black fog: everyone of the squad standing in it takes `dps` (through their armour). */
+  fogHurt(dps: number, dt: number, inside: (x: number, z: number) => boolean): void {
+    if (!this.active || this.follow) return;
+    for (const a of this.allies) {
+      if (!a.ref.alive || a.trapped || !inside(a.ref.x, a.ref.z)) continue;
+      this.hurt(a, dps * dt, a.ref.x, a.ref.z + 0.5, 0);
+    }
+  }
+
   private hurt(a: Ally, amount: number, sx: number, sz: number, knock: number): void {
     if (!a.ref.alive) return;
     a.hp -= amount * a.stats.damageTaken;

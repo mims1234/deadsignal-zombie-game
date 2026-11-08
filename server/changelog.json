@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.372",
+      "date": "2026-11-08",
+      "title": "Asylum: the black fog hurts everyone in it",
+      "notes": [
+        "The black fog now slowly eats the infected caught in it too: about half a minute inside and they drop (no cash or kills for those deaths). The Matron and the card carriers are spared.",
+        "Your squad takes the fog's damage like you do (a little less through their armour), so don't lead them through it for long."
+      ]
+    },
+    {
       "version": "0.4.371",
       "date": "2026-11-08",
       "title": "Rae Mercer: shorter pinafore, wider scoop",
