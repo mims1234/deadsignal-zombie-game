@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.377",
+      "date": "2026-11-08",
+      "title": "New 3D models switched on mid-game now load",
+      "notes": [
+        "Turning on NEW 3D MODELS during a game said they would load next game, but they never did until the page was refreshed, so the Mazoku carriers kept their old look. Now the game reloads itself with the new models when you leave that game or start the next one."
+      ]
+    },
+    {
       "version": "0.4.376",
       "date": "2026-11-08",
       "title": "Asylum: every survivor's cage is back",

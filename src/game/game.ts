@@ -181,6 +181,8 @@ export class Game implements GameCtx {
   /** The mode the waiting run was set up for (leaving free roam sets up a run with no squad or cages: switching back to
    * Standard must set it up again). */
   private builtMode: GameMode | null = null;
+  /** The model pack this page loaded with: NEW 3D MODELS switched mid-run need a page reload to load (`packReload`). */
+  private loadedPack: Settings['modelPack'] = 'classic';
 
   /** The story this run plays: the Sakura District is KAIKA, every run but free roam (solo or co-op, the card hunt or not). */
   get tale(): StoryId | null {
@@ -437,6 +439,7 @@ export class Game implements GameCtx {
 
     // a model pack (Settings) loads before the map is built: its props are placed with the map
     const pack = PACKS[this.settings.modelPack];
+    this.loadedPack = this.settings.modelPack;
     if (pack.length > 0) {
       this.menus.showLoading(0.2, 'LOADING MODELS');
       // the pack's own models, plus the ones (and the scanned surfaces) only this map uses
@@ -973,7 +976,7 @@ export class Game implements GameCtx {
     // the models are part of building the map: on the title screen the game reloads with them, mid-run they wait
     if (persist && packChanged) {
       if (this.state === 'title' && this.mode !== 'coop') window.location.reload();
-      else this.menus.flash('The new models load next time the game starts.');
+      else this.menus.flash('The new models load when this game ends.');
     }
   }
 
@@ -1217,8 +1220,19 @@ export class Game implements GameCtx {
     }
   }
 
+  /**
+   * NEW 3D MODELS switched since the page loaded (from the pause menu, mid-run): the models are part of building the
+   * map, so the page reloads to load them (true: reloading). Co-op keeps its session and loads them next page load.
+   */
+  private packReload(): boolean {
+    if (this.mode === 'coop' || this.settings.modelPack === this.loadedPack) return false;
+    window.location.reload();
+    return true;
+  }
+
   /** Deploy / restart button (inside a click). */
   requestStart(restart: boolean): void {
+    if (this.packReload()) return;
     // a guest on a pick that needs Discord: the sign-in, with a zone open to guests beside it
     const login = needsLogin(this.account, this.mapId, this.mode);
     if (login) {
@@ -1395,6 +1409,7 @@ export class Game implements GameCtx {
   quitToTitle(): void {
     // leaving mid-run leaves the session (for the host that ends it); from the results screen the squad stays together
     if (this.mode === 'coop' && this.state !== 'results') this.coop.leave();
+    if (this.packReload()) return;
     this.resetRun(false);
     this.dirty = false;
     this.state = 'title';
