@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.380",
+      "date": "2026-11-08",
+      "title": "Rae is the cook",
+      "notes": [
+        "Rae Mercer is now the asylum's cook, not a prisoner: a new flirty kitchen outfit (NEW 3D MODELS) with a white top, a short black dress, a short white apron and a cook's cap, and new lines to match."
+      ]
+    },
+    {
       "version": "0.4.379",
       "date": "2026-11-08",
       "title": "Rae's new outfit",

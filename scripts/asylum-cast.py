@@ -88,18 +88,21 @@ CAST = {
         "garments": [{"kind": "coat", "color": (0.93, 0.93, 0.91)}],
         "glasses": (0.08, 0.08, 0.09),
     },
-    # Rae Mercer, prisoner 023: late twenties, lean and leggy, auburn hair loose and messy, hazel eyes, an orange prison
-    # uniform under a nurse's white apron and cap (her accent is a hot red), white plimsolls
+    # Rae Mercer, the asylum's cook: late twenties, lean and leggy, auburn hair loose and messy, hazel eyes; a flirty
+    # take on kitchen whites - a fitted white top open in a V, a short black dress over it, a short white apron and a
+    # cook's cap (her accent is a hot red), white plimsolls. Flirty, never explicit.
     "rae": {
         "phenotype": ph(age=0.34, muscle=0.45, weight=0.27, proportions=0.9, height=0.62, cup=0.93),
         "skin": "young_caucasian_female", "eyes_mat": "brownlight", "eyebrows": "eyebrow005",
         "hair": "long01", "hair_color": (0.34, 0.13, 0.07),
-        # an inmate's orange uniform (RAE_SUIT: a real MakeHuman outfit re-dyed prison orange) under the starched white
-        # apron and cap of the nurse she actually is: the orange carries "inmate", the apron and cap "nurse"
-        "clothes": [os.environ.get("RAE_SUIT", "female_sportsuit01"), "shoes02"],
-        "dye": {os.environ.get("RAE_SUIT", "female_sportsuit01"): {"base": (0.9, 0.42, 0.1), "blue": (0.86, 0.38, 0.09)}},
-        "garments": [{"kind": "apron", "color": (0.95, 0.94, 0.92), "slim": True}],
-        "cap": {"color": (0.95, 0.94, 0.9), "band": (0.78, 0.24, 0.3)},
+        "clothes": ["shoes02"],
+        # skin shows only where neither the top nor the dress is: both open from the same point (v), the dress wider
+        "garments": [{"kind": "vest", "color": (0.96, 0.95, 0.93), "v": 0.4, "vw": 1.6, "drape": True},
+                     {"kind": "pinafore", "color": (0.1, 0.1, 0.11), "v": 0.4, "vw": 3.0, "hem": 0.24, "flare": 1.35,
+                      "offset": 0.034, "drape": True},
+                     {"kind": "apron", "color": (0.97, 0.96, 0.94), "slim": True, "hem": 0.2,
+                      "offset": 0.075, "flare": 1.5}],  # outside the dress's flared skirt
+        "cap": {"color": (0.97, 0.96, 0.94), "band": (0.97, 0.96, 0.94)},
     },
     # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
     # a night nurse who stayed: dingy uniform, cap, a loose bob
@@ -601,7 +604,8 @@ for g in spec.get("garments", []):
         # a front panel over the skirt, waist to below the knee, and a bib up the chest (the figure faces -Y)
         # `slim`: a narrower, shorter, closer-fitting apron (more of the outfit under it shows)
         sl = g.get("slim", False)
-        sk = skirt("garment_apron", J["hip"] + 0.08, J["knee"] + (0.04 if sl else -0.12), 0.03 if sl else 0.06, 1.12 if sl else 1.3, mat, rows=8,
+        bottom = J["hip"] + (J["knee"] - J["hip"]) * g["hem"] if g.get("hem") else J["knee"] + (0.04 if sl else -0.12)
+        sk = skirt("garment_apron", J["hip"] + 0.08, bottom, g.get("offset", 0.03 if sl else 0.06), g.get("flare", 1.12 if sl else 1.3), mat, rows=8,
                    arc=(-math.pi * 0.74, -math.pi * 0.26) if sl else (-math.pi * 0.85, -math.pi * 0.15))
         bib = skirt("garment_apron_bib", J["spine"] + (J["neck"] - J["spine"]) * 0.6, J["hip"] + 0.08, 0.035, 1.0, mat, rows=6,
                     arc=(-math.pi * 0.64, -math.pi * 0.36) if sl else (-math.pi * 0.72, -math.pi * 0.28))

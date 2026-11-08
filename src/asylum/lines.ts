@@ -46,7 +46,7 @@ export const ASY_LABEL: Record<AsySpeaker, string> = {
   PIP: 'PIP',
   MAEVE: 'SISTER MAEVE',
   SATO: 'DR. SATO',
-  RAE: 'PRISONER 023',
+  RAE: 'COOK',
 };
 
 /** The survivors' names in `config.ts` (SURVIVORS.asylum) by speaker. */
@@ -69,7 +69,7 @@ const CAST: Record<AsySpeaker, { voice: string; accent: string; how: string; cha
   PIP: { voice: 'sarah', accent: 'London accent', how: 'a young London trainee nurse, chatty and nervous, talking fast, close by', chain: 'close' },
   MAEVE: { voice: 'river', accent: 'Welsh accent', how: 'an elderly Welsh nun with a lilting voice, gentle and unafraid, close by', chain: 'close' },
   SATO: { voice: 'matilda', accent: 'American accent', how: 'a calm Californian doctor in her thirties, dry and focused, close by', chain: 'close' },
-  RAE: { voice: 'bella', accent: 'light American accent', how: 'a prisoner in her late twenties who used to be a nurse, cocky and flirty and enjoying it, close by', chain: 'close' },
+  RAE: { voice: 'bella', accent: 'light American accent', how: 'the asylum cook in her late twenties, cocky and flirty and enjoying it, close by', chain: 'close' },
 };
 
 const L = (id: string, who: AsySpeaker, text: string, tag: string, match?: string): AsyLine => {
@@ -152,15 +152,15 @@ export const ASY_LINES: readonly AsyLine[] = [
   L('ellie_freed', 'ELLIE', "You're not her. You're real. She checks on me every night - please don't let her find me awake.", 'shaking, whispering'),
   L('pip_freed', 'PIP', "Oh thank God. Pip - trainee. I'm useless with a gun, so I'll stay right behind you, alright?", 'nervous, fast, relieved'),
   L('maeve_freed', 'MAEVE', "Bless you. I'll not carry a gun, child, but I'll walk with you - and I'll pray loudly.", 'warm, lilting'),
-  L('rae_freed', 'RAE', "Rae - prisoner oh-two-three. They had me in a smock, not a uniform, so don't get ideas. Badge's upstairs. Take me with you and you get the nurse, free of charge.", 'cocky, flirty, relieved'),
+  L('rae_freed', 'RAE', "Rae - I ran the kitchen. Forty days on tinned peaches and I still look this good. Take me with you, sweetheart, I'm handy with sharp things.", 'cocky, flirty, relieved'),
   L('sato_freed', 'SATO', "Yuki Sato, resident. Hand me something with a trigger. I'll watch your back.", 'dry, steady'),
   L('ellie_nine', 'ELLIE', "This was her ward. She used to sing to them. I could hear it through the floor.", 'hushed, sad'),
   L('maeve_chapel', 'MAEVE', 'I kept the chapel lamp lit for her, every night. It did not help her.', 'quiet, sorrowful'),
   L('pip_matron', 'PIP', "That's Matron. Oh God - that's really her.", 'horrified whisper'),
   L('halloway_isolation', 'HALLOWAY', 'Isolation. She told me to lock the door behind her. I did. God forgive me.', 'hollow, guilty'),
-  L('rae_ward', 'RAE', "See that room? Mine. Three squares, one hour in the yard and a door that locked from outside. Five stars, would reoffend.", 'dry, flirty'),
+  L('rae_ward', 'RAE', "See that room? My kitchen. Three hot meals a day for two hundred people, and not one of them ever said thank you. You can be the first.", 'dry, flirty'),
   L('rae_low', 'RAE', "Low on rounds? Come here, I'll show you where to hold it. The gun. Mostly.", 'flirty, teasing'),
-  L('rae_reload', 'RAE', "Nine years I patched people up on nights like this. Hand me the kit, I'll do you first.", 'warm, flirty'),
+  L('rae_reload', 'RAE', "Nine years on the night stove. I know hot, I know fast, and I know when something's done. Reload, gorgeous.", 'warm, flirty'),
   L('sato_fog', 'SATO', "Don't breathe that. Whatever's in it, it isn't smoke.", 'clinical, sharp'),
 ];
 
