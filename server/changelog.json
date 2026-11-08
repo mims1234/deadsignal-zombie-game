@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.378",
+      "date": "2026-11-08",
+      "title": "Rae's uniform made more decent",
+      "notes": [
+        "Rae Mercer's uniform (NEW 3D MODELS): the white vest is closed to the collar, the orange pinafore sits over it with a small V that shows the vest, the cloth hangs smoothly over the chest instead of hugging it, and the skirt now ends a little above the knee."
+      ]
+    },
+    {
       "version": "0.4.377",
       "date": "2026-11-08",
       "title": "New 3D models switched on mid-game now load",

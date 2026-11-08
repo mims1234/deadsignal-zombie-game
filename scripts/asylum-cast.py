@@ -95,14 +95,13 @@ CAST = {
         "skin": "young_caucasian_female", "eyes_mat": "brownlight", "eyebrows": "eyebrow005",
         "hair": "long01", "hair_color": (0.34, 0.13, 0.07),
         "clothes": ["shoes02"],
-        # a prisoner's orange pinafore, short and cut deep, over the white vest of the nurse she actually is; a cap to
-        # make the joke land. No count number in play: the skirt is what carries "inmate", the vest and cap "nurse".
-        # The skirt is a tight micro-mini and the vest/pinafore are cut alike: skin only shows where NEITHER layer is,
-        # so both must open at the same low point (v). v is a fraction of spine->neck, and the two layers are 6-7 cm
-        # apart at the top, so a high v on either narrows the V to a neckline slit. The 0.045 m/m taper keeps it a
-        # narrow V of cleavage instead of the wide scoop an earlier 0.10 gave (13.6 cm of bare skin at the breast).
-        "garments": [{"kind": "vest", "color": (0.95, 0.94, 0.92), "v": 0.17, "vw": 1.0},
-                     {"kind": "pinafore", "color": (0.89, 0.4, 0.09), "v": 0.17, "vw": 1.0, "hem": 0.16}],
+        # a prisoner's orange pinafore over the white vest of the nurse she actually is; a cap to make the joke land. No
+        # count number in play: the pinafore is what carries "inmate", the vest and cap "nurse". Kept decent: the vest is
+        # closed to the collar (no bare skin), only the pinafore opens in a V so the white vest shows through, and the
+        # skirt ends a little above the knee. (Skin would only show where NEITHER layer is.)
+        "garments": [{"kind": "vest", "color": (0.95, 0.94, 0.92), "drape": True},
+                     {"kind": "pinafore", "color": (0.89, 0.4, 0.09), "v": 0.3, "vw": 2.6, "hem": 0.4, "flare": 1.3,
+                      "offset": 0.034, "drape": True}],
         "cap": {"color": (0.95, 0.94, 0.9), "band": (0.78, 0.24, 0.3)},
     },
     # ---- Blackwood's lost (the Asylum's infected, NEW 3D MODELS): pale grey skin, grime, glowing eyes (the game's tint)
@@ -401,9 +400,11 @@ def link(me, tag, mat):
     return o
 
 
-def shell(tag, zmin, zmax, xmax, offset, mat, keep=None, src=None):
+def shell(tag, zmin, zmax, xmax, offset, mat, keep=None, src=None, drape=None):
     """A copy of the body between two heights (and within |x| < xmax: the arms to a sleeve's length), pushed out along
-    its normals: it bends exactly as the skin under it (same weights)."""
+    its normals: it bends exactly as the skin under it (same weights). `drape` (zlo, zhi): over the front of the chest
+    between those heights the cloth is smoothed so it hangs over the body's contours instead of hugging every one,
+    and kept at least `offset` off the skin."""
     src = src or body
     me = src.data.copy()
     o = bpy.data.objects.new(f"{name}.{tag}", me)
@@ -429,6 +430,20 @@ def shell(tag, zmin, zmax, xmax, offset, mat, keep=None, src=None):
     bm.normal_update()
     for v in bm.verts:
         v.co += v.normal * offset
+    if drape:
+        from mathutils.bvhtree import BVHTree
+        sel = [v for v in bm.verts if v.co.y < 0.0 and drape[0] < v.co.z < drape[1] and not v.is_boundary]
+        for _ in range(12):
+            bmesh.ops.smooth_vert(bm, verts=sel, factor=0.6, use_axis_x=True, use_axis_y=True, use_axis_z=True)
+        sbm = bmesh.new()
+        sbm.from_mesh(src.data)
+        tree = BVHTree.FromBMesh(sbm)
+        for v in sel:
+            hit, nrm, _, _ = tree.find_nearest(v.co)
+            if hit is not None and (v.co - hit).dot(nrm) < offset:
+                v.co = hit + nrm * offset
+        sbm.free()
+        bm.normal_update()
     bm.to_mesh(me)
     bm.free()
     me.materials.clear()
@@ -571,7 +586,8 @@ for g in spec.get("garments", []):
             vu = J["spine"] + (J["neck"] - J["spine"]) * g["v"]
             vw = g.get("vw", 1.0)
             keep = lambda c: not (c.y < 0.02 and c.z > vu and abs(c.x) < (0.011 + max(0.0, c.z - vu) * 0.045) * vw)
-        shell("garment_vest", J["hip"] + 0.08, J["neck"] - 0.05, J["shoulderX"] * 0.92, 0.022, mat, keep=keep, src=shirt)
+        chest = (J["spine"] - 0.04, J["neck"] - 0.03) if g.get("drape") else None
+        shell("garment_vest", J["hip"] + 0.08, J["neck"] - 0.05, J["shoulderX"] * 0.92, 0.022, mat, keep=keep, src=shirt, drape=chest)
     elif kind == "coat":
         top = shell("garment_coat", J["hip"] - 0.02, J["neck"] - 0.005, J["wristX"] - 0.035, 0.024, mat)
         sk = skirt("garment_coat_skirt", J["hip"] + 0.05, J["knee"] - 0.02, 0.04, 1.12, mat)
@@ -595,7 +611,9 @@ for g in spec.get("garments", []):
         vlow = J["spine"] + (J["neck"] - J["spine"]) * g.get("v", 0.34)
         vw = g.get("vw", 1.0)  # >1 opens the cut into a scoop rather than a slit
         open_v = lambda c: not (c.y < 0.02 and c.z > vlow and abs(c.x) < (0.011 + max(0.0, c.z - vlow) * 0.045) * vw)
-        top = shell("garment_pinafore", J["hip"] + 0.10, J["neck"] - 0.055, J["shoulderX"] * 0.88, 0.019, mat, keep=open_v)
+        # over the vest (a little further out than it), draped over the chest like it
+        top = shell("garment_pinafore", J["hip"] + 0.10, J["neck"] - 0.055, J["shoulderX"] * 0.88, g.get("offset", 0.019), mat, keep=open_v,
+                    drape=(J["spine"] - 0.04, J["neck"] - 0.03) if g.get("drape") else None)
         hem = J["hip"] + (J["knee"] - J["hip"]) * g.get("hem", 0.46)
         sk = skirt("garment_pinafore_skirt", J["hip"] + 0.09, hem, 0.05, g.get("flare", 1.5), mat, rows=7)
         join([top, sk], "garment_pinafore")
