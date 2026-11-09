@@ -82,6 +82,9 @@ Pick the map on the title screen (the page reloads to build it).
     can hold, through all four gates. Anyone they reach there dies, so the squad holds the yard - and the carrier turns
     right there among them.
   - **tomoe's ledger**: four pages to find, each with a piece of where the embers went.
+  - **The ladle** (solo): a bucket of iron hangs over the middle of the Crucible. Throw the lever inside the south wall
+    ($750) and it floods the floor for 8 seconds - everything standing in it burns, the Infernus and you included. It
+    refills in 75 seconds.
   - **riry's Rumble Pit**: ring the bell for three waves (optional).
   - Every member has their own look (built in code from their name), and a few familiar faces have their own.
   - Something else happens during the last stand. Finish a run to find out.

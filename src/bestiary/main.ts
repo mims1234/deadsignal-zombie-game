@@ -305,8 +305,8 @@ const entries: Entry[] = [
   {
     id: 'infernus', group: 'ELITES', name: 'The Infernus', height: ZOMBIES.warden.height, enraged: true,
     tagline: 'The first of them.',
-    lore: 'The member who summoned longest, and burned first. It grew into a thing of slag-plated flesh and walked down into the Crucible, and it walks the molten floor already enraged. Same slam, same charge, no warning.',
-    where: 'The Forge (the Crucible)', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 9),
+    lore: 'The member who summoned longest, and burned first. It grew into a thing of slag-plated flesh - furnace iron welded on by the fire, every seam lit from inside, a grate over the chest with the furnace burning behind it, two flues smoking on its back - and walked down into the Crucible, where it walks the molten floor already enraged. Same slam, same charge, no warning. The ladle that hangs over it still tips.',
+    where: 'The Forge (the Crucible)', stats: zombieStats('warden'), modes: BOSS_MODES, build: zombie('warden', 9, 'forge'),
   },
   // the Asylum's boss (src/enemies/matron.ts, matronRig.ts)
   {

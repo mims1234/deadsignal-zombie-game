@@ -34,6 +34,7 @@ import type { ForgeSites } from '../../forge/sites';
 import { addBox, building, groundRect, perimeterWall, wallDecal } from '../structures';
 import { type DoorHandle, hqVault } from './forgeRooms';
 import { buildForgeOuter } from './forgeOuter';
+import { dressForge, moltenMaterial, type ForgeEmitter, type LadleHandle } from './forgeDress';
 import { ignisMaterial } from './ignis';
 import { HALF_PI, type Ctx } from './util';
 import { vulcanForge, vulcanSigilMaterial } from './vulcan';
@@ -49,31 +50,20 @@ export const FORGE = {
   spire: { x: 54, z: -43 },
 };
 
-/** Molten metal: emissive, slowly pulsing. */
-function moltenMaterial(c: Ctx): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ color: 0x3a0c02, emissive: 0xff4a08, emissiveIntensity: 1.4, roughness: 0.35, metalness: 0.1 });
-  c.b.tick((_dt, t) => {
-    m.emissiveIntensity = 1.25 + Math.sin(t * 1.3) * 0.2 + Math.sin(t * 3.7) * 0.08;
-  });
-  return m;
-}
-
 /** An open channel of molten runoff with a steel rim; nothing walks through it. */
 function moltenChannel(c: Ctx, mat: THREE.Material, x0: number, z0: number, x1: number, z1: number): void {
   const { b } = c;
-  groundRect(b, mat, x0, z0, x1, z1, 0.03);
+  // the melt lies in a basin, above the hall's floor slab, a steel kerb all the way round it
+  groundRect(b, mat, x0, z0, x1, z1, 0.16);
   const cx = (x0 + x1) / 2;
   const cz = (z0 + z1) / 2;
   const w = Math.abs(x1 - x0);
   const d = Math.abs(z1 - z0);
   const rim = b.mats.get('steelDark');
-  if (w > d) {
-    addBox(b, rim, cx, 0.25, z0 - 0.15, w, 0.5, 0.3);
-    addBox(b, rim, cx, 0.25, z1 + 0.15, w, 0.5, 0.3);
-  } else {
-    addBox(b, rim, x0 - 0.15, 0.25, cz, 0.3, 0.5, d);
-    addBox(b, rim, x1 + 0.15, 0.25, cz, 0.3, 0.5, d);
-  }
+  addBox(b, rim, cx, 0.16, z0 - 0.15, w + 0.6, 0.32, 0.3);
+  addBox(b, rim, cx, 0.16, z1 + 0.15, w + 0.6, 0.32, 0.3);
+  addBox(b, rim, x0 - 0.15, 0.16, cz, 0.3, 0.32, d);
+  addBox(b, rim, x1 + 0.15, 0.16, cz, 0.3, 0.32, d);
   b.collideBox(cx, cz, w + 0.6, d + 0.6, 1.1, { mapKind: 'wall', tag: 'molten' });
   b.light({ x: cx, y: 1.2, z: cz, color: 0xff5a14, intensity: 70, distance: Math.max(w, d) * 0.9 + 3 });
 }
@@ -101,6 +91,10 @@ export interface ForgeHandles {
   billboard: THREE.Object3D;
   /** Each foundry forge's mouth, in `sites.furnaces` order. */
   furnaceMouths: THREE.MeshStandardMaterial[];
+  /** Smoke, steam, embers and sparks for the particle system (`forgeDress.ts`). */
+  emitters: ForgeEmitter[];
+  /** The Crucible's ladle and its lever (`forge/ladle.ts`). */
+  ladle: LadleHandle;
 }
 
 export interface ForgeResult {
@@ -339,6 +333,9 @@ export function buildForge(c: Ctx): ForgeResult {
   d.zombies('high', 'armored', [[24, -32], [48, -32], [40, -10]]);
 
   // ---- the ring around it all: the Hearth, the Pit, the seven foundries, the Spawn Hall, the Ledger House ----
+  // ---- the foundry's dressing: stacks, pipes, the ladle, ingots, slag, wet roads ----
+  const dress = dressForge(c, FORGE.crucible);
+
   const outerDoors: DoorHandle[] = [];
   const outer = buildForgeOuter(c, outerDoors);
   const sites: ForgeSites = {
@@ -354,6 +351,6 @@ export function buildForge(c: Ctx): ForgeResult {
     transmitter: beacon,
     spire: sp,
     sites,
-    handles: { doors: [...outerDoors, ...vaultDoors], hearthGlow: outer.hearthGlow, furnaceDoor, billboard, furnaceMouths: outer.furnaceMouths },
+    handles: { doors: [...outerDoors, ...vaultDoors], hearthGlow: outer.hearthGlow, furnaceDoor, billboard, furnaceMouths: outer.furnaceMouths, emitters: dress.emitters, ladle: dress.ladle },
   };
 }

@@ -55,7 +55,7 @@ export function createZombieFactory(): ZombieFactoryExt {
         ? new AnimeZombieRig(type, anime, dims, seed, variant)
         : model
           ? new ModelZombieRig(type, dims.radius, dims.height, dims.headRadius, seed)
-          : new ZombieRigImpl(get(type, type === 'warden' ? undefined : stock), material, dims, seed);
+          : new ZombieRigImpl(get(type, type === 'warden' && stock !== 'forge' ? undefined : stock), material, dims, seed);
       rigs.add(rig);
       const dispose = rig.dispose.bind(rig);
       rig.dispose = (): void => {
@@ -83,8 +83,8 @@ export function createZombieFactory(): ZombieFactoryExt {
         const a = get(type, theme);
         for (let i = 0; i < a.variants.length; i++) variantGeometry(a, i);
       }
-      // the Forge's Infernus (and its reborn) wear the standard Warden's frame
-      if (theme === 'forge') variantGeometry(get('warden'), 0);
+      // the Forge's Infernus has a body of its own (`zombie/forge.ts`), on the Warden's frame
+      if (theme === 'forge') variantGeometry(get('warden', 'forge'), 0);
     },
     dispose(): void {
       for (const r of rigs) r.dispose();

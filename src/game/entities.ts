@@ -197,6 +197,8 @@ export class Entities {
   private readonly pickups: Pickup[] = [];
   private readonly pickupFree: Record<PickupKind, THREE.Object3D[]> = { ammo: [], plate: [], grenade: [] };
   readonly root = new THREE.Group();
+  /** Metres beyond which a closed loot box is drawn as its beacon alone (set from the quality tier). */
+  bodyDistance = Infinity;
 
   constructor(private readonly ctx: GameCtx) {
     this.root.name = 'Entities';
@@ -341,6 +343,8 @@ export class Entities {
       if (d2 < 30 * 30) c.discovered = true;
       // the "?" only shows within reading distance (it is a draw call per box)
       c.mark.visible = c.phase === 'closed' && d2 < 60 * 60;
+      // a closed box too far to make out is only its beacon
+      if (c.model.body) c.model.body.visible = c.phase !== 'closed' || d2 < this.bodyDistance * this.bodyDistance;
       if (d2 > 90 * 90 && c.phase !== 'spin' && c.phase !== 'offer' && !(c.cost && c.phase === 'gone')) continue;
       if (c.opened && c.openT < 1) {
         c.openT = Math.min(1, c.openT + dt / 0.45);

@@ -96,6 +96,8 @@ export function createStationModel(kind: StationKind, _mats: MaterialLib): Stati
 
 export interface CrateModel {
   root: THREE.Group;
+  /** The box without its beacon (three draw calls): hidden beyond the tier's detail range, the beacon still showing. */
+  body?: THREE.Object3D;
   /** 0 closed .. 1 fully open (hinged lid swings up). */
   setOpen(t: number): void;
   /** Marks the crate as already looted (dim, no glow). */

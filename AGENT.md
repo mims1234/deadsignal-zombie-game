@@ -36,6 +36,17 @@ then `python scripts\vrm-slim.py OUT-raw.vrm public/models/asylum/NAME.vrm 1024`
 - `server/changelog.json` + `package.json` — one patch version per push to main.
 - `ASSETS.md`, `public/models/asylum/LICENSE.txt` — licence records.
 
+## The Forge's look (v0.4.382)
+- `src/world/layout/forgeDress.ts` — the foundry dressing (stacks, pipe bridges, catwalk, ladle, ingots, slag, wet
+  patches) and the molten shader (`createMolten`). Plain colours go through `matte()` / `metal()` so they bake into
+  two palette batches; add materials sparingly (each is a draw call per 78 m chunk).
+- `FORGE_NIGHT` in `src/forge/runtime.ts` — sky, haze, light levels and bloom; dawn blends back to the defaults.
+- Smoke / steam / embers are ambient emitters (`ForgeHandles.emitters` -> `fx.emitter`), scaled by the tier.
+- `src/forge/ladle.ts` — the ladle trap. Solo only: the co-op simulation (`src/sim/serverHost.ts`) does not know it.
+- The Infernus and the kit on the infected: `src/enemies/zombie/forge.ts` (`buildInfernus`, `KIT`).
+- `node scripts/qa-forge-look.mjs <outdir> [tier] [port] [w] [h]` — screenshots, draw calls, the ladle, level check.
+- Molten surfaces must sit above the building floor slab (y 0.03): the pools were invisible until they were raised.
+
 ## Decisions
 - Rae Mercer (prisoner 023) is a **survivor**, flirty nurse doing her sentence: short orange pinafore cut
   deep over her old white uniform vest. Built by the `pinafore` garment builder, which the script owns.

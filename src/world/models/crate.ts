@@ -382,7 +382,7 @@ export function createLootCrateImpl(region: Region): CrateModel {
   lid.receiveShadow = true;
   lidPivot.add(lid);
   const beacon = new THREE.Mesh(shared.beaconGeo, beaconMaterial(region));
-  beacon.frustumCulled = false;
+  // a plain cylinder (the shader moves nothing): off screen it is not drawn
   beacon.renderOrder = 4;
   // the skids sit slightly below the crate body; lift the inner group so the crate rests on the ground
   const inner = new THREE.Group();
@@ -399,7 +399,10 @@ export function createLootCrateImpl(region: Region): CrateModel {
   lootGlow.position.set(0, 0.47, 0);
   lootGlow.renderOrder = 4;
   lootGlow.visible = false;
-  inner.add(base, contents, lidPivot, beacon, lootGlow);
+  // the box itself, apart from its beacon: hidden where it is too far to make out (`Entities.bodyDistance`)
+  const body = new THREE.Group();
+  body.add(base, contents, lidPivot);
+  inner.add(body, beacon, lootGlow);
   root.add(inner);
 
   let looted = false;
@@ -415,6 +418,7 @@ export function createLootCrateImpl(region: Region): CrateModel {
 
   return {
     root,
+    body,
     setOpen(t: number) {
       const k = Math.max(0, Math.min(1, t));
       const eased = 1 - Math.pow(1 - k, 2.2);

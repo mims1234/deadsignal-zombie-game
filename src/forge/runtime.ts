@@ -16,6 +16,7 @@ import { Avatar } from '../coop/avatar';
 import { ZOMBIE_GLOW } from '../enemies/zombie/material';
 import type { Game } from '../game/game';
 import type { InteractionTarget } from '../game/interaction';
+import { LadleTrap } from './ladle';
 import { addCash, applyContractReward } from '../logic/economy';
 import type { HudObjective, HudState, MapDynamic } from '../ui/hudTypes';
 import { ignisMaterial } from '../world/layout/ignis';
@@ -56,6 +57,25 @@ interface Shown {
 }
 
 /** The night's look, and first light over the Forge (the burnout). */
+/**
+ * Ember night, as the Forge is lit until dawn (`game.ts` sets it when the map loads): the sky, the haze, the sky light's
+ * colours and levels (the blue hour's are hemi 4.4, key 4.2, fill 1.1, env 0.5), and the bloom on the tiers that have it.
+ */
+export const FORGE_NIGHT = {
+  sky: { zenith: 0x090605, mid: 0x1d0f0a, horizon: 0x5a2410, glow: 0xff6a1c, haze: 0x2c170e, stars: 0.3 },
+  moon: 0xd9a070,
+  fog: 0x2c170e,
+  fogDensity: 0.0125,
+  hemiSky: 0xa87a62,
+  hemiGround: 0x5a2208,
+  key: 0x9db4d8,
+  fill: 0xff6a22,
+  levels: { hemi: 3.1, key: 3.0, fill: 1.9, env: 0.42, indoor: 1 },
+  bloom: { strength: 0.5, radius: 0.45, threshold: 1.5 },
+} as const;
+/** The levels dawn brings the sky light back up to. */
+const DAWN_LEVELS = { hemi: 4.4, key: 4.2, fill: 1.1, env: 0.5, indoor: 1 };
+
 const DAWN = { zenith: 0x56688a, mid: 0xd89a7a, horizon: 0xffc690, glow: 0xffd8a8, haze: 0xc8a088, fog: 0x7a5e50, hemiSky: 0xe4cdb6, hemiGround: 0x5a3a2a, fill: 0xffd2a0 };
 
 /** The reborn's body (a fixed one, so the one warmed up while the level loads is the one that appears). */
@@ -99,11 +119,14 @@ export class ForgeRuntime {
   private burnT = -1;
   private sparkT = 0;
   private insideWarned = 0;
+  /** The Crucible's ladle (a trap; solo). */
+  readonly ladle: LadleTrap;
 
   constructor(private readonly g: Game) {
     const sites = g.level.data.forge!;
     this.story = new ForgeStory(sites, g.zombies, g.level.nav);
     this.stage = new ForgeStage(g);
+    this.ladle = new LadleTrap(g);
     // the reborn wears a look of its own (here and on every co-op puppet)
     // (always the same body: the one compiled and sent to the GPU while the level loaded)
     g.zombies.rebornRig = () => createRebornRig(g.zombieFactory, REBORN_SEED);
@@ -130,6 +153,8 @@ export class ForgeRuntime {
       g.worldRoot.add(root);
       this.pages.push(root);
     }
+    // the foundry breathes: smoke, steam, embers and sparks (ambient emitters; the particle system scales and culls them)
+    for (const e of g.level.forgeFx?.emitters ?? []) g.fx.emitter(e.kind, e, { rate: e.rate, radius: e.radius, height: e.height });
     g.interaction.sources.push((t) => this.targets(t));
     this.tick = {
       elapsed: 0,
@@ -183,6 +208,7 @@ export class ForgeRuntime {
     const h = this.sites.hearth;
     this.stage.reset(Math.atan2(-(h.gateX - h.sentryX), -(h.gateZ - h.sentryZ)));
     this.endDawn();
+    this.ladle.reset();
     if (coop) return null;
     const roster = this.story.reset(this.g.rng);
     this.setView(this.story.view);
@@ -294,6 +320,7 @@ export class ForgeRuntime {
       i--;
       q.fn();
     }
+    if (!this.follow) this.ladle.update(dt);
     this.animate(dt);
     this.hud.update(dt);
   }
@@ -741,6 +768,11 @@ export class ForgeRuntime {
     mix(s.hemi, DAWN.hemiSky, r.light.hemi.color);
     mix(s.ground, DAWN.hemiGround, r.light.hemi.groundColor);
     mix(s.fill, DAWN.fill, r.light.fill.color);
+    mix(new THREE.Color(FORGE_NIGHT.key), 0xffe2c0, r.light.moon.color);
+    const n = FORGE_NIGHT.levels;
+    const lv = (a: number, b: number): number => a + (b - a) * k;
+    r.setSkyLevels({ hemi: lv(n.hemi, DAWN_LEVELS.hemi), key: lv(n.key, DAWN_LEVELS.key), fill: lv(n.fill, DAWN_LEVELS.fill), env: lv(n.env, DAWN_LEVELS.env), indoor: 1 });
+    if (fog) fog.density = lv(FORGE_NIGHT.fogDensity, 0.0085);
     if (this.dawnT >= 1) this.dawnT = -2; // held at dawn
   }
 
@@ -757,6 +789,10 @@ export class ForgeRuntime {
     r.light.hemi.color.copy(s.hemi);
     r.light.hemi.groundColor.copy(s.ground);
     r.light.fill.color.copy(s.fill);
+    r.light.moon.color.set(FORGE_NIGHT.key);
+    r.setSkyLevels(FORGE_NIGHT.levels);
+    const f = r.scene.fog as THREE.FogExp2 | null;
+    if (f) f.density = FORGE_NIGHT.fogDensity;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -944,6 +980,7 @@ export class ForgeRuntime {
         },
       });
     });
+    if (v.finale.phase !== 'burnout') this.ladle.target(out, !this.follow);
     const pit = sites.rumble;
     if (v.rumble.phase === 'idle' && v.finale.phase !== 'burnout') {
       const d = Math.hypot(pit.bellX - p.x, pit.bellZ - p.z);

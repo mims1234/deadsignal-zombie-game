@@ -56,7 +56,7 @@ import type { GameCtx } from './ctx';
 import { Entities } from './entities';
 import { buildHudState, buildMapDynamic } from './hudBridge';
 import { SquadRuntime } from './squad';
-import { ForgeRuntime } from '../forge/runtime';
+import { FORGE_NIGHT, ForgeRuntime } from '../forge/runtime';
 import { AureliaRuntime } from '../aurelia/runtime';
 import { AURELIA_MODEL } from '../aurelia/look';
 import { MujinRuntime } from '../mujin/runtime';
@@ -451,12 +451,21 @@ export class Game implements GameCtx {
     this.level = buildLevel(this.mats, this.mapId);
     setSkyColors(this.renderer.sky);
     if (this.mapId === 'forge') {
-      // ember night: warm haze, firelit ground bounce and an orange horizon fill
+      // ember night: no blue left in it. A sky of smoke lit from below by the furnaces, a veiled moon, a thicker warm
+      // haze, and less sky light so the fires, the lamps and the melt are what light the place
+      setSkyColors(this.renderer.sky, FORGE_NIGHT.sky);
+      (this.renderer.sky.userData.uniforms.uMoonColor!.value as THREE.Color).set(FORGE_NIGHT.moon);
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
-      fog?.color.set(0x2a1710);
-      this.renderer.light.hemi.color.set(0x9a6a52);
-      this.renderer.light.hemi.groundColor.set(0x4a1c08);
-      this.renderer.light.fill.color.set(0xff7a2a);
+      if (fog) {
+        fog.color.set(FORGE_NIGHT.fog);
+        fog.density = FORGE_NIGHT.fogDensity;
+      }
+      this.renderer.light.hemi.color.set(FORGE_NIGHT.hemiSky);
+      this.renderer.light.hemi.groundColor.set(FORGE_NIGHT.hemiGround);
+      this.renderer.light.moon.color.set(FORGE_NIGHT.key);
+      this.renderer.light.fill.color.set(FORGE_NIGHT.fill);
+      this.renderer.setSkyLevels(FORGE_NIGHT.levels);
+      this.renderer.setBloom(FORGE_NIGHT.bloom);
     } else if (this.mapId === 'sakura') {
       // blossom dusk: a rose haze, a pink sky over violet ground, a warm fill (the bloom turns it to a blood moon)
       SakuraRuntime.applyDusk(this.renderer);
@@ -986,6 +995,7 @@ export class Game implements GameCtx {
     const q = QUALITY[level];
     this.fx.setQuality(q.particleScale, q.decalScale);
     if (this.culler) this.culler.distance = q.detailDistance;
+    if (this.entities) this.entities.bodyDistance = q.detailDistance * 2;
     if (live) this.halveTexturesTo(level);
   }
 

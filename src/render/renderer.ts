@@ -185,6 +185,23 @@ export class GameRenderer {
     this.light.setShadowQuality(enabled, q.shadowMapSize);
   }
 
+  /** A map's own bloom (the Forge's fires bloom harder than the blue hour's lamps); null = the default. */
+  private bloom: { strength: number; radius: number; threshold: number } | null = null;
+
+  setBloom(b: { strength: number; radius: number; threshold: number } | null): void {
+    this.bloom = b;
+    if (this.bloomPass) {
+      this.bloomPass.strength = b?.strength ?? RENDER.bloomStrength;
+      this.bloomPass.radius = b?.radius ?? RENDER.bloomRadius;
+      this.bloomPass.threshold = b?.threshold ?? RENDER.bloomThreshold;
+    }
+  }
+
+  /** The sky light levels in force (see `setSkyLevels`). */
+  get skyLevels(): { hemi: number; key: number; fill: number; env: number; indoor: number } {
+    return { ...this.sky0 };
+  }
+
   private rebuildComposer(): void {
     const q = QUALITY[this.quality];
     this.composer?.dispose();
@@ -213,7 +230,7 @@ export class GameRenderer {
     composer.addPass(this.worldPass);
     composer.addPass(this.viewPass);
     if (q.bloom) {
-      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), RENDER.bloomStrength, RENDER.bloomRadius, RENDER.bloomThreshold);
+      this.bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), this.bloom?.strength ?? RENDER.bloomStrength, this.bloom?.radius ?? RENDER.bloomRadius, this.bloom?.threshold ?? RENDER.bloomThreshold);
       composer.addPass(this.bloomPass);
     }
     this.outputPass = new OutputPass();
