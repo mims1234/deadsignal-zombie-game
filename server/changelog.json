@@ -12,7 +12,7 @@
         "New trap (solo): TIP THE LADLE. Throw the lever inside the Crucible's south wall ($750) and molten iron floods the middle of the hall for 8 seconds, burning everything in it - the Infernus too, and you if you stand in it. It refills in 75 seconds.",
         "The Infernus has a body of its own: a charred giant plated in furnace iron with glowing seams, a furnace grate in its chest, a slit helm under a crown of slag and two flues on its back.",
         "The Forge's infected come in more kinds: welders in masks, crane hands and casters in hard hats with the lamp still lit, furnace goggles, slag cooled onto shoulders and arms, the fire showing through the ribs of the worst burned, and two slag-crusted armored ones.",
-        "Lighter on every device: loot boxes too far away to make out are drawn as their beacon alone, and beacons off screen are not drawn at all."
+        "No heavier than the old Forge: the new scenery is baked into draw calls the map already made (measured on a slowed-down CPU: the same frame rate as before, slightly fewer draw calls). On every map, loot boxes too far away to make out are drawn as their beacon alone, and beacons off screen are not drawn at all."
       ]
     },
     {

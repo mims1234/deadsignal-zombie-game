@@ -23,7 +23,10 @@ const SPOTS = [
   ['pool', 36, -29.5, 0.9, -0.5],
   ['channel', 17.5, -30, 1.2, -0.3],
   ['road-wet', -20, 1, -1.35, -0.12],
-  ['stacks', 36, -52, Math.PI, 0.5],
+  ['stacks', 36, -56, Math.PI, 0.42],
+  ['north-door', 36, -44, Math.PI, 0.05],
+  ['slag', 19.5, -44, 1.2, -0.25],
+  ['bridge', 17.5, -8, 0, 0.12],
   ['hq', 48, -2, Math.PI, 0.12],
   ['crucible', 36, -12, 0, 0.1],
   ['crucible-in', 36, -24, 0.4, 0.05],
@@ -86,6 +89,24 @@ try {
   await sleep(7500);
   await page.screenshot({ path: `${out}/ladle-cool.png` });
   console.log('ladle later:', await page.evaluate(() => window.__dead.game.forge.ladle.phase));
+  // the lever cannot be thrown through the wall from the street, and it comes back up when the ladle has refilled
+  await sleep(3600);
+  const rearm = await page.evaluate(async () => {
+    const d = window.__dead;
+    const l = d.game.forge.ladle;
+    const lever = d.game.level.forgeFx.ladle.lever;
+    const thrown = lever.rotation.x;
+    l.since = 1e3;
+    await new Promise((r) => setTimeout(r, 400));
+    d.teleport(34.7, -19.6, Math.PI);
+    const outside = [];
+    l.target(outside, true);
+    d.teleport(36, -21.6, 0);
+    const inside = [];
+    l.target(inside, true);
+    return { phase: l.phase, leverThrown: +thrown.toFixed(2), leverNow: +lever.rotation.x.toFixed(2), promptsOutsideTheWall: outside.length, promptsInside: inside.map((t) => t.text) };
+  });
+  console.log('ladle re-armed:', JSON.stringify(rearm));
   const v = await call('validateLevel');
   console.log('level:', JSON.stringify(v));
 } catch (e) {

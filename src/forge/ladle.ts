@@ -58,6 +58,8 @@ export class LadleTrap {
     const p = this.g.player;
     const d = Math.hypot(h.leverX - p.x, h.leverZ - p.z);
     if (d > LADLE.reach) return;
+    // from inside the hall: the wall the lever is on is within reach from the street side too
+    if (this.g.level.world.segmentBlocked(p.x, 1.2, p.z, h.leverX, 1.2, h.leverZ, 'shots')) return;
     if (this.phase !== 'ready') {
       const pouring = this.phase === 'tipping' || this.phase === 'pouring';
       out.push({ id: 'ladle-wait', dist: d, text: pouring ? 'THE LADLE IS POURING' : 'THE LADLE IS FILLING', sub: pouring ? 'Stay off the floor' : `Ready again in ${Math.ceil(this.wait)} s`, tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
@@ -140,6 +142,7 @@ export class LadleTrap {
       }
     } else if (this.since >= LADLE.cooldown) {
       this.phase = 'ready';
+      this.pose(0, 0, 0); // the lever back up
       g.audio.play('objective_ping', { pos: this.at, volume: 0.6, priority: 0 });
     }
   }

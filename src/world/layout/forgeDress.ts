@@ -115,7 +115,7 @@ export function moltenMaterial(c: Ctx): THREE.MeshStandardMaterial {
   return createMolten();
 }
 
-/** A blotchy alpha mask: the outline of a puddle. */
+/** A blotchy mask: the outline of a puddle. In the colour channels: three reads an alphaMap's green, not its alpha. */
 function puddleMask(seed: number): THREE.CanvasTexture | THREE.DataTexture {
   const S = 64;
   const data = new Uint8Array(S * S * 4);
@@ -132,8 +132,8 @@ function puddleMask(seed: number): THREE.CanvasTexture | THREE.DataTexture {
       }
       const a = Math.max(0, Math.min(1, v * 3.2));
       const o = (y * S + x) * 4;
-      data[o] = data[o + 1] = data[o + 2] = 255;
-      data[o + 3] = Math.round(a * 255);
+      data[o] = data[o + 1] = data[o + 2] = Math.round(a * 255);
+      data[o + 3] = 255;
     }
   }
   const t = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
@@ -143,55 +143,58 @@ function puddleMask(seed: number): THREE.CanvasTexture | THREE.DataTexture {
   return t;
 }
 
-const MATTE = { roughness: 0.9, metalness: 0 } as const;
-const METAL = { roughness: 0.55, metalness: 0.75 } as const;
-let hot: THREE.MeshStandardMaterial | null = null;
-/** Iron still glowing: the stacks' mouths, the newest ingots, the cores of the slag heaps, the ladle's surface. */
-function hotIron(): THREE.MeshStandardMaterial {
-  hot ??= new THREE.MeshStandardMaterial({ color: 0x2a0a02, emissive: 0xff5a14, emissiveIntensity: 1.3, roughness: 0.55 });
-  return hot;
-}
+/**
+ * The two finishes the dressing's plain colours use, and the shadow flags they are baked with. The builder merges every
+ * plain colour at one finish and one pair of flags into a single batch per chunk, and both of these are already in every
+ * chunk of the Forge (its props use them): baked this way the dressing joins those batches instead of adding its own.
+ * Change either and each chunk it stands in gains a draw call.
+ */
+const MATTE = { roughness: 0.85, metalness: 0 } as const;
+const METAL = { roughness: 0.5, metalness: 0.7 } as const;
+const MATTE_BAKE = { cast: true, receive: true } as const;
+const METAL_BAKE = { cast: false, receive: true } as const;
 
 export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDressing {
   const { b } = c;
   const emitters: ForgeEmitter[] = [];
   const steel = b.mats.get('steelDark');
 
-  // ---- materials of its own (each shared by everything that wears it, so each bakes into one batch per chunk) ----
-  // plain colours at two shared finishes (the builder bakes each finish into one batch per chunk, whatever the colour),
-  // and two glowing ones: draw calls, not looks, decide how many materials the dressing has
+  // ---- materials: draw calls, not looks, decide how many the dressing has (see MATTE / METAL) ----
   const matte = (color: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, ...MATTE });
   const metal = (color: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, ...METAL });
   const stackBrick = matte(0x4a2a20);
   const stackBand = matte(0x5a1810);
   const soot = matte(0x100c0a);
+  const slag = matte(0x16120f);
+  const plank = matte(0x3a2c1e);
   const pipeHot = metal(0x4a3026);
   const pipeCold = metal(0x3c444a);
   const ingotCold = metal(0x3a3c40);
+  const ingotWarm = metal(0x4a2a22);
   const grate = metal(0x24262a);
-  const lip = hotIron();
-  const ingotHot = lip;
-  const slagHot = lip;
-  const ingotWarm = new THREE.MeshStandardMaterial({ color: 0x241410, emissive: 0x4a0c02, emissiveIntensity: 0.6, roughness: 0.6, metalness: 0.4 });
-  const slag = new THREE.MeshStandardMaterial({ color: 0x16120f, roughness: 0.9, metalness: 0, flatShading: true });
+  // whatever still glows wears the Forge's own amber (the furnace mouths, the pillar): one more batch nowhere
+  const hot = b.mats.get('emAmber');
+  const HOT_BAKE = { cast: false, receive: true } as const;
 
   // ---- smokestacks ----
   const stack = (x: number, z: number, base: number, h: number, r: number, collide: boolean, smoke: number): void => {
     const body = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.62, r, h, 14, 1, true), stackBrick);
     body.position.set(x, base + h / 2, z);
-    body.castShadow = true;
-    b.add(body);
+    b.add(body, MATTE_BAKE);
     // warning bands and a sooted crown
     for (const [t, m] of [[0.72, stackBand], [0.86, stackBand], [0.97, soot]] as const) {
       const rr = r * (1 - 0.38 * t) + 0.03;
       const band = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.985, rr, h * 0.05, 14, 1, true), m);
       band.position.set(x, base + h * t, z);
-      b.add(band);
+      b.add(band, MATTE_BAKE);
     }
     const top = base + h;
-    const mouth = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.56, r * 0.56, 0.3, 12), lip);
-    mouth.position.set(x, top - 0.25, z);
-    b.add(mouth, { cast: false, receive: false });
+    // the glowing mouth, on the ones near enough to look into (the far ones are their glow alone)
+    if (smoke > 0) {
+      const mouth = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.56, r * 0.56, 0.3, 12), hot);
+      mouth.position.set(x, top - 0.25, z);
+      b.add(mouth, HOT_BAKE);
+    }
     if (collide) {
       addBox(b, 'concreteDark', x, base + 0.5, z, r * 2.5, 1, r * 2.5);
       b.collideBox(x, z, r * 2.3, r * 2.3, Math.min(h, 12), { mapKind: 'building', tag: 'smokestack' });
@@ -207,11 +210,12 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
   stack(44.5, 17, 6.2, 15, 1.1, false, 3.5);
   // the market's workshop and the pad office: small flues on their roofs
   stack(-49.5, 15.5, 4.8, 6, 0.55, false, 2);
-  // more of them beyond the wall, where nobody walks (no smoke: too far to matter, their glow carries)
+  // more of them beyond the wall, where nobody walks (no smoke: too far to matter, their glow carries). East and south
+  // only: there they fall in chunks the map already draws; to the west and north each would start a chunk of its own
   stack(106, -58, 0, 44, 2.4, false, 0);
-  stack(-106, 52, 0, 40, 2.2, false, 0);
   stack(107, 24, 0, 42, 2.3, false, 0);
-  stack(-30, -88, 0, 46, 2.4, false, 0);
+  stack(-44, 80, 0, 40, 2.2, false, 0);
+  stack(38, 80.4, 0, 46, 2.4, false, 0);
 
   // ---- pipe bridges over Smelter Row, and the run along the Crucible's front ----
   const wallZ = crucible.z + 9; // the Crucible's south wall
@@ -219,13 +223,13 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
     const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, Math.abs(x1 - x0), 8, 1, true), m);
     g.rotation.z = Math.PI / 2;
     g.position.set((x0 + x1) / 2, y, z);
-    b.add(g, { cast: false });
+    b.add(g, METAL_BAKE);
   };
   const pipeAlongZ = (z0: number, z1: number, y: number, x: number, r: number, m: THREE.Material): void => {
     const g = new THREE.Mesh(new THREE.CylinderGeometry(r, r, Math.abs(z1 - z0), 8, 1, true), m);
     g.rotation.x = Math.PI / 2;
     g.position.set(x, y, (z0 + z1) / 2);
-    b.add(g, { cast: false });
+    b.add(g, METAL_BAKE);
   };
   pipeAlongX(crucible.x - 14.6, crucible.x + 14.6, 6.6, wallZ + 0.42, 0.24, pipeHot);
   pipeAlongX(crucible.x - 14.6, crucible.x + 14.6, 6.05, wallZ + 0.36, 0.14, pipeCold);
@@ -239,7 +243,9 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
       addBox(b, steel, x + 0.7, y / 2, z, 0.22, y, 0.22);
       addBox(b, steel, x, y * 0.5, z, 1.5, 0.1, 0.1, 0, { cast: false });
       addBox(b, steel, x, y - 0.1, z, 1.62, 0.18, 0.3);
-      b.collideBox(x, z, 1.7, 0.4, y, { mapKind: 'prop', tag: 'pipe-bridge' });
+      // a collider for each leg: you walk, and shoot, between them
+      b.collideBox(x - 0.7, z, 0.3, 0.3, y, { mapKind: 'prop', tag: 'pipe-bridge' });
+      b.collideBox(x + 0.7, z, 0.3, 0.3, y, { mapKind: 'prop', tag: 'pipe-bridge' });
     }
     // the truss and what it carries
     addBox(b, steel, x - 0.7, y, (z0 + z1) / 2, 0.16, 0.16, z1 - z0);
@@ -251,7 +257,8 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
     // down from the bridge on the far side
     const down = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, y + 0.4, 8, 1, true), pipeHot);
     down.position.set(x - 0.36, (y + 0.4) / 2, z1 + 0.4);
-    b.add(down, { cast: false });
+    b.add(down, METAL_BAKE);
+    b.collideBox(x - 0.36, z1 + 0.4, 0.48, 0.48, y, { mapKind: 'prop', tag: 'pipe-bridge' });
     // a joint that leaks
     emitters.push({ kind: 'steam', x: x - 0.36, y: y + 0.7, z: (z0 + z1) / 2 + 0.6, rate: 5, radius: 0.12, height: 2.4 });
   };
@@ -260,10 +267,11 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
 
   // ---- the Crucible: a catwalk along its north wall, chains, the pools' breath ----
   const cwZ = crucible.z - 7.9;
-  addBox(b, grate, crucible.x, 4.4, cwZ, 28, 0.08, 1.5, 0, { cast: false });
+  addBox(b, grate, crucible.x, 4.4, cwZ, 28, 0.08, 1.5, 0, METAL_BAKE);
   for (let x = crucible.x - 13.5; x <= crucible.x + 13.5; x += 4.5) {
     addBox(b, steel, x, 4.95, cwZ + 0.72, 0.06, 1.05, 0.06, 0, { cast: false });
-    addBox(b, steel, x, 2.2, cwZ - 0.6, 0.14, 4.4, 0.14, 0, { cast: false });
+    // its posts stand against the north wall, but not in the doorway in the middle of it (3 m wide)
+    if (Math.abs(x - crucible.x) > 1.6) addBox(b, steel, x, 2.2, cwZ - 0.6, 0.14, 4.4, 0.14, 0, { cast: false });
     addBox(b, steel, x, 4.1, cwZ, 0.1, 0.1, 1.5, 0, { cast: false });
   }
   addBox(b, steel, crucible.x, 5.45, cwZ + 0.72, 28, 0.06, 0.06, 0, { cast: false });
@@ -280,7 +288,7 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
   emitters.push({ kind: 'steam', x: -8.5, y: 0.15, z: 30.5, rate: 6, radius: 0.2, height: 3 });
   emitters.push({ kind: 'steam', x: -20.5, y: 0.15, z: -6.4, rate: 6, radius: 0.2, height: 3 });
   for (const [x, z] of [[-8.5, 30.5], [-20.5, -6.4]] as const) {
-    addBox(b, grate, x, 0.04, z, 0.9, 0.05, 0.9, 0, { cast: false });
+    addBox(b, grate, x, 0.04, z, 0.9, 0.05, 0.9, 0, METAL_BAKE);
   }
 
   // ---- ingots: stacked to cool, the newest still glowing ----
@@ -291,11 +299,11 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
       const n = 4 - layer;
       for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * 0.46;
-        const m = layer === 2 && heat === 2 ? ingotHot : layer >= 1 && heat >= 1 ? ingotWarm : ingotCold;
-        addBox(b, m, x + cos * off, 0.2 + layer * 0.26, z - sin * off, 0.4, 0.24, 1.3, rot, { cast: false });
+        const m = layer === 2 && heat === 2 ? hot : layer >= 1 && heat >= 1 ? ingotWarm : ingotCold;
+        addBox(b, m, x + cos * off, 0.2 + layer * 0.26, z - sin * off, 0.4, 0.24, 1.3, rot, m === hot ? HOT_BAKE : METAL_BAKE);
       }
     }
-    addBox(b, 'wood', x, 0.05, z, 2, 0.1, 1.5, rot);
+    addBox(b, plank, x, 0.05, z, 2, 0.1, 1.5, rot, MATTE_BAKE);
     b.collideBox(x, z, 2, 1.5, 0.95, { mapKind: 'prop', tag: 'ingots', rot });
     if (heat === 2) emitters.push({ kind: 'embers', x, y: 0.9, z, rate: 1.5, radius: 0.5, height: 2 });
   };
@@ -307,24 +315,28 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
   ingots(26, 12, -0.2, 1);
 
   // ---- slag heaps ----
-  const heap = (x: number, z: number, r: number, hot: boolean): void => {
+  const heap = (x: number, z: number, r: number, glowing: boolean): void => {
+    // an icosahedron keeps a copy of each corner per face: push every copy of a corner the same way (by where it
+    // is, not by its index), or the faces come apart. Its own per-face normals then give the broken, faceted look.
     const g = new THREE.IcosahedronGeometry(1, 1);
     const p = g.attributes.position!;
     for (let i = 0; i < p.count; i++) {
-      const k = 0.78 + 0.44 * (Math.abs(Math.sin(i * 12.9898 + x * 7.1 + z * 3.3) * 43758.5453) % 1);
-      p.setXYZ(i, p.getX(i) * k, Math.max(0, p.getY(i)) * k * 0.62, p.getZ(i) * k);
+      const px = p.getX(i);
+      const py = p.getY(i);
+      const pz = p.getZ(i);
+      const k = 0.78 + 0.44 * (Math.abs(Math.sin(Math.round(px * 50) * 12.9898 + Math.round(py * 50) * 78.233 + Math.round(pz * 50) * 37.719 + x * 7.1 + z * 3.3) * 43758.5453) % 1);
+      p.setXYZ(i, px * k, Math.max(0, py) * k * 0.62, pz * k);
     }
     g.computeVertexNormals();
     const m = new THREE.Mesh(g, slag);
     m.position.set(x, 0, z);
     m.scale.setScalar(r);
-    m.castShadow = true;
-    b.add(m);
-    if (hot) {
-      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), slagHot);
+    b.add(m, MATTE_BAKE);
+    if (glowing) {
+      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0), hot);
       core.position.set(x + r * 0.3, r * 0.2, z + r * 0.2);
       core.scale.set(r * 0.45, r * 0.3, r * 0.45);
-      b.add(core, { cast: false, receive: false });
+      b.add(core, HOT_BAKE);
       emitters.push({ kind: 'smoke', x, y: r * 0.5, z, rate: 1.5, radius: r * 0.4, height: 5 });
     }
     b.collideBox(x, z, r * 1.5, r * 1.5, r * 0.6, { mapKind: 'prop', tag: 'slag' });
@@ -347,7 +359,7 @@ export function dressForge(c: Ctx, crucible: { x: number; z: number }): ForgeDre
   const spots: [number, number, number, number, number][] = [
     [-44, 1.5, 7, 4, 0.2], [-26, -2, 6, 3.4, 1.1], [-12, 2.4, 5, 3, 2.3], [14, -1.6, 7, 4, 0.6], [30, 2, 6, 3.6, 1.9], [48, -1, 7, 4.4, 2.8],
     [-1.5, -22, 4, 6, 0.4], [2, -40, 3.6, 5, 1.3], [-2, 18, 4, 6.4, 2.2], [1.6, 36, 3.6, 5.6, 0.9], [2, 58, 4, 5, 1.7],
-    [-30, 25, 6, 3, 0.3], [-48, 24.4, 5, 3, 2.6], [22, -15.6, 6, 2.8, 0.5], [44, -15.2, 6.4, 3, 2.1], [70, 1, 6, 4, 1.2], [-72, -1.4, 6, 4, 0.8],
+    [-30, 25, 6, 3, 0.3], [-48, 24.4, 5, 3, 2.6], [22, -15.6, 6, 2.8, 0.5], [44, -15.2, 6.4, 3, 2.1], [-72, -1.4, 6, 4, 0.8],
   ];
   for (const [x, z, w, d, rot] of spots) puddle(x, z, w, d, rot);
 
@@ -373,34 +385,35 @@ function buildLadle(c: Ctx, crucible: { x: number; z: number }, emitters: ForgeE
   const scorched = new THREE.MeshStandardMaterial({ color: 0x15100d, ...METAL });
   // chains and yoke (static)
   for (const s of [-1, 1]) {
-    addBox(b, iron, x + s * 1.25, (y + 7) / 2 + 0.2, z, 0.07, 7 - y, 0.07, 0, { cast: false });
-    addBox(b, iron, x + s * 1.25, y, z, 0.16, 0.5, 0.3, 0, { cast: false });
+    addBox(b, iron, x + s * 1.25, (y + 7) / 2 + 0.2, z, 0.07, 7 - y, 0.07, 0, METAL_BAKE);
+    addBox(b, iron, x + s * 1.25, y, z, 0.16, 0.5, 0.3, 0, METAL_BAKE);
   }
-  addBox(b, iron, x, 6.9, z, 2.9, 0.22, 0.3, 0, { cast: false });
-  // the bucket (dynamic: it tips). Three draw calls: the shell, its ironwork (one merged mesh), the melt.
+  addBox(b, iron, x, 6.9, z, 2.9, 0.22, 0.3, 0, METAL_BAKE);
+  // the bucket (dynamic: it tips). Two draw calls: the iron (shell, hoops, floor, spout and trunnions, one merged
+  // mesh) and the melt in it.
   const bucket = new THREE.Group();
   bucket.position.set(x, y, z);
-  const shell = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 0.85, 1.9, 16, 1, true), new THREE.MeshStandardMaterial({ color: 0x2a2624, ...METAL, side: THREE.DoubleSide }));
-  shell.position.y = -0.35;
-  shell.castShadow = true;
   const part = (g: THREE.BufferGeometry, px: number, py: number, pz: number, rx = 0, rz = 0): THREE.BufferGeometry => {
     g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, 0, rz)), new THREE.Vector3(1, 1, 1)));
     return g;
   };
-  const ironwork = new THREE.Mesh(
+  const shell = new THREE.Mesh(
     mergeGeometries([
+      part(new THREE.CylinderGeometry(1.1, 0.85, 1.9, 16, 1, true), 0, -0.35, 0),
       part(new THREE.CylinderGeometry(0.85, 0.85, 0.12, 16), 0, -1.3, 0),
       part(new THREE.TorusGeometry(1.1, 0.07, 6, 18), 0, 0.6, 0, Math.PI / 2),
       part(new THREE.TorusGeometry(1.02, 0.05, 6, 18), 0, -0.3, 0, Math.PI / 2),
       part(new THREE.BoxGeometry(0.5, 0.1, 0.5), 0, 0.58, 1.2, 0.25),
       part(new THREE.CylinderGeometry(0.09, 0.09, 2.6, 8), 0, 0, 0, 0, Math.PI / 2),
     ]),
-    scorched,
+    // seen from inside too (the open top, when it tips)
+    new THREE.MeshStandardMaterial({ color: 0x211c19, ...METAL, side: THREE.DoubleSide }),
   );
-  const surface = new THREE.Mesh(new THREE.CircleGeometry(1.04, 16), hotIron());
+  shell.castShadow = true;
+  const surface = new THREE.Mesh(new THREE.CircleGeometry(1.04, 16), b.mats.get('emAmber'));
   surface.rotation.x = -Math.PI / 2;
   surface.position.y = 0.38;
-  bucket.add(shell, ironwork, surface);
+  bucket.add(shell, surface);
   b.addDynamic(bucket);
 
   // what it pours, and what lies on the floor after (both hidden until the lever is thrown)
@@ -428,7 +441,7 @@ function buildLadle(c: Ctx, crucible: { x: number; z: number }, emitters: ForgeE
   // the lever, on the inside of the south wall between the two great doors
   const leverX = x;
   const wallIn = crucible.z + 9 - 0.42;
-  addBox(b, scorched, leverX, 1.15, wallIn, 0.5, 0.8, 0.14, 0, { cast: false });
+  addBox(b, scorched, leverX, 1.15, wallIn, 0.5, 0.8, 0.14, 0, METAL_BAKE);
   addBox(b, b.mats.get('emAmber'), leverX, 1.7, wallIn - 0.02, 0.5, 0.12, 0.1, 0, { cast: false });
   const lever = new THREE.Mesh(
     mergeGeometries([part(new THREE.BoxGeometry(0.06, 0.6, 0.06), 0, 0.3, 0), part(new THREE.SphereGeometry(0.09, 8, 6), 0, 0.62, 0)]),
