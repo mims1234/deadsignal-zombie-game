@@ -3,12 +3,16 @@
  * a move stick under the left thumb (push far forward to sprint, slide up onto RUN to lock the sprint on),
  * drag-to-look on the right, a fire button under each thumb, and action buttons around the right-hand one.
  *
+ * That is the "classic" layout. A map can ask for the "compact" one instead, which keeps three things on screen (the
+ * stick, one FIRE button and a small menu dot), fires on a double tap, and moves every other action into a mini menu
+ * of large tiles that opens over the running game.
+ *
  * This module only translates touches into calls on Input (the same object the keyboard and mouse write to),
  * so the game itself has no touch-specific logic.
  */
 import './touch.css';
 import type { Input, TapAction } from '../player/input';
-import { lookGain, stick, wantsSprintLock } from '../player/touch';
+import { DoubleTap, lookGain, stick, wantsSprintLock } from '../player/touch';
 import { el } from './dom';
 
 export interface TouchContext {
@@ -17,7 +21,13 @@ export interface TouchContext {
   /** A buy / upgrade station menu is open. */
   panelOpen: boolean;
   mapOpen: boolean;
+  /** Compact layout: the game's own word for what USE would do ('BUILD', 'BUY', 'TAKE', 'HELP UP'). Default 'USE'. */
+  useLabel?: string;
+  /** Compact layout: what the trigger does with the weapon in hand ('SWING' for a melee weapon). Default 'FIRE'. */
+  fireLabel?: string;
 }
+
+export type TouchLayout = 'classic' | 'compact';
 
 export interface TouchControlsDeps {
   root: HTMLElement;
@@ -25,6 +35,10 @@ export interface TouchControlsDeps {
   onPause(): void;
   /** The device was turned upright, where the game cannot be played. */
   onInterrupt(): void;
+  /** Which set of controls to show. Default 'classic'. */
+  layout?: TouchLayout;
+  /** Compact layout: one more tile, placed first in the mini menu (the game uses it for RECIPES). */
+  menuExtra?: { label: string; onTap(): void };
 }
 
 export interface TouchControlsApi {
@@ -32,6 +46,8 @@ export interface TouchControlsApi {
   setActive(active: boolean): void;
   /** Per-frame context; diffs internally and only touches the DOM on a change. */
   update(ctx: TouchContext): void;
+  /** Switch layouts (per map). Anything held on a control that goes away is let go. */
+  setLayout(layout: TouchLayout): void;
   dispose(): void;
 }
 
@@ -55,6 +71,20 @@ function buzz(ms: number): void {
   }
 }
 
+/**
+ * `?touchlayout=compact` (or `classic`) in the URL pins the layout whatever the map asks for. A development aid:
+ * it lets either layout be looked at on any map.
+ */
+function forcedLayout(): TouchLayout | null {
+  try {
+    if (typeof location === 'undefined') return null;
+    const v = new URLSearchParams(location.search).get('touchlayout');
+    return v === 'compact' || v === 'classic' ? v : null;
+  } catch {
+    return null; // no usable URL here
+  }
+}
+
 /** A drag that turns the view, with the finger-speed gain applied. */
 interface LookDrag {
   pointer: number;
@@ -75,6 +105,8 @@ class TouchControls implements TouchControlsApi {
   private readonly adsBtn: HTMLButtonElement;
   private readonly useBtn: HTMLButtonElement;
   private readonly mapBtn: HTMLButtonElement;
+  private readonly menuBtn: HTMLButtonElement;
+  private readonly menuEl: HTMLElement;
   private readonly rotate: HTMLElement;
   private readonly cleanup: (() => void)[] = [];
 
@@ -83,6 +115,13 @@ class TouchControls implements TouchControlsApi {
   private canUse = false;
   private panelOpen = false;
   private mapOpen = false;
+  private layout: TouchLayout = 'classic';
+  private readonly forced = forcedLayout();
+  private menuOpen = false;
+  private useLabel = '';
+  private fireLabel = '';
+  private useText = 'USE';
+  private fireText = 'FIRE';
 
   private movePointer = NO_POINTER;
   private moveCX = 0;
@@ -94,6 +133,9 @@ class TouchControls implements TouchControlsApi {
   private readonly fireDrag: LookDrag = { pointer: NO_POINTER, x: 0, y: 0, t: 0 };
   private fireLeftPointer = NO_POINTER;
   private usePointer = NO_POINTER;
+  /** Compact: the look finger is also holding the trigger (it landed as the second tap of a double tap). */
+  private lookFiring = false;
+  private readonly doubleTap = new DoubleTap();
 
   constructor(private readonly deps: TouchControlsDeps) {
     this.layer = el('div', 'ds-touch-layer', deps.root);
@@ -125,6 +167,36 @@ class TouchControls implements TouchControlsApi {
       const b = this.button(cls, label, aria);
       this.press(b, () => this.deps.input.tap(action));
     }
+
+    // ---- compact layout: a menu dot, and the mini menu it opens (the game keeps running underneath) ----
+    this.menuBtn = this.button('menu', '', 'More actions');
+    for (let i = 0; i < 3; i++) el('i', '', this.menuBtn);
+    this.menuBtn.setAttribute('aria-expanded', 'false');
+    this.menuEl = el('div', 'tmenu', this.layer);
+    this.menuEl.hidden = true;
+    const extra = deps.menuExtra;
+    if (extra) this.tile('extra', extra.label, () => extra.onTap());
+    const tiles: [label: string, action: TapAction][] = [
+      ['SWAP WEAPON', 'swap'],
+      ['THROW', 'grenade'],
+      ['RELOAD', 'reload'],
+      ['PLATE', 'plate'],
+      ['JUMP', 'jump'],
+      ['CROUCH', 'crouch'],
+      ['MAP', 'map'],
+    ];
+    for (const [label, action] of tiles) this.tile(action, label, () => this.deps.input.tap(action));
+    this.tile('pause', 'PAUSE', () => this.deps.onPause());
+    this.press(this.menuBtn, () => this.setMenu(!this.menuOpen));
+    // A touch anywhere but a tile or the dot closes the menu, and then goes on to do whatever it normally does.
+    const outside = (e: PointerEvent): void => {
+      if (!this.menuOpen) return;
+      const t = e.target;
+      if (t instanceof Element && (t.closest('.tm') || this.menuBtn.contains(t))) return;
+      this.setMenu(false);
+    };
+    this.layer.addEventListener('pointerdown', outside, { capture: true });
+    this.cleanup.push(() => this.layer.removeEventListener('pointerdown', outside, { capture: true }));
 
     this.rotate = el('div', 'ds-rotate', deps.root, 'TURN YOUR PHONE SIDEWAYS TO PLAY');
 
@@ -171,10 +243,24 @@ class TouchControls implements TouchControlsApi {
       if (this.look.pointer !== NO_POINTER) return;
       this.beginDrag(this.look, e);
       capture(this.lookZone, e);
+      // compact: the second tap of a double tap holds the trigger until this finger lifts, and still drags the aim
+      if (this.layout === 'compact' && this.doubleTap.down(e.timeStamp, e.clientX, e.clientY)) {
+        this.lookFiring = true;
+        buzz(8);
+        this.syncFire();
+      }
     });
     this.on(this.lookZone, 'pointermove', (e) => this.drag(this.look, e));
     this.release(this.lookZone, (e) => {
-      if (e.pointerId === this.look.pointer) this.look.pointer = NO_POINTER;
+      if (e.pointerId !== this.look.pointer) return;
+      this.look.pointer = NO_POINTER;
+      // only a finger that really lifted can be the first half of a double tap
+      if (e.type === 'pointerup') this.doubleTap.up(e.timeStamp, e.clientX, e.clientY);
+      else this.doubleTap.reset();
+      if (this.lookFiring) {
+        this.lookFiring = false;
+        this.syncFire();
+      }
     });
 
     // ---- fire: hold to shoot, and keep dragging on it to aim while shooting ----
@@ -235,6 +321,8 @@ class TouchControls implements TouchControlsApi {
     this.press(this.mapBtn, () => this.deps.input.tap('map'));
     this.press(pauseBtn, () => this.deps.onPause());
 
+    this.setLayout(deps.layout ?? 'classic');
+
     // Long-presses and pinches belong to the game, not the browser.
     this.on(this.layer, 'contextmenu', (e) => e.preventDefault());
     const stop = (e: Event): void => e.preventDefault();
@@ -273,6 +361,28 @@ class TouchControls implements TouchControlsApi {
     this.on(target, 'lostpointercapture', fn);
   }
 
+  /** A mini-menu tile: acts the moment it is touched, and the menu closes with it. */
+  private tile(cls: string, label: string, fn: () => void): void {
+    const b = el('button', `tm ${cls}`, this.menuEl, label);
+    b.type = 'button';
+    b.tabIndex = -1;
+    this.on(b, 'pointerdown', (e) => {
+      if (!this.active) return;
+      e.preventDefault();
+      buzz(8);
+      this.setMenu(false);
+      fn();
+    });
+  }
+
+  private setMenu(open: boolean): void {
+    if (open === this.menuOpen) return;
+    this.menuOpen = open;
+    this.menuEl.hidden = !open;
+    this.menuBtn.classList.toggle('on', open);
+    this.menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   /** A button that acts once, the moment it is touched. */
   private press(b: HTMLButtonElement, fn: () => void): void {
     this.on(b, 'pointerdown', (e) => {
@@ -305,9 +415,9 @@ class TouchControls implements TouchControlsApi {
     d.t = e.timeStamp;
   }
 
-  /** Either fire button held means the trigger is held. */
+  /** Either fire button held, or a double tap still down, means the trigger is held. */
   private syncFire(): void {
-    this.deps.input.setFire(this.fireDrag.pointer !== NO_POINTER || this.fireLeftPointer !== NO_POINTER);
+    this.deps.input.setFire(this.fireDrag.pointer !== NO_POINTER || this.fireLeftPointer !== NO_POINTER || this.lookFiring);
   }
 
   // ---- move stick ----
@@ -415,10 +525,49 @@ class TouchControls implements TouchControlsApi {
     this.look.pointer = NO_POINTER;
     this.fireDrag.pointer = NO_POINTER;
     this.fireLeftPointer = NO_POINTER;
+    this.lookFiring = false;
+    this.doubleTap.reset();
     this.syncFire();
     this.releaseUse();
     this.setAds(false);
+    this.setMenu(false);
     for (const b of this.layer.querySelectorAll('.tb.down')) b.classList.remove('down');
+  }
+
+  setLayout(layout: TouchLayout): void {
+    const next = this.forced ?? layout;
+    if (next === this.layout) return;
+    this.layout = next;
+    this.layer.classList.toggle('compact', next === 'compact');
+    // the HUD outside this layer moves for the compact layout too (the prompt leaves the middle of the screen)
+    document.documentElement.classList.toggle('ds-touch-compact', next === 'compact');
+    // Controls that exist in only one layout must not be left held when they disappear.
+    const wasHeld = this.fireLeftPointer !== NO_POINTER || this.lookFiring;
+    this.fireLeftPointer = NO_POINTER;
+    this.fireLeftBtn.classList.remove('down');
+    this.lookFiring = false;
+    this.doubleTap.reset();
+    if (wasHeld) this.syncFire();
+    if (this.adsOn) this.setAds(false);
+    this.setMenu(false);
+    this.syncLabels();
+  }
+
+  /** The words on USE and FIRE. Classic always says USE / FIRE; compact uses the game's word when it gives one. */
+  private syncLabels(): void {
+    const compact = this.layout === 'compact';
+    const use = this.panelOpen ? 'CLOSE' : (compact && this.useLabel) || 'USE';
+    const fire = (compact && this.fireLabel) || 'FIRE';
+    if (use !== this.useText) {
+      this.useText = use;
+      this.useBtn.textContent = use;
+      this.useBtn.classList.toggle('long', use.length > 7);
+    }
+    if (fire !== this.fireText) {
+      this.fireText = fire;
+      this.fireBtn.textContent = fire;
+      this.fireBtn.classList.toggle('long', fire.length > 6);
+    }
   }
 
   update(ctx: TouchContext): void {
@@ -428,13 +577,23 @@ class TouchControls implements TouchControlsApi {
       const show = ctx.canUse || ctx.panelOpen;
       if (!show && this.usePointer !== NO_POINTER) this.releaseUse();
       this.useBtn.hidden = !show;
-      this.useBtn.textContent = ctx.panelOpen ? 'CLOSE' : 'USE';
       this.layer.classList.toggle('panel-open', ctx.panelOpen);
+      // a station menu opens over the place the mini menu uses
+      if (ctx.panelOpen) this.setMenu(false);
+      this.syncLabels();
     }
     if (ctx.mapOpen !== this.mapOpen) {
       this.mapOpen = ctx.mapOpen;
       this.layer.classList.toggle('map-open', ctx.mapOpen);
       this.mapBtn.textContent = ctx.mapOpen ? 'CLOSE' : 'MAP';
+      if (ctx.mapOpen) this.setMenu(false);
+    }
+    const useLabel = ctx.useLabel ?? '';
+    const fireLabel = ctx.fireLabel ?? '';
+    if (useLabel !== this.useLabel || fireLabel !== this.fireLabel) {
+      this.useLabel = useLabel;
+      this.fireLabel = fireLabel;
+      this.syncLabels();
     }
   }
 
@@ -444,6 +603,7 @@ class TouchControls implements TouchControlsApi {
     this.cleanup.length = 0;
     this.layer.remove();
     this.rotate.remove();
+    document.documentElement.classList.remove('ds-touch-compact');
   }
 }
 

@@ -83,6 +83,38 @@ function getShared(): NonNullable<typeof shared> {
       [tube(0.16, 0.22), 'olive', -0.1, 0, 0],
       [tube(0.04, 0.6), 'dark', 0.3, 0, 0],
     ],
+    // never in a box either (ZARYA's guns: built, bought or dropped there), but drawn the same way if ever asked
+    signalka: [
+      [tube(0.03, 0.2), 'steel', 0.06, 0.03, 0],
+      [box(0.045, 0.12, 0.03), 'wood', -0.05, -0.05, 0, -0.25],
+    ],
+    arbalet: [
+      [box(0.7, 0.045, 0.04), 'wood', 0, 0, 0],
+      [box(0.03, 0.03, 0.5), 'steel', 0.33, 0, 0],
+      [box(0.04, 0.11, 0.03), 'wood', -0.12, -0.07, 0, -0.2],
+    ],
+    gvozdomyot: [
+      [box(0.3, 0.1, 0.06), 'olive', -0.02, 0, 0],
+      [tube(0.014, 0.2), 'steel', 0.23, 0, 0],
+      [box(0.26, 0.03, 0.02), 'steel', 0.12, -0.09, 0, 0.4],
+      [box(0.04, 0.11, 0.03), 'dark', -0.1, -0.1, 0, -0.2],
+    ],
+    salyut: [
+      [tube(0.022, 0.42), 'olive', 0.08, 0.02, -0.05],
+      [tube(0.022, 0.42), 'olive', 0.08, 0.02, 0],
+      [tube(0.022, 0.42), 'olive', 0.08, 0.02, 0.05],
+      [box(0.4, 0.012, 0.2), 'wood', 0.06, -0.01, 0],
+    ],
+    ottepel: [
+      [tube(0.016, 0.6), 'steel', 0.2, 0, 0],
+      [tube(0.05, 0.16), 'olive', -0.16, 0, 0],
+      [tube(0.036, 0.08, 0.016), 'steel', 0.54, 0, 0],
+    ],
+    zenit: [
+      [box(0.14, 0.08, 0.05), 'dark', 0, 0, 0],
+      [tube(0.03, 0.06), 'steel', 0, 0, 0.05],
+      [box(0.05, 0.03, 0.04), 'steel', 0, 0.055, 0],
+    ],
   };
   shared = { mats, guns, mark: questionMark() };
   return shared;

@@ -65,4 +65,11 @@ export const WALL_PRICES: Record<WeaponId, number> = {
   // never on the Asylum's walls (the Sakura District's relics)
   hanafubuki: 0,
   raijin: 0,
+  // nor ZARYA's guns
+  signalka: 0,
+  arbalet: 0,
+  gvozdomyot: 0,
+  salyut: 0,
+  ottepel: 0,
+  zenit: 0,
 };

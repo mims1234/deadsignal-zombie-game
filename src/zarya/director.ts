@@ -1,0 +1,666 @@
+/**
+ * The town's infected, beat by beat (no THREE, no DOM): the solo game and the co-op simulation both run one (whoever
+ * runs the infected). The shatuny are townspeople woken wrong. Nobody appears out of the air at a trigger: the ones
+ * with names stand where the story put them, asleep on their feet until the squad comes, and everything else is the
+ * spawn rate rising for a while after a noise (`draw`), with the ones who come walking in from out of sight.
+ *
+ *   ACT I    Gena by the escalator, the guard under his shutter, the bear behind the ice town.
+ *   ACT II   BORYA in the market hall: nothing puts him down, he is led into his own cold store and shut in.
+ *            BABA YAGA in her hut on the Palace's stage: she can be hurt only while the hut faces the hall.
+ *            THE TAMADA on the canteen's stage: he can be hurt only once his three loudspeakers are unplugged.
+ *   ACT III  MOROZKO in the Berloga hall: he fights unless he believed the squad's answer.
+ *
+ * "Asleep on its feet" is a hold (`Hold`, a `ZombieScript`), not `Zombie.dormant`: that flag is the manager's own
+ * far-away sleep (it wakes anyone within 78 m, hides them from shots and from the co-op report). A held one stands
+ * where it is, sees and hears nothing and strikes nobody, and can still be seen, named and shot at.
+ *
+ * Nothing spawns before the town is asleep, in a zone the squad cannot reach yet, or after an ending. The two rooms
+ * built beside the map (the canteen, the Berloga hall) are too small for the ordinary spawner, which keeps 24 m from
+ * every player: there a draw walks its people in through the room's own doors (`room`).
+ */
+import type { ZombieVariant } from '../enemies/variants';
+import type { Zombie, ZombieScript } from '../enemies/zombie';
+import type { ZombieManager } from '../enemies/zombieManager';
+import type { Rng } from '../logic/rng';
+import type { ZombieType } from '../types';
+import type { Level } from '../world/level';
+import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type Spot, type ZaryaZone } from './places';
+import { CH, F, G, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
+import { yawTo } from './types';
+
+/** What the director saw this frame, for the story to note. */
+export type DirectorNote = Parameters<ZaryaStory['note']>[0];
+
+/** The ones with names. */
+export type Named = 'mishka' | 'borya' | 'yaga' | 'tamada' | 'morozko';
+
+/** How much of a blow from the front the bear suit's padding takes. */
+export const BEAR_PADDING = 0.88;
+
+/** The named ones of Acts II and III: health is a multiple of the Warden's. */
+export const BOSS = {
+  /** Borya sees a standing player this near. Nothing puts him down: his health is never used. */
+  borya: { see: 22, hp: 6 },
+  /** Baba Yaga notices this near her hut; her health lasts about three turns of the hut against built weapons. */
+  yaga: { see: 26, hp: 3.2, mul: 2, cap: 2 },
+  /**
+   * The Tamada toasts every `every` seconds while a loudspeaker is plugged in. A toast lasts `len` seconds: by how
+   * many loudspeakers still play (index), one more guest every so many seconds, up to so many on their feet at once.
+   */
+  tamada: { hp: 1.4, every: 20, len: 12, gap: [0, 4.5, 3.2, 2.4], cap: [0, 2, 4, 6] },
+  /**
+   * Morozko fights a standing player who comes this near once he has asked (nearer than the reach of the answer
+   * itself, `story.ts`: an answer is given from up to 6 m). While he fights, one more every `gap` seconds, `cap` at once.
+   */
+  morozko: { near: 3, hp: 1, gap: 4, cap: 5 },
+} as const;
+
+const WEST = yawTo(0, 0, -1, 0);
+const EAST = yawTo(0, 0, 1, 0);
+
+const wrap = (a: number): number => {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+};
+
+/** Asleep on its feet: it stands where it is, turned to `yaw` (null: as it was), until the director lets it go. */
+class Hold implements ZombieScript {
+  constructor(public yaw: number | null) {}
+
+  step(z: Zombie, dt: number): boolean {
+    z.vx = z.vz = 0;
+    if (this.yaw !== null) {
+      const d = wrap(this.yaw - z.yaw);
+      const turn = 2.4 * dt;
+      z.yaw = Math.abs(d) <= turn ? this.yaw : z.yaw + Math.sign(d) * turn;
+    }
+    const p = z.scriptPose;
+    p.mode = 'idle';
+    p.actionT = 0;
+    p.speed = 0;
+    p.lift = 0;
+    return true;
+  }
+}
+
+/** A room's own draw: seconds it has left, one more every `gap` seconds, never more than `cap` on their feet. */
+interface Room {
+  rect: Rect;
+  spots: readonly (readonly [number, number])[];
+  t: number;
+  gap: number;
+  cap: number;
+  next: number;
+}
+
+const BIT: Record<Exclude<Named, 'mishka'>, number> = { borya: 1, yaga: 2, tamada: 4, morozko: 8 };
+
+export class ZaryaDirector {
+  private lure = { t: 0, len: 1, mul: 1, cap: 0 };
+  private view: StoryView = ZaryaStory.empty();
+  private gena: Zombie | null = null;
+  private guard: Zombie | null = null;
+  private readonly named: Record<Named, Zombie | null> = { mishka: null, borya: null, yaga: null, tamada: null, morozko: null };
+  /** Bits (`BIT`): who has been stood in their place this run; who has noticed the squad. */
+  private placed = 0;
+  private woke = 0;
+  /** Seconds the bear has left at the hook (counted once he is there). */
+  private prizeT = 0;
+  /** What a pair of eyes is worth at this difficulty (kept while someone is made blind for a moment). */
+  private sight = 1;
+  /** Borya: inside his cold store as last reported; stood at the hatch his quarry left by; shut in. */
+  private boryaIn = false;
+  private baffled = false;
+  private shut = false;
+  /** Baba Yaga: seconds the hut still faces the hall, and the story's flag as last seen (a pull is its rise). */
+  private exposeT = 0;
+  private wasExposed = false;
+  /** The Tamada: seconds to his next toast; he has come down off the stage. */
+  private toastT = 0;
+  private tamadaDown = false;
+  /** Morozko: his health with every clue found (one weak point each), and whether he is fighting. */
+  private morozkoBase = 0;
+  private fight = false;
+  private readonly canteen: Room = { rect: CANTEEN.rect, spots: CANTEEN.spawns, t: 0, gap: 1, cap: 0, next: 1.5 };
+  private readonly berloga: Room = { rect: BERLOGA.rect, spots: BERLOGA.spawns, t: 0, gap: BOSS.morozko.gap, cap: BOSS.morozko.cap, next: 1.5 };
+  /** An ending has come: everyone stands where they stood, and nothing spawns again. */
+  private over = false;
+  private counted = new WeakSet<Zombie>();
+  private kills: { x: number; z: number }[] = [];
+  private readonly notes: DirectorNote[] = [];
+
+  constructor(
+    private readonly level: Level,
+    private readonly zombies: ZombieManager,
+  ) {}
+
+  /**
+   * Where the ordinary spawner may put someone: only in a zone the squad can reach (`ZaryaStory.zoneOpen`), never
+   * before the town is asleep, never after an ending. The two rooms beside the map are the director's own (`room`).
+   */
+  spawnAllowed(): (x: number, z: number) => boolean {
+    return (x, z) => {
+      const v = this.view;
+      if (this.over || v.end !== 0 || v.ch >= CH.ended || !ZaryaStory.asleep(v)) return false;
+      const zone = ZaryaStory.zoneOf(x, z);
+      return zone !== null && zone !== 'canteen' && zone !== 'berloga' && ZaryaStory.zoneOpen(v, zone);
+    };
+  }
+
+  reset(): void {
+    this.lure = { t: 0, len: 1, mul: 1, cap: 0 };
+    this.view = ZaryaStory.empty();
+    this.gena = this.guard = null;
+    this.named.mishka = this.named.borya = this.named.yaga = this.named.tamada = this.named.morozko = null;
+    this.placed = this.woke = 0;
+    this.prizeT = 0;
+    this.boryaIn = this.baffled = this.shut = false;
+    this.exposeT = 0;
+    this.wasExposed = false;
+    this.toastT = 0;
+    this.tamadaDown = false;
+    this.morozkoBase = 0;
+    this.fight = false;
+    // the first to answer a toast, or Morozko, takes a moment to get to the door
+    this.canteen.t = this.berloga.t = 0;
+    this.canteen.next = this.berloga.next = 1.5;
+    this.over = false;
+    this.counted = new WeakSet();
+    this.kills = [];
+    this.notes.length = 0;
+    this.zombies.rateMul = 1;
+    this.zombies.capBonus = 0;
+    // the town is awake when a run starts: nobody is on their feet who should not be
+    this.zombies.vanish(() => true);
+  }
+
+  /** One of the named ones, while it is up (the screen draws its costume and says where it is). */
+  where(who: Named): Zombie | null {
+    const z = this.named[who];
+    return z && z.alive ? z : null;
+  }
+
+  /**
+   * A squadmate leaves this one be (the squad AI's `holdFire`): nothing would come of the shot, or it is asleep on
+   * its feet and not theirs to wake (Morozko's fight is the player's to start). Baba Yaga in her turned hut is the
+   * one sleeper they do shoot.
+   */
+  spared(z: Zombie): boolean {
+    if (z.invulnerable) return true;
+    return z.script instanceof Hold && z !== this.named.yaga;
+  }
+
+  /** Where each infected died since the last call (the matryoshkas count them: `ZaryaStory.kill`). Not the named bosses. */
+  drainKills(): readonly { x: number; z: number }[] {
+    const k = this.kills;
+    this.kills = [];
+    return k;
+  }
+
+  /** A noise draws them in: for `seconds`, `mul` times the spawn rate and `cap` more at once (the stronger lure wins). */
+  private draw(seconds: number, mul: number, cap: number): void {
+    const l = this.lure;
+    if (l.t > 0 && (l.mul - 1) * l.t > (mul - 1) * seconds) return;
+    this.lure = { t: seconds, len: seconds, mul, cap };
+  }
+
+  /** One of the infected at (x, z). `variant`: its kind (`enemies/variants.ts`); left out, whatever its zone makes of it. */
+  private put(type: ZombieType, x: number, z: number, rng: Rng, tag: string | null, hunting: boolean, variant?: ZombieVariant): Zombie {
+    const y = this.level.world.floorHeight(x, z, 0.3);
+    const q = this.zombies.spawn(type, x, z, rng, { state: hunting ? 'chase' : 'idle', y, area: this.level.floors.areaAt(x, y, z), variant });
+    q.isAmbient = false;
+    if (tag) this.zombies.tagZombie(q, tag, false, 'NO BREATH');
+    return q;
+  }
+
+  /** One of the story's own in a boss's body, stood at `at` facing `yaw`: asleep on its feet, and nothing hurts it. */
+  private stand(who: Exclude<Named, 'mishka'>, tag: string, at: Spot, yaw: number, hp: number, rng: Rng): Zombie {
+    const y = this.level.world.floorHeight(at.x, at.z, 0.3);
+    // not `spawnWarden`: that one is the bear's, and the manager walks its boss back to a lair
+    const q = this.zombies.spawn('warden', at.x, at.z, rng, { boss: true, hpScale: hp, yaw, y, area: this.level.floors.areaAt(at.x, y, at.z), variant: '' });
+    q.isAmbient = false;
+    q.invulnerable = true;
+    this.zombies.tagZombie(q, tag, false, 'NO BREATH');
+    this.hold(q, yaw);
+    this.named[who] = q;
+    this.placed |= BIT[who];
+    return q;
+  }
+
+  /** Put `z` to sleep on its feet (turned to `yaw`, or as it stands). */
+  private hold(z: Zombie, yaw: number | null): void {
+    if (z.script instanceof Hold) z.script.yaw = yaw;
+    else z.script = new Hold(yaw);
+    z.vx = z.vz = 0;
+    z.setState('idle');
+  }
+
+  /** Wake a held one: it hunts whoever stands nearest. */
+  private wake(z: Zombie, up: readonly Stand[]): void {
+    if (z.script instanceof Hold) z.script = null;
+    const p = nearest(up, z.x, z.z);
+    if (p) z.aggro(p.x, p.z);
+    else z.setState('chase');
+  }
+
+  /** An ending: every infected everywhere stops where it stands, for good. */
+  private stop(): void {
+    if (this.over) return;
+    this.over = true;
+    this.lure.t = 0;
+    this.canteen.t = this.berloga.t = 0;
+    this.zombies.rateMul = 1;
+    this.zombies.capBonus = 0;
+    for (const z of this.zombies.zombies) if (z.alive) this.hold(z, null);
+  }
+
+  /** What each of the story's moments brings. */
+  onEvent(e: StoryEvent, v: StoryView, stand: readonly Stand[], rng: Rng): void {
+    this.view = v;
+    const P = ZARYA;
+    if (e.kind === 'end') {
+      this.stop();
+      return;
+    }
+    if (this.over) return;
+    if (e.kind === 'chapter') {
+      if (e.ch === CH.ground) {
+        // Gena, at the foot of the escalator with his back to the stairs: he does not look round until someone is in the hall
+        const g = this.put('shambler', P.gena.x, P.gena.z, rng, 'GENA', false, '');
+        this.sight = g.sightScale;
+        g.sightScale = 0;
+        g.yaw = Math.atan2(-(P.girl.x - P.gena.x), -(P.girl.z - P.gena.z));
+        this.gena = g;
+      }
+      return;
+    }
+    if (e.kind !== 'flag') return;
+    const up = stand.filter((p) => p.up);
+    switch (e.f) {
+      case F.hall: {
+        const g = this.gena;
+        if (g?.alive) {
+          g.sightScale = this.sight;
+          const p = nearest(up, g.x, g.z);
+          if (p) g.aggro(p.x, p.z);
+        }
+        break;
+      }
+      case F.guard: {
+        // the shutter's motor has been banging at him all night: he wakes wrong, and thirty years of habit put the
+        // whistle to his lips (the guard's own kind, `svistok`). They come down from the floors above
+        const g = this.put('armored', 71.8, P.shutter.z, rng, 'THE GUARD', true, 'svistok');
+        this.guard = g;
+        const p = nearest(up, g.x, g.z);
+        if (p) g.aggro(p.x, p.z);
+        for (const [x, z, type] of [[108, -19, 'shambler'], [116, 2, 'shambler'], [128, 10, 'shambler'], [134, -2, 'runner'], [122, -12, 'shambler']] as const) {
+          const q = this.put(type, x, z, rng, null, true);
+          if (p) q.aggro(p.x, p.z);
+        }
+        this.draw(30, 2.4, 4);
+        break;
+      }
+      case F.flare:
+        // a red star over the square: every head without breath turns to look
+        this.draw(45, 2.8, 6);
+        for (const z of this.zombies.zombies) {
+          if (!z.alive || z.isBoss) continue;
+          const p = nearest(up, z.x, z.z);
+          if (p) z.hear(p.x, p.z, 0.5 + rng.f() * 2);
+        }
+        break;
+      case F.bear: {
+        // Oleg Petrovich in the fair's bear suit comes out from behind the ice town to see who is at the sack
+        const b = this.zombies.spawnWarden(rng);
+        this.zombies.tagZombie(b, 'MISHKA', false, 'NO BREATH');
+        this.sight = b.sightScale;
+        b.frontArmor = BEAR_PADDING;
+        b.isAmbient = false;
+        const p = nearest(up, b.x, b.z);
+        if (p) b.aggro(p.x, p.z);
+        else b.setState('chase');
+        this.named.mishka = b;
+        break;
+      }
+      case F.prize: {
+        // a prize on the slide's hook: handing them out is his job, and he goes to see to it with his back to the square
+        const b = this.where('mishka');
+        if (b) {
+          b.sightScale = 0;
+          b.standDown(P.hook.x + 1.2, P.hook.z + 1.4);
+          this.prizeT = STORY.prize;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /** Every frame on whoever runs the infected. Returns what the story should note. */
+  step(dt: number, v: StoryView, stand: readonly Stand[], rng: Rng): readonly DirectorNote[] {
+    this.view = v;
+    this.notes.length = 0;
+    const zm = this.zombies;
+    const up = stand.filter((p) => p.up);
+    const has = (flag: number): boolean => (v.f & flag) !== 0;
+    const here = (zone: ZaryaZone): boolean => up.some((p) => ZaryaStory.zoneOf(p.x, p.z) === zone);
+
+    // where each one fell (the corpses lie a while: every one is seen here once)
+    for (const z of zm.zombies) {
+      if (z.alive || this.counted.has(z)) continue;
+      this.counted.add(z);
+      if (!z.isBoss) this.kills.push({ x: z.x, z: z.z });
+    }
+    if (v.end !== 0) this.stop();
+    if (this.over) return this.notes;
+
+    this.cast(v, rng);
+
+    // the lure: full strength, then fading out over its last third. Some noises never stop while their cause lasts:
+    // the shutter's banging until its plug is pulled, the carol round Baba Yaga's hut while its back is to the hall
+    const l = this.lure;
+    let mul = 1;
+    let cap = 0;
+    if (l.t > 0) {
+      l.t = Math.max(0, l.t - dt);
+      const k = Math.min(1, l.t / (l.len * 0.35));
+      mul = 1 + (l.mul - 1) * k;
+      cap = Math.round(l.cap * k);
+    }
+    if (has(F.guard) && !has(F.plug)) mul = Math.max(mul, 1.5);
+    if ((this.woke & BIT.yaga) !== 0 && this.where('yaga') && this.exposeT <= 0 && here('dk')) {
+      mul = Math.max(mul, BOSS.yaga.mul);
+      cap = Math.max(cap, BOSS.yaga.cap);
+    }
+    zm.rateMul = mul;
+    zm.capBonus = cap;
+
+    if (this.gena && !this.gena.alive) {
+      this.gena = null;
+      this.notes.push('gena');
+    }
+    if (this.guard && !this.guard.alive) {
+      this.guard = null;
+      this.notes.push('guardDown');
+    }
+    if (this.named.mishka && !this.named.mishka.alive) {
+      this.named.mishka = null;
+      this.notes.push('bearDown');
+    }
+    // the bear at the hook: once he is there he stands at it, back to the square, until he has done
+    const b = this.where('mishka');
+    if (b && has(F.prize)) {
+      const hx = ZARYA.hook.x + 1.2;
+      const hz = ZARYA.hook.z + 1.4;
+      const d = Math.hypot(b.x - hx, b.z - hz);
+      if (d < 2.6) {
+        this.prizeT -= dt;
+        b.yaw = Math.atan2(-(ZARYA.hook.x - b.x), -(ZARYA.hook.z + 2.2 - b.z));
+      } else if (b.state !== 'idle') {
+        // knocked out of it (a blow turned him): he goes back to it
+        b.standDown(hx, hz);
+      }
+      if (this.prizeT <= 0) {
+        b.sightScale = this.sight;
+        const p = nearest(up, b.x, b.z);
+        if (p) b.aggro(p.x, p.z);
+        this.notes.push('prizeDone');
+      }
+    }
+
+    this.stepBorya(v, up);
+    this.stepYaga(dt, v, up);
+    this.stepTamada(dt, v, up);
+    this.stepMorozko(v, up);
+    this.room(this.canteen, dt, up, rng);
+    this.room(this.berloga, dt, up, rng);
+    return this.notes;
+  }
+
+  /** Stand each of the named ones in their place when the story reaches them (once a run). */
+  private cast(v: StoryView, rng: Rng): void {
+    const did = (flag: number): boolean => (v.g & flag) !== 0;
+    const due = (who: Exclude<Named, 'mishka'>): boolean => (this.placed & BIT[who]) === 0;
+    if (due('borya') && v.ch >= CH.act2) {
+      // Borya at his meat rows, looking down the hall (in his cold store already, if the door was barred before this director came)
+      const at = did(G.barred) ? RYNOK.coldInside : RYNOK.borya;
+      const hall = RYNOK.hall;
+      const q = this.stand('borya', 'BORYA', at, yawTo(at.x, at.z, (hall.x0 + hall.x1) / 2, at.z), BOSS.borya.hp, rng);
+      // the market is his: he follows nobody out of it
+      q.territory = { ...RYNOK.rect };
+    }
+    if (due('yaga') && did(G.tickets) && !did(G.yagaDown)) {
+      // in her hut on the revolve: its door faces the back of the stage (she is held there for good: `stepYaga`)
+      this.stand('yaga', 'BABA YAGA', DK.hut, WEST, BOSS.yaga.hp, rng);
+    }
+    if (due('tamada') && did(G.escalator) && !did(G.tamadaDown)) {
+      // on the little stage behind his microphone, glass raised to the room
+      const q = this.stand('tamada', 'THE TAMADA', CANTEEN.tamada, WEST, BOSS.tamada.hp, rng);
+      q.territory = { ...CANTEEN.rect };
+    }
+    if (due('morozko') && v.ch >= CH.finale && !did(G.morozkoDown)) {
+      // Dr Zimin in the frost king's coat, waiting, turned to the door
+      const q = this.stand('morozko', 'MOROZKO', BERLOGA.morozko, WEST, BOSS.morozko.hp, rng);
+      this.morozkoBase = q.maxHp;
+      q.territory = { x0: BERLOGA.doorX, z0: BERLOGA.rect.z0, x1: BERLOGA.rect.x1, z1: BERLOGA.rect.z1 };
+    }
+  }
+
+  /**
+   * BORYA. Blind and still until a standing player comes near; then he hunts through his market, and nothing puts
+   * him down. Led deep into his cold store he is reported in; while nobody stands in there with him he stays at the
+   * hatch his quarry left by (too small for him), so the door can be barred on him. Barred, he is shut in for good.
+   */
+  private stepBorya(v: StoryView, up: readonly Stand[]): void {
+    const b = this.where('borya');
+    if (!b) return;
+    if ((v.g & G.barred) !== 0) {
+      if (!this.shut) {
+        this.shut = true;
+        this.baffled = false;
+        this.hold(b, yawTo(b.x, b.z, RYNOK.coldDoor.x, RYNOK.coldDoor.z));
+      }
+      return;
+    }
+    if ((this.woke & BIT.borya) === 0) {
+      if (!up.some((p) => Math.hypot(p.x - b.x, p.z - b.z) <= BOSS.borya.see)) return;
+      this.woke |= BIT.borya;
+      this.notes.push('boryaUp');
+      this.wake(b, up);
+    }
+    // in: inside the cold store's walls and at least as far from its door as `coldInside` is
+    const door = RYNOK.coldDoor;
+    const deep = Math.hypot(RYNOK.coldInside.x - door.x, RYNOK.coldInside.z - door.z);
+    const inside = inRect(RYNOK.coldStore, b.x, b.z) && Math.hypot(b.x - door.x, b.z - door.z) >= deep;
+    if (inside !== this.boryaIn) {
+      this.boryaIn = inside;
+      this.notes.push(inside ? 'boryaIn' : 'boryaOut');
+    }
+    const company = up.some((p) => inRect(RYNOK.coldStore, p.x, p.z));
+    if (inside && !company) {
+      if (!this.baffled) {
+        this.baffled = true;
+        this.hold(b, yawTo(b.x, b.z, RYNOK.hatch.x, RYNOK.hatch.z));
+      }
+    } else if (this.baffled) {
+      this.baffled = false;
+      this.wake(b, up);
+    } else if (b.state === 'idle') {
+      // lost them: he goes after whoever is still in his market
+      const p = nearest(up.filter((q) => inRect(RYNOK.rect, q.x, q.z)), b.x, b.z);
+      if (p) b.aggro(p.x, p.z);
+    }
+  }
+
+  /**
+   * BABA YAGA. She never leaves her hut, and nothing hurts her while its back is to the hall (the carol-singers keep
+   * coming for as long: the standing lure in `step`). A pull of the stage's lever turns the hut: for `STORY.exposed`
+   * seconds she faces the hall and can be hurt. Then the hut goes back.
+   */
+  private stepYaga(dt: number, v: StoryView, up: readonly Stand[]): void {
+    const y = this.named.yaga;
+    if (!y) return;
+    if (!y.alive) {
+      this.named.yaga = null;
+      this.exposeT = 0;
+      this.notes.push('yagaDown');
+      return;
+    }
+    if ((this.woke & BIT.yaga) === 0 && up.some((p) => Math.hypot(p.x - DK.hut.x, p.z - DK.hut.z) <= BOSS.yaga.see)) {
+      this.woke |= BIT.yaga;
+      this.notes.push('yagaUp');
+    }
+    const exposed = (v.g & G.exposed) !== 0;
+    if (exposed && !this.wasExposed) {
+      this.exposeT = STORY.exposed;
+      y.invulnerable = false;
+      this.hold(y, EAST);
+    } else if (this.exposeT > 0) {
+      this.exposeT -= dt;
+      if (this.exposeT <= 0) {
+        this.exposeT = 0;
+        y.invulnerable = true;
+        this.hold(y, WEST);
+        this.notes.push('hutBack');
+      }
+    }
+    this.wasExposed = exposed;
+  }
+
+  /**
+   * THE TAMADA. Asleep on the canteen's stage until someone comes into the room. Then he toasts, and each toast brings
+   * the party to its feet: weaker with every loudspeaker unplugged (bits 0-2 of `v.m`). With all three out he comes
+   * down off the stage, and only then can he be hurt.
+   */
+  private stepTamada(dt: number, v: StoryView, up: readonly Stand[]): void {
+    const t = this.named.tamada;
+    if (!t) return;
+    if (!t.alive) {
+      this.named.tamada = null;
+      this.canteen.t = 0;
+      this.notes.push('tamadaDown');
+      return;
+    }
+    const company = up.some((p) => inRect(CANTEEN.rect, p.x, p.z));
+    if ((this.woke & BIT.tamada) === 0) {
+      if (!company) return;
+      this.woke |= BIT.tamada;
+      this.toastT = 0;
+      this.notes.push('tamadaUp');
+    }
+    const playing = 3 - ZaryaStory.count(v.m & 7);
+    if (playing > 0) {
+      // a toast is for someone: he does not raise his glass to an empty room
+      if (!company) return;
+      this.toastT -= dt;
+      if (this.toastT <= 0) {
+        this.toastT = BOSS.tamada.every;
+        this.canteen.t = BOSS.tamada.len;
+        this.canteen.gap = BOSS.tamada.gap[playing]!;
+        this.canteen.cap = BOSS.tamada.cap[playing]!;
+      }
+    } else if (!this.tamadaDown) {
+      this.tamadaDown = true;
+      this.canteen.t = 0;
+      t.invulnerable = false;
+      this.wake(t, up);
+    }
+  }
+
+  /**
+   * MOROZKO. He stands and waits; once he has asked, a blow lands. Believed, he never fights. Otherwise the fight
+   * starts the moment the answer is not believed, or he is hurt, or a standing player walks right up to him: he hunts,
+   * and the hall's sleepers keep waking for as long as he stands. Every clue the squad found is one weak point more.
+   */
+  private stepMorozko(v: StoryView, up: readonly Stand[]): void {
+    const m = this.named.morozko;
+    if (!m) return;
+    const did = (flag: number): boolean => (v.g & flag) !== 0;
+    if (!m.alive) {
+      this.named.morozko = null;
+      this.fight = false;
+      this.berloga.t = 0;
+      this.notes.push('morozkoDown');
+      // the hall goes quiet: whoever else was woken in it stands where they are
+      for (const z of this.zombies.zombies) if (z.alive && inRect(BERLOGA.rect, z.x, z.z)) this.hold(z, null);
+      return;
+    }
+    const want = this.morozkoBase * (2.4 - 0.1 * ZaryaStory.count(v.clues));
+    if (Math.abs(m.maxHp - want) > 1e-6) {
+      const left = m.hp / m.maxHp;
+      m.maxHp = want;
+      m.hp = left >= 1 ? want : want * left;
+    }
+    if (did(G.believed)) {
+      m.invulnerable = true;
+      if (this.fight) {
+        // believed after the fight had started (the answer can be given mid-fight, from 6.6 m): he stops, and so does
+        // the hall, as when he falls - a believed Morozko never goes on fighting the squad that warmed his town
+        this.fight = false;
+        this.berloga.t = 0;
+        this.hold(m, null);
+        for (const z of this.zombies.zombies) if (z.alive && z !== m && inRect(BERLOGA.rect, z.x, z.z)) this.hold(z, null);
+      }
+      return;
+    }
+    if (this.fight) {
+      // for as long as he stands (and anyone stands against him: `room`)
+      this.berloga.t = 1;
+      return;
+    }
+    if (!did(G.asked)) return;
+    m.invulnerable = false;
+    const hurt = m.hp < m.maxHp * 0.9999;
+    if (did(G.answered) || hurt || up.some((p) => Math.hypot(p.x - m.x, p.z - m.z) <= BOSS.morozko.near)) {
+      this.fight = true;
+      this.berloga.t = 1;
+      this.wake(m, up);
+    }
+  }
+
+  /**
+   * A room's draw, one frame: while it lasts and someone stands in the room, one more comes in through the door
+   * farthest from everybody, never more than the room's cap on their feet.
+   */
+  private room(r: Room, dt: number, up: readonly Stand[], rng: Rng): void {
+    if (r.t <= 0) return;
+    r.t -= dt;
+    const inside = up.filter((p) => inRect(r.rect, p.x, p.z));
+    if (inside.length === 0) return;
+    r.next -= dt;
+    if (r.next > 0) return;
+    r.next = r.gap * (0.8 + rng.f() * 0.4);
+    let n = 0;
+    for (const z of this.zombies.zombies) if (z.alive && !z.isBoss && inRect(r.rect, z.x, z.z)) n++;
+    if (n >= r.cap) return;
+    let best: readonly [number, number] | null = null;
+    let far = 6; // nobody steps out of a door someone is standing in
+    for (const s of r.spots) {
+      const d = Math.min(...inside.map((p) => Math.hypot(p.x - s[0], p.z - s[1])));
+      if (d > far) {
+        far = d;
+        best = s;
+      }
+    }
+    if (!best) return;
+    const q = this.put(rng.f() < 0.25 ? 'runner' : 'shambler', best[0], best[1], rng, null, true);
+    const p = nearest(inside, q.x, q.z);
+    if (p) q.aggro(p.x, p.z);
+  }
+}
+
+function nearest(stand: readonly Stand[], x: number, z: number): Stand | null {
+  let best: Stand | null = null;
+  let bd = Infinity;
+  for (const p of stand) {
+    if (!p.up) continue;
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (d < bd) {
+      bd = d;
+      best = p;
+    }
+  }
+  return best;
+}

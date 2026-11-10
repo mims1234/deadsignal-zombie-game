@@ -7,6 +7,9 @@ import { NumCell, TextCell, clamp01, el, fmtDist, fmtInt, fmtMoney, setAttr, set
 import type { HudObjective, HudPrompt, HudState, HudWeaponInfo, StationPanel } from './hudTypes';
 import { type IconName, icon, weaponSilhouette } from './icons';
 
+/** The fire-mode word of ZARYA's guns (the nail gun is plain AUTO). */
+const ZARYA_MODE: Partial<Record<WeaponId, string>> = { signalka: 'FLARE', arbalet: 'BOLT', salyut: 'VOLLEY', ottepel: 'STEAM', zenit: 'FLASH' };
+
 // ---------------------------------------------------------------------------------------------
 // vitals: health, armour, plates, stamina
 // ---------------------------------------------------------------------------------------------
@@ -182,16 +185,21 @@ export class WeaponView {
       setHidden(this.tier, !showTier);
       this.tierText.set(w.tierLabel);
       setAttr(this.tier, 'data-tier', String(w.tier));
-      this.mode.set(w.auto ? 'AUTO' : w.id === 'shotgun' ? 'PUMP' : w.id === 'rpg' ? 'ROCKET' : w.id === 'raijin' ? 'STORM' : 'SEMI');
-      if (w.id !== this.sil) {
-        this.sil = w.id;
-        this.silHost.replaceChildren(weaponSilhouette(w.id));
+      this.mode.set(w.melee ? 'SWING' : (ZARYA_MODE[w.id] ?? (w.auto ? 'AUTO' : w.id === 'shotgun' ? 'PUMP' : w.id === 'rpg' ? 'ROCKET' : w.id === 'raijin' ? 'STORM' : 'SEMI')));
+      // a swung weapon has no silhouette of its own yet and nothing to count
+      const sil = w.melee ? '' : w.id;
+      if (sil !== this.sil) {
+        this.sil = sil;
+        if (sil) this.silHost.replaceChildren(weaponSilhouette(sil));
+        else this.silHost.replaceChildren();
       }
-      this.magText.set(String(w.mag));
-      this.resText.set(String(w.reserve));
-      const dry = w.mag === 0 && w.reserve === 0;
+      this.magText.set(w.melee ? '-' : String(w.mag));
+      // (the Ottepel's gauge refills by itself and the Zenit has only the bulbs in it: neither has a reserve to count)
+      this.resText.set(w.melee || w.id === 'ottepel' || w.id === 'zenit' ? '-' : String(w.reserve));
+      const dry = !w.melee && w.mag === 0 && w.reserve === 0;
       let magState = 'ok';
       if (dry) magState = 'empty';
+      else if (w.melee) magState = 'ok'; // nothing to run dry
       else if (w.mag === 0 && !w.reloading) magState = 'dry';
       else if (s.lowAmmo) magState = 'low';
       if (magState !== this.magState) {
@@ -201,6 +209,7 @@ export class WeaponView {
       let hint = '';
       if (w.reloading) hint = 'RELOADING';
       else if (s.outOfAmmo || dry) hint = 'NO AMMO';
+      else if (w.melee) hint = '';
       else if (w.mag === 0) hint = 'RELOAD  [R]';
       else if (s.lowAmmo) hint = 'LOW AMMO';
       if (hint !== this.hintKind) {

@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { SoundId } from '../audio/ids';
 import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource } from '../anime/vrm';
 import type { AvatarLook } from '../config';
+import { ZARYA_BASE, isZaryaGun } from '../logic/zaryaGuns';
 import type { WeaponId } from '../types';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
 import { addHeroFace, addHeroHair, addHeroOutfit, addHeroTorso, heroBuild, heroMat, heroParts, isHeroPart, mergeStatic } from './heroLook';
@@ -21,6 +22,9 @@ export const AVATAR_WEAPONS: readonly AvatarWeapon[] = ['rifle', 'pistol', 'shot
 
 /** What a teammate is seen carrying: the Sakura District's relics look like the rifle and the launcher they are built on. */
 export function avatarWeaponOf(id: WeaponId | 'none'): AvatarWeapon {
+  // ZARYA's guns: the stock gun each is held like (the flare pistol and the camera a pistol, the crossbow and the nail
+  // gun a rifle, the firework battery and the steam lance a launcher)
+  if (id !== 'none' && isZaryaGun(id)) return ZARYA_BASE[id];
   return id === 'hanafubuki' ? 'rifle' : id === 'raijin' ? 'rpg' : id;
 }
 
@@ -36,6 +40,8 @@ export interface AvatarStyle {
   /** Second line under the name, e.g. a rank. */
   tag?: string;
   tagColor?: string;
+  /** Fade the name tag out when the camera is closer than this (metres): a tag a pace away fills a phone's middle. */
+  tagNear?: number;
   /** A VRoid model to wear (the Sakura District): it follows this figure's skeleton, which is then not drawn. */
   anime?: AnimeTemplate | null;
   /** Colours over the model (the Kurenai Court's crimson). */
@@ -451,6 +457,15 @@ export class Avatar {
     this.tag = nameTag(name, style.tag, style.tagColor ?? '#ffb060');
     this.displayName = name;
     this.tag.visible = name !== ''; // a nameless figure (the Kurenai Court) wears no tag
+    const near = style.tagNear;
+    if (near) {
+      // gone inside `near`, whole two metres past it (the sprite's own material: nothing else shares it)
+      const at = new THREE.Vector3();
+      this.tag.onBeforeRender = (_r, _s, cam) => {
+        this.tag.getWorldPosition(at);
+        this.tag.material.opacity = Math.min(1, Math.max(0, (at.distanceTo(cam.position) - near) / 2));
+      };
+    }
     if (hero) {
       mergeStatic(this.chest);
       mergeStatic(this.body);

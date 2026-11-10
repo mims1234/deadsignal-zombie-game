@@ -2,7 +2,7 @@
  * A single infected: behaviour state machine (idle, alert, chase, attack, stagger, dead), steering along the shared
  * flow field, telegraphed melee attacks with wall-checked hit tests, Warden specials (slam, charge) and animation state.
  */
-import { RAGDOLL, WARDEN, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
+import { RAGDOLL, WARDEN, ZARYA_GUNS, ZOMBIES, ZOMBIE_AI, type ZombieDef } from '../config';
 import type { AudioEngineApi, SoundId } from '../audio/ids';
 import type { FxApi } from '../fx/fxTypes';
 import type { Rng } from '../logic/rng';
@@ -11,8 +11,9 @@ import type { CollisionWorld } from '../world/collision';
 import type { FloorLink, Floors } from '../world/floors';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
-import type { ZombieVariant } from './variants';
+import { ZARYA_HABITS, type ZombieVariant } from './variants';
 import { MUJIN } from '../mujin/places';
+import { showMark } from './markGlow';
 
 /** A woman's voice for each of the horde's noises; the boss gets the Matron's shriek for her roar. */
 const FEMALE_VOICE: Partial<Record<SoundId, SoundId>> = {
@@ -63,7 +64,11 @@ export interface NetZombie {
   speed: number;
   /** 0..1 health. */
   hp: number;
-  /** bits 0-1 death style, 4 headshot death, 8 enraged, 16 knocked down (carriers), 32 shrieking (the Matron). */
+  /**
+   * bits 0-1 death style, 4 headshot death, 8 enraged, 16 knocked down (carriers), 32 shrieking (the Matron); ZARYA's
+   * kinds: 512 standing unseen (the house spirit), 1024 the crate is broken (the loader), 2048 doing its own thing
+   * right now (the guard's whistle, the cashier's throw, the fisherman's cast).
+   */
   flags: number;
   /** Card carrier number (1-based), or 0 for an ordinary infected. */
   carrier: number;
@@ -111,6 +116,11 @@ export interface ZombieEnv {
   punch?(z: Zombie): void;
   /** HIRASAKA: a lamp-eater's hit put this env's player's light out. */
   blind?(z: Zombie): void;
+  /**
+   * ZARYA: the fisherman has this env's player on his line and is reeling them in at (vx, vz) m/s; called every frame of
+   * the reel. Absent (the co-op simulation, which moves nobody): one yank through `hurtPlayer`'s knock instead.
+   */
+  pull?(z: Zombie, vx: number, vz: number): void;
 }
 
 /**
@@ -174,6 +184,8 @@ export class Zombie {
   buried = false;
   /** MUJIN's Stationmaster until every lamp is lit: blows land, nothing hurts him, he only punches tickets. */
   invulnerable = false;
+  /** ZARYA's bear suit: the share of a blow that is lost in the padding unless it lands from behind (0 = none). */
+  frontArmor = 0;
   /** Jorogumo: up on the ceiling (drawn there; drops when close). */
   ceiling = false;
   /** Infected it calls up (the miko, the Empress): the manager spawns them after the update. */
@@ -182,6 +194,31 @@ export class Zombie {
   private varT = 0;
   /** Co-op guest: the Court's last action progress (a shot is drawn when it passes the strike). */
   private shotPrevT = 0;
+  // ---- ZARYA's kinds (`variants.ts` ZARYA_HABITS) ----
+  /** The house spirit: standing unseen (drawn almost clear) until someone comes close or hurts it. Guests: flag 512. */
+  hidden = false;
+  /** The house spirit has just shown itself: its next blow is worth three. */
+  private ambush = false;
+  /** The guard has blown his whistle (he does it once). */
+  private whistled = false;
+  /** Told where someone is by that whistle, and not yet turned to look: nothing else it hears changes where. */
+  private tipped = false;
+  /** The loader's crate is broken (a heavy swung blow from the front did it). Guests: flag 1024. */
+  crateBroken = false;
+  /** Those it has told where someone is (the guard's whistle): the manager spreads the word after the update. */
+  readonly calls: { x: number; z: number; radius: number; tx: number; tz: number }[] = [];
+  /** What its attack is when it is not a blow: 1 a thrown weight (the cashier), 2 a cast line (the fisherman). */
+  private act: 0 | 1 | 2 = 0;
+  /** Seconds until it may throw or cast again, and (the fisherman) of the reel left. */
+  private actCd = 0;
+  private reelT = 0;
+  /** Where a throw is aimed: set partway through the wind-up (move after that and it misses). */
+  private readonly aim = { x: 0, y: 0, z: 0 };
+  /** A thrown weight in flight. `real`: it hurts (a co-op guest's is only drawn; the host's is the one that counts). */
+  private readonly shot = { live: false, real: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, t: 0 };
+  /** Co-op guest: the host says it is doing its own thing (flag 2048), and how far its action had got a frame ago. */
+  private netAct = false;
+  private actPrevT = 0;
   /** Which walkable area it is in (`floors.ts`): 0 the street, else a storey, a roof or an underground space. */
   area = 0;
   /** Crossing stairs or a stairwell toward whoever it hunts (`floors.ts`). */
@@ -210,6 +247,8 @@ export class Zombie {
   dmgScale = 1;
   sightScale = 1;
   enraged = false;
+  /** ZARYA's Signalka: seconds left of its mark. While it lasts this one glows and everything hurts it double. */
+  markedT = 0;
   /** The Matron (`matron.ts`): crying out right now (The Shriek). Co-op guests get it as flag 32. */
   shrieking = false;
   /** Idle walk override (the Matron's rounds, `matron.ts`): where to walk next (her own spot: stand) and the seconds before it asks again, or null to wander as usual. */
@@ -318,11 +357,24 @@ export class Zombie {
     this.isBoss = opts.boss ?? false;
     this.isAmbient = opts.ambient ?? false;
     this.enraged = false;
+    this.markedT = 0;
     this.buried = (this.variant === 'rooted' || this.variant === 'drowned') && (opts.state ?? 'idle') === 'idle';
     this.ceiling = false;
     this.varT = this.variant === 'empress' || this.variant === 'overseer' ? 12 : 0;
     this.shotPrevT = 0;
     this.summons.length = 0;
+    // ZARYA's kinds: the house spirit stands unseen where it was put, the loader has his crate, the two who fight from
+    // range are not ready the moment they appear (no other kind draws from `rng` here: the other maps' rolls stand)
+    this.hidden = this.variant === 'domovoi' && (opts.state ?? 'idle') === 'idle';
+    this.ambush = this.whistled = this.crateBroken = this.tipped = false;
+    if (this.variant === 'gruzchik') this.frontArmor = ZARYA_HABITS.crate;
+    this.calls.length = 0;
+    this.act = 0;
+    this.reelT = 0;
+    this.actCd = this.variant === 'kassirsha' || this.variant === 'rybak' ? 0.6 + rng.f() * 1.2 : 0;
+    this.shot.live = false;
+    this.netAct = false;
+    this.actPrevT = 0;
     this.speedScale = 1 + (rng.f() * 2 - 1) * this.def.speedVariance;
     this.seesPlayer = false;
     this.memory = 99;
@@ -397,7 +449,7 @@ export class Zombie {
       staggerT: a.staggerT,
       speed: a.speed,
       hp: Math.max(0, this.hp / this.maxHp),
-      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0) | (this.buried ? 64 : 0) | (this.ceiling ? 128 : 0),
+      flags: this.deathStyle | (this.headshotDeath ? 4 : 0) | (this.enraged ? 8 : 0) | (this.state === 'downed' ? 16 : 0) | (this.shrieking ? 32 : 0) | (this.buried ? 64 : 0) | (this.ceiling ? 128 : 0) | (this.markedT > 0 ? 256 : 0) | (this.hidden ? 512 : 0) | (this.crateBroken ? 1024 : 0) | (this.acting ? 2048 : 0),
       carrier: this.carrierIdx,
       y: this.y,
       fy: this.flingY + this.scriptPose.lift,
@@ -432,9 +484,16 @@ export class Zombie {
     this.tumbleR = n.fr;
     this.hp = n.hp * this.maxHp;
     this.enraged = (n.flags & 8) !== 0;
+    this.markedT = n.flags & 256 ? 1 : 0; // the Signalka's mark: the host counts it down, a guest only shows it
     this.shrieking = (n.flags & 32) !== 0;
     this.buried = (n.flags & 64) !== 0;
     this.ceiling = (n.flags & 128) !== 0;
+    // ZARYA's kinds: the house spirit unseen, the loader's crate gone, the whistle (heard once, as it starts)
+    this.hidden = (n.flags & 512) !== 0;
+    this.crateBroken = (n.flags & 1024) !== 0;
+    const act = (n.flags & 2048) !== 0;
+    if (act && !this.netAct && this.variant === 'svistok') this.netSounds |= 32;
+    this.netAct = act;
     if (n.flags & 16) {
       if (this.state !== 'downed') {
         this.state = 'downed';
@@ -467,6 +526,7 @@ export class Zombie {
     if (s & 4) this.say(env, 'warden_slam', { pos, volume: 1.2, priority: 3 });
     if (s & 8) this.say(env, 'zombie_hurt', { pos, volume: 0.8, priority: 1 });
     if (s & 16) this.say(env, 'zombie_death', { pos, volume: boss ? 1.3 : 1, priority: 2 });
+    if (s & 32) env.audio.play('court_whistle', { pos, volume: 1.3, priority: 3, rate: 1.25 });
     if (this.state === 'dead' || this.state === 'downed' || court || this.buried) return;
     const p = env.player;
     this.voiceTimer -= dt;
@@ -491,6 +551,26 @@ export class Zombie {
       this.shotPrevT = t;
     }
     if (this.state === 'dead' && this.variant === 'bloomed') this.bloomCloud(dt, env);
+    // ZARYA's cashier and fisherman: the weight and the line are drawn here as the host's throw and cast pass their strike
+    if (this.variant === 'kassirsha' || this.variant === 'rybak') {
+      const t = this.netMode === 'attack' && this.netAct ? this.netActionT : 0;
+      const p = env.player;
+      const dx = p.x - this.x;
+      const dz = p.z - this.z;
+      const dist = Math.hypot(dx, dz);
+      // whoever it faces is whoever it means (a guest is not told): us, if we are in front of it and in reach
+      const atUs = p.alive && dist < 22 && Math.abs(wrap(Math.atan2(-dx, -dz) - this.yaw)) < 0.4;
+      if (this.variant === 'rybak') {
+        if (t > 0 && t < 0.55) this.rodFx(env);
+        else if (t >= 0.55 && atUs && dist > ZARYA_HABITS.cast.stopAt) this.lineFx(env);
+      } else if (this.actPrevT < 0.55 && t >= 0.55) {
+        if (atUs) this.setAim(p.x, p.eyeY - 0.45, p.z);
+        else this.setAim(this.x - Math.sin(this.yaw) * 14, this.drawY + 1.1, this.z - Math.cos(this.yaw) * 14);
+        this.throwWeight(env, false);
+      }
+      this.actPrevT = t;
+      this.stepShot(dt, env);
+    }
     const k = Math.min(1, dt * 12);
     this.x += (this.netX - this.x) * k;
     this.z += (this.netZ - this.z) * k;
@@ -645,9 +725,219 @@ export class Zombie {
         }
         return -1;
       }
+      case 'svistok': {
+        // the first time he sees someone he stops, and thirty years of habit put the whistle to his lips: every one of
+        // them in earshot knows where that someone is. Once only
+        if (this.varT > 0) this.varT = Math.max(0, this.varT - dt);
+        if (this.whistled || !p.alive || !this.seesPlayer || this.state === 'attack' || this.state === 'stagger') return -1;
+        const H = ZARYA_HABITS.whistle;
+        this.whistled = true;
+        this.varT = H.stop;
+        this.enterState('alert');
+        this.alertTimer = H.stop;
+        this.alertNoticed = true;
+        this.vx = this.vz = 0;
+        this.memory = 0;
+        this.lastKnownX = p.x;
+        this.lastKnownZ = p.z;
+        env.audio.play('court_whistle', { pos, volume: 1.3, priority: 3, rate: 1.25 });
+        this.calls.push({ x: this.x, z: this.z, radius: H.radius, tx: p.x, tz: p.z });
+        return -1;
+      }
+      case 'kassirsha':
+        return this.rangedStep(dt, env, dist, dx, dz, 1);
+      case 'rybak':
+        return this.rangedStep(dt, env, dist, dx, dz, 2);
+      case 'gruzchik': {
+        // he puts his head down behind the crate and runs at them
+        const H = ZARYA_HABITS.charge;
+        if (this.state !== 'chase' || !p.alive || this.cooldown > 0 || this.chargeCd > 0 || !this.seesPlayer) return -1;
+        if (dist < H.min || dist > H.max || Math.abs(p.y - this.y) > 1.2) return -1;
+        this.beginAttack('charge', env);
+        return 0;
+      }
+      case 'domovoi': {
+        // stands unseen where it is until someone comes close (or hurts it); then it is there, and its first blow is the worst
+        if (!this.hidden) return -1;
+        this.vx = this.vz = 0;
+        if ((p.alive && dist < ZARYA_HABITS.domovoi.reveal && Math.abs(p.y - this.y) < 2) || this.hp < this.maxHp) {
+          this.hidden = false;
+          this.ambush = true;
+          this.memory = 0;
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+          this.say(env, 'zombie_screech', { pos, volume: 1, priority: 2, rate: 1.3 });
+          env.fx.dust({ x: this.x, y: this.y + 0.3, z: this.z }, 0.6);
+        } else if (this.state !== 'idle' && this.state !== 'stagger') this.enterState('idle');
+        return 0;
+      }
       default:
         return -1;
     }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // ZARYA's kinds (`variants.ts` ZARYA_HABITS)
+  // ---------------------------------------------------------------------------------------------
+
+  /** Doing its own thing right now (the guard's whistle, a throw, a cast): a co-op guest gets it as flag 2048. */
+  private get acting(): boolean {
+    return (this.state === 'attack' && this.act !== 0) || (this.variant === 'svistok' && this.varT > 0 && this.state === 'alert');
+  }
+
+  /**
+   * The cashier and the fisherman fight from range when they have a clear line and the distance for it: stand, face
+   * them, and throw (`act` 1) or cast (2). The cashier keeps her distance between throws; the fisherman comes on while
+   * his line is not ready. Too close, too far or no line: like anyone.
+   */
+  private rangedStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number, act: 1 | 2): number {
+    const p = env.player;
+    if (this.actCd > 0) this.actCd -= dt;
+    if (this.state !== 'chase' || !p.alive) return -1;
+    const H = act === 1 ? ZARYA_HABITS.throw_ : ZARYA_HABITS.cast;
+    if (dist < H.min || dist > H.max || Math.abs(p.y - this.y) > 3) return -1;
+    if (act === 2 && this.actCd > 0) return -1;
+    if (env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.3, p.z, 'shots')) return -1;
+    this.vx *= Math.max(0, 1 - 8 * dt);
+    this.vz *= Math.max(0, 1 - 8 * dt);
+    const face = Math.atan2(-dx, -dz);
+    this.turnToward(face, 6, dt);
+    if (this.actCd <= 0 && this.cooldown <= 0 && Math.abs(wrap(face - this.yaw)) < 0.5) {
+      this.beginAttack('melee', env);
+      this.act = act;
+      this.setAim(p.x, p.eyeY - 0.45, p.z);
+    }
+    return 0;
+  }
+
+  private setAim(x: number, y: number, z: number): void {
+    this.aim.x = x;
+    this.aim.y = y;
+    this.aim.z = z;
+  }
+
+  /** A throw or a cast, from the wind-up to the end (in place of a blow). */
+  private updateAct(dt: number, env: ZombieEnv, dx: number, dz: number, dist: number): number {
+    const p = env.player;
+    this.attackTime += dt;
+    const at = this.attackTime;
+    const t = this.attackTimes();
+    this.vx *= Math.max(0, 1 - 9 * dt);
+    this.vz *= Math.max(0, 1 - 9 * dt);
+    let done = at >= t.windup + t.strike + t.recovery;
+    if (this.act === 1) {
+      // her aim follows them for the first part of the wind-up, then it is set: step out of the line and it misses
+      if (at < ZARYA_HABITS.throw_.lock && p.alive) this.setAim(p.x, p.eyeY - 0.45, p.z);
+      if (at < t.windup) this.turnToward(Math.atan2(-(this.aim.x - this.x), -(this.aim.z - this.z)), 8, dt);
+      else if (!this.attackDidHit) {
+        this.attackDidHit = true;
+        this.throwWeight(env, true);
+      }
+    } else if (at < t.windup) {
+      this.turnToward(Math.atan2(-dx, -dz), 6, dt);
+      this.rodFx(env);
+    } else if (!this.attackDidHit) {
+      // the cast: it takes if there is still a clear line to them, and they are not out of his reach
+      this.attackDidHit = true;
+      const H = ZARYA_HABITS.cast;
+      const takes = p.alive && dist > H.stopAt && dist < H.max + 2 && Math.abs(p.y - this.y) < 3 && !env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.3, p.z, 'shots');
+      this.reelT = takes ? H.reel : 0;
+      env.audio.play('grenade_throw', { pos: { x: this.x, y: this.y + 1.5, z: this.z }, volume: 0.8, priority: 2, rate: 1.5 });
+      if (takes) {
+        this.lineFx(env);
+        // nobody to move them here (the co-op simulation): one yank toward him, through the blow's own knock
+        if (!env.pull) env.hurtPlayer(0, this.x, this.z, 'melee', -H.yank);
+      }
+    } else if (this.reelT > 0) {
+      // reeling: they come to him along the line, until they are at his feet or something solid is between them
+      const H = ZARYA_HABITS.cast;
+      this.reelT -= dt;
+      if (!p.alive || dist < H.stopAt || env.world.segmentBlocked(this.x, this.y + 1.5, this.z, p.x, p.eyeY - 0.3, p.z, 'shots')) this.reelT = 0;
+      else {
+        env.pull?.(this, (-dx / dist) * H.speed, (-dz / dist) * H.speed);
+        this.lineFx(env);
+        this.turnToward(Math.atan2(-dx, -dz), 6, dt);
+      }
+      if (this.reelT <= 0) done = true;
+    } else if (at > t.windup + 0.35) done = true; // a miss: he is not long about it
+    if (done) this.finishAttack(env);
+    return 0;
+  }
+
+  private handAt(): { x: number; y: number; z: number } {
+    return { x: this.x - Math.sin(this.yaw) * 0.45, y: this.drawY + this.def.height * 0.82, z: this.z - Math.cos(this.yaw) * 0.45 };
+  }
+
+  /** The fisherman's rod going back for the cast: a pale line up from his hand, where anyone watching can see it. */
+  private rodFx(env: ZombieEnv): void {
+    const h = this.handAt();
+    env.fx.tracer(h, { x: h.x + Math.sin(this.yaw) * 0.7, y: h.y + 1.9, z: h.z + Math.cos(this.yaw) * 0.7 }, 0xdfeaff);
+  }
+
+  /** His line, from his hand to whoever is on it. */
+  private lineFx(env: ZombieEnv): void {
+    const p = env.player;
+    env.fx.tracer(this.handAt(), { x: p.x, y: p.eyeY - 0.5, z: p.z }, 0xdfeaff);
+  }
+
+  /** The cashier lets a shop weight go at where she aimed. */
+  private throwWeight(env: ZombieEnv, real: boolean): void {
+    const s = this.shot;
+    const h = this.handAt();
+    const ax = this.aim.x - h.x;
+    const ay = this.aim.y - h.y;
+    const az = this.aim.z - h.z;
+    const d = Math.max(0.5, Math.hypot(ax, ay, az));
+    const v = ZARYA_HABITS.throw_.speed;
+    s.live = true;
+    s.real = real;
+    s.x = h.x;
+    s.y = h.y;
+    s.z = h.z;
+    s.vx = (ax / d) * v;
+    // thrown a touch high: it drops that much on the way
+    s.vy = (ay / d) * v + (4 * d) / v;
+    s.vz = (az / d) * v;
+    s.t = 0;
+    env.audio.play('grenade_throw', { pos: h, volume: 0.9, priority: 2, rate: 0.9 });
+  }
+
+  /** The weight in flight: it stops at anything solid, and it hits whoever it passes within arm's reach of. */
+  private stepShot(dt: number, env: ZombieEnv): void {
+    const s = this.shot;
+    if (!s.live) return;
+    const H = ZARYA_HABITS.throw_;
+    const nx = s.x + s.vx * dt;
+    const ny = s.y + s.vy * dt;
+    const nz = s.z + s.vz * dt;
+    s.vy -= 8 * dt;
+    s.t += dt;
+    if (env.world.segmentBlocked(s.x, s.y, s.z, nx, ny, nz, 'shots') || ny < env.world.floorBelow(nx, nz, 0.2, ny + 1) + 0.05 || s.t > 1.4) {
+      s.live = false;
+      env.fx.dust({ x: s.x, y: s.y, z: s.z }, 0.4);
+      env.audio.play('impact_metal', { pos: { x: s.x, y: s.y, z: s.z }, volume: 0.7, priority: 1 });
+      return;
+    }
+    const p = env.player;
+    if (p.alive) {
+      // the nearest the weight comes to their chest on this step
+      const sx = nx - s.x;
+      const sy = ny - s.y;
+      const sz = nz - s.z;
+      const cy = p.eyeY - 0.5;
+      const u = Math.max(0, Math.min(1, ((p.x - s.x) * sx + (cy - s.y) * sy + (p.z - s.z) * sz) / Math.max(1e-6, sx * sx + sy * sy + sz * sz)));
+      if (Math.hypot(s.x + sx * u - p.x, s.z + sz * u - p.z) < H.hit && Math.abs(s.y + sy * u - cy) < 0.95) {
+        s.live = false;
+        if (s.real) env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', 2);
+        return;
+      }
+    }
+    // the weight as it is seen: a short grey streak along its path
+    env.fx.tracer({ x: s.x - s.vx * 0.02, y: s.y - s.vy * 0.02, z: s.z - s.vz * 0.02 }, { x: nx, y: ny, z: nz }, 0xc8ccd8);
+    s.x = nx;
+    s.y = ny;
+    s.z = nz;
   }
 
   /** Is the player looking at it (within about 25 degrees, nothing between)? */
@@ -850,6 +1140,8 @@ export class Zombie {
 
   /** Only zombies near the player cast shadows (the shadow pass is the most expensive part of a horde). */
   setShadowLod(near: boolean): void {
+    // ZARYA's house spirit casts none while it stands unseen
+    if (this.hidden) near = false;
     if (near === this.shadowOn) return;
     if (!this.shadowMeshes) {
       const list: import('three').Mesh[] = [];
@@ -981,11 +1273,30 @@ export class Zombie {
 
   /** Called by noise events (gunshots, sprinting) and by alerted neighbours. */
   hear(x: number, z: number, delay: number): void {
-    if (this.state !== 'idle') return;
+    // (one that has just been told where someone is, by ZARYA's guard's whistle, is not turned from it by a neighbour's stir)
+    if (this.state !== 'idle' || this.tipped) return;
     this.lastKnownX = x;
     this.lastKnownZ = z;
     this.memory = 0;
     if (this.alertDelay < 0) this.alertDelay = delay;
+  }
+
+  /**
+   * Told where someone is (ZARYA's guard's whistle, `ZombieManager.tell`): one standing about turns to look after
+   * `delay` seconds, as at any noise; one already hunting takes it as the newest scent. The ones lying in wait and the
+   * house spirit standing unseen keep their own counsel.
+   */
+  told(x: number, z: number, delay: number): void {
+    if (!this.active || this.hidden || this.buried) return;
+    if (this.state === 'idle') {
+      this.tipped = false;
+      this.hear(x, z, delay);
+      this.tipped = true;
+    } else if (this.state === 'chase') {
+      this.lastKnownX = x;
+      this.lastKnownZ = z;
+      this.memory = 0;
+    }
   }
 
   /** Where it thinks its quarry is. */
@@ -1021,6 +1332,8 @@ export class Zombie {
   /** Force this zombie to hunt the player (director spawns). */
   aggro(px: number, pz: number): void {
     if (!this.active) return;
+    // ZARYA's house spirit, sent after someone: it is not standing unseen any more
+    this.hidden = false;
     this.lastKnownX = px;
     this.lastKnownZ = pz;
     this.memory = 0;
@@ -1057,6 +1370,10 @@ export class Zombie {
   private enterState(s: ZombieState): void {
     this.state = s;
     this.stateTime = 0;
+    // a throw or a cast (ZARYA's kinds) ends with the attack it was, however that ended
+    this.act = 0;
+    this.reelT = 0;
+    this.tipped = false;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -1064,8 +1381,23 @@ export class Zombie {
   // ---------------------------------------------------------------------------------------------
 
   /** Apply already-computed damage. Returns true if this killed the zombie. */
-  takeDamage(amount: number, head: boolean, env: ZombieEnv, hitDirYaw: number, impulse = 1): boolean {
+  takeDamage(amount: number, head: boolean, env: ZombieEnv, hitDirYaw: number, impulse = 1, heavy = false): boolean {
     if (!this.active || amount <= 0) return false;
+    // marked by the Signalka: double, whatever it comes from
+    if (this.markedT > 0) amount *= ZARYA_GUNS.signalka.markMul;
+    // from behind: the blow travels the way he is facing
+    if (this.frontArmor > 0 && Math.cos(hitDirYaw - this.yaw) < 0.3) amount *= 1 - this.frontArmor;
+    // ZARYA's loader: a heavy swung weapon (`heavy`) landing on the crate breaks it. The crate takes that blow as it
+    // took the others; nothing is in front of him after it, and he reels
+    const breaks = heavy && this.variant === 'gruzchik' && !this.crateBroken && this.frontArmor > 0 && Math.cos(hitDirYaw - this.yaw) < 0.3;
+    if (breaks) {
+      this.crateBroken = true;
+      this.frontArmor = 0;
+      const at = { x: this.x - Math.sin(this.yaw) * 0.6, y: this.y + 1.2, z: this.z - Math.cos(this.yaw) * 0.6 };
+      env.fx.dust(at, 0.9);
+      env.fx.sparkle(at, 0xc8a060, 18);
+      env.audio.play('board_rip', { pos: at, volume: 1.1, priority: 3 });
+    }
     if (this.invulnerable) {
       // MUJIN's Stationmaster: he only flinches
       this.hitKick = 1;
@@ -1111,6 +1443,11 @@ export class Zombie {
       this.enraged = true;
       this.say(env, this.roarId, { pos: { x: this.x, y: 1.5, z: this.z }, volume: 1.2, priority: 3 });
     }
+    if (breaks) {
+      this.poise = 0;
+      this.stagger(0.8, env);
+      return false;
+    }
     // poise: enough damage in a short window staggers (the Warden is poise-immune except when charging into a wall)
     this.poise += amount * impulse;
     if (this.poise >= this.def.poise && this.state !== 'stagger') {
@@ -1118,6 +1455,11 @@ export class Zombie {
       if (!this.isBoss) this.stagger(this.def.staggerTime, env);
     }
     return false;
+  }
+
+  /** Mark it (the Signalka's flare): for `seconds` it glows and takes double damage from everything. */
+  mark(seconds: number): void {
+    if (this.active) this.markedT = Math.max(this.markedT, seconds);
   }
 
   stagger(duration: number, env: ZombieEnv): void {
@@ -1184,9 +1526,12 @@ export class Zombie {
     this.stateTime += dt;
     this.hitKick = Math.max(0, this.hitKick - dt * 5);
     this.poise = Math.max(0, this.poise - dt * 40);
+    if (this.markedT > 0) this.markedT = Math.max(0, this.markedT - dt);
     if (this.cooldown > 0) this.cooldown -= dt;
     if (this.slamCd > 0) this.slamCd -= dt;
     if (this.chargeCd > 0) this.chargeCd -= dt;
+    // ZARYA's cashier: a weight already thrown flies on whatever becomes of her
+    if (this.shot.live) this.stepShot(dt, env);
 
     if (this.state === 'dead' || this.state === 'downed') {
       if (this.script) this.dropScript();
@@ -1334,14 +1679,15 @@ export class Zombie {
     }
     // charge ends when the Warden slams into something
     if (this.state === 'attack' && this.attackKind === 'charge' && this.chargeLock) {
-      if (actual < WARDEN.chargeSpeed * 0.3) this.chargeBlocked += dt;
+      if (actual < (this.isBoss ? WARDEN.chargeSpeed : ZARYA_HABITS.charge.speed) * 0.3) this.chargeBlocked += dt;
       else this.chargeBlocked = 0;
       if (this.chargeBlocked > 0.12) {
         this.chargeLock = false;
         this.chargeBlocked = 0;
         env.shake(0.5);
         env.fx.dust({ x: this.x, y: 1, z: this.z }, 1);
-        this.say(env, 'warden_slam', { pos: { x: this.x, y: 1, z: this.z }, volume: 1, priority: 3 });
+        // (ZARYA's loader runs a crate into the wall, not a Warden)
+        this.say(env, this.isBoss ? 'warden_slam' : 'impact_wood', { pos: { x: this.x, y: 1, z: this.z }, volume: 1, priority: 3 });
         this.stagger(1.3, env);
       }
     }
@@ -1627,9 +1973,17 @@ export class Zombie {
     const pos = { x: this.x, y: 1.4, z: this.z };
     if (kind === 'melee') {
       if (this.variant !== 'court') this.say(env, 'zombie_attack', { pos, volume: 0.8, priority: 2, rate: 0.9 + env.rng.f() * 0.2 });
+    } else if (!this.isBoss) {
+      // ZARYA's loader, about to run at them: a man's bellow, not the Warden's
+      this.say(env, 'zombie_bellow', { pos, volume: 1.1, priority: 2, rate: 0.85 });
     } else {
       this.say(env, this.roarId, { pos, volume: 1.2, priority: 3 });
     }
+  }
+
+  /** Drawing back for a blow that has not landed yet: the moment a swung weapon can parry it (`logic/melee.ts`). */
+  get windingUp(): boolean {
+    return this.state === 'attack' && this.attackKind === 'melee' && this.attackTime < this.attackTimes().windup;
   }
 
   private attackTimes(): { windup: number; strike: number; recovery: number } {
@@ -1638,20 +1992,29 @@ export class Zombie {
       case 'slam':
         return { windup: WARDEN.slamWindup, strike: 0.25, recovery: WARDEN.slamRecovery };
       case 'charge':
+        // (ZARYA's loader charges too: shorter, and he is no Warden)
+        if (!this.isBoss) return { windup: ZARYA_HABITS.charge.windup, strike: ZARYA_HABITS.charge.time, recovery: 0.7 };
         return { windup: WARDEN.chargeWindup, strike: WARDEN.chargeDuration, recovery: 0.9 };
       default:
+        // ZARYA: a thrown weight, a cast line and the reel after it
+        if (this.act === 1) return { windup: ZARYA_HABITS.throw_.windup, strike: 0.12, recovery: 0.5 };
+        if (this.act === 2) return { windup: ZARYA_HABITS.cast.windup, strike: 0.1, recovery: ZARYA_HABITS.cast.reel + 0.25 };
         return { windup: d.attackWindup * (this.isBoss && this.enraged ? 0.75 : 1), strike: d.attackStrike, recovery: d.attackRecovery };
     }
   }
 
   private updateAttack(dt: number, env: ZombieEnv, dx: number, dz: number, dist: number): number {
     const p = env.player;
+    if (this.act !== 0 && this.attackKind === 'melee') return this.updateAct(dt, env, dx, dz, dist);
     this.attackTime += dt;
     const t = this.attackTimes();
     const total = t.windup + t.strike + t.recovery;
     const faceTarget = Math.atan2(-dx, -dz);
 
     if (this.attackKind === 'charge') {
+      // the Warden's charge, or (ZARYA's loader) a man's behind a crate
+      const lc = this.isBoss ? null : ZARYA_HABITS.charge;
+      const chargeSpeed = lc ? lc.speed : WARDEN.chargeSpeed;
       if (this.attackTime < t.windup) {
         // wind up, tracking the player until the last moment
         if (this.attackTime < t.windup * 0.7) this.turnToward(faceTarget, 5, dt);
@@ -1662,19 +2025,20 @@ export class Zombie {
       }
       if (this.attackTime < t.windup + t.strike && this.chargeLock !== false) {
         // charging along the locked direction
-        this.vx = -Math.sin(this.attackDir) * WARDEN.chargeSpeed;
-        this.vz = -Math.cos(this.attackDir) * WARDEN.chargeSpeed;
+        this.vx = -Math.sin(this.attackDir) * chargeSpeed;
+        this.vz = -Math.cos(this.attackDir) * chargeSpeed;
         this.yaw = this.attackDir;
-        if (!this.attackDidHit && p.alive && dist < this.def.radius + 0.34 + 0.9) {
+        if (!this.attackDidHit && p.alive && dist < this.def.radius + 0.34 + 0.9 && (this.isBoss || Math.abs(p.y - this.y) < 1.4)) {
           this.attackDidHit = true;
-          env.hurtPlayer(WARDEN.chargeDamage * this.dmgScale, this.x, this.z, 'charge', 9);
+          env.hurtPlayer((lc ? this.def.damage * lc.damageMul : WARDEN.chargeDamage) * this.dmgScale, this.x, this.z, 'charge', lc ? lc.knock : 9);
           this.chargeLock = false;
         }
-        return WARDEN.chargeSpeed;
+        return chargeSpeed;
       }
-      if (this.attackTime >= t.windup && this.attackTime < t.windup + 0.02 && !this.chargeLock) {
+      // (the loader's charge starts on whatever frame comes after his wind-up, however long the frame)
+      if (this.attackTime >= t.windup && this.attackTime < t.windup + (lc ? Math.max(0.02, dt * 1.01) : 0.02) && !this.chargeLock) {
         this.chargeLock = true;
-        return WARDEN.chargeSpeed;
+        return chargeSpeed;
       }
       // recovery
       this.chargeLock = false;
@@ -1707,10 +2071,13 @@ export class Zombie {
   }
 
   private finishAttack(env: ZombieEnv): void {
+    // ZARYA: the cashier weighs out the next one, the fisherman winds his line back in
+    if (this.act === 1) this.actCd = ZARYA_HABITS.throw_.cooldown * (0.85 + env.rng.f() * 0.3);
+    else if (this.act === 2) this.actCd = ZARYA_HABITS.cast.cooldown * (0.85 + env.rng.f() * 0.3);
     this.enterState(env.player.alive ? 'chase' : 'idle');
     this.cooldown = this.variant === 'court' ? 1.1 + env.rng.f() * 0.8 : this.attackKind === 'melee' ? 0.15 : 0.9;
     if (this.attackKind === 'slam') this.slamCd = WARDEN.slamCooldown;
-    if (this.attackKind === 'charge') this.chargeCd = WARDEN.chargeCooldown;
+    if (this.attackKind === 'charge') this.chargeCd = this.isBoss ? WARDEN.chargeCooldown : ZARYA_HABITS.charge.cooldown;
     this.chargeLock = false;
   }
 
@@ -1741,7 +2108,10 @@ export class Zombie {
     const facing = Math.atan2(-(p.x - this.x), -(p.z - this.z));
     if (Math.abs(wrap(facing - this.yaw)) > (ZOMBIE_AI.attackCone * Math.PI) / 180) return;
     if (env.world.segmentBlocked(this.x, this.y + 1.1, this.z, p.x, Math.max(p.y + 0.6, p.eyeY - 0.5), p.z, 'move')) return;
-    env.hurtPlayer(this.def.damage * this.dmgScale, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
+    // ZARYA's house spirit: the first blow after it shows itself is worth three
+    const first = this.ambush ? ZARYA_HABITS.domovoi.first : 1;
+    this.ambush = false;
+    env.hurtPlayer(this.def.damage * this.dmgScale * first, this.x, this.z, 'melee', this.type === 'armored' ? 3 : 1.5);
     if (this.variant === 'lampeater') env.blind?.(this);
   }
 
@@ -1777,7 +2147,8 @@ export class Zombie {
         a.mode = 'stagger';
         break;
       case 'alert':
-        a.mode = this.type === 'warden' || this.type === 'runner' ? 'roar' : 'idle';
+        // (ZARYA's guard throws his head back to blow his whistle, as the ones who roar do)
+        a.mode = this.type === 'warden' || this.type === 'runner' || (this.variant === 'svistok' && this.varT > 0) ? 'roar' : 'idle';
         a.actionT = Math.min(1, this.stateTime / Math.max(0.2, this.alertTimer + this.stateTime));
         break;
       case 'attack': {
@@ -1819,7 +2190,12 @@ export class Zombie {
       a.deathT = 6;
       a.deathStyle = 1;
     }
+    // ZARYA: the house spirit is drawn almost clear while it stands unseen; the loader's crate is in his arms or gone
+    if (this.variant === 'domovoi') this.rig.setGhost?.(this.hidden && this.active);
+    else if (this.variant === 'gruzchik') this.rig.setProp?.(!this.crateBroken);
     this.syncRoot();
     this.rig.update(a, 1 / 60);
+    // the Signalka's mark, while it lasts (a rig that never wore one is left alone)
+    if (this.markedT > 0 || this.rig.root.userData.markGlow) showMark(this.rig.root, this.markedT > 0 && this.active, this.def.height, a.time);
   }
 }

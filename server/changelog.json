@@ -2,6 +2,21 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.383",
+      "date": "2026-11-11",
+      "title": "ZARYA: a new map",
+      "notes": [
+        "New map: ZARYA. Zarya-12, a closed science town in the Russian north, on New Year's Eve. At three minutes to midnight a quiet snow fell and nine thousand people fell asleep on their feet. A few woke wrong. You and your volunteer search squad, Timur and Vera, came looking for a missing boy.",
+        "A three-act story that you play rather than read: find the boy and ride Tram No. 1 out of the square, win the town's four keys four different ways (a bear to beat, a butcher to lure, tickets to buy, a staff party to silence), and take them down to the Berloga, where Morozko asks you a question. Three endings, depending on what you did along the way.",
+        "The biggest map yet: ten parts of town, from the square, the Univermag and the market to the courtyards, the garages, the tram depot, the Palace of Culture, the banya by the frozen pond, the heating plant and the Institute, plus the rooms under and above them. Hundreds of sleepers stand where the snow caught them.",
+        "No helicopter and no clock: nothing is timed and nothing can be missed. The only way to lose is for the whole squad to go down. Without co-op, Timur and Vera play alongside you at your level; co-op players take their places.",
+        "Six new guns, and the ones you build are the strongest: the Signalka flare pistol, the Arbalet crossbow, the Gvozdomyot nail gun, the Salyut firework battery, Ottepel \"the Thaw\" and the Zenit camera. Some are found, some bought, some built at a workbench, some come out of Ded Moroz's red sack.",
+        "Melee for the first time: twelve weapons from a folding knife and a skillet to a fire axe, a Cossack shashka, the serp and molot and a bear spear, each with light swings, heavy blows and a guard.",
+        "Eight new kinds of infected, all townspeople in winter coats: masked New Year mummers, a guard whose whistle calls the rest, a cashier who throws her weights, a loader behind his crate (only a heavy blow breaks it), a yard keeper, an ice fisherman who casts his line, a winter swimmer, and a house spirit you only see up close.",
+        "Built for phones first: on ZARYA the touch layout is a stick, one FIRE/SWING button, a menu dot and a USE button that shows only where something can be used, and the middle of the screen stays clear."
+      ]
+    },
+    {
       "version": "0.4.382",
       "date": "2026-11-10",
       "title": "The Forge, reforged",
@@ -75,7 +90,7 @@
         "NEW 3D MODELS only, as before."
       ]
     },
-{
+    {
       "version": "0.4.374",
       "date": "2026-11-08",
       "title": "Allies keep their personal space",

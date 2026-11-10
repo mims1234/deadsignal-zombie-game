@@ -9,7 +9,7 @@ import { CHAPTERS, FIELD, PLACE_RADIO, chapterIndex, placeAt } from '../src/saku
 import { LINE } from '../src/sakura/lines';
 import { STORIES, storiesOpen } from '../src/sakura/missions';
 import { FUSE_BIT, FUSES_ALL, KEY_BIT, SakuraQuest, decodeQuest, type QuestView } from '../src/sakura/quest';
-import { HIRASAKA_KINDS, MUJIN_KINDS, VARIANTS } from '../src/enemies/variants';
+import { HIRASAKA_KINDS, MUJIN_KINDS, VARIANTS, ZARYA_KINDS } from '../src/enemies/variants';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import { missionClock } from '../src/logic/mission';
 
@@ -52,8 +52,9 @@ describe('KAIKA', { timeout: 30000 }, () => {
   });
 
   it('has a field file for every kind and a transmission for every place', () => {
-    // MUJIN's kinds are the station's and HIRASAKA's the island's, not the field file's
-    for (const v of VARIANTS) if (v && !(MUJIN_KINDS as readonly string[]).includes(v) && !(HIRASAKA_KINDS as readonly string[]).includes(v)) expect(FIELD[v as keyof typeof FIELD].does.length).toBeGreaterThan(20);
+    // MUJIN's kinds are the station's, HIRASAKA's the island's and ZARYA's the town's, not the field file's
+    const elsewhere = [...MUJIN_KINDS, ...HIRASAKA_KINDS, ...ZARYA_KINDS] as readonly string[];
+    for (const v of VARIANTS) if (v && !elsewhere.includes(v)) expect(FIELD[v as keyof typeof FIELD].does.length).toBeGreaterThan(20);
     for (const lines of Object.values(PLACE_RADIO)) expect(lines.length).toBeGreaterThan(0);
     // every line a chapter, a place or a first sight says is a voiced line
     const ids = [...CHAPTERS.flatMap((c) => c.intro), ...Object.values(PLACE_RADIO).flat(), ...Object.values(FIELD).map((f) => f.quip)];

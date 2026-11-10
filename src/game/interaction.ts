@@ -70,6 +70,8 @@ type Target = InteractionTarget;
 export class Interaction {
   /** Extra interactables (the Asylum's doors, perk machines, wall chalks...): each pushes its targets in reach. */
   readonly sources: ((targets: InteractionTarget[]) => void)[] = [];
+  /** What a map calls its mystery box (ZARYA: Ded Moroz's sack). */
+  boxName = 'MYSTERY BOX';
   private holdT = 0;
   private holdId = '';
   private holdLocked = false;
@@ -197,7 +199,7 @@ export class Interaction {
         targets.push({
           id: `crate:${c.def.id}`,
           dist: d,
-          text: c.cost ? `OPEN MYSTERY BOX  $${c.cost}` : 'OPEN MYSTERY BOX',
+          text: c.cost ? `OPEN ${this.boxName}  $${c.cost}` : `OPEN ${this.boxName}`,
           sub: c.cost ? (afford ? 'Ammunition, grenades or a gun - open it as often as you can pay' : `You need $${c.cost}`) : 'Ammunition, grenades or a gun - and a little cash',
           tone: afford ? 'normal' : 'warn',
           hold: ECONOMY.crateOpenTime,

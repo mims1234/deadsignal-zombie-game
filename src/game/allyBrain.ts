@@ -5,7 +5,7 @@
  * each shot and decides what to show.
  */
 import * as THREE from 'three';
-import { type AvatarLook, COOP, FORGE_SQUAD, RAGDOLL, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
+import { type AvatarLook, COOP, FORGE_SQUAD, RAGDOLL, SQUADMATE, SQUADS, SURVIVORS, TEAM_SKILL, type TeamSkill } from '../config';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import { spreadPick } from '../logic/carriers';
@@ -59,6 +59,10 @@ export interface AllyBody {
   lookT?: number;
   /** Where the squad fends for itself (the Asylum): their gun, magazine and reload (`allySupply.ts`). */
   kit?: AllyKit;
+  /** A squadmate (`SquadDef.equals`): at no health they go down instead of dying. */
+  equal: boolean;
+  /** Seconds a downed squadmate still lies there (0: on their feet). They stay `ref.alive` throughout: down is not dead. */
+  down: number;
 }
 
 export interface AllyWorld {
@@ -102,6 +106,7 @@ function travellerOf(a: AllyBody): Traveller {
 
 /** Keep up with the leader at (px, py, pz) facing `pyaw`; on another floor, take the stairs after them. */
 export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number, pyaw: number, py = 0): void {
+  if (a.down > 0) return;
   const fl = w.level.floors.hasFloors ? w.level.floors : null;
   const myArea = fl ? fl.areaAt(a.ref.x, a.ref.y, a.ref.z) : 0;
   const leaderArea = fl ? fl.areaAt(px, py, pz) : 0;
@@ -201,7 +206,7 @@ const parting = (d: number, space: number, hard: number, k: number): number => M
  */
 export function allySpread(allies: readonly AllyBody[], players: readonly { x: number; y: number; z: number }[], level: Level, dt: number): void {
   const k = Math.min(1, dt * ALLY_SPACE.rate);
-  const free = (a: AllyBody): boolean => a.ref.alive && !a.trapped && !a.crossing;
+  const free = (a: AllyBody): boolean => a.ref.alive && !a.trapped && !a.crossing && !a.down; // nobody shoves someone lying down
   const moved = new Set<AllyBody>();
   const push = (a: AllyBody, x: number, z: number): void => {
     a.ref.x += x;
@@ -287,6 +292,7 @@ function idleLook(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: number,
  * with `allyHit`), or null.
  */
 export function allyFight(a: AllyBody, w: AllyWorld, dt: number): AllyShot | null {
+  if (a.down > 0) return null;
   // their own gun: a round in it and not reloading (the reload runs on whether or not there is a target)
   const ready = a.kit ? kitReady(a.kit, dt) : true;
   a.pickT -= dt;
@@ -329,11 +335,74 @@ export function allyHit(a: AllyBody, shot: AllyShot, zombies: ZombieManager, env
 
 /** Slow health regeneration after a few quiet seconds. */
 export function allyRecover(a: AllyBody, dt: number): void {
+  if (a.down > 0) return;
   a.sinceHurt += dt;
   if (a.sinceHurt > 6) {
     a.hp = Math.min(a.stats.hp, a.hp + 6 * dt);
     if (a.hp > a.stats.hp * 0.6) a.warned = false;
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// taking hits, and squadmates going down and getting back up (`SQUADMATE`)
+// ---------------------------------------------------------------------------------------------
+
+/** Up and in the fight: someone the infected go for, who moves and shoots (not dead, caged or down). */
+export function allyFighting(a: AllyBody): boolean {
+  return a.ref.alive && !a.trapped && !a.down;
+}
+
+/**
+ * An infected's hit of `amount` on an ally (before their armour). Says what it did to them: 'dead' (out of the run),
+ * 'down' (a squadmate: they never die, `allyDown`), or null (still standing, or not there to be hit).
+ */
+export function allyHurt(a: AllyBody, amount: number): 'dead' | 'down' | null {
+  if (!a.ref.alive || a.down > 0) return null;
+  a.hp -= amount * a.stats.damageTaken;
+  a.sinceHurt = 0;
+  if (a.hp > 0) return null;
+  a.hp = 0;
+  if (a.equal) {
+    allyDown(a);
+    return 'down';
+  }
+  a.ref.alive = false;
+  return 'dead';
+}
+
+/** A squadmate at no health goes down: out of the fight for `SQUADMATE.downFor` seconds, and nobody's target. */
+export function allyDown(a: AllyBody): void {
+  a.hp = 0;
+  a.down = SQUADMATE.downFor;
+  a.target = null;
+}
+
+/** A downed squadmate's clock. Says 'up' on the step they get to their feet by themselves. */
+export function allyDownStep(a: AllyBody, dt: number): 'up' | null {
+  if (!(a.down > 0)) return null;
+  a.down -= dt;
+  if (a.down > 0) return null;
+  getUp(a);
+  return 'up';
+}
+
+/** A player gets a downed squadmate up now. False if they were not down. */
+export function allyHelpUp(a: AllyBody): boolean {
+  if (!(a.down > 0)) return false;
+  getUp(a);
+  return true;
+}
+
+/** Back on their feet with `SQUADMATE.upWith` of their health. */
+function getUp(a: AllyBody): void {
+  a.down = 0;
+  a.hp = Math.max(1, Math.round(a.stats.hp * SQUADMATE.upWith));
+  a.sinceHurt = 0;
+  a.warned = false;
+  a.stuckT = 0;
+  // a breath before the first shot, and a fresh look for something to shoot
+  a.shootT = 0.5;
+  a.pickT = 0;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -343,6 +412,13 @@ export function allyRecover(a: AllyBody, dt: number): void {
 const pickStats = (s: Omit<AllyStats, 'hitNear' | 'hitFar' | 'headChance'>): AllyStats => ({ hp: s.hp, damageTaken: s.damageTaken, range: s.range, fireInterval: s.fireInterval, bodyDamage: s.bodyDamage, headDamage: s.headDamage, hitNear: 0.8, hitFar: 0.6, headChance: 0.18 });
 export const SOLDIER_STATS: AllyStats = pickStats({ ...FORGE_SQUAD, hp: FORGE_SQUAD.allyHp, damageTaken: FORGE_SQUAD.allyDamageTaken });
 export const SURVIVOR_STATS: AllyStats = pickStats(SURVIVORS);
+/** A squadmate's numbers (`SquadDef.equals`): a player's health and rifle, with the hit chances every ally has. */
+export const SQUADMATE_STATS: AllyStats = pickStats(SQUADMATE);
+
+/** Is this map's squad made of squadmates (`SquadDef.equals`: ZARYA)? */
+export function squadEquals(map: MapId): boolean {
+  return !!SQUADS[map]?.equals;
+}
 
 /** An ally's numbers at a squad skill level. */
 export function teamStats(base: AllyStats, skill: TeamSkill): AllyStats {
@@ -412,7 +488,10 @@ export function cageSpots(level: Level, rng: Rng, count: number): { x: number; z
  */
 /** A fresh ally (positions and stats only; no model). */
 export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'], x: number, z: number, yaw: number, slot: { x: number; z: number }, trapped: boolean, order: number, skill: TeamSkill = 'regular'): AllyBody {
-  let stats = teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
+  // a squadmate is the player's equal whatever the squad skill says: a rookie setting never makes them less (a setting
+  // above regular still makes them more, as it does every other ally)
+  const equal = kind === 'soldier' && squadEquals(level.data.id);
+  let stats = equal ? teamStats(SQUADMATE_STATS, skill === 'rookie' ? 'regular' : skill) : teamStats(kind === 'soldier' ? SOLDIER_STATS : SURVIVOR_STATS, skill);
   const unarmed = kind === 'survivor' && survivorUnarmed(level.data.id, name);
   // where the squad fends for itself: their own gun and ammunition (the numbers above are for the gun they start with)
   let kit: AllyKit | undefined;
@@ -442,5 +521,7 @@ export function makeAllyBody(level: Level, name: string, kind: AllyBody['kind'],
     slot,
     warned: false,
     trapped,
+    equal,
+    down: 0,
   };
 }

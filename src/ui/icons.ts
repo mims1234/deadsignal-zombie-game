@@ -143,6 +143,69 @@ const WEAPON_PATHS: Record<WeaponId, string[]> = {
     // the grips and the stock
     'M4 20h22v12H4zM62 32h10l-3 14h-10z',
   ],
+  // ---- ZARYA's guns ----
+  signalka: [
+    // the fat barrel, the signal band at its muzzle
+    'M52 11h60v17H52z',
+    'M112 9h11v21h-11z',
+    // breech, hinge block, hammer
+    'M38 13h14v22H38zM52 28h36v8H52zM32 7h8v8h-8z',
+    // grip with its lanyard ring, trigger guard
+    'M38 33h19l-7 15H30zM60 36h20v3H60zM78 30h3v9h-3z',
+  ],
+  arbalet: [
+    // butt and tiller
+    'M4 19 30 21v11L4 37z',
+    'M28 22h100v7H28z',
+    // the bolt in its groove
+    'M40 18h84v2H40zM124 16l8 3-8 3z',
+    // the prod (the bow) across the front, its string, the stirrup
+    'M122 3c11 6 14 16 14 22s-3 16-14 22l-2.5-3c8-5 11-12 11-19s-3-14-11-19z',
+    'M119 6h1.5v38H119z',
+    'M138 18h10v14h-10zM141 21v8h4v-8z',
+    // grip
+    'M46 29h10l-3 14H43z',
+  ],
+  gvozdomyot: [
+    // the air tank behind, the housing
+    'M4 15h26v16H4z',
+    'M30 11h60v24H30z',
+    // the driver's nose and its tip
+    'M90 19h40v7H90zM130 15h8v15h-8z',
+    // the nail strip, slanting back from under the nose
+    'M64 43l60-15 1.5 6-60 15z',
+    // grip, and the gas canister
+    'M40 35h12l-4 13H36zM56 4h26v6H56z',
+  ],
+  salyut: [
+    // three of the five tubes, their rockets' noses
+    'M22 5h104v7H22zM126 5l12 3.5-12 3.5z',
+    'M22 14h104v7H22zM126 14l12 3.5-12 3.5z',
+    'M22 23h104v7H22zM126 23l12 3.5-12 3.5z',
+    // the board, the fuse, the two grips
+    'M18 31h116v4H18zM8 16h14v2H8z',
+    'M42 35h10l-3 12H39zM92 35h9l-2 10h-9z',
+  ],
+  ottepel: [
+    // the samovar's belly, the gauge on top of it
+    'M20 13q14-11 28 0v20q-14 11-28 0z',
+    'M54 2a6 6 0 1 1 0 12a6 6 0 1 1 0-12z',
+    // the lance through its coil, the bell
+    'M48 20h80v5H48zM82 15h4v15h-4zM90 15h4v15h-4zM98 15h4v15h-4zM106 15h4v15h-4z',
+    'M126 19h4l18-8v23l-18-8h-4z',
+    // the grips, the hose down to the pack
+    'M36 36h10l-3 12H33zM92 25h9l-2 14h-9z',
+    'M20 28q-12 4-14 20h4q2-12 11-15z',
+  ],
+  zenit: [
+    // the body, the lens let into it
+    'M36 15h78v30H36zM75 18a12 12 0 1 0 0 24a12 12 0 1 0 0-24z',
+    'M75 23a7 7 0 1 1 0 14a7 7 0 1 1 0-14z',
+    // the prism's hump, the knobs
+    'M64 6h22l4 9H60zM42 10h12v5H42zM98 11h10v4H98z',
+    // the flash on its handle
+    'M124 20h6v26h-6zM122 10h6l14-7v24l-14-7h-6z',
+  ],
 };
 
 export function weaponSilhouette(id: WeaponId, cls = ''): SVGSVGElement {

@@ -26,6 +26,14 @@ export const TOUCH = {
   lookFastSpeed: 1.8,
   /** How far above the stick centre (in stick radii) the thumb must slide to lock the sprint on. */
   sprintLockAt: 2.0,
+  /** Double-tap to fire (compact layout): the second tap must land this soon after the first one lifts ... */
+  doubleTapMs: 300,
+  /** ... and this close to it (CSS px). */
+  doubleTapPx: 40,
+  /** A touch only counts as a tap if it lifts this quickly ... */
+  tapMs: 250,
+  /** ... without having travelled further than this (CSS px), so a look drag is never half of a double tap. */
+  tapSlopPx: 14,
 } as const;
 
 export interface StickState {
@@ -82,6 +90,51 @@ export function lookGain(distPx: number, dtMs: number): number {
 export function wantsSprintLock(dx: number, dy: number, radius: number): boolean {
   if (!(radius > 0)) return false;
   return -dy >= radius * TOUCH.sprintLockAt && Math.abs(dx) <= radius * 0.9;
+}
+
+/**
+ * Double-tap detection for one finger at a time. `down` answers whether the touch that just landed is the second
+ * tap of a double tap (the caller then holds the trigger until that finger lifts); `up` remembers a short, still
+ * touch as a tap for the next landing to complete. A single tap, a long press and a drag never count, and a double
+ * tap is used up once reported: a third tap starts again from one. Times are in ms, positions in CSS pixels.
+ */
+export class DoubleTap {
+  private held = false;
+  private downT = 0;
+  private downX = 0;
+  private downY = 0;
+  private tapT = Number.NEGATIVE_INFINITY;
+  private tapX = 0;
+  private tapY = 0;
+
+  down(t: number, x: number, y: number): boolean {
+    const since = t - this.tapT;
+    const second = since >= 0 && since <= TOUCH.doubleTapMs && Math.hypot(x - this.tapX, y - this.tapY) <= TOUCH.doubleTapPx;
+    this.tapT = Number.NEGATIVE_INFINITY;
+    this.held = !second;
+    this.downT = t;
+    this.downX = x;
+    this.downY = y;
+    return second;
+  }
+
+  up(t: number, x: number, y: number): void {
+    // the lift of a double tap's own second touch is not a first tap, or every later tap would fire
+    if (!this.held) return;
+    this.held = false;
+    const held = t - this.downT;
+    if (held >= 0 && held <= TOUCH.tapMs && Math.hypot(x - this.downX, y - this.downY) <= TOUCH.tapSlopPx) {
+      this.tapT = t;
+      this.tapX = x;
+      this.tapY = y;
+    }
+  }
+
+  /** Forget everything (the touch was taken away, or the controls were switched off). */
+  reset(): void {
+    this.held = false;
+    this.tapT = Number.NEGATIVE_INFINITY;
+  }
 }
 
 /**

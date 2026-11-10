@@ -551,9 +551,360 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       },
     ],
   },
+  // ---- ZARYA's own guns: built at a bench, bought at the Okhotnik or dropped by a boss; never sold or boxed
+  //      elsewhere. What each one does beyond these numbers is in `ZARYA_GUNS`. ----
+  signalka: {
+    id: 'signalka',
+    name: 'Signalka Flare Pistol',
+    short: 'SIGNALKA',
+    auto: false,
+    /** The flare's hit; whatever it hits is marked (`ZARYA_GUNS.signalka`). */
+    damage: 180,
+    pellets: 1,
+    headshotMul: 1,
+    fireInterval: 0.35,
+    magSize: 1,
+    reserveStart: 12,
+    reserveMax: 12,
+    reloadStyle: 'magazine',
+    reloadTactical: 1.8,
+    reloadEmpty: 1.8,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0.5,
+    spreadAds: 0.1,
+    spreadMove: 0.6,
+    spreadAir: 1.5,
+    spreadPerShot: 0,
+    spreadMax: 0.5,
+    spreadRecover: 5,
+    recoilPitch: 2.6,
+    recoilYaw: 0.5,
+    recoilRecover: 7,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 120,
+    adsFovMul: 0.85,
+    adsTime: 0.16,
+    moveMul: 1.04,
+    noise: 26,
+    drawTime: 0.32,
+    tracerColors: [0xff5a2a, 0xff7a3a, 0xffa060],
+    price: 0,
+    ammoPrice: 300,
+    tiers: [
+      zaryaTier('MK II', 'Magnesium flares: +40% damage, 6 more in the pouch, quicker to load.', 1400, 1.4, 0, 6, 0.85),
+      zaryaTier('MK III', 'Parachute flares: +80% damage, 12 more in the pouch, quicker still.', 3000, 1.8, 0, 12, 0.7),
+    ],
+  },
+  arbalet: {
+    id: 'arbalet',
+    name: 'Arbalet Crossbow',
+    short: 'ARBALET',
+    auto: false,
+    damage: 320,
+    pellets: 1,
+    headshotMul: 2.5,
+    fireInterval: 0.3,
+    magSize: 1,
+    reserveStart: 30,
+    reserveMax: 30,
+    reloadStyle: 'magazine',
+    reloadTactical: 1.5,
+    reloadEmpty: 1.5,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0.35,
+    spreadAds: 0.04,
+    spreadMove: 0.5,
+    spreadAir: 1.5,
+    spreadPerShot: 0,
+    spreadMax: 0.35,
+    spreadRecover: 5,
+    recoilPitch: 1.1,
+    recoilYaw: 0.2,
+    recoilRecover: 8,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 140,
+    adsFovMul: 0.6,
+    adsTime: 0.22,
+    moveMul: 0.98,
+    /** Silent: it wakes nobody (`WeaponSystem` never reports its shot as a noise). */
+    noise: 0,
+    drawTime: 0.5,
+    tracerColors: [0xd8e0e8, 0xffd9a0, 0x9ff0ff],
+    price: 1500,
+    ammoPrice: 350,
+    tiers: [
+      zaryaTier('MK II', 'Steel limbs: +30% damage, 10 more bolts, a quicker draw, ignores 30% of armour.', 1600, 1.3, 0, 10, 0.85, 0.3),
+      zaryaTier('MK III', 'Broadheads: +60% damage, 20 more bolts, quicker still, ignores 50% of armour.', 3400, 1.6, 0, 20, 0.7, 0.5),
+    ],
+  },
+  gvozdomyot: {
+    id: 'gvozdomyot',
+    name: 'Gvozdomyot Nail Gun',
+    short: 'GVOZDOMYOT',
+    auto: true,
+    damage: 42, // 690 a second at 920 rpm: above every other gun's sustained damage (Hanafubuki 600)
+    pellets: 1,
+    headshotMul: 2,
+    /** About 900 a minute: a hair under four frames of a 60 Hz simulation, so that it is four and never five. */
+    fireInterval: 60 / 920,
+    magSize: 60,
+    reserveStart: 360,
+    reserveMax: 360,
+    reloadStyle: 'magazine',
+    reloadTactical: 2.2,
+    reloadEmpty: 2.2,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 1.1,
+    spreadAds: 0.2,
+    spreadMove: 0.8,
+    spreadAir: 2.2,
+    spreadPerShot: 0.06,
+    spreadMax: 0.9,
+    spreadRecover: 7,
+    recoilPitch: 0.22,
+    recoilYaw: 0.12,
+    recoilRecover: 10,
+    falloffStart: 30,
+    falloffEnd: 80,
+    minMul: 0.65,
+    maxRange: 140,
+    adsFovMul: 0.72,
+    adsTime: 0.2,
+    moveMul: 0.96,
+    noise: 34,
+    drawTime: 0.5,
+    tracerColors: [0xe8f0ff, 0xffd9a0, 0x9ff0ff],
+    price: 0,
+    ammoPrice: 450,
+    tiers: [
+      zaryaTier('MK II', 'Framing nails: +20% damage, an 80-nail strip, quicker to load, ignores 30% of armour.', 2200, 1.2, 20, 120, 0.85, 0.3),
+      zaryaTier('MK III', 'Hardened nails: +45% damage, a 100-nail strip, quicker still, ignores 40% of armour.', 4400, 1.45, 40, 240, 0.7, 0.4),
+    ],
+  },
+  salyut: {
+    id: 'salyut',
+    name: 'Salyut Firework Battery',
+    short: 'SALYUT',
+    auto: false,
+    /** Centre-of-blast damage of each of the volley's rockets (`ZARYA_GUNS.salyut`). */
+    damage: 420,
+    pellets: 1,
+    headshotMul: 1,
+    fireInterval: 0.8,
+    magSize: 1,
+    reserveStart: 6,
+    reserveMax: 6,
+    reloadStyle: 'magazine',
+    reloadTactical: 3,
+    reloadEmpty: 3,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0.8,
+    spreadAds: 0.3,
+    spreadMove: 1.0,
+    spreadAir: 2.0,
+    spreadPerShot: 0,
+    spreadMax: 0.8,
+    spreadRecover: 4,
+    recoilPitch: 4.5,
+    recoilYaw: 1.0,
+    recoilRecover: 4.5,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 140,
+    adsFovMul: 0.85,
+    adsTime: 0.28,
+    moveMul: 0.9,
+    noise: 70,
+    drawTime: 0.7,
+    tracerColors: [0xffd070, 0xff9030, 0x6ff0ff],
+    price: 0,
+    ammoPrice: 800,
+    tiers: [
+      zaryaTier('MK II', 'Double charges: +25% blast damage, 2 more volleys, a quicker reload.', 2600, 1.25, 0, 2, 0.85),
+      zaryaTier('MK III', 'The finale: +55% blast damage, 4 more volleys, quicker still.', 5000, 1.55, 0, 4, 0.7),
+    ],
+  },
+  ottepel: {
+    id: 'ottepel',
+    name: 'Ottepel, "the Thaw"',
+    short: 'OTTEPEL',
+    auto: true,
+    /** Damage a SECOND to everything in the steam; `magSize` is the pressure gauge, which refills by itself (`ZARYA_GUNS.ottepel`). */
+    damage: 900,
+    pellets: 1,
+    headshotMul: 1,
+    /** The seconds between two ticks of the steam's damage. */
+    fireInterval: 0.2,
+    magSize: 100,
+    reserveStart: 0,
+    reserveMax: 0,
+    reloadStyle: 'magazine',
+    reloadTactical: 1,
+    reloadEmpty: 1,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0,
+    spreadAds: 0,
+    spreadMove: 0,
+    spreadAir: 0,
+    spreadPerShot: 0,
+    spreadMax: 0,
+    spreadRecover: 4,
+    recoilPitch: 0,
+    recoilYaw: 0,
+    recoilRecover: 6,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 10,
+    adsFovMul: 0.9,
+    adsTime: 0.26,
+    moveMul: 0.9,
+    noise: 30,
+    drawTime: 0.7,
+    tracerColors: [0xf0f6ff, 0xffe0c0, 0xc0f6ff],
+    price: 0,
+    ammoPrice: 0,
+    tiers: [
+      zaryaTier('MK II', 'A second coil: +30% steam damage.', 4000, 1.3, 0, 0, 1),
+      zaryaTier('MK III', 'Vesna, undiluted: +60% steam damage.', 7000, 1.6, 0, 0, 1),
+    ],
+  },
+  zenit: {
+    id: 'zenit',
+    name: 'Zenit Camera',
+    short: 'ZENIT',
+    auto: false,
+    /** It hurts nobody: the flash stops them where they stand (`ZARYA_GUNS.zenit`). `magSize` is its flashbulbs; there are no more. */
+    damage: 0,
+    pellets: 1,
+    headshotMul: 1,
+    fireInterval: 1.2,
+    magSize: 12,
+    reserveStart: 0,
+    reserveMax: 0,
+    reloadStyle: 'magazine',
+    reloadTactical: 1,
+    reloadEmpty: 1,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0,
+    spreadAds: 0,
+    spreadMove: 0,
+    spreadAir: 0,
+    spreadPerShot: 0,
+    spreadMax: 0,
+    spreadRecover: 4,
+    recoilPitch: 0.3,
+    recoilYaw: 0,
+    recoilRecover: 8,
+    falloffStart: 999,
+    falloffEnd: 1000,
+    minMul: 1,
+    maxRange: 18,
+    adsFovMul: 0.8,
+    adsTime: 0.2,
+    moveMul: 1.04,
+    noise: 10,
+    drawTime: 0.35,
+    tracerColors: [0xffffff, 0xffffff, 0xffffff],
+    price: 0,
+    ammoPrice: 0,
+    tiers: [
+      zaryaTier('MK II', 'A brighter bulb.', 99999, 1, 0, 0, 1),
+      zaryaTier('MK III', 'A brighter bulb.', 99999, 1, 0, 0, 1),
+    ],
+  },
 };
 
-export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin'];
+export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit'];
+
+/** An upgrade tier of one of ZARYA's guns (no change to the fire rate, the recoil, the spread or the pellets). */
+function zaryaTier(label: string, description: string, cost: number, damageMul: number, magSizeAdd: number, reserveMaxAdd: number, reloadMul: number, armorPierce = 0): UpgradeTier {
+  return { label, description, cost, damageMul, magSizeAdd, reserveMaxAdd, fireRateMul: 1, recoilMul: 1, spreadMul: 1, reloadMul, pelletsAdd: 0, headshotMulAdd: 0, armorPierce };
+}
+
+/**
+ * What ZARYA's guns do beyond the weapon table (`weapons/weaponSystem.ts`: `fireZarya` and `steam`; the flare and the
+ * fireworks fly as `weapons/grenades.ts` rockets; the mark is `Zombie.mark`).
+ */
+export const ZARYA_GUNS = {
+  signalka: {
+    /** Whatever the flare hits is marked this long: it glows, and everything hurts it double (`Zombie.takeDamage`). */
+    markTime: 10,
+    markMul: 2,
+    /** The flare in flight (m/s, a little drop, seconds before it burns out), and how long its landing is lit red. */
+    speed: 40,
+    gravity: 1.5,
+    life: 3,
+    lightTime: 0.5,
+  },
+  /** The bolt goes through this many bodies and stops in the next. */
+  arbalet: { pierce: 2 },
+  /** How hard a nail pushes at its target's poise (`Zombie.takeDamage`'s `impulse`): one nail stops a shambler. */
+  gvozdomyot: { impulse: 3 },
+  salyut: {
+    /** One pull: this many rockets, fanned this many degrees apart. */
+    rockets: 5,
+    fan: 4,
+    speed: 36,
+    gravity: 2.5,
+    /** They burst by themselves after this long in the air, or as soon as they pass this near an infected (m). */
+    life: 1.3,
+    proximity: 1.3,
+    blastRadius: 4,
+    edgeShare: 0.2,
+    /** The firer's share of a blast's damage (the HX-7's is 0.45), and of its shove. */
+    selfMul: 0.03,
+    selfShove: 0.25,
+    knockback: 9,
+    colors: [0xff4a3a, 0x5aff7a, 0x4aa8ff, 0xffd84a, 0xd86aff],
+  },
+  ottepel: {
+    /** The steam: a cone this long (m) and this wide (degrees, the whole angle), blocked by walls. */
+    range: 10,
+    cone: 50,
+    /** The gauge: units drained a second while it throws, units it makes back a second while it does not. */
+    drain: 14,
+    refill: 6,
+    /** Run dry, it throws again once the gauge is back to this. */
+    restart: 8,
+  },
+  zenit: {
+    /** The flash: a cone this long (m) and this wide (degrees), and the seconds it stops them (a boss: `bossStagger`). */
+    range: 18,
+    cone: 60,
+    stagger: 3.5,
+    bossStagger: 1,
+  },
+} as const;
 
 /** Raijin's Drum: a shockwave in front of you, and a bolt that leaps from infected to infected. */
 export const RAIJIN = {
@@ -590,8 +941,8 @@ export const ROCKET = {
  * How hard a killing blow throws the body (m/s along the shot, and up). Explosions scale with distance from the blast.
  */
 export const RAGDOLL = {
-  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
-  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
+  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, signalka: 3, arbalet: 5, gvozdomyot: 2.6, salyut: 0, ottepel: 2, zenit: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
+  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, signalka: 1, arbalet: 1.2, gvozdomyot: 0.6, salyut: 0, ottepel: 0.8, zenit: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
   /** Explosions: speed at the centre, falling off to `blastEdge` at the edge; lift is `blastLift` times that. */
   blastCenter: 15,
   blastEdge: 5,
@@ -1007,7 +1358,8 @@ export const MYSTERY_BOX = {
   } as Record<Region, { weapon: number; grenades: number; rpgMul: number }>,
   /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
   /** The Sakura District's relics are never in its boxes (weight 0): there they are earned at Kisaragi. */
-  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0 } as Record<WeaponId, number>,
+  /** ZARYA's guns are never in a box either (weight 0): they are built, bought or dropped there. */
+  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0, signalka: 0, arbalet: 0, gvozdomyot: 0, salyut: 0, ottepel: 0, zenit: 0 } as Record<WeaponId, number>,
   /** Maps whose boxes hold the relics too, and how often (MUJIN: the station they came through). */
   relicMaps: ['mujin'] as readonly MapId[],
   relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
@@ -1281,7 +1633,27 @@ export interface SquadDef {
   models?: readonly string[];
   /** Co-op players take their places: the squad and the players together are at most `COOP.maxPlayers`. */
   fillsSeats?: boolean;
+  /**
+   * Squadmates, not helpers (ZARYA): they have a player's health and hit as hard as a player's rifle (`SQUADMATE`),
+   * and they never die - at no health they go down, and get back up after `SQUADMATE.downFor` seconds or when a player
+   * helps them up.
+   */
+  equals?: boolean;
 }
+/** What a squadmate (`SquadDef.equals`) is made of: a player's health, a player's rifle, and a way back up. */
+export const SQUADMATE = {
+  hp: 100,
+  damageTaken: 1,
+  range: 30,
+  fireInterval: 0.2,
+  bodyDamage: 26,
+  headDamage: 52,
+  /** Seconds a downed squadmate lies before getting up by themselves, the health they get up with (a share of full), and how long a player holds to help them up sooner. */
+  downFor: 12,
+  upWith: 0.5,
+  helpHold: 1.5,
+  helpReach: 2.6,
+} as const;
 export const SQUADS: Partial<Record<MapId, SquadDef>> = {
   // two of Vulcan's three co-leaders, drawn each run (`forge/roster.ts`); their looks are `forge/looks.ts`
   forge: { names: VULCAN_LEADERSHIP.coLeads, pick: 2, tag: 'VULCAN', tagColor: '#ff9a4a', weapons: ['rifle', 'shotgun'], helmets: [false, false] },
@@ -1326,6 +1698,22 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
     looks: [{ female: true, outfit: 'tactical', hair: 'bob', hairColor: 0x5ad8d0, skin: 0xf3d6c2, eyes: 0x2a5a6a, accent: 0xff7a1a }],
     models: ['victoria.vrm'],
     fillsSeats: true,
+  },
+  // ZARYA: the town's volunteer search squad is always three. You are one of them (Mira, alone); the other two fight
+  // beside you as equals, and co-op players take their places
+  zarya: {
+    names: ['Timur', 'Vera'],
+    tag: 'SEARCH SQUAD',
+    tagColor: '#ffd28a',
+    weapons: ['rifle', 'shotgun'],
+    helmets: [false, false],
+    colors: [0x3a4a5c, 0x7a2f2a],
+    looks: [
+      { female: false, outfit: 'coat', hair: 'short', hairColor: 0x15120f, skin: 0xd9b08c, eyes: 0x2a1c12, accent: 0xe07a2a },
+      { female: true, outfit: 'coat', hair: 'ponytail', hairColor: 0x6a3a22, skin: 0xf0d2bd, eyes: 0x3a5a4a, accent: 0xc8322a },
+    ],
+    fillsSeats: true,
+    equals: true,
   },
 };
 
@@ -1398,6 +1786,8 @@ export const SURVIVORS = {
   mujin: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // HIRASAKA: the island was emptied in 1974; nobody living is left on it
   hirasaka: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
+  // ZARYA: nobody is caged; the town is asleep on its feet
+  zarya: [] as readonly { name: string; tag: string; color: number; model?: string; look?: AvatarLook }[],
   // Aurelia's valley: Vulcan's own, taken across the river and caged on the bank (looks: `forge/looks.ts`)
   aurelia: [
     { name: 'Marv03K', tag: 'VULCAN', color: 0x8a4a22 },

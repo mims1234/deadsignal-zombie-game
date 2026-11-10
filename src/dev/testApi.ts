@@ -10,6 +10,7 @@ import type { Game } from '../game/game';
 import type { Edges } from '../player/input';
 import type { WeaponId, ZombieType } from '../types';
 import type { PowerupKind } from '../logic/powerups';
+import type { ZombieVariant } from '../enemies/variants';
 import { animeSlotState } from '../anime/vrm';
 
 function emptyEdges(): Edges {
@@ -179,10 +180,26 @@ export function installTestApi(game: Game): void {
       if (what.grenades !== undefined) inv.grenades = what.grenades;
       if (what.ammo) for (const w of inv.slots) if (w) w.ammo.reserve = w.ammo.reserveMax;
     },
-    spawnZombie(type: ZombieType, x: number, z: number, chase = true) {
-      const z0 = game.zombies.spawn(type, x, z, game.rng, {});
+    /** `variant`: one of a map's kinds (`enemies/variants.ts`), or '' for none whatever the map's picker would choose; `yaw`: the way it faces. */
+    spawnZombie(type: ZombieType, x: number, z: number, chase = true, variant?: ZombieVariant, yaw?: number) {
+      const z0 = game.zombies.spawn(type, x, z, game.rng, { ...(variant !== undefined ? { variant } : {}), ...(yaw !== undefined ? { yaw } : {}) });
       if (chase) z0.aggro(game.player.x, game.player.z);
       return z0.id;
+    },
+    /** One infected as the simulation has it (QA): where it is, what it is doing, its kind and what its kind has done. */
+    kindInfo(id: number) {
+      const z = game.zombies.zombies.find((q) => q.id === id);
+      if (!z) return null;
+      return { id: z.id, type: z.type, variant: z.variant, state: z.state, x: z.x, z: z.z, yaw: z.yaw, hp: z.hp, maxHp: z.maxHp, frontArmor: z.frontArmor, hidden: z.hidden, crateBroken: z.crateBroken, chasing: z.chasing, mode: z.poseMode, poseT: z.poseT, quarry: z.quarry };
+    },
+    /** A blow on an infected from the player's side of it, through the real damage path (`heavy`: a heavy swung weapon's). */
+    strikeZombie(id: number, amount: number, heavy = false): number {
+      const z = game.zombies.zombies.find((q) => q.id === id);
+      if (!z) return 0;
+      const before = z.hp;
+      const yaw = Math.atan2(-(z.x - game.player.x), -(z.z - game.player.z));
+      game.zombies.damage(z, amount, false, game.zenv, yaw, 0, 0, 1, heavy);
+      return before - z.hp;
     },
     clearZombies(): void {
       for (const z of [...game.zombies.zombies]) if (z !== game.zombies.boss) (z as unknown as { hp: number }).hp = 0;
@@ -204,6 +221,14 @@ export function installTestApi(game: Game): void {
     giveWeapon(id: WeaponId): void {
       const inv = game.session.inv;
       inv.slots[inv.activeSlot] = createCarried(id);
+      game.weapons.cancelActions();
+    },
+    /** A fresh gun `id` in slot `slot` (default 0), and that slot in the hands: ZARYA's guns are handed out this way. */
+    giveGun(id: WeaponId, slot: 0 | 1 = 0): void {
+      const inv = game.session.inv;
+      inv.slots[slot] = createCarried(id);
+      inv.activeSlot = slot;
+      game.melee?.setOut(false);
       game.weapons.cancelActions();
     },
     /** Mystery boxes: where they are and what they are doing. */

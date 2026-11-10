@@ -784,6 +784,13 @@ function chalkTexture(weapon: WeaponId): THREE.CanvasTexture {
     // never chalked (the Sakura District's relics)
     hanafubuki: [],
     raijin: [],
+    // nor ZARYA's guns
+    signalka: [],
+    arbalet: [],
+    gvozdomyot: [],
+    salyut: [],
+    ottepel: [],
+    zenit: [],
   };
   for (const [sx, sy, sw, sh] of shapes[weapon]) rough(sx, sy, sw, sh, 1);
   x.font = `bold 34px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;

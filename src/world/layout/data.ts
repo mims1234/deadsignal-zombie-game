@@ -45,8 +45,8 @@ export interface AmbientZombieDef {
 }
 
 /** `sakura` is the District's streets with an anime cast (VRoid models, `anime/`). */
-export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia' | 'mujin' | 'hirasaka';
-export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka'];
+export type MapId = 'district' | 'sakura' | 'forge' | 'asylum' | 'aurelia' | 'mujin' | 'hirasaka' | 'zarya';
+export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka', 'zarya'];
 /**
  * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
  * them (a local dev build shows them too); everyone else does not see them at all.
@@ -312,6 +312,38 @@ export const MAP_TEXT: Record<MapId, MapText> = {
       { tag: 'ACT I', title: 'GET THE CAGE RUNNING', text: "Three jobs, any order: Genzō's key on Block 65's roof, the lighthouse on the summit, the three sea gates on the seawall." },
       { tag: 'ACT II', title: 'THE DEEP', text: 'Ride the cage down. The galleries, the Old Village and its white peaches, and the Root Hall, where Kurogane still gives orders.' },
       { tag: 'ACT III', title: 'SEAL THE SLOPE', text: 'Climb out by the old adit and up the island ahead of the surge. Do not look back at her. Push the Sealing Stone home.' },
+    ],
+  },
+  // ZARYA (layout/zarya*.ts, src/zarya/): the whole town in three acts. It has no relay, no clock and no extraction, so
+  // most of the operation's lines below are never said; the story says its own (`zarya/lines.ts`).
+  zarya: {
+    name: 'ZARYA',
+    tagline: "A closed town in the north, asleep on its feet since three minutes to midnight",
+    defenseTitle: 'THE SHELTER',
+    defenseSite: 'SHELTER',
+    defensePrompt: 'THE SHELTER',
+    defenseStart: 'THE SHELTER',
+    defenseDone: 'THE SHELTER',
+    huntTitle: 'MOROZKO',
+    boss: 'MOROZKO',
+    huntSite: 'the Berloga hall',
+    extractTitle: 'LINE ONE',
+    lz: 'THE TRAM STOP',
+    surge: 'THE QUIET SNOW',
+    hazardSite: 'HEATING PLANT',
+    sealed: 'NO CLOCK',
+    bossSighted: 'Oleg Petrovich, in the bear suit. Padding from the front: get behind him.',
+    bossRadio: { from: 'TIMUR', text: "That's Oleg Petrovich. He's been the bear every year since I was at school." },
+    regions: { low: 'The Univermag and the shelter under it', medium: 'The square and the streets the tram reaches', high: 'The Palace, the pond road, the plant, the Institute' },
+    brief: "Zarya-12, a closed science town in the north, New Year's Eve. A boy has gone missing in the department store and you are the volunteer search squad. Find him. Nobody has told you what the Institute is doing tonight.",
+    kicker: "ZARYA-12  //  NEW YEAR'S EVE  //  22:41",
+    signal: 'EVERY CLOCK IN TOWN STOPPED AT 23:57',
+    premise: 'At three minutes to midnight a quiet snow came down on Zarya-12 and nine thousand people fell asleep on their feet. They breathe, slowly; nothing wakes them and nothing harms them. A few were woken wrong. Those ones have no breath. Somewhere under the Institute, somebody can still wake the town.',
+    foot: "Ten parts of town and the rooms under them: the square and the Univermag, the Rynok, the courtyards, the garages, the tram depot, the Palace of Culture, the banya by the pond, the heating plant, the Institute. Timur and Vera walk with you; co-op players take their places. You start with nothing in your hands. There is no clock: the only way to lose is for the squad to go down. Things are found where they would be, bought, built at a workbench, or pulled out of a red sack.",
+    rows: [
+      { tag: 'ACT I', title: 'THREE MINUTES TO MIDNIGHT', text: 'Find the boy in the Univermag, wake up sealed in the shelter under it, and get Tram No. 1 running: its handle, a line fuse, and the bear who guards the sack.' },
+      { tag: 'ACT II', title: 'NEXT STOP', text: "Three more keys, each its own way: lure the butcher into his cold store, buy tickets to the pageant and turn Baba Yaga's hut, unplug the toastmaster of the staff party upstairs. Cut the chains to Timur's bench and build." },
+      { tag: 'ACT III', title: 'THE THAW', text: 'Open the pond road, find the year the town was founded, and take the keys down to the Berloga, where Morozko asks his question. How the town wakes is up to you.' },
     ],
   },
 };

@@ -25,6 +25,13 @@ const SPECS: Record<WeaponId, Spec> = {
   rpg: { len: 0.07, rad: 0.0105, shell: true }, // never ejects; here for completeness
   hanafubuki: { len: 0.045, rad: 0.0058, shell: false }, // (sheds petals, not brass)
   raijin: { len: 0.07, rad: 0.0105, shell: true }, // never ejects
+  // ZARYA's guns: none of them ejects anything (here for completeness)
+  signalka: { len: 0.07, rad: 0.0105, shell: true },
+  arbalet: { len: 0.045, rad: 0.0058, shell: false },
+  gvozdomyot: { len: 0.045, rad: 0.0058, shell: false },
+  salyut: { len: 0.07, rad: 0.0105, shell: true },
+  ottepel: { len: 0.045, rad: 0.0058, shell: false },
+  zenit: { len: 0.029, rad: 0.0049, shell: false },
 };
 
 function brassGeometry(): THREE.BufferGeometry {

@@ -26,12 +26,12 @@
  * Out: `send(to, d)` - to 'all' or one player id.
  */
 import * as THREE from 'three';
-import { CARD_MODE, COOP, ECONOMY, FORGE_SQUAD, MISSION, REGIONS, SURVIVORS, TEAM_SKILLS, VULCAN, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
+import { CARD_MODE, COOP, ECONOMY, FORGE_SQUAD, MISSION, REGIONS, SQUADMATE, SURVIVORS, TEAM_SKILLS, VULCAN, ZARYA_GUNS, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
 import { type Aurelia, aureliaAtStart, aureliaHurt, aureliaRow, aureliaStep } from '../aurelia/brain';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
+import { type AllyBody, type AllyWorld, allyDownStep, allyFight, allyFighting, allyHelpUp, allyHit, allyHurt, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from '../game/allyBrain';
 import { ALLY_GUNS, type AllySupply, allyErrand } from '../game/allySupply';
 import { BOX_PHASE, type LootState, createLoot, openBox, pickDrop, rollKillDrop, takeBox, tickLoot } from '../logic/sharedLoot';
 import { type CarrierState, createCarrier, downCarrier, identifyCarrier, purgeCarrier, recoverCarrier, spreadPick, tickCarrier } from '../logic/carriers';
@@ -67,6 +67,10 @@ import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/d
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
+import { ZaryaDirector } from '../zarya/director';
+import { applyDoors as applyZaryaDoors } from '../zarya/doors';
+import { zaryaVariantPicker } from '../zarya/kinds';
+import { CH as ZCH, F as ZF, ZaryaStory, encodeStory as encodeZarya, type StoryAct as ZaryaAct } from '../zarya/story';
 import { EMPRESS_HP, empressAwake, LURES, populateSakura, SakuraDirector, sakuraTerritory, sakuraVariantPicker, Stalker } from '../sakura/director';
 import { isStory, STORY_IDS, type StoryId } from '../sakura/missions';
 import { campaignSetPiece, chapterIndex, PROCESSION, processionWave } from '../sakura/campaign';
@@ -239,6 +243,11 @@ export class SessionSim {
   private readonly mujinDir: MujinDirector | null = null;
   /** HIRASAKA: the island's story everyone shares (`hirasaka/story.ts`), and its infected (`hirasaka/director.ts`). */
   readonly hirasaka: HirasakaStory | null = null;
+  /** ZARYA: the town's story (`zarya/story.ts`) and the infected it wakes (`zarya/director.ts`). */
+  readonly zarya: ZaryaStory | null = null;
+  private readonly zaryaDir: ZaryaDirector | null = null;
+  /** ZARYA: when the purge console's fourth key turned, and how it ended (the ending plays before the results). */
+  private zaryaEnd: { at: number; end: number } | null = null;
   private readonly hirasakaDir: HirasakaDirector | null = null;
   /** HIRASAKA: when the stone went home (the results follow the ending's last seconds). */
   private sealedAt = -1;
@@ -304,6 +313,8 @@ export class SessionSim {
       rng: this.rng,
       followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
       holdFire: (z, a) => {
+        // ZARYA: the ones the story keeps asleep on their feet, and the ones nothing hurts (`zarya/director.ts`)
+        if (this.zaryaDir) return this.zaryaDir.spared(z);
         if (!this.asylum || !this.story) return false;
         const keepers: { x: number; y: number; z: number }[] = [];
         for (const q of this.peers.values()) if (q.ref.alive) keepers.push({ x: q.ref.x, y: q.ref.y, z: q.ref.z });
@@ -337,11 +348,45 @@ export class SessionSim {
       this.zombies.pickVariant = mujinVariantPicker();
       this.zombies.spawnAllowed = mujinSpawnAllowed();
     }
+    if (this.map === 'zarya') {
+      this.zarya = new ZaryaStory();
+      this.zaryaDir = new ZaryaDirector(this.level, this.zombies);
+      this.zombies.spawnAllowed = this.zaryaDir.spawnAllowed();
+      this.zombies.pickVariant = zaryaVariantPicker();
+    }
     if (this.map === 'hirasaka') {
       this.hirasaka = new HirasakaStory();
       this.hirasakaDir = new HirasakaDirector(this.level, this.zombies);
       this.zombies.pickVariant = hirasakaVariantPicker(() => this.hirasakaDir?.lureVariant ?? '');
       this.zombies.spawnAllowed = this.hirasakaDir.spawnAllowed();
+    }
+  }
+
+  /**
+   * ZARYA's story, one frame: what happens by itself, the infected it wakes, the kills the matryoshkas count, the
+   * doors (`zarya/doors.ts`), and the ending.
+   */
+  private stepZarya(dt: number): void {
+    const q = this.zarya;
+    const dir = this.zaryaDir;
+    if (!q || !dir || !this.story) return;
+    this.hunt.status = 'available';
+    const stand = [...this.peers.values()].map((p) => ({ x: p.ref.x, z: p.ref.z, up: p.ref.alive }));
+    q.step(stand);
+    // the first hand in Ded Moroz's sack brings its keeper
+    if (q.view.ch >= ZCH.town && !ZaryaStory.has(q.view, ZF.bear) && this.loot.boxes.some((b) => b.phase !== BOX_PHASE.closed)) q.note('bearUp');
+    for (const e of q.drain()) {
+      dir.onEvent(e, q.view, stand, this.rng);
+      if (e.kind === 'end' && !this.zaryaEnd) this.zaryaEnd = { at: this.elapsed, end: e.end };
+    }
+    for (const n of dir.step(dt, q.view, stand, this.rng)) q.note(n);
+    for (const k of dir.drainKills()) q.kill(k.x, k.z);
+    applyZaryaDoors(this.level, q.view);
+    // the fourth key has turned: the ending's last lines, then the results
+    const end = this.zaryaEnd;
+    if (end && this.elapsed - end.at > 20) {
+      for (const p of this.peers.values()) if (p.ref.alive) this.aboard.add(p.id);
+      this.finish(true, end.end === 1 ? 'Happy New Year' : end.end === 2 ? 'Until spring' : 'Warm');
     }
   }
 
@@ -545,6 +590,14 @@ export class SessionSim {
       this.mujinDir.reset(rng);
       this.hunt.status = 'available';
     }
+    if (this.zarya && this.zaryaDir) {
+      // the town as a run finds it: awake, nobody on their feet who should not be, nothing found
+      this.zarya.reset();
+      this.zaryaDir.reset();
+      this.zaryaEnd = null;
+      applyZaryaDoors(this.level, this.zarya.view);
+      this.hunt.status = 'available';
+    }
     if (this.hirasaka && this.hirasakaDir) {
       const rng = this.rng;
       this.hirasaka.reset(() => rng.f());
@@ -731,8 +784,18 @@ export class SessionSim {
         if (!z || !z.alive || !up) return;
         this.killer = from;
         // a single hit can never do more than the strongest weapon plausibly could
-        this.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, p.env, Number(d.y) || 0, Math.min(20, Number(d.pu) || 0), Math.min(15, Number(d.li) || 0));
+        // `im`: how hard the blow pushes at its poise (a swung weapon, ZARYA's nail gun); absent, a bullet's 1.
+        // `hv`: a heavy melee blow (ZARYA: only that breaks the loader's crate)
+        this.zombies.damage(z, Math.max(0, Math.min(600, Number(d.a) || 0)), d.h === true, p.env, Number(d.y) || 0, Math.min(20, Number(d.pu) || 0), Math.min(15, Number(d.li) || 0), d.im === undefined ? 1 : Math.max(0, Math.min(6, Number(d.im) || 0)), d.hv === 1);
         this.killer = null;
+        return;
+      }
+      case 'zfx': {
+        // ZARYA's guns: the Signalka's mark (seconds of double damage) and the Zenit's flash (seconds stopped; a boss
+        // for one at most), on an infected near enough to whoever asks
+        const z = this.zombies.zombies.find((q) => q.id === d.z);
+        if (this.map !== 'zarya' || !z || !z.active || !up || Math.hypot(z.x - p.ref.x, z.z - p.ref.z) > 130) return;
+        this.zombies.affect(z, p.env, Math.max(0, Math.min(ZARYA_GUNS.signalka.markTime, Number(d.mk) || 0)), Math.max(0, Math.min(ZARYA_GUNS.zenit.stagger, Number(d.sg) || 0)), ZARYA_GUNS.zenit.bossStagger);
         return;
       }
       case 'cure': {
@@ -797,6 +860,14 @@ export class SessionSim {
         this.send('all', { k: 'cash', c: SURVIVORS.rescueCash, t: `${a.name.toUpperCase()} FREED ${freed}/${total}` });
         return;
       }
+      case 'help': {
+        // a squadmate who is down (`SQUADMATE`): a player at their side gets them up at once (slack for the report lag,
+        // and for the step the fall carries the body on a player's screen)
+        const a = this.allies[Number(d.i)];
+        if (!this.story || !up || !a || Math.hypot(a.ref.x - p.ref.x, a.ref.z - p.ref.z) > SQUADMATE.helpReach + 1.5) return;
+        allyHelpUp(a);
+        return;
+      }
       case 'stoke': {
         // the Forge: stoke furnace i (its circle must then be held while it catches)
         if (!this.forge || !this.story || !up) return;
@@ -842,6 +913,14 @@ export class SessionSim {
         else if (d.a === 'phone') q.answer(x, z);
         else if (d.a === 'take') q.takeRen(seat, x, z);
         else if (d.a === 'seat') q.seatRen(seat, x, z);
+        return;
+      }
+      case 'zy': {
+        // ZARYA: something a player asks the story for (it checks what may be done now, and where they stand);
+        // `h`: what they have in hand is a heavy thing to swing (the padlocks and the glass want one)
+        const q = this.zarya;
+        if (!q || !up) return;
+        q.act(String(d.a) as ZaryaAct, Math.floor(Number(d.i)) || 0, { x: p.ref.x, z: p.ref.z }, !!d.h);
         return;
       }
       case 'hs': {
@@ -1100,7 +1179,7 @@ export class SessionSim {
     // the squad: allies who are fighting are targets too
     const allyEnvs: ZombieEnv[] = [];
     for (const a of this.allies) {
-      if (!a.ref.alive || a.trapped) continue;
+      if (!allyFighting(a)) continue; // the dead, the caged, and a squadmate who is down: nobody goes for them
       a.env ??= this.makeEnv(a.ref, a.field, (amount, sx, sz) => this.hurtAlly(a, amount, sx, sz));
       a.env.time = this.time;
       allyEnvs.push(a.env);
@@ -1138,6 +1217,7 @@ export class SessionSim {
     if (this.forge) this.forge.tick(dt, this.fillForgeTick(), this.rng);
     this.stepMujin(dt);
     this.stepHirasaka(dt);
+    this.stepZarya(dt);
     if (this.sakura) {
       this.sakura.tick(dt);
       this.sakuraEvents();
@@ -1249,6 +1329,11 @@ export class SessionSim {
   private stepAllies(dt: number, peers: Peer[]): void {
     this.allies.forEach((a, i) => {
       if (!a.ref.alive || a.trapped) return;
+      if (a.down > 0) {
+        // a squadmate who is down lies there until their own clock (or a player: 'help') gets them up
+        allyDownStep(a, dt);
+        return;
+      }
       allyRecover(a, dt);
       a.fieldT -= dt;
       if (a.fieldT <= 0) {
@@ -1307,12 +1392,8 @@ export class SessionSim {
   }
 
   private hurtAlly(a: SimAlly, amount: number, sx: number, sz: number): void {
-    if (!a.ref.alive) return;
-    a.hp -= amount * a.stats.damageTaken;
-    a.sinceHurt = 0;
-    if (a.hp > 0) return;
-    a.hp = 0;
-    a.ref.alive = false;
+    // dead, or (a squadmate, who never dies) down: either way the clients see a body fall
+    if (!allyHurt(a, amount)) return;
     // facing the blow: the clients throw the body away from it
     a.yaw = Math.atan2(-(sx - a.ref.x), -(sz - a.ref.z));
   }
@@ -1446,8 +1527,9 @@ export class SessionSim {
       out.ms = [r1(this.elapsed), RELAY_STATUSES.indexOf(this.hunt.status), this.hunt.identified ? 1 : 0, EXTRACTION_PHASES.indexOf(ex.phase), r1(ex.countdown), r1(ex.windowLeft), ex.calledAt === null ? -1 : r1(ex.calledAt), this.outcome ? (this.outcome.won ? 1 : 2) : 0];
       if (this.outcome) out.why = this.outcome.reason;
       // [i, x, z, yaw, state, hp, y?, gun?]: the height when upstairs, and where the squad carries its own guns, the gun
+      // (state: 0 dead, 1 up, 2 caged, 3 a squadmate who is down)
       out.sq = this.allies.map((a, i) => {
-        const row = [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : 1, Math.round(a.hp)];
+        const row = [i, r1(a.ref.x), r1(a.ref.z), r2(a.yaw), !a.ref.alive ? 0 : a.trapped ? 2 : a.down > 0 ? 3 : 1, Math.round(a.hp)];
         if (a.ref.y > 0.5 || a.kit) row.push(r1(a.ref.y));
         if (a.kit) row.push(ALLY_GUNS.indexOf(a.kit.gun));
         return row;
@@ -1470,6 +1552,7 @@ export class SessionSim {
       if (this.sakura) out.lq = encodeQuest(this.sakura.view); // the Thousand Lanterns (its own key: `sq` is the squad)
       if (this.mujin) out.mj = encodeJobs(this.mujin.view); // MUJIN's jobs
       if (this.hirasaka) out.hs = encodeStory(this.hirasaka.view); // HIRASAKA's story
+      if (this.zarya) out.zy = encodeZarya(this.zarya.view); // ZARYA's story
       if (this.forge) {
         // the Forge's story: its state every time, the run's roster now and then (late joiners need it)
         out.fg = encodeState(this.forge.view);

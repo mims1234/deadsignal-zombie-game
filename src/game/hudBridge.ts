@@ -6,6 +6,7 @@ import type { GameCtx } from './ctx';
 import type { InteractionOutput } from './interaction';
 import type { MissionRuntime } from './missionRuntime';
 import type { CardRuntime } from '../cards/cardRuntime';
+import { isZaryaGun } from '../logic/zaryaGuns';
 
 export function buildHudState(ctx: GameCtx, mission: MissionRuntime, cards: CardRuntime, io: InteractionOutput, fps: number | null): HudState {
   const s = ctx.session;
@@ -19,7 +20,9 @@ export function buildHudState(ctx: GameCtx, mission: MissionRuntime, cards: Card
   const boss = ctx.zombies.boss;
   const bossVisible = boss && boss.alive && s.hunt.identified && s.hunt.status === 'active';
   const spread = w.currentSpread();
-  const lowAmmo = !!cur && cur.mag <= Math.max(2, Math.floor(cur.magSize * 0.25)) && !cur.reloading;
+  // (ZARYA's one-at-a-time guns - a flare, a bolt, a volley - are not "low" for holding one: they are when few are left)
+  const oneLoader = !!cur && isZaryaGun(cur.id) && cur.magSize <= 2;
+  const lowAmmo = !!cur && !cur.reloading && (oneLoader ? cur.mag + cur.reserve <= 2 : cur.mag <= Math.max(2, Math.floor(cur.magSize * 0.25)));
   const outOfAmmo = !!cur && cur.mag === 0 && cur.reserve === 0;
   const hp = s.vitals.health;
   const objectives = mission.objectives();

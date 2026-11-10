@@ -85,6 +85,13 @@ export interface ViewmodelSet {
   /** The Sakura District's relics (built on that map only; elsewhere nobody can carry them). */
   hanafubuki?: ViewmodelRig;
   raijin?: ViewmodelRig;
+  /** ZARYA's guns (`viewmodel/zarya.ts`; built on that map only). */
+  signalka?: ViewmodelRig;
+  arbalet?: ViewmodelRig;
+  gvozdomyot?: ViewmodelRig;
+  salyut?: ViewmodelRig;
+  ottepel?: ViewmodelRig;
+  zenit?: ViewmodelRig;
   dispose(): void;
 }
 

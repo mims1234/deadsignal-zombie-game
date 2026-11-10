@@ -45,6 +45,7 @@ const MAPS = {
   aurelia: { name: 'Aurelia', live: false },
   mujin: { name: 'Mujin', live: false },
   hirasaka: { name: 'Hirasaka', live: false },
+  zarya: { name: 'Zarya', live: true },
 };
 const mapPublic = (id) => {
   const v = db.setting(`map.${id}.public`);
@@ -465,7 +466,7 @@ app.get('/api/admin/runs', { preHandler: admin }, async (req) => {
     ...pageArgs(q),
     days: Math.max(0, Math.min(3650, Number(q.days) || 0)),
     mode: pick(q.mode, MODES),
-    map: pick(q.map, ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka']),
+    map: pick(q.map, ['district', 'sakura', 'forge', 'asylum', 'aurelia', 'mujin', 'hirasaka', 'zarya']),
     outcome: pick(q.outcome, ['victory', 'defeat', 'abandoned', 'unfinished']),
     device: pick(q.device, ['touch', 'desktop']),
     q: String(q.q || '').slice(0, 64),

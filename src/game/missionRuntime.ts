@@ -143,7 +143,8 @@ export class MissionRuntime implements MissionApi {
     void this.entities;
     const data = ctx.level.data;
     this.train = data.id === 'mujin';
-    this.island = data.id === 'hirasaka';
+    // ZARYA is the same in this: nobody is flown in or out, there is no relay, and its clock never runs out
+    this.island = data.id === 'hirasaka' || data.id === 'zarya';
     this.clock = missionClock(data.id);
     this.night = data.id === 'asylum' ? new AsylumNight(ctx) : null;
     // the Asylum: the bird waits for the furnace to be shut as well (the story's last step before the dawn)

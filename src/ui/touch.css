@@ -267,6 +267,143 @@ html.ds-touch body {
   display: none;
 }
 
+/* ---------------------------------------------------------------------------------------------
+   compact layout (.compact on the layer): the stick, one FIRE button and a menu dot. Everything
+   else is a tile in the mini menu, which opens at the right edge over the running game.
+   --------------------------------------------------------------------------------------------- */
+.ds-touch-layer:not(.compact) .tb.menu,
+.ds-touch-layer:not(.compact) .tmenu {
+  display: none;
+}
+.ds-touch-layer.compact .tb.fire-left,
+.ds-touch-layer.compact .tb.ads,
+.ds-touch-layer.compact .tb.reload,
+.ds-touch-layer.compact .tb.jump,
+.ds-touch-layer.compact .tb.crouch,
+.ds-touch-layer.compact .tb.swap,
+.ds-touch-layer.compact .tb.grenade,
+.ds-touch-layer.compact .tb.plate,
+.ds-touch-layer.compact .tb.map,
+.ds-touch-layer.compact .tb.pause {
+  display: none;
+}
+/* any tap closes the tactical map; its button comes back as CLOSE so there is something to aim for */
+.ds-touch-layer.compact.map-open .tb.map {
+  display: grid;
+  right: calc(var(--sr) + 8px);
+}
+
+/* the game's own word can be longer than FIRE or USE: let it take two lines, and shrink a long one */
+.ds-touch-layer.compact .tb.fire,
+.ds-touch-layer.compact .tb.use {
+  padding: 0 0.35em;
+  line-height: 1.05;
+  text-align: center;
+}
+.ds-touch-layer.compact .tb.fire.long {
+  font-size: 1em;
+}
+.ds-touch-layer.compact .tb.use.long {
+  font-size: 0.84em;
+}
+/* USE sits beside the trigger, low enough to stay clear of a station menu (which ends 75vh down) */
+.ds-touch-layer.compact .tb.use {
+  right: calc(var(--sr) + var(--u) * 2.4);
+  bottom: calc(var(--sb) + var(--u) * 0.45);
+}
+
+/* the menu dot: up and to the left of FIRE, where the thumb reaches without leaving the corner */
+.ds-touch-layer .tb.menu {
+  width: calc(var(--u) * 0.6);
+  height: calc(var(--u) * 0.6);
+  right: calc(var(--sr) + var(--u) * 1.75);
+  bottom: calc(var(--sb) + var(--u) * 2.85);
+  grid-auto-flow: column;
+  justify-content: center;
+  gap: calc(var(--u) * 0.06);
+}
+/* it is drawn small but is easier to hit than it looks */
+.ds-touch-layer .tb.menu::after {
+  content: '';
+  position: absolute;
+  inset: calc(var(--u) * -0.18);
+  border-radius: 50%;
+}
+.ds-touch-layer .tb.menu i {
+  width: calc(var(--u) * 0.085);
+  height: calc(var(--u) * 0.085);
+  border-radius: 50%;
+  background: #e6ecdc;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+.ds-touch-layer .tb.menu.on {
+  background: rgba(226, 176, 74, 0.5);
+  border-color: #e2b04a;
+}
+
+/* The mini menu: three columns of tiles above the dot. Its width is capped at a third of the screen, less the
+   margin, so it can never reach the middle; touches between the tiles fall through to the look zone. */
+.ds-touch-layer .tmenu {
+  position: absolute;
+  right: calc(var(--sr) + var(--u) * 0.16);
+  bottom: calc(var(--sb) + var(--u) * 3.6);
+  box-sizing: border-box;
+  width: min(calc(var(--u) * 4.14), calc(33.3% - var(--sr) - var(--u) * 0.16));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(var(--u), auto);
+  gap: calc(var(--u) * 0.07);
+  padding: calc(var(--u) * 0.08);
+  background: rgba(9, 12, 10, 0.82);
+  border: 1px solid rgba(230, 236, 220, 0.28);
+  border-radius: 6px;
+  pointer-events: none;
+  transform-origin: 100% 100%;
+  animation: ds-tmenu-in 0.12s ease-out;
+}
+.ds-touch-layer .tmenu[hidden] {
+  display: none;
+}
+.ds-touch-layer .tmenu .tm {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: 0 0.2em;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  font-size: 1.05em;
+  line-height: 1.15;
+  letter-spacing: 0.04em;
+  text-align: center;
+  color: #e6ecdc;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  background: rgba(20, 26, 22, 0.86);
+  border: 1.5px solid rgba(230, 236, 220, 0.42);
+  border-radius: 4px;
+  pointer-events: auto;
+  touch-action: none;
+  outline: none;
+}
+/* the game's own tile (RECIPES) wears the same amber as USE */
+.ds-touch-layer .tmenu .tm.extra {
+  color: #e2b04a;
+  border-color: rgba(226, 176, 74, 0.85);
+}
+@keyframes ds-tmenu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-touch-layer .tmenu {
+    animation: none;
+  }
+}
+
 .ds-rotate {
   display: none;
 }
@@ -346,6 +483,19 @@ html.ds-touch .ds-bottomcenter {
 }
 html.ds-touch .ds-prompt {
   top: 58%;
+}
+/* compact layout: the middle of the screen stays clear, and the USE button already carries the verb, so the full
+   line sits small on top of the weapon panel, between the stick and the buttons */
+html.ds-touch.ds-touch-compact .ds-prompt {
+  top: auto;
+  bottom: calc(11.6em + env(safe-area-inset-bottom, 0px));
+  max-width: 40%;
+  font-size: 0.8em;
+}
+/* compact layout: no threat chip under the minimap - the feed column beside it ran over it, and it is one more thing
+   on a small screen (the region still shows as a banner on the top line when it changes) */
+html.ds-touch.ds-touch-compact .ds-region {
+  display: none;
 }
 /* the keycap says "E"; on a phone the USE button does that job, so keep only the hold ring */
 html.ds-touch .ds-prompt kbd.key {

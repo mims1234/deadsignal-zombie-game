@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isTouchDevice, stick, TOUCH } from '../src/player/touch';
+import { DoubleTap, isTouchDevice, stick, TOUCH } from '../src/player/touch';
 
 const R = 50;
 
@@ -44,6 +44,70 @@ describe('virtual stick', () => {
     expect(stick(R, 0, R).sprint).toBe(false); // sideways
     expect(stick(0, R, R).sprint).toBe(false); // backwards
     expect(stick(R * 0.5, -R, R).sprint).toBe(true); // forward with a little drift still counts
+  });
+});
+
+describe('double tap', () => {
+  /** A quick, still tap at (x, y) starting at `t`; returns what `down` said. */
+  const tap = (d: DoubleTap, t: number, x = 500, y = 200, heldMs = 60): boolean => {
+    const fired = d.down(t, x, y);
+    d.up(t + heldMs, x, y);
+    return fired;
+  };
+
+  it('never fires on a single tap', () => {
+    const d = new DoubleTap();
+    expect(tap(d, 1000)).toBe(false);
+  });
+
+  it('fires on the second tap when it lands soon after and close to the first', () => {
+    const d = new DoubleTap();
+    expect(d.down(1000, 500, 200)).toBe(false);
+    d.up(1060, 502, 201);
+    expect(d.down(1060 + TOUCH.doubleTapMs, 500 + TOUCH.doubleTapPx - 4, 200)).toBe(true);
+  });
+
+  it('does not fire when the second tap is too late or too far away', () => {
+    const late = new DoubleTap();
+    tap(late, 1000);
+    expect(late.down(1060 + TOUCH.doubleTapMs + 1, 500, 200)).toBe(false);
+    const far = new DoubleTap();
+    tap(far, 1000);
+    expect(far.down(1150, 500 + TOUCH.doubleTapPx + 2, 200)).toBe(false);
+  });
+
+  it('does not count a drag or a long press as the first tap', () => {
+    const drag = new DoubleTap();
+    drag.down(1000, 500, 200);
+    drag.up(1080, 500 + TOUCH.tapSlopPx + 1, 200);
+    expect(drag.down(1120, 500 + TOUCH.tapSlopPx + 1, 200)).toBe(false);
+    const press = new DoubleTap();
+    press.down(1000, 500, 200);
+    press.up(1000 + TOUCH.tapMs + 1, 500, 200);
+    expect(press.down(1000 + TOUCH.tapMs + 50, 500, 200)).toBe(false);
+  });
+
+  it('is used up once it fires: the third tap starts again from one, the fourth fires', () => {
+    const d = new DoubleTap();
+    expect(tap(d, 1000)).toBe(false);
+    expect(tap(d, 1120)).toBe(true);
+    expect(tap(d, 1240)).toBe(false);
+    expect(tap(d, 1360)).toBe(true);
+  });
+
+  it('holding the second tap for a long time does not arm anything afterwards', () => {
+    const d = new DoubleTap();
+    tap(d, 1000);
+    expect(d.down(1120, 500, 200)).toBe(true);
+    d.up(4000, 640, 260); // held and dragged while firing
+    expect(d.down(4050, 640, 260)).toBe(false);
+  });
+
+  it('forgets a pending tap on reset', () => {
+    const d = new DoubleTap();
+    tap(d, 1000);
+    d.reset();
+    expect(d.down(1120, 500, 200)).toBe(false);
   });
 });
 

@@ -20,7 +20,7 @@ describe('calling the extraction from the radio', () => {
       }
       // and far from both it is not
       expect(atLzOrRadio(e.lzX + e.lzRadius + 30, e.lzZ, e)).toBe(false);
-    });
+    }, map === 'zarya' ? 120_000 : undefined); // the whole town takes several seconds to build
   }
 
   it('the co-op simulation takes the call from a player standing at the Asylum radio', () => {

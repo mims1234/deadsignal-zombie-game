@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import type { ZombieType } from '../../types';
 import type { ZombieAnimState, ZombieRig, ZombieTheme } from '../zombieRigTypes';
+import type { ZaryaKind } from '../variants';
 import { ASYLUM_VARIANT_COUNT, asylumDims, buildAsylumVariant } from './asylum';
 import { FORGE_VARIANT_COUNT, buildForgeVariant } from './forge';
 import { PO, type RigAnimState, evalPose, makeRigAnimState } from './anim';
@@ -13,11 +14,14 @@ import { B, BONE_NAMES, BONE_PARENT, type Dims, NB, restPositions } from './dims
 import { type ProbeSets, computeProbes } from './probes';
 import { mulberry32 } from './prng';
 import { VARIANT_COUNT, buildVariant, dimsFor } from './variants';
+import { ZARYA_KIND_COUNT, ZARYA_VARIANT_COUNT, buildZaryaVariant, zaryaDims } from './zarya';
 
 export interface TypeAssets {
   type: ZombieType;
   /** Themed variants (the Asylum's), or the standard ones. */
   theme?: ZombieTheme;
+  /** ZARYA: one of the town's special kinds (`zarya.ts`), with looks of its own. */
+  kind?: ZaryaKind;
   D: Dims;
   rest: ReturnType<typeof restPositions>;
   inverses: THREE.Matrix4[] | null;
@@ -27,12 +31,14 @@ export interface TypeAssets {
   boundSphere: THREE.Sphere;
 }
 
-export function makeTypeAssets(type: ZombieType, theme?: ZombieTheme): TypeAssets {
-  const D = theme === 'asylum' ? asylumDims(type) : dimsFor(type);
-  const count = theme === 'asylum' ? ASYLUM_VARIANT_COUNT[type] : theme === 'forge' ? FORGE_VARIANT_COUNT[type] : VARIANT_COUNT[type];
+export function makeTypeAssets(type: ZombieType, theme?: ZombieTheme, kind?: ZaryaKind): TypeAssets {
+  if (theme !== 'zarya') kind = undefined;
+  const D = theme === 'asylum' ? asylumDims(type) : theme === 'zarya' ? zaryaDims(type, kind) : dimsFor(type);
+  const count = theme === 'asylum' ? ASYLUM_VARIANT_COUNT[type] : theme === 'forge' ? FORGE_VARIANT_COUNT[type] : theme === 'zarya' ? (kind ? ZARYA_KIND_COUNT[kind] : ZARYA_VARIANT_COUNT[type]) : VARIANT_COUNT[type];
   return {
     type,
     theme,
+    kind,
     D,
     rest: restPositions(D),
     inverses: null,
@@ -47,7 +53,7 @@ export function variantGeometry(a: TypeAssets, index: number): THREE.BufferGeome
   const i = index % a.variants.length;
   let g = a.variants[i];
   if (!g) {
-    g = a.theme === 'asylum' ? buildAsylumVariant(a.type, i) : a.theme === 'forge' ? buildForgeVariant(a.type, i) : buildVariant(a.type, i);
+    g = a.theme === 'asylum' ? buildAsylumVariant(a.type, i) : a.theme === 'forge' ? buildForgeVariant(a.type, i) : a.theme === 'zarya' ? buildZaryaVariant(a.type, i, a.kind) : buildVariant(a.type, i);
     a.variants[i] = g;
     a.probes[i] = computeProbes(g, a.rest);
   }
@@ -85,9 +91,20 @@ export class ZombieRigImpl implements ZombieRig {
   private settled = false;
   private probes: ProbeSets;
   private dying = false;
+  private readonly material: THREE.Material;
+  /** What it is drawn in while it stands unseen (ZARYA's house spirit): the shared material, almost clear. */
+  private readonly ghost: THREE.Material | null;
+  private ghosted = false;
+  /** ZARYA's loader: his crate is still in his arms (look 0, arms held out under it), or gone (look 1). */
+  private readonly carries: boolean;
+  private prop = true;
+  private seed = 0;
 
-  constructor(assets: TypeAssets, material: THREE.Material, dims: { radius: number; height: number; headRadius: number }, seed: number) {
+  constructor(assets: TypeAssets, material: THREE.Material, dims: { radius: number; height: number; headRadius: number }, seed: number, ghost: THREE.Material | null = null) {
     this.assets = assets;
+    this.material = material;
+    this.ghost = ghost;
+    this.carries = assets.kind === 'gruzchik';
     this.type = assets.type;
     this.radius = dims.radius;
     this.height = dims.height;
@@ -107,8 +124,8 @@ export class ZombieRigImpl implements ZombieRig {
       this.bones.push(b);
       if (par >= 0) this.bones[par]!.add(b);
     }
-    const geo = variantGeometry(assets, seed >>> 3);
-    this.probes = variantProbes(assets, seed >>> 3);
+    const geo = variantGeometry(assets, this.lookOf(seed));
+    this.probes = variantProbes(assets, this.lookOf(seed));
     this.mesh = new THREE.SkinnedMesh(geo, material);
     this.mesh.add(this.bones[0]!);
     this.mesh.name = 'ZombieMesh';
@@ -128,7 +145,35 @@ export class ZombieRigImpl implements ZombieRig {
     this.reset(seed);
   }
 
+  /** Which of its looks it wears: by its seed, except the loader, whose two are with and without the crate. */
+  private lookOf(seed: number): number {
+    return this.carries ? (this.prop ? 0 : 1) : seed >>> 3;
+  }
+
+  private applyLook(): void {
+    const geo = variantGeometry(this.assets, this.lookOf(this.seed));
+    this.probes = variantProbes(this.assets, this.lookOf(this.seed));
+    if (this.mesh.geometry !== geo) this.mesh.geometry = geo;
+  }
+
+  /** ZARYA's loader: the crate in his arms, or broken and gone. */
+  setProp(on: boolean): void {
+    if (!this.carries || on === this.prop) return;
+    this.prop = on;
+    this.applyLook();
+  }
+
+  /** ZARYA's house spirit: drawn almost clear while it stands unseen. */
+  setGhost(on: boolean): void {
+    if (!this.ghost || on === this.ghosted) return;
+    this.ghosted = on;
+    this.mesh.material = on ? this.ghost : this.material;
+  }
+
   reset(seed: number): void {
+    this.seed = seed;
+    this.prop = true;
+    this.setGhost(false);
     const r = mulberry32(seed * 2654435761 + 17);
     const I = this.R.inst;
     const t = this.type;
@@ -161,9 +206,7 @@ export class ZombieRigImpl implements ZombieRig {
     R.deathStarted = false;
     R.out.fill(0);
     // appearance variant (geometry is shared between rigs)
-    const geo = variantGeometry(this.assets, seed >>> 3);
-    this.probes = variantProbes(this.assets, seed >>> 3);
-    if (this.mesh.geometry !== geo) this.mesh.geometry = geo;
+    this.applyLook();
     // per-instance limb lengths
     this.bones[B.hipL]!.scale.set(1, I.legScale, 1);
     this.bones[B.hipR]!.scale.set(1, I.legScale, 1);
@@ -184,8 +227,23 @@ export class ZombieRigImpl implements ZombieRig {
     }
     this.dying = s.mode === 'death';
     const done = evalPose(this.R, s, dt);
+    if (this.carries && this.prop && !this.dying) this.carryPose();
     this.applyPose();
     if (done) this.settled = true;
+  }
+
+  /** The loader's arms: out in front of him and bent under the crate, whatever the rest of him is doing (less so mid-blow). */
+  private carryPose(): void {
+    const P = this.R.out;
+    const w = 1 - 0.6 * this.R.wAttack;
+    for (const side of [-1, 1]) {
+      const sh = (side < 0 ? B.shL : B.shR) * 3;
+      const el = (side < 0 ? B.elL : B.elR) * 3;
+      P[sh] = P[sh]! + (0.62 - P[sh]!) * w;
+      P[sh + 1] = P[sh + 1]! * (1 - w);
+      P[sh + 2] = P[sh + 2]! + (side * (0.3 - this.R.bindArm) - P[sh + 2]!) * w;
+      P[el] = P[el]! + (1.0 - P[el]!) * w;
+    }
   }
 
   private applyPose(): void {

@@ -7,11 +7,11 @@
  */
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { HirasakaKind, MujinKind, ZombieVariant } from '../enemies/variants';
+import type { HirasakaKind, MujinKind, ZaryaKind, ZombieVariant } from '../enemies/variants';
 import type { Dims, JointName } from './figure';
 import type { AnimeTint } from './vrm';
 
-export type SakuraKind = Exclude<ZombieVariant, '' | 'court'>;
+export type SakuraKind = Exclude<ZombieVariant, '' | 'court' | ZaryaKind>;
 
 /** Where gear goes: a joint of the stand-in figure (it faces -Z, +X on its right; arms and legs hang along -Y). */
 export type GearPut = (joint: JointName, o: THREE.Object3D, x?: number, y?: number, z?: number) => THREE.Object3D;

@@ -31,6 +31,8 @@ export interface FxApi {
   tracer(from: Vec3Like, to: Vec3Like, colorHex: number): void;
   /** Short muzzle smoke wisp. */
   muzzleSmoke(p: Vec3Like, dir: Vec3Like, strong?: boolean): void;
+  /** A jet of white steam from `p` along `dir` (unit), `reach` metres long, spreading to `spread` (the tangent of its half angle): a few smoke puffs a call, so call it while it blows. */
+  steam(p: Vec3Like, dir: Vec3Like, reach: number, spread: number): void;
   /** Ejected casing with a small arc, bounce and fade (bounded pool of 24). */
   casing(p: Vec3Like, vel: Vec3Like, kind: WeaponId): void;
   /** Footstep / landing dust puff. `amount` 0..1. */

@@ -117,7 +117,9 @@ export class ZombieManager {
   /** An infected the Sakura District's Court shot dead (the players are paid for the fight going their way). */
   onCourtKill: ((z: Zombie) => void) | null = null;
   /** Co-op guest: damage is not applied here but reported to the host through this. */
-  netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number) => void) | null = null;
+  netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number, impulse?: number, heavy?: boolean) => void) | null = null;
+  /** Co-op guest: a mark or a stop (`affect`) is not applied here either, but reported to the host through this. */
+  netEffect: ((z: Zombie, mark: number, stagger: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
   /** Multi-player simulation: let infected far from every player doze (see `update`). */
   sleepFar = false;
@@ -205,7 +207,9 @@ export class ZombieManager {
   ) {
     this.root.name = 'Zombies';
     this.matron = isMatronMap(level.data) ? new MatronBrain() : null;
-    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' || level.data.id === 'mujin' || level.data.id === 'hirasaka' ? 'sakura' : undefined; // MUJIN and HIRASAKA wear the anime cast too
+    this.theme = level.data.id === 'asylum' ? 'asylum' : level.data.id === 'forge' ? 'forge' : level.data.id === 'sakura' || level.data.id === 'mujin' || level.data.id === 'hirasaka' ? 'sakura' : level.data.id === 'zarya' ? 'zarya' : undefined; // MUJIN and HIRASAKA wear the anime cast too; ZARYA's are townspeople in winter coats
+    // ZARYA's looks are baked with the level, not at the first sight of each (where anything is drawn at all)
+    if (this.theme === 'zarya') factory.prewarm?.('zarya');
     const b = level.data.worldBounds ?? level.data.bounds;
     this.grid = new SpatialGrid(b.minX - 2, b.minZ - 2, b.maxX - b.minX + 4, b.maxZ - b.minZ + 4);
   }
@@ -301,10 +305,11 @@ export class ZombieManager {
 
   /**
    * A name over this infected's head: white on a dark ember plate, "INFECTED" beneath. `reborn` (the Forge's last
-   * carrier, `forge/story.ts`): the name in red, REBORN beneath, a bigger plate.
+   * carrier, `forge/story.ts`): the name in red, REBORN beneath, a bigger plate. `sub` replaces the line beneath
+   * (ZARYA's named ones: NO BREATH).
    */
-  tagZombie(z: Zombie, name: string, reborn = false): void {
-    const key = reborn ? `${name}|reborn` : name;
+  tagZombie(z: Zombie, name: string, reborn = false, sub0?: string): void {
+    const key = reborn ? `${name}|reborn` : sub0 ? `${name}|${sub0}` : name;
     let mat = this.tagMats.get(key);
     if (!mat) {
       const c = document.createElement('canvas');
@@ -321,7 +326,7 @@ export class ZombieManager {
       g.fillText(name, 128, 24, 248);
       g.font = '800 15px system-ui, sans-serif';
       g.lineWidth = 4;
-      const sub = reborn ? 'REBORN' : 'VULCAN  //  INFECTED';
+      const sub = reborn ? 'REBORN' : (sub0 ?? 'VULCAN  //  INFECTED');
       g.strokeText(sub, 128, 54, 248);
       g.fillStyle = reborn ? '#ffd27a' : '#ff6a3a';
       g.fillText(sub, 128, 54, 248);
@@ -638,6 +643,12 @@ export class ZombieManager {
         this.spawn(s.type, s.x, s.z, env.rng, { state: 'chase', variant: s.variant, y: z.y, area: z.area });
       }
     }
+    // the ones told where someone is (ZARYA's guard's whistle)
+    for (let i = 0; i < this.zombies.length; i++) {
+      const z = this.zombies[i]!;
+      if (z.calls.length === 0) continue;
+      for (const c of z.calls.splice(0)) this.tell(c.x, c.z, c.radius, c.tx, c.tz, z.id);
+    }
 
     // name tags: only on the living, and only near enough to read
     for (const [z, s] of this.tagSprites) {
@@ -793,16 +804,42 @@ export class ZombieManager {
     }
   }
 
+  /**
+   * Everyone within `radius` of (x, z) is told where someone is, at (tx, tz) (ZARYA's guard's whistle): the ones standing
+   * about turn to it, the nearer the sooner, the dozing wake, the ones already hunting take the new scent. The boss is
+   * the story's own and is left to it. Returns how many were told.
+   */
+  tell(x: number, z: number, radius: number, tx: number, tz: number, srcId: number): number {
+    const r2 = radius * radius;
+    let n = 0;
+    for (const zz of this.zombies) {
+      if (zz.id === srcId || !zz.active || zz.isBoss || zz.curable || zz.puppet) continue;
+      const dx = zz.x - x;
+      const dz = zz.z - z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > r2) continue;
+      if (zz.dormant) {
+        zz.dormant = false;
+        zz.rig.setVisible(true);
+      }
+      zz.told(tx, tz, 0.2 + Math.sqrt(d2) / radius);
+      n++;
+    }
+    return n;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // hit detection
   // ---------------------------------------------------------------------------------------------
 
   /** Nearest zombie hit by a ray (head sphere or body cylinder), before `maxT`. */
-  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): ZombieHit | null {
+  raycast(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, skip?: ReadonlySet<Zombie>): ZombieHit | null {
     let best: ZombieHit | null = null;
     let bestT = maxT;
     for (const z of this.zombies) {
       if (!z.active || z.dormant) continue;
+      // already run through (ZARYA's crossbow bolt goes on to the next body)
+      if (skip?.has(z)) continue;
       // cheap reject: distance from the ray to the zombie's column
       const cx = z.x - ox;
       const cz = z.z - oz;
@@ -874,22 +911,38 @@ export class ZombieManager {
 
   /**
    * Apply damage from a bullet. Returns true when the zombie died. A killing blow throws the body along `shotYaw`
-   * at `push` m/s with `lift` m/s up (the ragdoll).
+   * at `push` m/s with `lift` m/s up (the ragdoll). `impulse` scales how hard the blow pushes at its poise (a swung
+   * weapon staggers more than a bullet of the same damage; co-op sends it along when it is not 1).
    */
-  damage(z: Zombie, amount: number, head: boolean, env: ZombieEnv, shotYaw: number, push = 0, lift = 0): boolean {
+  damage(z: Zombie, amount: number, head: boolean, env: ZombieEnv, shotYaw: number, push = 0, lift = 0, impulse = 1, heavy = false): boolean {
+    // `heavy`: the blow of a swung weapon of the heavy kind (`logic/melee.ts`): what breaks the crate ZARYA's loader carries
     if (this.netDamage) {
       z.flinch();
-      this.netDamage(z, amount, head, shotYaw, push, lift);
+      this.netDamage(z, amount, head, shotYaw, push, lift, impulse, heavy);
       return false;
     }
     if (this.damageFilter) amount = this.damageFilter(z, amount);
-    const killed = z.takeDamage(amount, head, env, shotYaw, 1);
+    const killed = z.takeDamage(amount, head, env, shotYaw, impulse, heavy);
     if (!z.active) z.fling(shotYaw, push, lift);
     if (killed) {
       z.diedAt = this.simTime;
       this.onKill(z, head);
     }
     return killed;
+  }
+
+  /**
+   * ZARYA's guns: mark an infected for `mark` seconds (the Signalka: it glows and takes double damage) and / or stop it
+   * where it stands for `stagger` seconds (the Zenit's flash; a boss for `bossStagger` at most). In co-op the host does it.
+   */
+  affect(z: Zombie, env: ZombieEnv, mark: number, stagger: number, bossStagger = stagger): void {
+    if (!z.active) return;
+    if (this.netEffect) {
+      this.netEffect(z, mark, stagger);
+      return;
+    }
+    if (mark > 0) z.mark(mark);
+    if (stagger > 0 && !z.invulnerable) z.stagger(z.isBoss ? Math.min(stagger, bossStagger) : stagger, env);
   }
 
   // ---------------------------------------------------------------------------------------------

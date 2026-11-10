@@ -23,8 +23,10 @@
  */
 import type { ZombieDef } from '../config';
 import type { ZombieType } from '../types';
+import { zoneAt } from '../world/zones';
+import { ZARYA_ZONES } from '../zarya/places';
 
-export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master', 'miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const;
+export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master', 'miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer', 'ryazhenye', 'svistok', 'kassirsha', 'gruzchik', 'dvornik', 'rybak', 'morzh', 'domovoi'] as const;
 export type ZombieVariant = (typeof VARIANTS)[number];
 /** MUJIN's own kinds (the station, `mujin/`), not the Sakura District's field file's. */
 export const MUJIN_KINDS = ['tall', 'crawler', 'shape', 'sitter', 'master'] as const;
@@ -43,6 +45,37 @@ export type MujinKind = (typeof MUJIN_KINDS)[number];
  */
 export const HIRASAKA_KINDS = ['miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const;
 export type HirasakaKind = (typeof HIRASAKA_KINDS)[number];
+/**
+ * ZARYA's own kinds (the closed town, `zarya/`): the shatuny are townspeople woken wrong, and they keep the habits of
+ * their jobs (`Zombie.variantStep`; their looks are `zombie/zarya.ts`):
+ *
+ *   ryazhenye  carol-singers in goat and bear masks, hung with rag-ribbons: they come as a pack (the square, the Palace)
+ *   svistok    the security guard: the first time he sees someone he stops and blows his whistle, and every one of them
+ *              within forty metres knows where that someone is (the store, the depot)
+ *   kassirsha  the cashier: keeps her distance and throws shop weights (the market, the store)
+ *   gruzchik   the loader, a crate held in front of him: it takes most of a blow from the front until something heavy
+ *              breaks it, and he charges (the garages, the market)
+ *   dvornik    the yard-keeper in his padded coat, with a steel ice-breaking bar: slow, hard to put down, a long reach
+ *   rybak      the ice fisherman: casts his line and reels you in (the pond)
+ *   morzh      the winter swimmer, a huge man in swimming trunks: a brute nothing ordinary staggers (the pond)
+ *   domovoi    the house spirit: small, dark, unseen until you are close, and its first blow is the worst (the yards)
+ */
+export const ZARYA_KINDS = ['ryazhenye', 'svistok', 'kassirsha', 'gruzchik', 'dvornik', 'rybak', 'morzh', 'domovoi'] as const;
+export type ZaryaKind = (typeof ZARYA_KINDS)[number];
+/** The numbers of ZARYA's habits (`Zombie.variantStep`). */
+export const ZARYA_HABITS = {
+  /** The guard's whistle: how far it carries, and how long he stands blowing it. */
+  whistle: { radius: 40, stop: 1 },
+  /** The cashier's weights: thrown from `min` to `max` metres after `windup` seconds; `lock` seconds in, her aim is set. */
+  throw_: { min: 6, max: 18, windup: 0.7, lock: 0.3, speed: 26, hit: 0.65, cooldown: 2.4 },
+  /** The loader's crate (the share of a blow from the front it takes), and his charge: begun from `min` to `max` metres, `time` seconds of it at `speed` (enough to cover `max`). */
+  crate: 0.8,
+  charge: { min: 5, max: 12, speed: 7.5, windup: 0.7, time: 1.5, damageMul: 1.2, knock: 6, cooldown: 7 },
+  /** The fisherman's line: cast from `min` to `max` metres after `windup` seconds; reels `speed` m/s for `reel` seconds. */
+  cast: { min: 5, max: 14, windup: 0.8, reel: 1, speed: 5, stopAt: 1.8, cooldown: 7, yank: 20 },
+  /** The house spirit: shows itself when someone is this close; its first blow is worth this many. */
+  domovoi: { reveal: 6, first: 3 },
+} as const;
 
 interface VariantInfo {
   name: string;
@@ -87,6 +120,16 @@ export const VARIANT_INFO: Record<Exclude<ZombieVariant, ''>, VariantInfo> = {
   resident: { name: 'Islander', hp: 1, speed: 1, damage: 1, scale: 1 },
   follower: { name: 'Mio', hp: 40, speed: 1.05, damage: 2.4, scale: 1, def: { poise: 9999, staggerTime: 0.05, sightRange: 240, reward: 0, headshotBonus: 0, dropChance: 0 } },
   overseer: { name: 'Kurogane', hp: 1.25, speed: 1, damage: 1.1, scale: 1 },
+  ryazhenye: { name: 'Ryazheny', hp: 0.8, speed: 1.1, damage: 1, scale: 1 },
+  // a uniform, not riot plate: the guard takes a bullet like anyone
+  svistok: { name: 'Svistok', hp: 0.7, speed: 1.05, damage: 0.9, scale: 1, def: { bodyMul: 1, headMul: 1, poise: 60 } },
+  kassirsha: { name: 'Kassirsha', hp: 1, speed: 0.95, damage: 1, scale: 1 },
+  gruzchik: { name: 'Gruzchik', hp: 0.9, speed: 1.05, damage: 1, scale: 1.04 },
+  dvornik: { name: 'Dvornik', hp: 2, speed: 0.8, damage: 1.1, scale: 1.03, def: { attackRange: 2.75, attackWindup: 0.9 } },
+  rybak: { name: 'Rybak', hp: 1.2, speed: 0.9, damage: 1, scale: 1 },
+  // bare skin: nothing between him and a bullet but himself, and there is a lot of him
+  morzh: { name: 'Morzh', hp: 4, speed: 0.85, damage: 1.5, scale: 1.2, def: { bodyMul: 1, headMul: 1, poise: 600, staggerTime: 0.45 } },
+  domovoi: { name: 'Domovoi', hp: 0.5, speed: 1.15, damage: 1, scale: 0.75 },
 };
 
 /** The definition a variant of `base` fights with. */
@@ -121,6 +164,14 @@ export const VARIANT_BASE: Record<Exclude<ZombieVariant, ''>, ZombieType> = {
   resident: 'shambler',
   follower: 'shambler',
   overseer: 'warden',
+  ryazhenye: 'runner',
+  svistok: 'armored',
+  kassirsha: 'shambler',
+  gruzchik: 'armored',
+  dvornik: 'armored',
+  rybak: 'shambler',
+  morzh: 'armored',
+  domovoi: 'runner',
 };
 
 /** Where an infected is spawned, for `sakuraVariant`. */
@@ -180,4 +231,42 @@ export function hirasakaVariant(type: ZombieType, x: number, z: number, r: () =>
   if (type === 'runner') return r() < 0.5 ? 'resident' : '';
   if (z > 36) return r() < 0.6 ? 'drowned' : 'resident';
   return r() < 0.65 ? 'resident' : '';
+}
+
+/**
+ * ZARYA: what an infected of `type` spawned at (x, z) becomes, by the zone it is in (`zarya/places.ts` ZARYA_ZONES).
+ * Most stay plain townspeople in every zone; the bear is the story's own and is never picked here; nothing special in
+ * the Institute or indoors (the shelter, the canteen, the Berloga hall), nor outside every zone.
+ *
+ *   square    the carol-singers' pack (most runners), a yard-keeper among the heavy ones
+ *   dk        the carol-singers' pack
+ *   store     the guard, a cashier or two
+ *   rynok     cashiers, loaders
+ *   dvor      the yard-keeper, and the house spirit
+ *   garages   loaders
+ *   depot     the guard
+ *   banya     fishermen, the winter swimmers
+ */
+export function zaryaVariant(type: ZombieType, x: number, z: number, r: () => number): ZombieVariant {
+  if (type === 'warden') return '';
+  switch (zoneAt(ZARYA_ZONES, x, z)?.id) {
+    case 'square':
+      return type === 'runner' ? (r() < 0.65 ? 'ryazhenye' : '') : type === 'armored' ? (r() < 0.5 ? 'dvornik' : '') : '';
+    case 'dk':
+      return type === 'runner' && r() < 0.75 ? 'ryazhenye' : '';
+    case 'store':
+      return type === 'armored' ? (r() < 0.55 ? 'svistok' : '') : type === 'shambler' ? (r() < 0.2 ? 'kassirsha' : '') : '';
+    case 'rynok':
+      return type === 'armored' ? (r() < 0.6 ? 'gruzchik' : '') : type === 'shambler' ? (r() < 0.25 ? 'kassirsha' : '') : '';
+    case 'dvor':
+      return type === 'armored' ? (r() < 0.6 ? 'dvornik' : '') : type === 'runner' ? (r() < 0.4 ? 'domovoi' : '') : '';
+    case 'garages':
+      return type === 'armored' && r() < 0.75 ? 'gruzchik' : '';
+    case 'depot':
+      return type === 'armored' && r() < 0.6 ? 'svistok' : '';
+    case 'banya':
+      return type === 'armored' ? (r() < 0.5 ? 'morzh' : '') : type === 'shambler' ? (r() < 0.28 ? 'rybak' : '') : '';
+    default:
+      return '';
+  }
 }

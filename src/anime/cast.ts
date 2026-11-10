@@ -133,7 +133,7 @@ export { COURT_TINT };
 
 /** The file an infected wants: its kind's own body, the boss file for the Warden, one of the horde (by seed). */
 export function hordeFile(type: ZombieType, seed: number, variant: ZombieVariant = ''): string {
-  if (variant && variant !== 'court') return ANIME_CAST.kinds[variant];
+  if (variant && variant !== 'court') return ANIME_CAST.kinds[variant as SakuraKind];
   if (type === 'warden') return ANIME_CAST.boss;
   return ANIME_CAST.horde[seed % ANIME_CAST.horde.length]!;
 }

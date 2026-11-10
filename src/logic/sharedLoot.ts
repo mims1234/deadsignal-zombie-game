@@ -55,6 +55,7 @@ export function decodePrize(code: string): BoxPrize | null {
   if (/^g\d+$/.test(code)) return { kind: 'grenades', count: Math.max(1, Math.min(9, Number(code.slice(1)))) };
   if (code.startsWith('w:')) {
     const id = code.slice(2);
+    // (ZARYA's guns are never a box's prize: they are not decoded as one)
     if (id === 'rifle' || id === 'pistol' || id === 'shotgun' || id === 'rpg' || id === 'hanafubuki' || id === 'raijin') return { kind: 'weapon', id };
   }
   return null;

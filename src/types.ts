@@ -8,7 +8,10 @@
  *  - Ground is flat at y = 0.
  */
 
-export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin';
+/** ZARYA's own guns (`config.ts`: `ZARYA_GUNS`): built, bought or dropped there, never sold or boxed elsewhere. */
+export type ZaryaGunId = 'signalka' | 'arbalet' | 'gvozdomyot' | 'salyut' | 'ottepel' | 'zenit';
+
+export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin' | ZaryaGunId;
 
 export type ZombieType = 'shambler' | 'runner' | 'armored' | 'warden';
 

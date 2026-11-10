@@ -127,6 +127,6 @@ describe('every map', () => {
     it(`${map}: no sealed pockets bigger than a gap behind a prop`, () => {
       const { at } = pockets(map);
       expect(at.filter((p) => p.cells > 6 && !intended(map, p))).toEqual([]);
-    });
+    }, map === 'zarya' ? 180_000 : undefined); // the whole town takes several seconds to build, longer on a busy machine
   }
 });

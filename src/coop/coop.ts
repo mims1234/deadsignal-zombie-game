@@ -252,6 +252,7 @@ export class CoopSession {
     this.g.mission.shared = false;
     this.g.mission.follow = false;
     this.g.zombies.netDamage = null;
+    this.g.zombies.netEffect = null;
     this.g.cards.coopMode = 'off';
     this.g.entities.coop = null;
     if (this.g.asylum) this.g.asylum.remote = null;
@@ -288,7 +289,9 @@ export class CoopSession {
     const g = this.g;
     this.started = this.role !== 'none';
     // every hit goes to the simulation, which decides it and pays for it
-    g.zombies.netDamage = this.started ? (z, a, h, y, pu, li) => this.toHost({ k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li) }) : null;
+    g.zombies.netDamage = this.started ? (z, a, h, y, pu, li, im, heavy) => this.toHost({ k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li), ...(im !== undefined && im !== 1 ? { im: r1(im) } : {}), ...(heavy ? { hv: 1 } : {}) }) : null;
+    // ZARYA's guns: the Signalka's mark and the Zenit's flash are the simulation's to apply as well
+    g.zombies.netEffect = this.started ? (z, mk, sg) => this.toHost({ k: 'zfx', z: z.netId, mk: r1(mk), sg: r1(sg) }) : null;
     g.zombies.carrierRig = (i) => g.cards.rigFor(i);
     g.cards.coopMode = this.started ? 'remote' : 'off';
     g.cards.onCoopCure = (id) => this.toHost({ k: 'cure', id });
@@ -299,6 +302,7 @@ export class CoopSession {
     g.mission.requestCall = () => this.toHost({ k: 'call' });
     g.mission.requestBoard = () => this.toHost({ k: 'board' });
     g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
+    g.squad.requestHelp = (i) => this.toHost({ k: 'help', i });
     // the mystery boxes and the drops are the squad's: opening, taking and picking up are requests
     g.entities.coop = this.started && this.story
       ? {
@@ -336,6 +340,8 @@ export class CoopSession {
     // MUJIN's loop is the simulation's: a report, the All Clear, the payphone, Ren's hand, the bench
     if (g.mujin) g.mujin.request = (a, i) => this.toHost({ k: 'mj', a, i });
     // HIRASAKA's story is the simulation's: the jobs, the cage, the peaches' wards, a look back, the stone
+    // ZARYA's story is the simulation's: what is found, built, opened, covered, answered (`h`: asked with something heavy in hand)
+    if (g.zarya) g.zarya.request = (a, i, heavy) => this.toHost({ k: 'zy', a, i, h: heavy });
     if (g.hirasaka) g.hirasaka.request = (a, i, x, z) => this.toHost({ k: 'hs', a, i, x: x === undefined ? undefined : r1(x), z: z === undefined ? undefined : r1(z) });
     if (g.barricades) g.barricades.requestRepair = this.started ? (i) => this.toHost({ k: 'fix', i }) : null;
     this.me = { kills: 0, downs: 0 };
@@ -532,6 +538,7 @@ export class CoopSession {
       if (g.aurelia && d.au !== undefined) g.aurelia.applyWire(d.au);
       if (g.mujin && d.mj !== undefined) g.mujin.applyWire(d.mj);
       if (g.hirasaka && d.hs !== undefined) g.hirasaka.applyWire(d.hs);
+      if (g.zarya && d.zy !== undefined) g.zarya.applyWire(d.zy);
     }
     // power-ups (every map), the Asylum's files, doors and power, and its boarded windows
     const pu = d.pu as number[] | undefined;

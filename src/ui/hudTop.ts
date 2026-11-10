@@ -139,8 +139,9 @@ export class ClockView {
   }
 
   update(t: HudTimer, sub: HudTimer | null): void {
+    setHidden(this.main, !!t.hidden);
     this.mainLbl.set(t.label);
-    this.mainTime.set(fmtClock(t.seconds));
+    this.mainTime.set(t.hidden ? '' : fmtClock(t.seconds));
     setAttr(this.main, 'data-urgent', t.urgent ? '1' : '0');
     setHidden(this.sub, !sub);
     if (sub) {

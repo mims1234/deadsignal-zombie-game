@@ -29,6 +29,8 @@ import { buildRoads } from './layout/roads';
 import { buildSakura, SAKURA_BOUNDS, SAKURA_SITES, SAKURA_SPACE, type SakuraHandles } from './layout/sakura';
 import { buildApartments, buildCheckpoint, buildCornerStore, buildParkingLot } from './layout/southwest';
 import type { Ctx } from './layout/util';
+import { buildZarya, type ZaryaHandles } from './layout/zarya';
+import { ZARYA, ZARYA_BOUNDS, ZARYA_SPACE } from '../zarya/places';
 import type { MaterialLib } from './materials';
 import { FlowField, NavGrid, UNREACHABLE } from './nav';
 
@@ -64,6 +66,10 @@ export interface Level {
   mujin: MujinHandles | null;
   /** HIRASAKA: the mine's area, the cage and the old adit (`layout/hirasaka.ts`). */
   hirasaka: HirasakaHandles | null;
+  /** ZARYA: the chained gate (`layout/zarya.ts`). */
+  zarya: ZaryaHandles | null;
+  /** Scenery grouped by zone, for maps that switch districts off (`world/zones.ts`); empty on the others. */
+  zones: ReadonlyMap<string, THREE.Object3D>;
   stats: LevelBuilder['stats'];
   regionAt(x: number, z: number): Region;
   /** Advance level animations (blinking beacons, spinning dishes, windsock...). */
@@ -87,14 +93,16 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
   const aurelia = mapId === 'aurelia';
   const mujin = mapId === 'mujin';
   const hirasaka = mapId === 'hirasaka';
-  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : mujin ? MUJIN_BOUNDS : hirasaka ? HIRASAKA_BOUNDS : WORLD_BOUNDS;
+  const zarya = mapId === 'zarya';
+  const WORLD = forge ? FORGE_BOUNDS : asylum ? ASYLUM_BOUNDS : sakura ? SAKURA_BOUNDS : aurelia ? AURELIA_BOUNDS : mujin ? MUJIN_BOUNDS : hirasaka ? HIRASAKA_BOUNDS : zarya ? ZARYA_BOUNDS : WORLD_BOUNDS;
   // all the space there is: the street map, plus any underground spaces built beside it
-  const SPACE = sakura ? SAKURA_SPACE : mujin ? MUJIN_SPACE : hirasaka ? HIRASAKA_SPACE : WORLD;
+  const SPACE = sakura ? SAKURA_SPACE : mujin ? MUJIN_SPACE : hirasaka ? HIRASAKA_SPACE : zarya ? ZARYA_SPACE : WORLD;
   const world = new CollisionWorld(SPACE);
   const b = new LevelBuilder(mats, world);
   const d = new LevelDataBuilder();
   const floors = new Floors(WORLD);
-  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : mujin ? 457 : hirasaka ? 1974 : 20240928), mats, placed: [], floors };
+  const c: Ctx = { b, d, rng: new Rng(forge ? 1201 : asylum ? 1961 : sakura ? 2033 : aurelia ? 919 : mujin ? 457 : hirasaka ? 1974 : zarya ? 1962 : 20240928), mats, placed: [], floors };
+  let zaryaFx: ZaryaHandles | null = null;
   let sakuraFx: SakuraHandles | null = null;
   let mujinFx: MujinHandles | null = null;
   let hirasakaFx: HirasakaHandles | null = null;
@@ -167,6 +175,20 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
       defense: { x: HIRASAKA_PLACES.summit.x, z: HIRASAKA_PLACES.summit.z, radius: HIRASAKA_PLACES.summit.r },
       hunt: { wardenX: 200, wardenZ: -30, searchX: 196, searchZ: -33, searchRadius: 26 },
       hazard: { x: 0, z: 50 },
+    };
+  } else if (zarya) {
+    const r = buildZarya(c);
+    transmitter = r.transmitter;
+    spireHandle = r.spire;
+    zaryaFx = r.handles;
+    // no relay, no boss, no extraction: the operation's sites are parked in the corners and never used
+    site = {
+      start: { x: ZARYA.start.x, z: ZARYA.start.z, yaw: yawFacing(1, 0.35) },
+      lz: { x: ZARYA.van.x, z: ZARYA.van.z + 5, radius: 3, terminalX: ZARYA.van.x - 4, terminalZ: ZARYA.van.z + 5, terminalYaw: 0 },
+      defense: { x: ZARYA.van.x, z: ZARYA.van.z + 5, radius: 3 },
+      // the bear's den, behind the ice town (the story wakes him, not the hunt contract)
+      hunt: { wardenX: ZARYA.bearDen.x, wardenZ: ZARYA.bearDen.z, searchX: ZARYA.bearDen.x, searchZ: ZARYA.bearDen.z, searchRadius: 10 },
+      hazard: { x: 60, z: -44 },
     };
   } else if (sakura) {
     const r = buildSakura(c);
@@ -424,6 +446,8 @@ export function buildLevel(mats: MaterialLib, mapId: MapId = 'district'): Level 
     sakura: sakuraFx,
     mujin: mujinFx,
     hirasaka: hirasakaFx,
+    zarya: zaryaFx,
+    zones: b.zones,
     stats: b.stats,
     placement: report,
     regionAt: (x, z) => regionAtRects(data.regionRects, x, z),

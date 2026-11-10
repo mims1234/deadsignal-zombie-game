@@ -7,6 +7,8 @@
  *    instead: `forge/runtime.ts`.)
  * The infected treat every ally who is fighting exactly like a player (the co-op targeting path); a cage's occupant
  * is left alone until freed. How allies move and shoot lives in `allyBrain.ts`, shared with the co-op simulation.
+ * Squadmates (`SquadDef.equals`, ZARYA) never die: at no health they go down, the infected leave them, and they get up
+ * again after a while or when a player helps them up (`SQUADMATE`).
  *
  * In co-op (`follow`) the session simulation runs all of this; here the squad and the cages are only drawn from its
  * reports, and freeing someone is a request to it. (The Forge's furnaces and their embers: `forge/story.ts`.)
@@ -16,18 +18,19 @@ import { NATSUKI_TINT } from '../anime/looks';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { squadHoldsFire } from '../asylum/story';
-import { FORGE_SQUAD, QUALITY, SQUADS, SURVIVORS, type TeamSkill } from '../config';
+import { FORGE_SQUAD, QUALITY, SQUADMATE, SQUADS, SURVIVORS, type TeamSkill } from '../config';
 import { FORGE_LINES } from '../forge/lore';
 import { vulcanLook } from '../forge/looks';
-import { Avatar } from '../coop/avatar';
+import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import type { ZombieEnv } from '../enemies/zombie';
 import { addCash } from '../logic/economy';
 import type { HudObjective, MapMarker } from '../ui/hudTypes';
 import { createObjectiveBeam } from '../world/models';
 import { GAMEPLAY_FIELD_RANGE } from '../world/nav';
-import { type AllyBody, type AllyWorld, allyFight, allyHit, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
+import { type AllyBody, type AllyWorld, allyDownStep, allyFight, allyFighting, allyHelpUp, allyHit, allyHurt, allyMove, allyRecover, allySpread, cageSpots, makeAllyBody, soldierSpots, squadRoster, survivorRoster } from './allyBrain';
 import { ALLY_GUNS, type AllyGun, type AllySupply, allyErrand } from './allySupply';
 import type { Game } from './game';
+import type { InteractionTarget } from './interaction';
 
 /** Milliseconds a frame may spend on one ally's flow field. */
 const ALLY_FIELD_SLICE_MS = 0.5;
@@ -39,7 +42,7 @@ interface Ally extends AllyBody {
 
 /** What the co-op simulation reports for one ally: [index, x, z, yaw, state (0 dead, 1 fighting, 2 caged), hp]. */
 /**
- * [index, x, z, yaw, state (0 dead, 1 up, 2 caged), hp, y (on a floor above the street; absent from older hosts),
+ * [index, x, z, yaw, state (0 dead, 1 up, 2 caged, 3 down: a squadmate), hp, y (on a floor above the street; absent from older hosts),
  * gun (where the squad carries its own: an index into `ALLY_GUNS`)]
  */
 export type AllyRow = [number, number, number, number, number, number, number?, number?];
@@ -124,6 +127,8 @@ export class SquadRuntime {
   /** Co-op: the session simulation runs the squad; this asks it to free someone. */
   follow = false;
   requestRescue: ((name: string) => void) | null = null;
+  /** Co-op: ask the simulation to get the downed squadmate at this index up. */
+  requestHelp: ((index: number) => void) | null = null;
   private readonly world: AllyWorld;
   /** The Asylum: where the squad takes guns from the boxes (`allySupply.ts`). */
   private readonly supply: AllySupply;
@@ -141,6 +146,7 @@ export class SquadRuntime {
       },
       followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
       holdFire: (z, a) => {
+        if (g.zarya?.spared(z)) return true; // ZARYA: the ones nothing hurts yet, and Morozko while he asks
         const night = g.mission?.night;
         if (!night || !g.playerAlive()) return false;
         const p = g.player;
@@ -156,12 +162,32 @@ export class SquadRuntime {
         g.feed(`${a.name.toUpperCase()} TOOK A ${GUN_NAME[gun]} FROM THE BOX`, 'good');
       },
     };
+    g.interaction.sources.push((t) => this.helpTargets(t));
+  }
+
+  private bare = false;
+  private readonly bareGuns = new Map<Ally, AvatarWeapon>();
+
+  /** ZARYA's first minutes: nobody carries anything until the story arms them (their figures' hands are empty). */
+  setBare(on: boolean): void {
+    if (on === this.bare) return;
+    this.bare = on;
+    for (const a of this.allies) {
+      if (on) {
+        this.bareGuns.set(a, a.avatar.weapon);
+        a.avatar.setWeapon('none');
+      } else {
+        const w = this.bareGuns.get(a);
+        if (w && w !== 'none') a.avatar.arm(w);
+      }
+    }
+    if (!on) this.bareGuns.clear();
   }
 
   /** The gun an ally's figure holds: what their kit says (the Asylum), drawn as it changes. */
   private dress(a: Ally): void {
     const k = a.kit;
-    if (!k || a.trapped || !a.ref.alive) return;
+    if (!k || this.bare || a.trapped || !a.ref.alive) return;
     if (a.avatar.weapon === k.gun) return;
     if (k.gun === 'none') a.avatar.setWeapon('none');
     else a.avatar.arm(k.gun);
@@ -219,7 +245,7 @@ export class SquadRuntime {
         const vl = clan ? vulcanLook(name) : null;
         this.addAlly(
           makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill),
-          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? (g.mapId === 'asylum' ? ownModel(def.models[i]) : personModel(def.models[i])) : null, animeTint: g.mapId === 'hirasaka' ? NATSUKI_TINT : null }),
+          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', tagNear: g.mapId === 'zarya' ? 5 : undefined, weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? (g.mapId === 'asylum' ? ownModel(def.models[i]) : personModel(def.models[i])) : null, animeTint: g.mapId === 'hirasaka' ? NATSUKI_TINT : null }),
         );
       });
     }
@@ -299,7 +325,7 @@ export class SquadRuntime {
     if (!this.active || this.follow) return undefined;
     const list = [base];
     for (const a of this.allies) {
-      if (!a.ref.alive || a.trapped) continue;
+      if (!allyFighting(a)) continue; // the dead, the caged, and a squadmate who is down: nobody goes for them
       a.env ??= { ...base, player: a.ref, field: a.field, hurtPlayer: (amount, sx, sz, _kind, knock) => this.hurt(a, amount, sx, sz, knock) };
       a.env.time = base.time;
       a.env.rng = base.rng;
@@ -312,23 +338,59 @@ export class SquadRuntime {
   fogHurt(dps: number, dt: number, inside: (x: number, z: number) => boolean): void {
     if (!this.active || this.follow) return;
     for (const a of this.allies) {
-      if (!a.ref.alive || a.trapped || !inside(a.ref.x, a.ref.z)) continue;
+      if (!allyFighting(a) || !inside(a.ref.x, a.ref.z)) continue;
       this.hurt(a, dps * dt, a.ref.x, a.ref.z + 0.5, 0);
     }
   }
 
   private hurt(a: Ally, amount: number, sx: number, sz: number, knock: number): void {
-    if (!a.ref.alive) return;
-    a.hp -= amount * a.stats.damageTaken;
-    a.sinceHurt = 0;
-    const g = this.g;
-    if (a.hp <= 0) {
-      a.hp = 0;
-      this.killed(a, sx, sz, knock);
-    } else if (a.hp < a.stats.hp * 0.35 && !a.warned) {
+    if (!a.ref.alive || a.down > 0) return;
+    const what = allyHurt(a, amount);
+    if (what === 'dead') this.killed(a, sx, sz, knock);
+    else if (what === 'down') this.wentDown(a, a.ref.x - sx, a.ref.z - sz);
+    else if (a.hp < a.stats.hp * 0.35 && !a.warned) {
       a.warned = true;
-      g.radio(a.name.toUpperCase(), "I'm hit bad - cover me!", 3.5);
+      this.g.radio(a.name.toUpperCase(), "I'm hit bad - cover me!", 3.5);
     }
+  }
+
+  /** A squadmate went down (they never die): they drop where they stood, away from the blow along (dx, dz). */
+  private wentDown(a: Ally, dx: number, dz: number): void {
+    // a short drop, not a throw: the body stays where a player will look for them
+    a.avatar.fall(dx, dz, 0.8);
+    this.g.feed(`${a.name.toUpperCase()} IS DOWN`, 'warn');
+  }
+
+  /** A squadmate is on their feet again (their own time, or a player's hand). */
+  private backUp(a: Ally): void {
+    a.avatar.rise();
+    a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
+    this.g.feed(`${a.name.toUpperCase()} IS BACK UP`, 'good');
+  }
+
+  /** A downed squadmate in reach: a hold gets them up at once (`Interaction.sources`). */
+  private helpTargets(out: InteractionTarget[]): void {
+    if (!this.soldiers || !this.g.playerAlive()) return;
+    const p = this.g.player;
+    this.allies.forEach((a, i) => {
+      if (!(a.down > 0)) return;
+      // where the body lies (the fall carries it a step from where they stood)
+      const at = a.avatar.fallen ? a.avatar.root.position : a.ref;
+      const d = Math.hypot(at.x - p.x, at.z - p.z);
+      if (d > SQUADMATE.helpReach || Math.abs(a.ref.y - p.y) > 1.8) return;
+      out.push({ id: `help:${a.name}`, dist: d, text: `HELP ${a.name.toUpperCase()} UP`, sub: 'Hold to get them on their feet', tone: 'good', hold: SQUADMATE.helpHold, enabled: true, onUse: () => this.helpUp(i) });
+    });
+  }
+
+  /** Get the downed squadmate at this index up now (co-op: a request to the simulation, which reports them up). */
+  helpUp(index: number): void {
+    const a = this.allies[index];
+    if (!a || !(a.down > 0)) return;
+    if (this.follow) {
+      this.requestHelp?.(index);
+      return;
+    }
+    if (allyHelpUp(a)) this.backUp(a);
   }
 
   /** An ally died: they fall where the blow sent them, and everyone hears about it. */
@@ -356,7 +418,7 @@ export class SquadRuntime {
   /** Can this helper speak: with you, alive and out of their cage (the Asylum's voice director asks). */
   canTalk(name: string): boolean {
     const a = this.allies.find((q) => q.name === name);
-    return !!a && a.ref.alive && !a.trapped;
+    return !!a && allyFighting(a);
   }
 
   lost(name: string): boolean {
@@ -448,11 +510,19 @@ export class SquadRuntime {
       a.ref.y = y !== undefined && y > 0.5 ? y : g.level.world.floorHeight(x, z, 0.2); // upstairs: the host's height
       a.yaw = yaw;
       a.hp = hp;
+      // a squadmate down (they fall back from the blow they were facing), and up again
+      if (state === 3 && !(a.down > 0)) {
+        a.down = SQUADMATE.downFor;
+        this.wentDown(a, Math.sin(yaw), Math.cos(yaw));
+      } else if (state === 1 && a.down > 0) {
+        a.down = 0;
+        this.backUp(a);
+      }
       if (gun !== undefined && ALLY_GUNS[gun]) this.dressRemote(a, ALLY_GUNS[gun]!);
     }
     for (const [i, tx, ty, tz, hit] of shots) {
       const a = this.allies[i!];
-      if (!a || !a.ref.alive) continue;
+      if (!a || !a.ref.alive || a.down > 0) continue;
       const to = { x: tx!, y: ty!, z: tz! };
       a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
       const from = a.avatar.fire(to);
@@ -489,6 +559,12 @@ export class SquadRuntime {
       }
       if (a.trapped) {
         a.avatar.set(a.ref.x, 0, a.ref.z, Math.sin(this.time * 0.6 + a.ref.x) * 0.8, true);
+        a.avatar.update(dt);
+        continue;
+      }
+      if (a.down > 0) {
+        // a squadmate lying where they fell: their own clock gets them up (co-op: the simulation's does)
+        if (!this.follow && allyDownStep(a, dt) === 'up') this.backUp(a);
         a.avatar.update(dt);
         continue;
       }
@@ -529,7 +605,7 @@ export class SquadRuntime {
     if (this.follow) return;
     // personal space: nobody stands inside anyone else, or inside you (after this step's moves, before they are drawn)
     allySpread(this.allies, alive ? [p] : [], g.level, dt);
-    for (const a of this.allies) if (a.ref.alive && !a.trapped) a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
+    for (const a of this.allies) if (allyFighting(a)) a.avatar.set(a.ref.x, a.ref.y, a.ref.z, a.yaw, true);
   }
 
   /** The squad's figures (HIRASAKA puts Natsuki's helmet on hers). */
@@ -542,7 +618,7 @@ export class SquadRuntime {
     if (!this.active || this.follow) return;
     const nav = this.g.level.floors.navOf(area);
     for (const a of this.allies) {
-      if (!a.ref.alive || a.trapped) continue;
+      if (!allyFighting(a)) continue; // one who is down follows when they are up (`allyMove`)
       const at = nav.randomFreeNear(x, z, 3, () => this.g.rng.f()) ?? { x, z };
       a.ref.x = at.x;
       a.ref.z = at.z;
@@ -588,10 +664,12 @@ export class SquadRuntime {
     if (this.soldiers) {
       const soldiers = this.allies.filter((a) => a.kind === 'soldier');
       const up = soldiers.filter((a) => a.ref.alive);
+      // squadmates cannot be lost: the line says who is on their feet
+      const equals = soldiers.some((a) => a.equal);
       out.push({
         id: 'squad',
-        title: `KEEP THE SQUAD ALIVE  ${up.length}/${soldiers.length}`,
-        detail: soldiers.map((a) => (a.ref.alive ? `${a.name} ${Math.ceil(a.hp)}` : `${a.name} KIA`)).join('   '),
+        title: equals ? `YOUR SQUAD  ${up.filter((a) => !(a.down > 0)).length}/${soldiers.length}` : `KEEP THE SQUAD ALIVE  ${up.length}/${soldiers.length}`,
+        detail: soldiers.map((a) => (!a.ref.alive ? `${a.name} KIA` : a.down > 0 ? `${a.name} DOWN` : `${a.name} ${Math.ceil(a.hp)}`)).join('   '),
         state: up.length === 0 ? 'failed' : 'active',
         progress: -1,
         tracked: false,
@@ -630,8 +708,8 @@ export class SquadRuntime {
   }
 
   /** Dev / QA: who is in the squad and how they are doing. */
-  devInfo(): { name: string; kind: string; trapped: boolean; alive: boolean; hp: number; x: number; z: number; fallen: boolean }[] {
-    return this.allies.map((a) => ({ name: a.name, kind: a.kind, trapped: a.trapped, alive: a.ref.alive, hp: Math.round(a.hp), x: +a.ref.x.toFixed(1), z: +a.ref.z.toFixed(1), fallen: a.avatar.fallen }));
+  devInfo(): { name: string; kind: string; trapped: boolean; alive: boolean; hp: number; x: number; z: number; fallen: boolean; down: boolean }[] {
+    return this.allies.map((a) => ({ name: a.name, kind: a.kind, trapped: a.trapped, alive: a.ref.alive, hp: Math.round(a.hp), x: +a.ref.x.toFixed(1), z: +a.ref.z.toFixed(1), fallen: a.avatar.fallen, down: a.down > 0 }));
   }
 
   markers(out: MapMarker[]): void {
@@ -640,6 +718,7 @@ export class SquadRuntime {
     for (const a of this.allies) {
       if (!a.ref.alive) continue;
       if (a.trapped) out.push({ id: `cage:${a.name}`, kind: 'objective', x: a.ref.x, z: a.ref.z, label: 'SURVIVOR', color: '#9fd0ff', visible: true, compass: a === cage });
+      else if (a.down > 0) out.push({ id: `ally:${a.name}`, kind: 'objective', x: a.ref.x, z: a.ref.z, label: `${a.name.toUpperCase()} DOWN`, color: '#ffb04a', visible: true, compass: false });
       else out.push({ id: `ally:${a.name}`, kind: 'objective', x: a.ref.x, z: a.ref.z, label: a.name.toUpperCase(), color: '#8fd18a', visible: true, compass: false });
     }
   }

@@ -15,11 +15,15 @@ export interface MissionClock {
   phases: readonly number[];
 }
 
+/** ZARYA has no clock at all: no deadline, no surge, no escalation by the minute. The only way to lose is to die. */
+export const NO_CLOCK: MissionClock = { deadline: Number.POSITIVE_INFINITY, surgeStart: Number.POSITIVE_INFINITY, phases: [] };
+
 export function missionClock(map: MapId, kind?: string | null): MissionClock {
   if (map === 'sakura') return SAKURA_CLOCK.kaika; // the district is KAIKA, whatever the session's kind
   void kind;
   if (map === 'mujin') return MUJIN_CLOCK;
   if (map === 'hirasaka') return HIRASAKA_CLOCK;
+  if (map === 'zarya') return NO_CLOCK;
   return map === 'asylum' ? ASYLUM_CLOCK : map === 'forge' ? FORGE_STORY.clock : MISSION;
 }
 

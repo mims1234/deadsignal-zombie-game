@@ -48,6 +48,10 @@ import { GrenadeSystem, rocketForPrewarm } from '../weapons/grenades';
 import { createViewmodels } from '../weapons/viewmodels';
 import type { ViewmodelSet } from '../weapons/viewmodelTypes';
 import { WeaponSystem, type WeaponInput } from '../weapons/weaponSystem';
+import { MeleeSystem } from '../weapons/meleeSystem';
+import { MeleeRig } from '../weapons/viewmodel/melee';
+import { acquireTextures, releaseTextures } from '../weapons/viewmodel/materials';
+import { ZaryaRuntime } from '../zarya/runtime';
 import { buildLevel, type Level } from '../world/level';
 import { createMaterialLib, type MaterialLib } from '../world/materials';
 import { createGrenadeModel } from '../world/models';
@@ -174,6 +178,9 @@ export class Game implements GameCtx {
   mujin: MujinRuntime | null = null;
   /** HIRASAKA, the island that sealed its mine (`hirasaka/runtime.ts`). */
   hirasaka: HirasakaRuntime | null = null;
+  /** ZARYA (`zarya/runtime.ts`), and what the player swings there beside the two guns (`weapons/meleeSystem.ts`; null on maps without melee). */
+  zarya: ZaryaRuntime | null = null;
+  melee: MeleeSystem | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
   private storyPick: StoryId | null = null;
   /** The story the current run was set up for: a different pick on the title screen sets it up again on deploy. */
@@ -492,6 +499,16 @@ export class Game implements GameCtx {
       this.renderer.light.hemi.color.set(0x6a8a9a);
       this.renderer.light.hemi.groundColor.set(0x0a1010);
       this.renderer.light.fill.color.set(0xffa060);
+    } else if (this.mapId === 'zarya') {
+      // New Year's Eve in the north: a blue-black sky, snow that gives the night back, sodium lamps
+      setSkyColors(this.renderer.sky, { zenith: 0x05070e, mid: 0x0c1322, horizon: 0x18243a, glow: 0x24304a, haze: 0x0e1626, stars: 0.35 });
+      const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
+      fog?.color.set(0x0e1626);
+      // the snow closes the town in at sixty metres or so
+      if (fog) fog.density = 0.021;
+      this.renderer.light.hemi.color.set(0x8da2c6);
+      this.renderer.light.hemi.groundColor.set(0x2a3448);
+      this.renderer.light.fill.color.set(0xffa860);
     } else if (this.mapId === 'asylum') {
       // the long night on the hill: cold moonlight, a grey-green mist, damp lawn underfoot
       const fog = this.renderer.scene.fog as THREE.FogExp2 | null;
@@ -534,8 +551,9 @@ export class Game implements GameCtx {
     this.menus.showLoading(0.72, 'RIGGING INFECTED');
     await nextFrame();
     this.zombieFactory = createZombieFactory();
-    this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
-    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId) });
+    // ZARYA's looks are baked by its ZombieManager (theme 'zarya'); the standard ones would be built for nothing
+    if (this.mapId !== 'zarya') this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
+    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId), zarya: this.mapId === 'zarya' });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
     await nextFrame();
@@ -641,7 +659,7 @@ export class Game implements GameCtx {
         throwGrenade: (o, d) => this.grenades.throw(o, d),
         peaches: () => this.hirasaka?.peaches ?? 0,
         throwPeach: (o, d) => this.hirasaka?.throwPeach(o, d) ?? false,
-        fireRocket: (o, d, dmg) => this.grenades.fireRocket(o, d, dmg),
+        fireRocket: (o, d, dmg, opts) => this.grenades.fireRocket(o, d, dmg, opts),
         recordShot: (hit) => {
           this.session.stats.shotsFired++;
           if (hit) this.session.stats.shotsHit++;
@@ -690,6 +708,26 @@ export class Game implements GameCtx {
       // the island's voices and score, every one before the run (the loading screen counts them in)
       this.hirasaka = new HirasakaRuntime(this);
       await this.hirasaka.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `WINDING GENZŌ'S TAPES ${n} / ${of}`));
+    }
+    if (this.mapId === 'zarya') {
+      // ZARYA: something to swing beside the two guns, and the yard's own rules
+      this.melee = new MeleeSystem(
+        {
+          renderer: this.renderer,
+          world: this.level.world,
+          zombies: this.zombies,
+          zombieEnv: () => this.zenv,
+          audio: this.audio,
+          fx: this.fx,
+          player: this.player,
+          reducedMotion: () => this.settings.reducedMotion,
+          hudEvent: (e) => this.hud.event(e),
+          noise: (radius) => this.zombies.emitNoise(this.player.x, this.player.z, radius),
+          alive: () => this.playerAlive(),
+        },
+        new MeleeRig(acquireTextures()),
+      );
+      this.zarya = new ZaryaRuntime(this);
     }
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
@@ -753,12 +791,15 @@ export class Game implements GameCtx {
         input: this.input,
         onPause: () => this.pause('menu'),
         onInterrupt: () => this.pause('lost'),
+        // ZARYA: a move stick, one fire button and a menu dot; everything used rarely is in the dot's mini menu
+        layout: this.mapId === 'zarya' ? 'compact' : 'classic',
+        menuExtra: this.mapId === 'zarya' ? { label: 'JOURNAL', onTap: () => this.pause('menu') } : undefined,
       });
     }
 
     this.roamHint = document.createElement('div');
     this.roamHint.className = 'ds-roam-hint';
-    this.roamKeys = this.touchMode ? '  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  II = MENU' : '  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
+    this.roamKeys = this.touchMode ? `  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  ${this.mapId === 'zarya' ? 'THE DOT > PAUSE' : 'II'} = MENU` : '  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
     this.roamHint.hidden = true;
     uiRoot.appendChild(this.roamHint);
 
@@ -952,6 +993,11 @@ export class Game implements GameCtx {
     document.removeEventListener('keydown', this.onKeyDownGlobal);
     this.resizeObserver?.disconnect();
     this.touch?.dispose();
+    if (this.melee) {
+      this.melee.dispose();
+      releaseTextures();
+    }
+    this.zarya?.dispose();
     this.input?.dispose();
     this.audio?.dispose();
   }
@@ -1380,6 +1426,8 @@ export class Game implements GameCtx {
         else this.banner(`CO-OP  //  ${kind === 'mazoku' ? 'STANDARD MAZOKU' : 'STANDARD'}`, `${text.defenseTitle}. ${text.huntTitle}. Extract together - revive anyone who goes down.`, 'info', 5);
       } else if (this.mapId === 'asylum' && !roam) {
         this.banner('BLACKWOOD HILL', "Night on the hill. Follow the hospital's files, room by room - no clock, but the black fog comes in waves.", 'info', 5);
+      } else if (this.mapId === 'zarya' && !roam) {
+        // the town says its own name and the hour (`zarya/runtime.ts`)
       } else if ((this.mapId === 'mujin' || this.mapId === 'hirasaka') && !roam) {
         // the station (the island) says its own name (`mujin/runtime.ts`, `hirasaka/runtime.ts`)
       } else if (this.mapId === 'aurelia' && !roam) {
@@ -1489,6 +1537,8 @@ export class Game implements GameCtx {
     this.player.stamina = PLAYER.maxStamina;
     this.player.staminaExhausted = false;
     this.weapons.reset();
+    this.weapons.holstered = false;
+    this.melee?.reset();
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
@@ -1512,7 +1562,10 @@ export class Game implements GameCtx {
     if (!this.flying) this.mujin?.reset(this.mode === 'coop');
     // HIRASAKA: the island as the typhoon found it
     if (!this.flying) this.hirasaka?.reset(this.mode === 'coop');
+    // ZARYA: the yard as a run finds it (a pistol and a knife, the gate chained)
+    if (!this.flying) this.zarya?.reset(this.mode === 'coop');
     this.weapons.hidden = this.flying;
+    if (this.melee) this.melee.hidden = this.flying;
     this.flow.cancel();
     this.flowGoalX = this.flowGoalZ = 1e9;
     this.flowTimer = 0;
@@ -1737,8 +1790,8 @@ export class Game implements GameCtx {
       jumpPressed: edges.jump,
       crouchPressed: edges.crouch,
       ads: this.weapons.adsAmount,
-      weaponMoveMul: (this.weapons.def?.moveMul ?? 1) * (this.sakura?.moveMul ?? 1), // the Sakura District: an idol's song drags at you
-      noSprint: this.weapons.blocksSprint,
+      weaponMoveMul: (this.melee?.out ? this.melee.moveMul : (this.weapons.def?.moveMul ?? 1)) * (this.sakura?.moveMul ?? 1), // the Sakura District: an idol's song drags at you
+      noSprint: this.melee?.out ? this.melee.blocksSprint : this.weapons.blocksSprint,
       frozen: !alive,
     };
     this.player.update(dt, control);
@@ -1755,14 +1808,41 @@ export class Game implements GameCtx {
     this.stairwellCd = Math.max(0, this.stairwellCd - dt);
 
     // ---- weapons ----
-    const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen ? this.autoFire(dt) : 0;
+    // (ZARYA's Zenit is never fired for you: it has twelve flashbulbs and no more)
+    const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen && this.weapons.def?.id !== 'zenit' ? this.autoFire(dt) : 0;
+    // something to swing (ZARYA) takes its turn in the weapon cycle after the guns, and 3 brings it straight out;
+    // while it is in hand the guns are holstered and the trigger, the aim and the reload are its own
+    const melee = this.melee;
+    let wheel = edges.wheel;
+    let slot: 0 | 1 | null = this.interaction.panelOpen ? null : edges.slot1 ? 0 : edges.slot2 ? 1 : null;
+    if (melee && alive && !this.interaction.panelOpen) {
+      const inv = s.inv;
+      if (melee.out) {
+        if (!melee.busy && ((slot !== null && inv.slots[slot]) || wheel !== 0)) {
+          const to = slot ?? (inv.slots[0] ? 0 : 1);
+          melee.setOut(false);
+          if (inv.slots[to]) inv.activeSlot = to;
+          this.weapons.redraw();
+        }
+        wheel = 0;
+        slot = null;
+      } else if (melee.carried && !this.weapons.busy && (edges.digits.includes(3) || (wheel !== 0 && (inv.activeSlot === 1 || !inv.slots[1] || !inv.slots[0])))) {
+        melee.setOut(true);
+        this.weapons.cancelActions();
+        wheel = 0;
+      }
+    }
+    // ZARYA's first minutes: the squad came to find a boy, and has nothing in its hands until Nina's rack
+    const bare = this.zarya?.unarmed ?? false;
+    const swinging = !!melee?.out;
+    this.weapons.holstered = swinging;
     const winput: WeaponInput = {
-      fire: this.input.fire || auto > 0,
-      firePressed: edges.firePressed || auto > 1,
-      ads: this.input.ads,
-      reloadPressed: edges.reload,
-      slot: this.interaction.panelOpen ? null : edges.slot1 ? 0 : edges.slot2 ? 1 : null,
-      wheel: edges.wheel,
+      fire: !swinging && !bare && (this.input.fire || auto > 0),
+      firePressed: !swinging && !bare && (edges.firePressed || auto > 1),
+      ads: !swinging && !bare && this.input.ads,
+      reloadPressed: !swinging && !bare && edges.reload,
+      slot,
+      wheel,
       grenadePressed: edges.grenade,
       platePressed: edges.plate,
       locked: !alive || this.hud.tacticalMapOpen && false,
@@ -1770,6 +1850,15 @@ export class Game implements GameCtx {
       mouseDY: edges.mouseDY,
     };
     this.weapons.update(dt, winput);
+    melee?.update(dt, {
+      fire: swinging && this.input.fire,
+      firePressed: swinging && edges.firePressed,
+      guard: swinging && this.input.ads,
+      auto: swinging && this.touchMode && this.settings.autoFire,
+      locked: !alive || bare || this.weapons.busy || this.interaction.panelOpen,
+      mouseDX: edges.mouseDX,
+      mouseDY: edges.mouseDY,
+    });
 
     // ---- interactions ----
     this.io = this.interaction.update(dt, edges, this.input.interactHeld);
@@ -1792,6 +1881,7 @@ export class Game implements GameCtx {
     this.sakura?.update(dt);
     this.mujin?.update(dt);
     this.hirasaka?.update(dt);
+    this.zarya?.update(dt);
     if (this.coop.live) this.coop.update(dt);
 
     // ---- world ----
@@ -1845,6 +1935,7 @@ export class Game implements GameCtx {
     }
     this.cards.update(dt);
     this.hirasaka?.roam(dt); // HIRASAKA: the island drawn, and the shaft down to the mine
+    this.zarya?.roam(dt); // ZARYA: every zone drawn
     this.mission.update(0, this.renderer.camera, this.time); // dt = 0: the clock never starts
     this.entities.update(dt, this.time);
     this.level.update(dt, this.time, this.renderer.viewportHeight, this.renderer.camera.fov);
@@ -1959,7 +2050,8 @@ export class Game implements GameCtx {
       id: `stairwell:${link.id}`,
       dist: Math.hypot(e.x - p.x, e.z - p.z) * 0.6,
       text: down ? `ENTER ${place(there).replace(/^the /, '').toUpperCase()}` : `LEAVE ${place(here).replace(/^the /, '').toUpperCase()}`,
-      sub: down ? 'Down the stairs' : 'Up to the street',
+      // ZARYA: the escalator and the freight lift are not stairs
+      sub: this.zarya?.wayWords((down ? there : here)?.name ?? '', down) ?? (down ? 'Down the stairs' : 'Up to the street'),
       tone: 'normal',
       hold: 0.35,
       enabled: true,
@@ -2113,6 +2205,8 @@ export class Game implements GameCtx {
 
   hurtPlayer(amount: number, srcX: number | null, srcZ: number | null, opts: { ignoreArmor?: boolean; toxic?: boolean } = {}): void {
     if (!this.playerAlive() || this.endingKind === 'board' || this.flying) return;
+    // a guard with what is in hand takes its share of a blow from the front (`weapons/meleeSystem.ts`)
+    if (this.melee && srcX !== null && srcZ !== null && !opts.toxic) amount = this.melee.guarded(amount, srcX, srcZ);
     const s = this.session;
     const mul = opts.toxic ? 1 : REGIONS[this.playerRegion()].damageMul;
     const res = applyDamageToPlayer(s.vitals, amount * mul, { ignoreArmor: opts.ignoreArmor });
@@ -2289,6 +2383,7 @@ export class Game implements GameCtx {
     if (outcome === 'victory') this.squad.onExtracted();
     this.mujin?.end();
     this.hirasaka?.end();
+    this.zarya?.end();
     if (outcome === 'victory' && this.tale) this.sakura?.completeStory(this.tale);
     s.ended = { outcome, reason, at: s.elapsed };
     this.mission.endAudio();
@@ -2615,8 +2710,18 @@ export class Game implements GameCtx {
     this.sakura?.decorateHud(st, md); // the Sakura District: the Thousand Lanterns, the ghost train, the altar's blessing
     this.mujin?.decorateHud(st, md); // MUJIN: the loop, the lamps, the bell, Ren
     this.hirasaka?.decorateHud(st, md); // HIRASAKA: the acts, the stone, the surge, the peaches
+    this.zarya?.decorateHud(st, md); // ZARYA: the yard's own list, and no clock
+    if (this.melee?.out) {
+      // what is swung takes the weapon readout; the gun it replaced waits on the line below
+      st.otherWeapon = st.weapon ?? st.otherWeapon;
+      st.weapon = this.melee.hudInfo();
+      st.lowAmmo = false;
+      st.outOfAmmo = false;
+      st.crosshair = { spread: 0.6, ads: false, hidden: !this.playerAlive() };
+    }
     this.hud.update(st, md, dt);
-    this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen });
+    // the compact layout's buttons say what they will do: the prompt's own verb, and SWING with something in hand
+    this.touch?.update({ canUse: this.io.prompt !== null, panelOpen: this.io.panelOpen, mapOpen: this.hud.tacticalMapOpen, useLabel: this.io.prompt?.text.split(' ')[0], fireLabel: this.melee?.out ? 'SWING' : 'FIRE' });
   }
 
   // ---------------------------------------------------------------------------------------------

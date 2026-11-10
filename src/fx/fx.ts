@@ -788,6 +788,18 @@ class FxImpl implements FxApi {
     }
   }
 
+  steam(p: Vec3Like, dir: Vec3Like, reach: number, spread: number): void {
+    const rng = this.rng;
+    // the smoke puffs every wisp is made of, thrown hard: they slow and swell until they fill the cone at its far end
+    for (let i = 0; i < 4; i++) {
+      const sp = reach * rng.range(2.3, 3.3);
+      const side = sp * spread * 0.8;
+      this.smoke(this.nCombat, p.x + dir.x * 0.12, p.y + dir.y * 0.12, p.z + dir.z * 0.12,
+        dir.x * sp + rng.signed() * side, dir.y * sp + rng.signed() * side * 0.7 + 0.5, dir.z * sp + rng.signed() * side,
+        rng.range(0.45, 0.7), 0.1, rng.range(1.5, 2.3), [0.86, 0.9, 0.96], 0.34, 2.4, -0.5, 0.3);
+    }
+  }
+
   casing(p: Vec3Like, vel: Vec3Like, kind: WeaponId): void {
     this.casings.spawn(p, vel, kind);
   }

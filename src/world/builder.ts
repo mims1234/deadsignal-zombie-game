@@ -64,6 +64,7 @@ interface Batch {
   cast: boolean;
   receive: boolean;
   geos: THREE.BufferGeometry[];
+  zone: string | null;
 }
 
 interface InstDef {
@@ -72,6 +73,7 @@ interface InstDef {
   cast: boolean;
   receive: boolean;
   matrices: THREE.Matrix4[];
+  zone: string | null;
 }
 
 /** Spatial chunk size for static batches: fewer, larger batches (draw calls) at the cost of coarser culling. */
@@ -88,6 +90,13 @@ export class LevelBuilder {
   private readonly dynamic: THREE.Object3D[] = [];
   private finalized = false;
   stats = { bakedMeshes: 0, staticDrawCalls: 0, instancedMeshes: 0, triangles: 0 };
+  /**
+   * The zone whatever is added next belongs to (null: none, the whole map's). A zone's batches and instances are kept
+   * apart from everyone else's under one group of their own (`zones`), so a large map can switch whole districts of
+   * scenery off while the player is elsewhere (`world/zones.ts`). Colliders, lamps and navigation are not zoned.
+   */
+  zone: string | null = null;
+  readonly zones = new Map<string, THREE.Group>();
 
   constructor(
     readonly mats: MaterialLib,
@@ -190,10 +199,10 @@ export class LevelBuilder {
     const b = this.world.bounds;
     const cx = Math.floor((c.x - b.minX) / CHUNK);
     const cz = Math.floor((c.z - b.minZ) / CHUNK);
-    const key = `${materialSignature(material)}|${cast ? 1 : 0}${receive ? 1 : 0}|${cx},${cz}`;
+    const key = `${materialSignature(material)}|${cast ? 1 : 0}${receive ? 1 : 0}|${cx},${cz}${this.zone ? `|z:${this.zone}` : ''}`;
     let batch = this.batches.get(key);
     if (!batch) {
-      batch = { material, cast, receive, geos: [] };
+      batch = { material, cast, receive, geos: [], zone: this.zone };
       this.batches.set(key, batch);
     }
     batch.geos.push(g);
@@ -205,10 +214,11 @@ export class LevelBuilder {
    * call win. Instances are split into spatial chunks so they cull and shadow-cull properly.
    */
   instanced(key: string, geometry: THREE.BufferGeometry, material: THREE.Material, opts: AddOpts = {}): InstanceSet {
-    let def = this.instDefs.get(key);
+    const zoned = this.zone ? `${key}|z:${this.zone}` : key;
+    let def = this.instDefs.get(zoned);
     if (!def) {
-      def = { geometry, material, cast: opts.cast ?? true, receive: opts.receive ?? true, matrices: [] };
-      this.instDefs.set(key, def);
+      def = { geometry, material, cast: opts.cast ?? true, receive: opts.receive ?? true, matrices: [], zone: this.zone };
+      this.instDefs.set(zoned, def);
     }
     const d = def;
     const tmpQ = new THREE.Quaternion();
@@ -274,6 +284,19 @@ export class LevelBuilder {
   // finalize
   // ---------------------------------------------------------------------------------------------
 
+  /** Where a zone's meshes hang: the zone's own group (made on first use), or the root for the unzoned. */
+  private parentOf(zone: string | null): THREE.Group {
+    if (!zone) return this.root;
+    let g = this.zones.get(zone);
+    if (!g) {
+      g = new THREE.Group();
+      g.name = `zone:${zone}`;
+      this.zones.set(zone, g);
+      this.root.add(g);
+    }
+    return g;
+  }
+
   /** Merge all batches and create instanced meshes. Must be called once, after all content is added. */
   finalize(): void {
     if (this.finalized) return;
@@ -292,7 +315,7 @@ export class LevelBuilder {
       mesh.receiveShadow = batch.receive;
       mesh.matrixAutoUpdate = false;
       if (batch.material.transparent) mesh.renderOrder = 1;
-      this.root.add(mesh);
+      this.parentOf(batch.zone).add(mesh);
       this.stats.staticDrawCalls++;
       this.stats.triangles += (merged.index ? merged.index.count : merged.attributes.position!.count) / 3;
     }
@@ -321,7 +344,7 @@ export class LevelBuilder {
         im.receiveShadow = def.receive;
         im.computeBoundingSphere();
         im.name = `inst:${key}`;
-        this.root.add(im);
+        this.parentOf(def.zone).add(im);
         this.stats.instancedMeshes++;
         this.stats.triangles +=
           ((def.geometry.index ? def.geometry.index.count : def.geometry.attributes.position!.count) / 3) * list.length;

@@ -24,6 +24,8 @@ export interface HudWeaponInfo {
   /** 0..1 reload progress. */
   reloadProgress: number;
   auto: boolean;
+  /** A weapon that is swung, not fired (`logic/melee.ts`): no magazine, no reserve, nothing to reload. */
+  melee?: boolean;
 }
 
 export interface HudObjective {
@@ -71,6 +73,8 @@ export interface HudTimer {
   label: string;
   seconds: number;
   urgent: boolean;
+  /** A map with no clock at all (ZARYA): the main clock is not drawn. */
+  hidden?: boolean;
 }
 
 export interface HudState {

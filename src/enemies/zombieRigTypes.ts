@@ -63,6 +63,10 @@ export interface ZombieRig {
   clearAttach?(): void;
   /** Whose voice it has (the Sakura District's bodies: a man's or a woman's). */
   readonly voice?: 'female' | 'male';
+  /** ZARYA's loader (`zombie/zarya.ts`): the crate in his arms (true), or broken and gone. A fresh rig has it. */
+  setProp?(on: boolean): void;
+  /** ZARYA's house spirit: drawn almost clear while it stands unseen. */
+  setGhost?(on: boolean): void;
   /** Wearing a stand-in while its own model streamed in, which has now arrived: not reused from the pool. */
   stale?(): boolean;
   dispose(): void;
@@ -70,9 +74,10 @@ export interface ZombieRig {
 
 /**
  * A map's own look for its infected (the Asylum: `zombie/asylum.ts`, the Forge: `zombie/forge.ts`; the Sakura District:
- * VRoid models, `anime/cast.ts`, the standard variants when none are loaded); none means the standard variants.
+ * VRoid models, `anime/cast.ts`, the standard variants when none are loaded; ZARYA: townspeople in winter coats and the
+ * town's special kinds, `zombie/zarya.ts`); none means the standard variants.
  */
-export type ZombieTheme = 'asylum' | 'forge' | 'sakura';
+export type ZombieTheme = 'asylum' | 'forge' | 'sakura' | 'zarya';
 
 export interface ZombieFactory {
   /** `variant`: the Sakura District's kind (its own body and gear there). */
@@ -80,5 +85,7 @@ export interface ZombieFactory {
   create(type: ZombieType, seed: number, theme?: ZombieTheme, variant?: ZombieVariant, built?: boolean): ZombieRig;
   /** The Asylum's boss, the Matron (`matron.ts`): animates as a 'warden'. Absent: a Warden's model stands in. */
   createMatron?(seed: number): ZombieRig;
+  /** Bake a theme's looks now rather than at the first spawn of each (absent where nothing is drawn). */
+  prewarm?(theme?: ZombieTheme): void;
   dispose(): void;
 }
