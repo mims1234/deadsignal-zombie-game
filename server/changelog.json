@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.387",
+      "date": "2026-11-11",
+      "title": "A new title menu",
+      "notes": [
+        "The title menu is redesigned: more compact, with the map's own mood behind it, the zones in a strip along the bottom, PLAY up front with Solo, With friends and Free roam beside it, and what you do on the map in a side panel.",
+        "On phones it fits on one screen: the rarely used things are behind the Explore button and the More options sheet."
+      ]
+    },
+    {
       "version": "0.4.386",
       "date": "2026-11-11",
       "title": "ZARYA: the matryoshkas call them in",

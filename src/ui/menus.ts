@@ -116,9 +116,36 @@ const BOARD_METRICS = [
 
 const sentence = (t: string): string => t.charAt(0) + t.slice(1).toLowerCase();
 
-type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'film' | 'keys' | 'sliders' | 'heart';
+/** Each zone's colour on the title: the headline's rule, its card in the strip, the big button's rim and the shade's tint. */
+const MAP_ACCENT: Record<MapId, string> = {
+  district: '#6fa8dc',
+  sakura: '#ff9ec8',
+  forge: '#ff7a1a',
+  asylum: '#a9bf8e',
+  aurelia: '#e8c46a',
+  mujin: '#9fb6d8',
+  hirasaka: '#7fc4b8',
+  zarya: '#d84a4a',
+};
+/** A colour as CSS variables: itself, its channels (for see-through tints) and a lighter one for text. */
+function accent(node: HTMLElement, hex: string, name: string): void {
+  const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const lift = c.map((v) => Math.round(v * 0.72 + 255 * 0.28));
+  node.style.setProperty(name, hex);
+  node.style.setProperty(`${name}-rgb`, c.join(', '));
+  node.style.setProperty(`${name}-ink`, `rgb(${lift.join(', ')})`);
+}
+
+type NavGlyph = 'play' | 'friends' | 'explore' | 'trophy' | 'book' | 'film' | 'keys' | 'sliders' | 'heart' | 'grid' | 'user' | 'dots' | 'list' | 'left' | 'right' | 'x';
 const NAV_PATHS: Record<NavGlyph, string[]> = {
   play: ['M7 4.5v15l12-7.5z'],
+  grid: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
+  user: ['M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M4.5 21c1.3-4 4.2-6 7.5-6s6.2 2 7.5 6'],
+  dots: ['M5.5 12h.01', 'M12 12h.01', 'M18.5 12h.01'],
+  list: ['M9 6h11', 'M9 12h11', 'M9 18h11', 'M4.5 6h.01', 'M4.5 12h.01', 'M4.5 18h.01'],
+  left: ['M15 5l-7 7 7 7'],
+  right: ['M9 5l7 7-7 7'],
+  x: ['M6 6l12 12', 'M18 6L6 18'],
   friends: ['M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z', 'M2.5 20c1.2-3.5 3.7-5.2 6.5-5.2s5.3 1.7 6.5 5.2', 'M16.5 11.5a2.8 2.8 0 1 0 0-5.6', 'M17.5 14.8c2 .4 3.4 1.8 4.2 4.2'],
   explore: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M15.5 8.5l-2 5-5 2 2-5z'],
   trophy: ['M8 21h8', 'M12 17v4', 'M7 4h10v5a5 5 0 0 1-10 0z', 'M7 6H4a3 3 0 0 0 3 4', 'M17 6h3a3 3 0 0 1-3 4'],
@@ -128,9 +155,10 @@ const NAV_PATHS: Record<NavGlyph, string[]> = {
   sliders: ['M4 7h16', 'M4 17h16', 'M9 4.5v5', 'M15 14.5v5'],
   heart: ['M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.6C19.5 15.4 12 20 12 20z'],
 };
-function navIcon(name: NavGlyph): SVGSVGElement {
+function navIcon(name: NavGlyph, filled = false): SVGSVGElement {
   const svg = svgEl('svg', { viewBox: '0 0 24 24', class: 'ds-ic', 'aria-hidden': 'true', focusable: 'false' });
-  for (const d of NAV_PATHS[name]) svgEl('path', { d, fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
+  const wide = name === 'dots';
+  for (const d of NAV_PATHS[name]) svgEl('path', { d, fill: filled && name === 'play' ? 'currentColor' : 'none', stroke: 'currentColor', 'stroke-width': wide ? '3' : '1.8', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, svg);
   return svg;
 }
 
@@ -429,7 +457,7 @@ class Menus implements MenusApi {
   private boardMapSet = false;
   private boardReq = 0;
 
-  /** The side menu: the mode follows the page (Play / With friends / Explore); Leaderboards and Cinematics change nothing. */
+  /** The mode switch beside the big button (Solo / With friends / Free roam); the dock's pages change nothing. */
   private goPage(p: 'play' | 'friends' | 'explore' | 'boards' | 'films' | 'codex' | 'credits'): void {
     const m = this.info.mode;
     this.titlePage = p === 'boards' || p === 'films' || p === 'codex' || p === 'credits' ? p : 'play';
@@ -444,7 +472,25 @@ class Menus implements MenusApi {
     }
     // a mode change has redrawn the title already; this one lands the page and the focus
     this.showTitle(this.lastBest);
-    this.screen?.querySelector<HTMLElement>('.ds-l-item.on')?.focus({ preventScroll: true });
+    this.screen?.querySelector<HTMLElement>('.ds-l-mode.on, .ds-l-item.on, .ds-l-back')?.focus({ preventScroll: true });
+  }
+
+  /** Back from a page of the dock to the zone, keeping the mode as it is. */
+  private backToZone(): void {
+    this.titlePage = 'play';
+    this.showTitle(this.lastBest);
+    this.screen?.querySelector<HTMLElement>('.ds-l-cta .ds-btn')?.focus({ preventScroll: true });
+  }
+
+  /** The zone after (or before) the picked one, among those that can be picked now. */
+  private stepZone(dir: 1 | -1): void {
+    if (this.info.lockedMap) return;
+    const ids = this.visibleMaps().map((m) => m.id);
+    const i = ids.indexOf(this.info.map);
+    if (i < 0 || ids.length < 2) return;
+    const next = ids[(i + dir + ids.length) % ids.length]!;
+    this.cb.onMapChange(next);
+    this.screen?.querySelector<HTMLElement>(`.ds-l-zone[data-map="${next}"]`)?.focus({ preventScroll: true });
   }
 
   showTitle(best: BestRun | null): void {
@@ -455,7 +501,8 @@ class Menus implements MenusApi {
       this.boardMapSet = true;
     }
     // a board this player can see (an admin-only map has none for them)
-    const boardMaps = this.visibleMaps().map((m) => m.id);
+    const maps = this.visibleMaps();
+    const boardMaps = maps.map((m) => m.id);
     if (!boardMaps.includes(this.board.map) && boardMaps.length) this.board.map = boardMaps[0]!;
     const mode = this.info.mode;
     const roam = mode === 'roam';
@@ -466,15 +513,19 @@ class Menus implements MenusApi {
     const credits = this.titlePage === 'credits';
     const elsewhere = boards || films || codex || credits;
     const text = MAP_TEXT[this.info.map];
-    const root = el('div', 'ds-launch');
+    const root = el('div', elsewhere ? 'ds-launch page' : 'ds-launch');
+    root.dataset.map = this.info.map;
+    accent(root, MAP_ACCENT[this.info.map], '--acc');
     el('div', 'ds-shade', root);
-    el('div', 'ds-scanlines', root);
+    el('div', 'ds-l-mood', root);
+    el('div', 'ds-scanlines still', root);
+    el('div', 'ds-l-ticks', root);
 
-    // controls and settings open over everything, from the side menu
+    // controls and settings open over everything, from the dock
     const panel = el('div', 'ds-sidepanel ds-panel ds-brk', root);
     const closePanel = (): void => {
       panel.classList.remove('floating');
-      this.screen?.querySelector<HTMLElement>('.ds-l-item.on')?.focus({ preventScroll: true });
+      this.screen?.querySelector<HTMLElement>('.ds-l-cta .ds-btn, .ds-l-back')?.focus({ preventScroll: true });
     };
     const close = this.button(panel, 'CLOSE', 'mini closer', closePanel);
     close.setAttribute('aria-label', 'Close');
@@ -484,6 +535,7 @@ class Menus implements MenusApi {
       this.cb.onTourAgain();
     });
     const showTab = (w: 'controls' | 'settings'): void => {
+      setSheet(null);
       show(w);
       panel.classList.add('floating');
       close.focus({ preventScroll: true });
@@ -495,58 +547,132 @@ class Menus implements MenusApi {
       }
     });
 
-    // ---- the side menu ----
-    const rail = el('nav', 'ds-l-rail', root);
-    rail.setAttribute('aria-label', 'Main menu');
-    const brand = el('div', 'ds-l-brand', rail);
-    el('span', 'l1', brand, 'ZOMBIES');
-    el('span', 'l2', brand, 'GENXMIMS');
-    const nav = el('div', 'ds-l-nav', rail);
-    const item = (label: string, glyph: NavGlyph, on: boolean, go: () => void): HTMLButtonElement => {
-      const b = this.button(nav, '', on ? 'ds-l-item on' : 'ds-l-item', go);
-      b.appendChild(navIcon(glyph));
-      el('span', '', b, label);
-      // on a phone held upright only the icon shows: the name stays with the button
-      b.setAttribute('aria-label', label);
-      if (on) b.setAttribute('aria-current', 'page');
-      return b;
+    // one sheet at a time over the title (on a phone: the pages, the brief, the extra options), closed by Escape or a tap elsewhere
+    let sheetOpen: HTMLElement | null = null;
+    let sheetButton: HTMLElement | null = null;
+    const away = (e: Event): void => {
+      const t = e.target as Node;
+      if (sheetOpen && !sheetOpen.contains(t) && !sheetButton?.contains(t)) setSheet(null);
     };
-    item('PLAY', 'play', !elsewhere && !coop && !roam, () => this.goPage('play'));
-    // what the admin page has switched off is not on the menu at all (an admin still sees it)
-    if (this.shown('coop')) item('WITH FRIENDS', 'friends', !elsewhere && coop, () => this.goPage('friends'));
-    if (this.shown('roam')) item('FREE ROAM', 'explore', !elsewhere && roam, () => this.goPage('explore'));
-    if (this.account.boards || this.account.admin) item('LEADERBOARDS', 'trophy', boards, () => this.goPage('boards'));
-    if (this.visibleFilms().length > 0) item('CINEMATICS', 'film', films, () => this.goPage('films'));
-    if (this.shown('bestiary')) item('BESTIARY', 'book', codex, () => this.goPage('codex'));
-    item('CONTROLS', 'keys', false, () => showTab('controls'));
-    item('SETTINGS', 'sliders', false, () => showTab('settings'));
-    item('CREDITS', 'heart', credits, () => this.goPage('credits'));
+    const esc = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      const back = sheetButton;
+      setSheet(null);
+      back?.focus({ preventScroll: true });
+    };
+    const detach = (): void => {
+      document.removeEventListener('pointerdown', away, true);
+      document.removeEventListener('keydown', esc, true);
+    };
+    const setSheet = (sheet: HTMLElement | null, from: HTMLElement | null = null): void => {
+      if (sheetOpen) {
+        sheetOpen.classList.remove('open');
+        sheetButton?.setAttribute('aria-expanded', 'false');
+      }
+      sheetOpen = sheet;
+      sheetButton = sheet ? from : null;
+      // the extra options stay open across a redraw (a pick in them redraws the title)
+      this.moreOpen = !!sheet?.classList.contains('ds-l-more');
+      root.classList.toggle('sheet-open', !!sheet);
+      // the extra options live in the left column: it comes up over the zones while they are open
+      root.classList.toggle('more-open', this.moreOpen);
+      if (sheet) {
+        sheet.classList.add('open');
+        from?.setAttribute('aria-expanded', 'true');
+        document.addEventListener('pointerdown', away, true);
+        document.addEventListener('keydown', esc, true);
+      } else detach();
+    };
+    // the listeners go with the screen
+    const observer = new MutationObserver(() => {
+      if (!root.isConnected) {
+        detach();
+        observer.disconnect();
+      }
+    });
+    const toggleSheet = (sheet: HTMLElement, from: HTMLElement): void => setSheet(sheetOpen === sheet ? null : sheet, from);
+    const sheetHead = (sheet: HTMLElement, title: string): void => {
+      const h = el('div', 'ds-l-sheet-h', sheet);
+      el('span', 'haz', h);
+      el('span', 't', h, title);
+      const x = this.button(h, '', 'ds-l-x', () => {
+        const back = sheetButton;
+        setSheet(null);
+        back?.focus({ preventScroll: true });
+      });
+      x.appendChild(navIcon('x'));
+      x.setAttribute('aria-label', 'Close');
+    };
 
-    const foot = el('div', 'ds-l-foot', rail);
-    const bestEl = el('div', 'ds-l-best', foot);
-    if (best) {
-      el('span', 'lbl', bestEl, 'YOUR BEST EXTRACTION');
-      el('span', 'val', bestEl, fmtClock(best.time));
-      el('span', 'sub', bestEl, `${fmtInt(best.kills)} kills · ${fmtInt(best.headshots)} headshots`);
-    } else {
-      el('span', 'lbl', bestEl, 'YOUR BEST EXTRACTION');
-      el('span', 'sub', bestEl, 'None yet - your first one shows here.');
+    // ---- along the top: the name, the pages, the account ----
+    const top = el('header', 'ds-l-top', root);
+    const brand = el('div', 'ds-l-brand', top);
+    el('span', 'l1', brand, 'ZOMBIES');
+    const l2 = el('span', 'l2', brand);
+    el('i', '', l2);
+    el('span', '', l2, 'GENXMIMS');
+    const nav = el('nav', 'ds-l-nav', top);
+    nav.setAttribute('aria-label', 'Main menu');
+    // what the admin page has switched off is not on the menu at all (an admin still sees it)
+    type Page = { label: string; glyph: NavGlyph; about: string; on: boolean; go: () => void; quick?: boolean };
+    const pages: Page[] = [];
+    if (this.account.boards || this.account.admin) pages.push({ label: 'LEADERBOARDS', glyph: 'trophy', about: "Each player's best run on a zone.", on: boards, go: () => this.goPage('boards'), quick: true });
+    if (this.visibleFilms().length > 0) pages.push({ label: 'CINEMATICS', glyph: 'film', about: 'Short films set apart from the game.', on: films, go: () => this.goPage('films') });
+    if (this.shown('bestiary')) pages.push({ label: 'BESTIARY', glyph: 'book', about: 'The field guide, in 3D.', on: codex, go: () => this.goPage('codex') });
+    pages.push(
+      { label: 'CONTROLS', glyph: 'keys', about: 'Every key and touch control.', on: false, go: () => showTab('controls'), quick: true },
+      { label: 'SETTINGS', glyph: 'sliders', about: 'Graphics, audio, sensitivity.', on: false, go: () => showTab('settings'), quick: true },
+      { label: 'CREDITS', glyph: 'heart', about: 'Who made it, and what it is built on.', on: credits, go: () => this.goPage('credits') },
+    );
+    // on a phone: EXPLORE opens every page in a sheet, and the most used ones stay as icons
+    const explore = this.button(nav, '', 'ds-l-item explore', () => toggleSheet((exploreSheet ??= buildExplore()), explore));
+    explore.appendChild(navIcon('grid'));
+    el('span', '', explore, 'EXPLORE');
+    explore.setAttribute('aria-label', 'Explore: every page');
+    explore.setAttribute('aria-expanded', 'false');
+    for (const p of pages) {
+      const b = this.button(nav, '', `ds-l-item${p.on ? ' on' : ''}${p.quick ? ' quick' : ''}`, p.go);
+      b.appendChild(navIcon(p.glyph));
+      el('span', '', b, p.label);
+      // on a phone only the icon shows: the name stays with the button
+      b.setAttribute('aria-label', p.label);
+      if (p.on) b.setAttribute('aria-current', 'page');
     }
-    // the graphics preset, in plain sight: one tap opens Settings to change it
-    this.qualityChip = this.button(foot, '', 'quality', () => showTab('settings'));
-    this.qualityChip.title = 'Graphics quality - open Settings to change it';
-    this.syncQualityChip();
+    // the sheets are built when first opened: a redraw of the title stays small on a weak phone
+    let exploreSheet: HTMLElement | null = null;
+    const buildExplore = (): HTMLElement => {
+      const sheet = el('div', 'ds-l-sheet ds-l-explore', root);
+      sheet.setAttribute('role', 'dialog');
+      sheet.setAttribute('aria-label', 'Explore');
+      sheetHead(sheet, 'EXPLORE');
+      const ex = el('div', 'ex', sheet);
+      for (const p of pages) {
+        const b = this.button(ex, '', p.on ? 'ds-l-exi on' : 'ds-l-exi', () => {
+          setSheet(null);
+          p.go();
+        });
+        el('span', 'ic', b).appendChild(navIcon(p.glyph));
+        const t = el('span', 't', b);
+        el('b', '', t, p.label);
+        el('span', '', t, p.about);
+      }
+      return sheet;
+    };
+
     if (this.guest) {
       // a guest: playing the free zones; one click to sign in for the rest
-      const acct = el('div', 'ds-l-acct guest', foot);
+      const acct = el('div', 'ds-l-acct guest', top);
       el('span', 'avatar', acct, '?');
-      const who = el('div', 'who', acct);
-      el('b', '', who, 'GUEST');
-      const tools = el('div', 'tools', who);
-      const inn = this.button(tools, 'Sign in with Discord', 'lnk', () => this.cb.onSignIn('foot'));
-      inn.classList.remove('ds-btn');
+      el('b', 'nm', acct, 'GUEST');
+      const inn = this.button(acct, '', 'ds-l-signin', () => this.cb.onSignIn('foot'));
+      const mark = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true' }, inn);
+      svgEl('path', { d: DISCORD_MARK, fill: 'currentColor' }, mark);
+      el('span', 'long', inn, 'Sign in with Discord');
+      el('span', 'short', inn, 'Sign in');
+      inn.setAttribute('aria-label', 'Sign in with Discord');
     } else if (this.account.online) {
-      const acct = el('div', 'ds-l-acct', foot);
+      const acct = el('div', 'ds-l-acct', top);
       if (this.account.avatar) {
         const img = el('img', 'avatar', acct);
         img.src = this.account.avatar;
@@ -556,7 +682,7 @@ class Menus implements MenusApi {
       el('b', '', who, this.account.name ?? '');
       const tools = el('div', 'tools', who);
       if (this.account.admin) {
-        const link = el('a', 'lnk', tools, 'Admin');
+        const link = el('a', 'lnk admin', tools, 'Admin');
         link.href = '/admin';
       }
       const out = this.button(tools, 'Sign out', 'lnk', () => this.cb.onLogout());
@@ -566,63 +692,136 @@ class Menus implements MenusApi {
     // ---- the page ----
     const main = el('main', 'ds-l-main', root);
     let first: HTMLElement | null = null;
-    if (boards) this.buildBoards(main);
-    else if (films) this.buildCinematics(main);
-    else if (codex) this.buildCodex(main);
-    else if (credits) this.buildCredits(main);
-    else {
-      const hero = el('section', 'ds-l-hero', main);
-      const kick = el('div', 'kicker', hero);
+    if (elsewhere) {
+      const back = this.button(main, '', 'ds-l-back', () => this.backToZone());
+      back.appendChild(navIcon('left'));
+      el('span', '', back, `BACK TO ${text.name}`);
+      const host = el('div', 'ds-l-pagehost', main);
+      if (boards) this.buildBoards(host);
+      else if (films) this.buildCinematics(host);
+      else if (codex) this.buildCodex(host);
+      else this.buildCredits(host);
+    } else {
+      const zoneIndex = Math.max(0, maps.findIndex((m) => m.id === this.info.map));
+      const head = el('section', 'ds-l-hero', main);
+      head.dataset.n = String(zoneIndex + 1).padStart(2, '0');
+      const kick = el('div', 'kicker', head);
       el('span', 'haz', kick);
-      el('span', '', kick, coop ? 'WITH FRIENDS  //  UP TO THREE PLAYERS' : roam ? 'FREE ROAM  //  NO MISSION, NO DAMAGE' : text.kicker);
-      el('h1', 'name', hero, text.name);
-      el('p', 'tag', hero, text.tagline);
-      el('p', 'lead', hero, coop ? COOP_LEAD : roam ? ROAM_NOTE : text.name === 'MUJIN' ? 'Get the dead station running before the night takes it, and catch the dawn train.' : text.name === 'HIRASAKA' ? 'Go down into the mine under the sea, and climb back up without looking back.' : PLAY_LEAD);
+      el('span', '', kick, coop ? `WITH FRIENDS  //  UP TO THREE PLAYERS` : roam ? 'FREE ROAM  //  NO MISSION, NO DAMAGE' : text.kicker);
+      el('h1', text.name.length > 10 ? 'name long' : 'name', head, text.name);
+      el('p', 'tag', head, text.tagline);
+      el('p', 'lead', head, coop ? COOP_LEAD : roam ? ROAM_NOTE : text.name === 'MUJIN' ? 'Get the dead station running before the night takes it, and catch the dawn train.' : text.name === 'HIRASAKA' ? 'Go down into the mine under the sea, and climb back up without looking back.' : PLAY_LEAD);
 
-      const cta = el('div', 'ds-l-cta', hero);
+      const act = el('section', 'ds-l-act', main);
+      const cta = el('div', 'ds-l-cta', act);
+      const playrow = el('div', 'ds-l-playrow', cta);
+      const diffLabel = ZOMBIE_DIFFICULTY[this.info.difficulty.zombies].label;
       if (this.locked) {
         const login = this.info.login ?? 'map';
-        first = this.discordButton(cta, login === 'map' ? 'SIGN IN WITH DISCORD TO PLAY THIS ZONE' : 'SIGN IN WITH DISCORD TO PLAY', login === 'map' ? this.info.map : login);
+        first = this.discordButton(playrow, login === 'map' ? 'SIGN IN WITH DISCORD TO PLAY THIS ZONE' : 'SIGN IN WITH DISCORD TO PLAY', login === 'map' ? this.info.map : login);
+      } else {
+        const label = roam ? 'FREE ROAM' : coop ? 'OPEN LOBBY' : 'PLAY';
+        // only the label is the button's text (scripts find it by it); the line under it comes from CSS
+        const go = this.button(playrow, '', label === 'PLAY' ? 'primary big ds-l-play' : 'primary big ds-l-play long', () => this.deploy());
+        go.dataset.sub = coop ? 'CO-OP  ·  UP TO 3 PLAYERS' : roam ? `${text.name}  ·  NO DAMAGE` : `${text.name}  ·  ${diffLabel}`;
+        el('span', 'ico', go).appendChild(navIcon(coop ? 'friends' : roam ? 'explore' : 'play', true));
+        el('span', 'lbl', go, label);
+        el('span', 'scan', go);
+        go.setAttribute('aria-label', roam ? `Free roam ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
+        first = go;
+      }
+      // the mode beside the big button
+      const modeList: [string, string, NavGlyph, boolean, () => void][] = [['SOLO', '', 'user', !coop && !roam, () => this.goPage('play')]];
+      if (this.shown('coop')) modeList.push(['FRIENDS', 'WITH ', 'friends', coop, () => this.goPage('friends')]);
+      if (this.shown('roam')) modeList.push(['ROAM', 'FREE ', 'explore', roam, () => this.goPage('explore')]);
+      if (modeList.length > 1) {
+        const modes = el('div', 'ds-l-modes', playrow);
+        modes.setAttribute('role', 'group');
+        modes.setAttribute('aria-label', 'Mode');
+        for (const [label, lead, glyph, on, go] of modeList) {
+          const b = this.button(modes, '', on ? 'ds-l-mode on' : 'ds-l-mode', () => {
+            if (!on) go();
+          });
+          b.appendChild(navIcon(glyph));
+          const t = el('span', 't', b);
+          // the whole name is the button's text; a phone shows the short one
+          if (lead) el('span', 'w', t, lead);
+          t.append(label);
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+      }
+      if (this.locked) {
         const why = el('div', 'why', cta);
         el('b', '', why, this.account.loginFailed ? 'SIGN-IN DID NOT COMPLETE - TRY AGAIN' : 'FREE, RIGHT HERE IN YOUR BROWSER');
         el('span', '', why, 'One click. Only your Discord name and avatar are read.');
         // a zone open to guests, one click away
         const free = this.info.freeMap;
         if (free && free !== this.info.map) this.button(cta, `PLAY ${MAP_TEXT[free].name.toUpperCase()} NOW - NO SIGN-IN`, 'ghost free', () => this.cb.onMapChange(free));
-      } else {
-        const go = this.button(cta, roam ? 'FREE ROAM' : coop ? 'OPEN LOBBY' : 'PLAY', 'primary big', () => this.deploy());
-        go.setAttribute('aria-label', roam ? `Free roam ${text.name}` : coop ? 'Open the co-op lobby' : `Play ${text.name}`);
-        first = go;
-        if (!roam) {
-          const d = this.info.difficulty;
-          this.picker(cta, 'DIFFICULTY', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
-          // the Sakura District: the operation or KAIKA, the story (in co-op the lobby picks)
-          const stories = this.info.stories;
-          if (stories && !coop) this.picker(cta, 'STORY', [{ id: '', label: 'THE OPERATION', note: 'The district\'s own operation: both contracts, then extract.' }, ...stories], this.info.story ?? '', (id) => this.cb.onStoryChange(id || null));
-          const more = this.button(cta, this.moreOpen ? 'FEWER OPTIONS' : 'MORE OPTIONS', 'ghost', () => {
-            this.moreOpen = !this.moreOpen;
-            this.showTitle(this.lastBest);
-            this.screen?.querySelector<HTMLElement>('.ds-l-cta .ghost')?.focus({ preventScroll: true });
-          });
-          more.setAttribute('aria-expanded', this.moreOpen ? 'true' : 'false');
-        }
       }
-      if (!this.locked && !roam && this.moreOpen) {
+
+      // the small choices under it: difficulty, the story, more options, and (on a phone) the brief
+      const chips = el('div', 'ds-l-chips', act);
+      const brief = el('section', 'ds-l-brief ds-l-sheet', root);
+      if (!this.locked && !roam) {
         const d = this.info.difficulty;
-        const opts = el('div', 'ds-l-more', hero);
-        this.picker(opts, 'SQUAD AI', TEAM_SKILLS.map((id) => ({ id, label: TEAM_SKILL[id].label, note: TEAM_SKILL[id].note })), d.team, (id) => this.cb.onDifficultyChange({ ...d, team: id as typeof d.team }));
-        if (coop) el('span', 'hint', opts, 'These are the defaults for a lobby you open; its owner can change them there.');
-        else if (this.shown('cards')) {
-          const hunt = mode === 'cards';
-          const t = this.button(opts, hunt ? 'MAZOKU CARD HUNT  ON' : 'MAZOKU CARD HUNT  OFF', hunt ? 'toggle on' : 'toggle', () => this.cb.onModeChange(hunt ? 'standard' : 'cards'));
-          t.setAttribute('aria-pressed', hunt ? 'true' : 'false');
-          el('span', 'hint', opts, this.guest ? 'Adds five card carriers to put down and collect. Cards are kept on your account: needs a Discord sign-in.' : 'Adds five card carriers to put down and collect, on top of the mission.');
-        }
+        this.picker(chips, 'DIFFICULTY', ZOMBIE_DIFFICULTIES.map((id) => ({ id, label: ZOMBIE_DIFFICULTY[id].label, note: ZOMBIE_DIFFICULTY[id].note })), d.zombies, (id) => this.cb.onDifficultyChange({ ...d, zombies: id as typeof d.zombies }));
+        // the Sakura District: the operation or KAIKA, the story (in co-op the lobby picks)
+        const stories = this.info.stories;
+        if (stories && !coop) this.picker(chips, 'STORY', [{ id: '', label: 'THE OPERATION', note: 'The district\'s own operation: both contracts, then extract.' }, ...stories], this.info.story ?? '', (id) => this.cb.onStoryChange(id || null));
+        const more = this.button(chips, '', 'pick ds-l-chip more', () => toggleSheet((moreSheet ??= buildMore()), more));
+        more.appendChild(navIcon('dots'));
+        el('span', 'pv', more, 'MORE OPTIONS');
+        more.setAttribute('aria-label', 'More options');
+        more.setAttribute('aria-haspopup', 'dialog');
+        more.setAttribute('aria-expanded', 'false');
+        // squad skill and the card hunt (built when first opened)
+        let moreSheet: HTMLElement | null = null;
+        const buildMore = (): HTMLElement => {
+          const sheet = el('div', 'ds-l-sheet ds-l-more', chips);
+          sheet.setAttribute('role', 'dialog');
+          sheet.setAttribute('aria-label', 'More options');
+          sheetHead(sheet, 'MORE OPTIONS');
+          el('span', 'sec', sheet, 'SQUAD AI');
+          const squad = el('div', 'opts', sheet);
+          squad.setAttribute('role', 'radiogroup');
+          squad.setAttribute('aria-label', 'Squad AI');
+          for (const id of TEAM_SKILLS) {
+            const on = id === d.team;
+            const o = this.button(squad, '', on ? 'opt on' : 'opt', () => {
+              if (!on) this.cb.onDifficultyChange({ ...d, team: id });
+            });
+            o.setAttribute('role', 'radio');
+            o.setAttribute('aria-checked', on ? 'true' : 'false');
+            el('b', '', o, TEAM_SKILL[id].label);
+            el('span', '', o, TEAM_SKILL[id].note);
+          }
+          if (coop) el('span', 'hint', sheet, 'These are the defaults for a lobby you open; its owner can change them there.');
+          else if (this.shown('cards')) {
+            const hunt = mode === 'cards';
+            const row = el('div', 'hunt', sheet);
+            const t = el('div', 'ht', row);
+            el('b', '', t, 'MAZOKU CARD HUNT');
+            el('span', 'hint', t, this.guest ? 'Adds five card carriers to put down and collect. Cards are kept on your account: needs a Discord sign-in.' : 'Adds five card carriers to put down and collect, on top of the mission.');
+            const tg = this.button(row, '', hunt ? 'toggle on' : 'toggle', () => this.cb.onModeChange(hunt ? 'standard' : 'cards'));
+            el('i', 'knob', tg);
+            el('span', '', tg, hunt ? 'ON' : 'OFF');
+            tg.setAttribute('aria-pressed', hunt ? 'true' : 'false');
+            tg.setAttribute('aria-label', 'Mazoku card hunt');
+          }
+          return sheet;
+        };
+        // it stays open across a redraw (a pick in it redraws the title)
+        if (this.moreOpen) setSheet((moreSheet = buildMore()), more);
       }
+      const briefBtn = this.button(chips, '', 'pick ds-l-chip brief-btn', () => toggleSheet(brief, briefBtn));
+      briefBtn.appendChild(navIcon('list'));
+      el('span', 'pv', briefBtn, 'BRIEF');
+      briefBtn.setAttribute('aria-label', 'What you do here');
+      briefBtn.setAttribute('aria-expanded', 'false');
       el(
         'p',
         'ds-l-note',
-        hero,
+        act,
         this.locked
           ? 'Zones marked FREE play without signing in. The leaderboards and the bestiary are open to everyone.'
           : this.guest
@@ -630,47 +829,107 @@ class Menus implements MenusApi {
             : this.touch ? 'Play goes fullscreen. Tap II at any time to pause.' : 'Press Enter to play. Esc pauses at any time.',
       );
 
-      // ---- below: the zones, and what you do on this one ----
-      const below = el('div', 'ds-l-below', main);
-      const zones = el('section', 'ds-l-zones', below);
-      el('h2', '', zones, 'ZONES');
-      const list = el('div', 'list', zones);
-      list.setAttribute('role', 'radiogroup');
-      list.setAttribute('aria-label', 'Zone');
-      const locked = this.info.lockedMap ?? null;
-      // the zones this player may pick (a gated map is hidden until it is public); an admin sees a gated map's access
-      for (const { id, badge, badgeTone } of this.visibleMaps()) {
-        const on = id === this.info.map;
-        const z = this.button(list, '', on ? 'ds-l-zone on' : 'ds-l-zone', () => {
-          if (!on) this.cb.onMapChange(id);
-        });
-        z.dataset.map = id;
-        z.setAttribute('role', 'radio');
-        z.setAttribute('aria-checked', on ? 'true' : 'false');
-        const zn = el('span', 'zn', z, MAP_TEXT[id].name);
-        if (badge) el('span', `zb ${badgeTone ?? ''}`, zn, badge);
-        el('span', 'zt', z, MAP_TEXT[id].tagline);
-        if (on) el('span', 'zon', z, 'SELECTED');
-        if (locked && !on) {
-          z.disabled = true;
-          z.title = 'Leave the co-op session to change the map';
-        }
-      }
-      const brief = el('section', 'ds-l-brief', below);
-      el('h2', '', brief, roam ? 'THE MISSION, FOR LATER' : 'WHAT YOU DO HERE');
-      const rows = MAP_TEXT[this.info.map].rows;
+      // what you do on this zone: a card on the right (a sheet behind BRIEF on a phone)
+      brief.setAttribute('aria-label', 'What you do here');
+      const bh = el('div', 'ds-l-sheet-h', brief);
+      el('span', 'haz', bh);
+      el('span', 't', bh, roam ? 'THE MISSION, FOR LATER' : 'WHAT YOU DO HERE');
+      const rows = text.rows;
       // the card hunt goes in before the extraction (the last row)
       const briefRows = mode === 'cards' ? [...rows.slice(0, -1), CARD_BRIEF, rows[rows.length - 1]!] : rows;
+      el('span', 'n', bh, `${String(briefRows.length).padStart(2, '0')} OBJ`);
+      const bx = this.button(bh, '', 'ds-l-x', () => {
+        setSheet(null);
+        briefBtn.focus({ preventScroll: true });
+      });
+      bx.appendChild(navIcon('x'));
+      bx.setAttribute('aria-label', 'Close');
       const ol = el('ol', '', brief);
       for (const r of briefRows) {
         const li = el('li', '', ol);
         el('b', '', li, r.title);
         el('span', '', li, r.text);
       }
+
+      // ---- the zones, along the bottom ----
+      const zones = el('section', 'ds-l-zones', root);
+      const zh = el('div', 'zh', zones);
+      el('h2', '', zh, 'ZONES');
+      const sig = el('span', 'sig', zh);
+      for (let i = 0; i < 4; i++) el('i', '', sig);
+      el('span', 'rule', zh);
+      const count = el('span', 'count', zh);
+      el('b', '', count, String(zoneIndex + 1).padStart(2, '0'));
+      el('span', '', count, ` / ${String(maps.length).padStart(2, '0')}`);
+      const locked = this.info.lockedMap ?? null;
+      if (!locked && maps.length > 1) {
+        for (const [dir, glyph, label] of [[-1, 'left', 'Previous zone'], [1, 'right', 'Next zone']] as const) {
+          const a = this.button(zh, '', 'ds-l-arrow', () => this.stepZone(dir));
+          a.appendChild(navIcon(glyph));
+          a.setAttribute('aria-label', label);
+        }
+      }
+      const list = el('div', 'list', zones);
+      list.setAttribute('role', 'radiogroup');
+      list.setAttribute('aria-label', 'Zone');
+      // the zones this player may pick (a gated map is hidden until it is public); an admin sees a gated map's access
+      maps.forEach(({ id, badge, badgeTone }, i) => {
+        const on = id === this.info.map;
+        const z = this.button(list, '', on ? 'ds-l-zone on' : 'ds-l-zone', () => {
+          if (!on) this.cb.onMapChange(id);
+        });
+        z.dataset.map = id;
+        accent(z, MAP_ACCENT[id], '--zc');
+        z.setAttribute('role', 'radio');
+        z.setAttribute('aria-checked', on ? 'true' : 'false');
+        z.tabIndex = on ? 0 : -1;
+        const zt = el('span', 'ztop', z);
+        el('span', 'zi', zt, String(i + 1).padStart(2, '0'));
+        if (badge) el('span', `zb ${badgeTone ?? ''}`, zt, badge);
+        el('span', 'zn', z, MAP_TEXT[id].name);
+        el('span', 'zt', z, MAP_TEXT[id].tagline);
+        if (locked && !on) {
+          z.disabled = true;
+          z.title = 'Leave the co-op session to change the map';
+        }
+      });
+      // arrow keys move along the zones, as in any radio group
+      list.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') this.stepZone(1);
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') this.stepZone(-1);
+        else return;
+        e.preventDefault();
+      });
+      // the picked zone in view in the strip (a phone scrolls it sideways)
+      requestAnimationFrame(() => {
+        const sel = list.querySelector<HTMLElement>('.ds-l-zone.on');
+        if (sel && list.scrollWidth > list.clientWidth) list.scrollLeft = sel.offsetLeft - (list.clientWidth - sel.offsetWidth) / 2;
+      });
+      // room for the co-op lobby, which a phone held upright shows under the big button
+      el('div', 'ds-l-lobbyspace', root);
     }
 
+    // ---- the foot: your best run and the graphics preset ----
+    const foot = el('footer', 'ds-l-foot', root);
+    const bestEl = el('div', 'ds-l-best', foot);
+    // a phone shows only BEST
+    const lbl = el('span', 'lbl', bestEl);
+    el('span', 'w', lbl, 'YOUR ');
+    lbl.append('BEST');
+    el('span', 'w', lbl, ' EXTRACTION');
+    if (best) {
+      const v = el('span', 'val', bestEl);
+      el('b', '', v, fmtClock(best.time));
+      v.append(`  ·  ${fmtInt(best.kills)} KILLS / ${fmtInt(best.headshots)} HS`);
+    } else el('span', 'val none', bestEl, 'NONE YET');
+    // the graphics preset, in plain sight: one tap opens Settings to change it
+    this.qualityChip = this.button(foot, '', 'quality', () => showTab('settings'));
+    this.qualityChip.title = 'Graphics quality - open Settings to change it';
+    this.syncQualityChip();
+
     this.setScreen('title', root);
-    (first ?? this.screen?.querySelector<HTMLElement>('.ds-l-item.on'))?.focus({ preventScroll: true });
+    observer.observe(this.layer, { childList: true });
+    (first ?? this.screen?.querySelector<HTMLElement>('.ds-l-back, .ds-l-item.on'))?.focus({ preventScroll: true });
   }
 
   // -------------------------------------------------------------------------------------------
