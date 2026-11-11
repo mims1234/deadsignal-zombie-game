@@ -22,6 +22,7 @@ import { createFx } from '../fx/fx';
 import type { FxApi } from '../fx/fxTypes';
 import { applyDamageToPlayer, regenHealth } from '../logic/damage';
 import { addCash, killReward } from '../logic/economy';
+import { armEntries, armIndex, armRows, armStep } from '../logic/arsenal';
 import { escalationPhase, missionClock } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
 import { FrameHistogram, calibrate, governorStep, newGovernor, startTier, summarize, tierCeiling, tierIndex } from '../logic/governor';
@@ -794,6 +795,8 @@ export class Game implements GameCtx {
         // ZARYA: a move stick, one fire button and a menu dot; everything used rarely is in the dot's mini menu
         layout: this.mapId === 'zarya' ? 'compact' : 'classic',
         menuExtra: this.mapId === 'zarya' ? { label: 'JOURNAL', onTap: () => this.pause('menu') } : undefined,
+        // ZARYA's arsenal: the mini menu's WEAPONS tile lists everything carried, and a tap on a row brings it to hand
+        weapons: this.mapId === 'zarya' ? { rows: () => this.arsenalRows(), pick: (i) => (this.arsenalPick = i) } : undefined,
       });
     }
 
@@ -1815,8 +1818,15 @@ export class Game implements GameCtx {
     // while it is in hand the guns are holstered and the trigger, the aim and the reload are its own
     const melee = this.melee;
     let wheel = edges.wheel;
-    let slot: 0 | 1 | null = this.interaction.panelOpen ? null : edges.slot1 ? 0 : edges.slot2 ? 1 : null;
-    if (melee && alive && !this.interaction.panelOpen) {
+    let slot: number | null = this.interaction.panelOpen ? null : edges.slot1 ? 0 : edges.slot2 ? 1 : null;
+    let platePressed = edges.plate;
+    if (s.inv.arsenal) {
+      // ZARYA's arsenal: everything carried is one cycle (the wheel, Q, the phone's weapon panel), 1-9 pick from it,
+      // the phone's list picks in one tap; the armour plate moves from Q to V
+      platePressed = (edges.plate && !edges.keyQ) || !!edges.keyV;
+      slot = this.arsenalSwitch(edges, alive);
+      wheel = 0;
+    } else if (melee && alive && !this.interaction.panelOpen) {
       const inv = s.inv;
       if (melee.out) {
         if (!melee.busy && ((slot !== null && inv.slots[slot]) || wheel !== 0)) {
@@ -1845,7 +1855,7 @@ export class Game implements GameCtx {
       slot,
       wheel,
       grenadePressed: edges.grenade,
-      platePressed: edges.plate,
+      platePressed,
       locked: !alive || this.hud.tacticalMapOpen && false,
       mouseDX: edges.mouseDX,
       mouseDY: edges.mouseDY,
@@ -2697,6 +2707,60 @@ export class Game implements GameCtx {
     this.audio.update(dt);
   }
 
+  /** ZARYA's arsenal: a pick from the phone's weapon list, taken on the next frame (index into `armEntries`). */
+  private arsenalPick = -1;
+
+  /**
+   * ZARYA's arsenal: what this frame's wheel, Q, number key or phone pick brings to hand. A weapon to swing is brought
+   * out here; a gun from a weapon to swing is drawn here too; a gun from a gun is returned, for the weapon system to
+   * lower one and raise the other (a second step while it does so retargets it).
+   */
+  private arsenalSwitch(edges: Edges, alive: boolean): number | null {
+    const pick = this.arsenalPick;
+    this.arsenalPick = -1;
+    const melee = this.melee;
+    const inv = this.session.inv;
+    if (!alive || this.interaction.panelOpen || (this.zarya?.unarmed ?? false)) return null;
+    if (melee?.busy || (this.weapons.busy && this.weapons.switchTo === null)) return null;
+    const entries = armEntries(inv, melee?.pack ?? []);
+    if (entries.length === 0) return null;
+    const swung = melee?.out ? melee.carried : null;
+    const switchTo = this.weapons.switchTo;
+    const cur = swung || switchTo === null ? armIndex(entries, inv, swung) : entries.findIndex((e) => e.kind === 'gun' && e.slot === switchTo);
+    let to = pick;
+    if (to < 0) {
+      const digit = edges.digits.find((n) => n >= 1 && n <= 9);
+      if (digit !== undefined) to = digit - 1;
+    }
+    if (to < 0) {
+      const dir = edges.wheel !== 0 ? Math.sign(edges.wheel) : edges.keyQ ? 1 : 0;
+      if (dir !== 0) to = armStep(entries.length, cur, dir);
+    }
+    if (to < 0 || to >= entries.length || to === cur) return null;
+    const e = entries[to]!;
+    if (e.kind === 'melee') {
+      melee!.select(e.id);
+      melee!.setOut(true);
+      this.weapons.cancelActions();
+      return null;
+    }
+    if (melee?.out) {
+      melee.setOut(false);
+      inv.activeSlot = e.slot;
+      this.weapons.redraw();
+      return null;
+    }
+    return e.slot;
+  }
+
+  /** ZARYA's arsenal, for the phone's weapon list: a row per thing carried, in the cycle's order. */
+  private arsenalRows(): ReturnType<typeof armRows> {
+    const inv = this.session.inv;
+    const melee = this.melee;
+    const entries = armEntries(inv, melee?.pack ?? []);
+    return armRows(entries, inv, armIndex(entries, inv, melee?.out ? melee.carried : null));
+  }
+
   private updateHud(dt: number): void {
     const show = this.settings.showFps ? this.fps : null;
     const st = buildHudState(this, this.mission, this.cards, this.io, show);
@@ -2719,6 +2783,14 @@ export class Game implements GameCtx {
       st.lowAmmo = false;
       st.outOfAmmo = false;
       st.crosshair = { spread: 0.6, ads: false, hidden: !this.playerAlive() };
+    }
+    if (this.session.inv.arsenal) {
+      // ZARYA's arsenal: no holstered gun on the line below, but how many things are carried (and which is in hand)
+      const inv = this.session.inv;
+      const entries = armEntries(inv, this.melee?.pack ?? []);
+      st.otherWeapon = null;
+      st.carried = st.weapon && entries.length > 1 ? { at: armIndex(entries, inv, this.melee?.out ? this.melee.carried : null) + 1, of: entries.length, key: 'Q' } : undefined;
+      st.plateKey = 'V';
     }
     this.hud.update(st, md, dt);
     // the compact layout's buttons say what they will do: the prompt's own verb, and SWING with something in hand

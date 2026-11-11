@@ -15,7 +15,8 @@ import { PLAYER, WEAPONS } from '../config';
 import type { Zombie } from '../enemies/zombie';
 import type { Game } from '../game/game';
 import type { InteractionTarget } from '../game/interaction';
-import { createCarried } from '../logic/economy';
+import { addGun, createCarried, slotOf } from '../logic/economy';
+import { isFull } from '../logic/ammo';
 import { MELEE } from '../logic/melee';
 import type { HudState, MapDynamic } from '../ui/hudTypes';
 import { ZoneSwitch } from '../world/zones';
@@ -252,8 +253,8 @@ export class ZaryaRuntime {
 
   /** What this player carries to swing is a heavy thing (the locks and the glass want one). */
   private get heavy(): boolean {
-    const id = this.g.melee?.carried;
-    return !!id && MELEE[id]?.type === 'heavy';
+    // ---- arsenal: any heavy thing carried will do (a player keeps every weapon to swing they take) ----
+    return (this.g.melee?.pack ?? []).some((id) => MELEE[id]?.type === 'heavy');
   }
 
   /** What going through one of the town's doorways is called (`Game.stairwellPrompt`): into the room named `room`, or out of it. Null: the game's own words. */
@@ -329,6 +330,8 @@ export class ZaryaRuntime {
     const inv = g.session.inv;
     inv.slots = [createCarried('pistol'), null];
     inv.activeSlot = 0;
+    // ---- arsenal: on ZARYA every gun taken is kept (`economy.addGun`); the cycle is `logic/arsenal.ts` ----
+    inv.arsenal = true;
     g.weapons.cancelActions();
     g.session.hunt.status = 'available';
     this.area = 0;
@@ -1218,17 +1221,30 @@ export class ZaryaRuntime {
     });
   }
 
-  /** This player has it in their hands already. */
+  /** This player carries it already. */
   private holds(what: Gives): boolean {
     const g = this.g;
-    if ('melee' in what) return g.melee?.carried === what.melee;
+    // ---- arsenal: everything taken is carried, not only what is in hand ----
+    if ('melee' in what) return g.melee?.pack.includes(what.melee) ?? false;
     if ('gun' in what) return g.session.inv.slots.some((s) => s?.id === what.gun);
     return true;
+  }
+
+  /**
+   * ---- arsenal: a gun carried already is taken again for its ammunition. Null: not a carried gun; otherwise whether
+   * its ammunition is full (nothing to take). ----
+   */
+  private topUp(what: Gives): boolean | null {
+    if (!('gun' in what)) return null;
+    const inv = this.g.session.inv;
+    const at = slotOf(inv, what.gun);
+    return at < 0 ? null : isFull(inv.slots[at]!.ammo);
   }
 
   /** What taking it would put down (nothing while a hand is free). */
   private swaps(what: Gives): string | undefined {
     const g = this.g;
+    if (g.session.inv.arsenal) return undefined; // (arsenal: nothing is ever put down)
     if ('melee' in what) {
       const id = g.melee?.carried;
       return id ? `Instead of your ${MELEE[id]?.name.toLowerCase() ?? 'own'}` : undefined;
@@ -1244,12 +1260,14 @@ export class ZaryaRuntime {
 
   /** Something lying there to be taken, as often as anyone likes. */
   private take(id: string, d: number, text: string, what: Gives, sub?: string, then?: () => void): void {
-    const owned = this.holds(what);
+    // ---- arsenal: a gun carried already can be taken again for its ammunition ----
+    const full = this.topUp(what);
+    const owned = this.holds(what) && full !== false;
     this.reachOut.push({
       id: `zy-${id}`,
       dist: d,
       text,
-      sub: owned ? 'In your hands already' : (this.swaps(what) ?? sub),
+      sub: full === false ? 'More ammunition for yours' : owned ? (full ? 'Carried, and its ammunition is full' : 'Carried already') : (this.swaps(what) ?? sub),
       tone: 'normal',
       hold: 0,
       enabled: !owned,
@@ -1264,13 +1282,15 @@ export class ZaryaRuntime {
   private buy(out: InteractionTarget[], d: number, o: OfferDef, reach: number): void {
     if (d > reach) return;
     const g = this.g;
-    const owned = this.holds(o.gives);
+    // ---- arsenal: a gun carried already can be bought again for its ammunition ----
+    const full = this.topUp(o.gives);
+    const owned = this.holds(o.gives) && full !== false;
     const can = g.session.inv.cash >= o.price && !owned;
     out.push({
       id: `zy-buy-${o.id}`,
       dist: d,
       text: `BUY ${o.name}`,
-      sub: owned ? 'In your hands already' : `$${o.price}`,
+      sub: full === false ? `$${o.price}, for its ammunition` : owned ? (full ? 'Carried, and its ammunition is full' : 'Carried already') : `$${o.price}`,
       tone: can ? 'good' : 'warn',
       hold: 0,
       enabled: can,
@@ -1292,9 +1312,14 @@ export class ZaryaRuntime {
       g.audio.play('pickup_ammo', { priority: 2 });
     } else if ('gun' in what) {
       const inv = g.session.inv;
-      const slot = inv.slots[0] === null ? 0 : inv.slots[1] === null ? 1 : inv.activeSlot;
-      inv.slots[slot] = createCarried(what.gun);
-      inv.activeSlot = slot;
+      // ---- arsenal: the gun joins the others (or, carried already, tops up its ammunition and stays where it is) ----
+      const r = addGun(inv, what.gun);
+      if (!r.added) {
+        g.feed(`+${r.topped} ${WEAPONS[what.gun]?.short ?? what.gun.toUpperCase()} AMMO`, 'good');
+        g.audio.play('pickup_ammo', { priority: 2 });
+        return;
+      }
+      inv.activeSlot = r.slot;
       g.weapons.cancelActions();
       g.melee?.setOut(false);
       g.feed(WEAPONS[what.gun]?.name.toUpperCase() ?? what.gun.toUpperCase(), 'good');

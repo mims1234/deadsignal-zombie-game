@@ -74,7 +74,7 @@ const state = () => D(() => {
   return {
     map: g.mapId, ch: v.ch, f: v.f, g: v.g, m: v.m, parts: v.parts, built: v.built, gates: v.gates, clues: v.clues, covered: v.covered, orn: v.orn, dolls: v.dolls, turned: v.turned, end: v.end,
     unarmed: g.zarya.unarmed, hidden: g.weapons.hidden,
-    melee: m ? { carried: m.carried, out: m.out } : null, slots: g.session.inv.slots.map((s) => s?.id ?? null), cash: g.session.inv.cash,
+    melee: m ? { carried: m.carried, out: m.out, pack: [...m.pack] } : null, slots: g.session.inv.slots.map((s) => s?.id ?? null), cash: g.session.inv.cash,
     hp: g.session.vitals.health, zone: g.zarya.zones.current, drawn: g.zarya.zones.count,
     door: lv.blastDoor.blocksMove, coldDoor: lv.coldDoor.blocksMove, keyDoor: lv.keyDoor.blocksMove, escalator: lv.escalator.closed,
     shut: Object.fromEntries(Object.entries(lv.gates).map(([id, c]) => [id, c.blocksMove])),
@@ -610,7 +610,8 @@ for (let i = 0; i < 3; i++) {
   await use();
 }
 s = await state();
-check('and each lies on the bench to be taken', took.length === 3 && (s.slots.includes('gvozdomyot') || s.slots.includes('salyut')) && s.melee?.carried === 'rogatina', `${took.join(', ')}; ${JSON.stringify(s.slots)}; ${s.melee?.carried}`);
+// (the arsenal: every gun taken is kept, so both guns are carried; the spear joins the knife)
+check('and each lies on the bench to be taken', took.length === 3 && s.slots.includes('gvozdomyot') && s.slots.includes('salyut') && s.melee?.carried === 'rogatina' && s.melee.pack.includes('knife'), `${took.join(', ')}; ${JSON.stringify(s.slots)}; ${JSON.stringify(s.melee)}`);
 await shot('25-timur-bench');
 
 // ---- the escalator, the second floor, the canteen, the Tamada ----
@@ -824,6 +825,31 @@ check("the Institute's lab bench builds the Ottepel", thawOffered && bit(s.built
 for (let i = 0; i < 6 && !(await state()).slots.includes('ottepel'); i++) await use();
 s = await state();
 check('and it is taken from the bench', s.slots.includes('ottepel'), JSON.stringify(s.slots));
+// ---- the arsenal: nothing taken on the way was ever put down, and Q / the wheel / 1-9 / the phone list reach all of it ----
+{
+  const kept = ['pistol', 'signalka', 'rifle', 'arbalet', 'gvozdomyot', 'salyut', 'zenit', 'ottepel'];
+  check('the arsenal keeps every gun taken on the way', kept.every((id) => s.slots.includes(id)) && ['knife', 'rogatina'].every((id) => s.melee?.pack.includes(id)), `${JSON.stringify(s.slots)}; ${JSON.stringify(s.melee?.pack)}`);
+  const ars = () => D(() => window.__dead.arsenal());
+  const step = async (k, n) => {
+    await D(([k, n]) => (n === undefined ? window.__dead.press(k) : window.__dead.press(k, n)), [k, n]);
+    await advance(0.9);
+    return ars();
+  };
+  let a = await step('slot1', 1);
+  const n = a.entries.length;
+  const first = a.at;
+  a = await step('q');
+  const q1 = a.at;
+  a = await step('wheelBack');
+  const back = a.at;
+  await D((i) => window.__dead.pickWeapon(i), n - 1);
+  await advance(0.9);
+  a = await ars();
+  const last = a.at;
+  const swung = a.entries[n - 1]?.kind === 'melee' && (await state()).melee?.out === true;
+  a = await step('slot1', 1);
+  check('the arsenal cycles: 1 picks the first, Q the next, the wheel back, the phone list the last (a weapon to swing)', first === 0 && q1 === 1 && back === 0 && last === n - 1 && swung && a.at === 0 && (await state()).melee?.out === false, JSON.stringify({ n, first, q1, back, last, swung, now: a.at }));
+}
 // the ones the squad stopped for (the third ending wants nine; the others are played with fewer)
 if (END === 3) for (const i of [5, 6, 7, 8, 9, 10, 11]) check(`sleeper ${i} is covered`, await cover(i));
 await sweep();

@@ -1,5 +1,6 @@
 /**
- * Melee in the world: the one swung weapon a player carries beside their two guns (`logic/melee.ts` has the rules).
+ * Melee in the world: the weapons a player swings beside their guns (`logic/melee.ts` has the rules; ZARYA keeps every
+ * one taken in `pack`, and one is out at a time).
  * While it is out the guns are holstered and the trigger swings it: a tap is a light swing, a hold winds up a heavy
  * one, and aim becomes the guard. A swing lands on the infected inside its reach and arc (never through a wall); the
  * one under the crosshair can be hit in the head; and one caught drawing back for its own blow is parried.
@@ -51,8 +52,13 @@ export interface MeleeInput {
 const radiusOf = (z: Zombie): number => z.def.radius;
 
 export class MeleeSystem {
-  /** What the player carries to swing, and whether it is in hand now. */
+  /** What the player carries to swing (the one that comes out), and whether it is in hand now. */
   carried: MeleeId | null = null;
+  /**
+   * Every weapon to swing the player has taken, in the order taken (ZARYA's arsenal keeps them all: `logic/arsenal.ts`
+   * puts them in the weapon cycle after the guns). `carried` is always one of them.
+   */
+  readonly pack: MeleeId[] = [];
   out = false;
   /** Hide the viewmodel (cinematics, free roam). */
   hidden = false;
@@ -102,11 +108,20 @@ export class MeleeSystem {
     return this.out ? (this.def?.moveMul ?? 1) : 1;
   }
 
-  /** Take a weapon to swing (replacing the one carried). */
+  /** Take a weapon to swing: it joins the others carried and is the one that comes out. */
   equip(id: MeleeId): void {
+    if (!this.pack.includes(id)) this.pack.push(id);
+    this.select(id);
+  }
+
+  /** Make `id` (already carried) the one that comes out; a swing in progress is dropped. */
+  select(id: MeleeId): void {
+    if (!this.pack.includes(id)) return;
+    if (this.carried === id) return;
     this.carried = id;
     resetSwing(this.swing);
     this.raise = 0;
+    this.guardT = 0;
   }
 
   /** Bring it to hand or put it away. Nothing to bring out: stays away. */
@@ -122,6 +137,7 @@ export class MeleeSystem {
   /** A new run: nothing carried, nothing in hand. */
   reset(): void {
     this.carried = null;
+    this.pack.length = 0;
     this.out = false;
     this.hidden = false;
     this.swings = 0;

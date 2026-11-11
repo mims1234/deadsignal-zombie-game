@@ -39,6 +39,11 @@ export interface TouchControlsDeps {
   layout?: TouchLayout;
   /** Compact layout: one more tile, placed first in the mini menu (the game uses it for RECIPES). */
   menuExtra?: { label: string; onTap(): void };
+  /**
+   * Compact layout, a map where everything picked up is carried (ZARYA's arsenal): the mini menu's WEAPONS tile (in
+   * place of SWAP WEAPON) turns the menu into a list of everything carried, and a tap on a row brings that one to hand.
+   */
+  weapons?: { rows(): { label: string; sub: string; on: boolean }[]; pick(index: number): void };
 }
 
 export interface TouchControlsApi {
@@ -107,6 +112,9 @@ class TouchControls implements TouchControlsApi {
   private readonly mapBtn: HTMLButtonElement;
   private readonly menuBtn: HTMLButtonElement;
   private readonly menuEl: HTMLElement;
+  /** The weapon list (ZARYA's arsenal): it opens in the mini menu's place. */
+  private readonly listEl: HTMLElement;
+  private listOpen = false;
   private readonly rotate: HTMLElement;
   private readonly cleanup: (() => void)[] = [];
 
@@ -176,8 +184,10 @@ class TouchControls implements TouchControlsApi {
     this.menuEl.hidden = true;
     const extra = deps.menuExtra;
     if (extra) this.tile('extra', extra.label, () => extra.onTap());
+    const weapons = deps.weapons;
+    if (weapons) this.tile('weapons', 'WEAPONS', () => this.openList());
     const tiles: [label: string, action: TapAction][] = [
-      ['SWAP WEAPON', 'swap'],
+      ...(weapons ? [] : [['SWAP WEAPON', 'swap'] as [string, TapAction]]),
       ['THROW', 'grenade'],
       ['RELOAD', 'reload'],
       ['PLATE', 'plate'],
@@ -187,13 +197,17 @@ class TouchControls implements TouchControlsApi {
     ];
     for (const [label, action] of tiles) this.tile(action, label, () => this.deps.input.tap(action));
     this.tile('pause', 'PAUSE', () => this.deps.onPause());
-    this.press(this.menuBtn, () => this.setMenu(!this.menuOpen));
-    // A touch anywhere but a tile or the dot closes the menu, and then goes on to do whatever it normally does.
+    // ---- the weapon list: a row per thing carried, scrolled with a drag, picked with a tap ----
+    this.listEl = el('div', 'tmenu tlist', this.layer);
+    this.listEl.hidden = true;
+    this.press(this.menuBtn, () => (this.listOpen ? this.closeList() : this.setMenu(!this.menuOpen)));
+    // A touch anywhere but a tile, a row or the dot closes the menu, and then goes on to do whatever it normally does.
     const outside = (e: PointerEvent): void => {
-      if (!this.menuOpen) return;
+      if (!this.menuOpen && !this.listOpen) return;
       const t = e.target;
-      if (t instanceof Element && (t.closest('.tm') || this.menuBtn.contains(t))) return;
+      if (t instanceof Element && (t.closest('.tm') || t.closest('.tlist') || this.menuBtn.contains(t))) return;
       this.setMenu(false);
+      this.closeList();
     };
     this.layer.addEventListener('pointerdown', outside, { capture: true });
     this.cleanup.push(() => this.layer.removeEventListener('pointerdown', outside, { capture: true }));
@@ -375,7 +389,57 @@ class TouchControls implements TouchControlsApi {
     });
   }
 
+  /** The weapon list replaces the mini menu: one row per thing carried, the one in hand lit. */
+  private openList(): void {
+    const w = this.deps.weapons;
+    if (!w) return;
+    const rows = w.rows();
+    this.listEl.replaceChildren();
+    rows.forEach((r, i) => {
+      const b = el('button', `tr${r.on ? ' on' : ''}`, this.listEl);
+      b.type = 'button';
+      b.tabIndex = -1;
+      el('span', 'n', b, r.label);
+      el('span', 's', b, r.sub);
+      // a row is picked when the finger lifts where it landed: a drag scrolls the list instead (the browser then
+      // cancels the pointer, so nothing is picked)
+      let at: { id: number; x: number; y: number } | null = null;
+      b.addEventListener('pointerdown', (e) => {
+        if (!this.active) return;
+        at = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      });
+      b.addEventListener('pointercancel', () => (at = null));
+      b.addEventListener('pointerup', (e) => {
+        const a = at;
+        at = null;
+        if (!this.active || !a || a.id !== e.pointerId || Math.hypot(e.clientX - a.x, e.clientY - a.y) > 14) return;
+        e.preventDefault();
+        buzz(8);
+        this.closeList();
+        w.pick(i);
+      });
+    });
+    this.listOpen = true;
+    this.listEl.hidden = false;
+    this.menuBtn.classList.add('on');
+    this.menuBtn.setAttribute('aria-expanded', 'true');
+    // the one in hand is in view
+    this.listEl.querySelector<HTMLElement>('.tr.on')?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private closeList(): void {
+    if (!this.listOpen) return;
+    this.listOpen = false;
+    this.listEl.hidden = true;
+    this.listEl.replaceChildren();
+    if (!this.menuOpen) {
+      this.menuBtn.classList.remove('on');
+      this.menuBtn.setAttribute('aria-expanded', 'false');
+    }
+  }
+
   private setMenu(open: boolean): void {
+    if (!open) this.closeList();
     if (open === this.menuOpen) return;
     this.menuOpen = open;
     this.menuEl.hidden = !open;

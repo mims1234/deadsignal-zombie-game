@@ -360,7 +360,10 @@ export class Interaction {
       title: s.def.name,
       subtitle: `FUNDS  $${inv.cash.toLocaleString('en-US')}`,
       items: items.map((i) => ({ key: i.key, label: i.label, detail: i.detail, cost: i.cost, state: i.state, note: i.note })),
-      hint: buy ? 'PRESS NUMBER TO BUY   E / WALK AWAY TO CLOSE   WEAPON BUYS REPLACE THE EQUIPPED WEAPON' : 'PRESS 1 / 2 TO UPGRADE   E / WALK AWAY TO CLOSE',
+      // (ZARYA's arsenal keeps every gun: a gun bought joins the others, and every gun carried can be upgraded)
+      hint: inv.arsenal
+        ? buy ? 'PRESS NUMBER TO BUY   E / WALK AWAY TO CLOSE   A GUN BOUGHT JOINS THE OTHERS' : 'PRESS NUMBER TO UPGRADE   E / WALK AWAY TO CLOSE'
+        : buy ? 'PRESS NUMBER TO BUY   E / WALK AWAY TO CLOSE   WEAPON BUYS REPLACE THE EQUIPPED WEAPON' : 'PRESS 1 / 2 TO UPGRADE   E / WALK AWAY TO CLOSE',
     };
   }
 
@@ -371,7 +374,8 @@ export class Interaction {
     const item = items.find((i) => i.key === String(digit));
     if (!item) return;
     // any in-progress reload of a weapon that is about to be swapped must not survive the purchase
-    const result = s.def.kind === 'buy' ? purchaseBuy(inv, item.id as BuyItemId) : purchaseUpgrade(inv, (digit - 1) as 0 | 1);
+    // (an upgrade row names its slot: `up<slot>`, which on ZARYA's arsenal is not the row's number)
+    const result = s.def.kind === 'buy' ? purchaseBuy(inv, item.id as BuyItemId) : purchaseUpgrade(inv, Number.parseInt(item.id.slice(2), 10));
     if (result.ok) {
       const equipped = inv.slots[inv.activeSlot];
       if (s.def.kind === 'buy' && (item.id === 'shotgun' || item.id === 'rearm')) ctx.weapons.cancelActions();

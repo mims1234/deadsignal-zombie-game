@@ -20,8 +20,14 @@ export interface Inventory {
   cashSpent: number;
   plates: number;
   grenades: number;
-  slots: [CarriedWeapon | null, CarriedWeapon | null];
-  activeSlot: 0 | 1;
+  /**
+   * The guns carried. Two slots on every map; ZARYA's arsenal (`arsenal`) keeps every gun picked up, so there it grows
+   * (`addGun`). An empty slot is null.
+   */
+  slots: (CarriedWeapon | null)[];
+  activeSlot: number;
+  /** ZARYA: nothing is ever replaced or dropped, every gun taken joins the others (`addGun`). Elsewhere absent. */
+  arsenal?: boolean;
   ammoCollected: number;
   platesCollected: number;
 }
@@ -51,7 +57,48 @@ export function activeWeapon(inv: Inventory): CarriedWeapon | null {
 }
 
 export function carries(inv: Inventory, id: WeaponId): boolean {
-  return inv.slots[0]?.id === id || inv.slots[1]?.id === id;
+  return inv.slots.some((w) => w?.id === id);
+}
+
+/** The slot holding gun `id`, or -1. */
+export function slotOf(inv: Inventory, id: WeaponId): number {
+  return inv.slots.findIndex((w) => w?.id === id);
+}
+
+export interface AddGunResult {
+  /** The slot the gun is in now. */
+  slot: number;
+  /** It was not carried before (a new gun, which the caller usually brings to hand). */
+  added: boolean;
+  /** It was carried already: rounds its reserve was topped up by (0 when it was full). */
+  topped: number;
+}
+
+/**
+ * ZARYA's arsenal: take gun `id` without putting anything down. Carried already: its reserve is topped up. Otherwise
+ * it goes into the first empty slot, or a new one. Does not change the gun in hand.
+ */
+export function addGun(inv: Inventory, id: WeaponId, tier: Tier = 0): AddGunResult {
+  const have = slotOf(inv, id);
+  if (have >= 0) {
+    const w = inv.slots[have]!;
+    return { slot: have, added: false, topped: addReserve(w.ammo, w.ammo.reserveMax) };
+  }
+  const empty = inv.slots.indexOf(null);
+  const slot = empty >= 0 ? empty : inv.slots.length;
+  inv.slots[slot] = createCarried(id, tier);
+  return { slot, added: true, topped: 0 };
+}
+
+/** The slots a station menu lists: both of them, or (ZARYA's arsenal) the gun in hand first, then the rest, up to six. */
+export function menuSlots(inv: Inventory): number[] {
+  if (!inv.arsenal) return [0, 1];
+  const out: number[] = [];
+  if (inv.slots[inv.activeSlot]) out.push(inv.activeSlot);
+  inv.slots.forEach((w, i) => {
+    if (w && i !== inv.activeSlot && out.length < 6) out.push(i);
+  });
+  return out;
 }
 
 export function addCash(inv: Inventory, amount: number): void {
@@ -123,7 +170,8 @@ function stateFor(inv: Inventory, cost: number, blocked: ItemState | null): Item
 /** Items listed on the buy station panel (keys 1-6). */
 export function buyMenu(inv: Inventory): StationItem[] {
   const items: StationItem[] = [];
-  for (const slot of [0, 1] as const) {
+  if (inv.arsenal) items.push(...arsenalAmmoItems(inv));
+  else for (const slot of [0, 1] as const) {
     const w = inv.slots[slot];
     const key = String(slot + 1);
     if (!w) {
@@ -166,7 +214,7 @@ export function buyMenu(inv: Inventory): StationItem[] {
     detail: 'Eight-pellet close-range pump gun',
     cost: sg.price,
     state: stateFor(inv, sg.price, carries(inv, 'shotgun') ? 'owned' : null),
-    note: equipped && !carries(inv, 'shotgun') ? `REPLACES ${WEAPONS[equipped.id].short}` : undefined,
+    note: equipped && !carries(inv, 'shotgun') && !inv.arsenal ? `REPLACES ${WEAPONS[equipped.id].short}` : undefined,
   });
   const re = rearmTarget(inv);
   if (re) {
@@ -177,7 +225,7 @@ export function buyMenu(inv: Inventory): StationItem[] {
       detail: 'Re-arm a standard-issue weapon',
       cost: WEAPONS[re].price,
       state: stateFor(inv, WEAPONS[re].price, null),
-      note: equipped ? `REPLACES ${WEAPONS[equipped.id].short}` : undefined,
+      note: equipped && !inv.arsenal ? `REPLACES ${WEAPONS[equipped.id].short}` : undefined,
     });
   } else {
     items.push({ id: 'rearm', key: '6', label: 'RE-ARM', detail: 'Both standard weapons carried', cost: 0, state: 'unavailable' });
@@ -185,7 +233,54 @@ export function buyMenu(inv: Inventory): StationItem[] {
   return items;
 }
 
+/** ZARYA's arsenal at a counter: 1 fills the gun in hand, 2 every other gun carried (the sum of their prices). */
+function arsenalAmmoItems(inv: Inventory): StationItem[] {
+  const held = inv.slots[inv.activeSlot] ?? null;
+  const out: StationItem[] = [];
+  if (!held) out.push({ id: 'ammo0', key: '1', label: 'AMMO - IN HAND', detail: 'No gun in hand', cost: 0, state: 'unavailable' });
+  else {
+    const def = WEAPONS[held.id];
+    out.push({
+      id: 'ammo0',
+      key: '1',
+      label: `AMMO - ${def.short}`,
+      detail: `Refill magazine and reserve (${held.ammo.reserve}/${held.ammo.reserveMax})`,
+      cost: def.ammoPrice,
+      state: stateFor(inv, def.ammoPrice, isFull(held.ammo) ? 'full' : null),
+      note: 'IN HAND',
+    });
+  }
+  const rest = inv.slots.filter((w): w is CarriedWeapon => !!w && w !== held);
+  const low = rest.filter((w) => !isFull(w.ammo));
+  const cost = low.reduce((a, w) => a + WEAPONS[w.id].ammoPrice, 0);
+  out.push(
+    rest.length === 0
+      ? { id: 'ammo1', key: '2', label: 'AMMO - THE OTHERS', detail: 'No other gun carried', cost: 0, state: 'unavailable' }
+      : {
+          id: 'ammo1',
+          key: '2',
+          label: 'AMMO - THE OTHERS',
+          detail: low.length ? `Refill the ${low.length} other gun${low.length > 1 ? 's' : ''} not full` : `All ${rest.length} full`,
+          cost,
+          state: stateFor(inv, cost, low.length === 0 ? 'full' : null),
+        },
+  );
+  return out;
+}
+
+function refill(w: CarriedWeapon): void {
+  w.ammo.reserve = w.ammo.reserveMax;
+  w.ammo.mag = w.ammo.magSize;
+  w.ammo.reload = null;
+}
+
 function giveWeapon(inv: Inventory, id: WeaponId): string {
+  if (inv.arsenal) {
+    // ZARYA: nothing is put down; the new gun joins the others and comes to hand
+    const r = addGun(inv, id);
+    inv.activeSlot = r.slot;
+    return `${WEAPONS[id].short} acquired`;
+  }
   const slot = inv.activeSlot;
   const old = inv.slots[slot];
   inv.slots[slot] = createCarried(id);
@@ -205,10 +300,20 @@ export function purchaseBuy(inv: Inventory, id: BuyItemId): PurchaseResult {
   switch (id) {
     case 'ammo0':
     case 'ammo1': {
+      if (inv.arsenal) {
+        // ZARYA: 1 is the gun in hand, 2 every other gun
+        const held = inv.slots[inv.activeSlot]!;
+        if (id === 'ammo0') {
+          refill(held);
+          message = `${WEAPONS[held.id].short} resupplied`;
+        } else {
+          for (const w of inv.slots) if (w && w !== held && !isFull(w.ammo)) refill(w);
+          message = 'The other guns resupplied';
+        }
+        break;
+      }
       const w = inv.slots[id === 'ammo0' ? 0 : 1]!;
-      w.ammo.reserve = w.ammo.reserveMax;
-      w.ammo.mag = w.ammo.magSize;
-      w.ammo.reload = null;
+      refill(w);
       message = `${WEAPONS[w.id].short} resupplied`;
       break;
     }
@@ -232,11 +337,11 @@ export function purchaseBuy(inv: Inventory, id: BuyItemId): PurchaseResult {
   return { ok: true, reason: 'ok', cost: item.cost, message };
 }
 
-/** Items on the upgrade station panel (keys 1-2, one per slot). */
+/** Items on the upgrade station panel (keys 1-2, one per slot; ZARYA's arsenal: the gun in hand, then the rest, up to six). */
 export function upgradeMenu(inv: Inventory): StationItem[] {
-  return ([0, 1] as const).map((slot) => {
+  return menuSlots(inv).map((slot, row) => {
     const w = inv.slots[slot];
-    const key = String(slot + 1);
+    const key = String(row + 1);
     if (!w) return { id: `up${slot}`, key, label: `SLOT ${slot + 1}`, detail: 'Empty', cost: 0, state: 'unavailable' as ItemState };
     const def = WEAPONS[w.id];
     if (w.tier >= 2) {
@@ -255,7 +360,7 @@ export function upgradeMenu(inv: Inventory): StationItem[] {
   });
 }
 
-export function purchaseUpgrade(inv: Inventory, slot: 0 | 1): PurchaseResult {
+export function purchaseUpgrade(inv: Inventory, slot: number): PurchaseResult {
   const w = inv.slots[slot];
   if (!w) return fail('unavailable', 0, 'No weapon in that slot');
   if (w.tier >= 2) return fail('maxed', 0, 'Already fully upgraded');
@@ -275,15 +380,15 @@ export function purchaseUpgrade(inv: Inventory, slot: 0 | 1): PurchaseResult {
 
 export interface CrateReward {
   cash: number;
-  /** Rounds per carried weapon slot. */
-  ammo: [number, number];
+  /** Rounds per carried weapon slot (index = slot). */
+  ammo: number[];
   plates: number;
   grenades: number;
 }
 
 export interface AppliedReward {
   cash: number;
-  ammo: [number, number];
+  ammo: number[];
   plates: number;
   grenades: number;
 }
@@ -291,8 +396,9 @@ export interface AppliedReward {
 /** Roll a crate's contents (pure; does not touch the inventory). */
 export function rollCrateReward(region: Region, inv: Inventory, rng: Rng): CrateReward {
   const cfg = ECONOMY.crates[region];
-  const ammo: [number, number] = [0, 0];
-  for (const slot of [0, 1] as const) {
+  // (one roll per slot in slot order: two slots everywhere, so every other map rolls exactly as before)
+  const ammo: number[] = inv.slots.map(() => 0);
+  for (let slot = 0; slot < inv.slots.length; slot++) {
     const w = inv.slots[slot];
     if (!w) continue;
     ammo[slot] = Math.max(1, Math.round(w.ammo.magSize * rng.range(cfg.mags[0], cfg.mags[1])));
@@ -308,11 +414,12 @@ export function rollCrateReward(region: Region, inv: Inventory, rng: Rng): Crate
 /** Apply a reward to the inventory, clamping to capacity; returns what was really granted. */
 export function applyCrateReward(inv: Inventory, r: CrateReward): AppliedReward {
   addCash(inv, r.cash);
-  const ammo: [number, number] = [0, 0];
-  for (const slot of [0, 1] as const) {
+  const ammo: number[] = inv.slots.map(() => 0);
+  for (let slot = 0; slot < inv.slots.length; slot++) {
     const w = inv.slots[slot];
-    if (!w || r.ammo[slot] <= 0) continue;
-    ammo[slot] = addReserve(w.ammo, r.ammo[slot]);
+    const n = r.ammo[slot] ?? 0;
+    if (!w || n <= 0) continue;
+    ammo[slot] = addReserve(w.ammo, n);
     inv.ammoCollected += ammo[slot];
   }
   const plates = Math.min(r.plates, PLAYER.maxPlates - inv.plates);

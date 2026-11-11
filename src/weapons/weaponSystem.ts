@@ -65,7 +65,9 @@ export interface WeaponInput {
   firePressed: boolean;
   ads: boolean;
   reloadPressed: boolean;
-  slot: 0 | 1 | null;
+  /** A slot to bring to hand (1 / 2; ZARYA's arsenal: any of its slots, picked by `game.ts`). */
+  slot: number | null;
+  /** Two slots: any movement swaps them. (ZARYA's arsenal steps through itself in `game.ts` and sends a `slot`.) */
   wheel: number;
   grenadePressed: boolean;
   platePressed: boolean;
@@ -87,7 +89,7 @@ export class WeaponSystem {
   private sprintT = 0;
   private bloom = 0;
   private fireBuffer = 0;
-  private switching: { to: 0 | 1; phase: 'lower' | 'raise' } | null = null;
+  private switching: { to: number; phase: 'lower' | 'raise' } | null = null;
   private utility: Utility | null = null;
   private grenadeCd = 0;
   private lookYaw = 0;
@@ -210,6 +212,11 @@ export class WeaponSystem {
     return this.utility !== null || this.switching !== null;
   }
 
+  /** The slot being switched to, or null when no switch is under way. */
+  get switchTo(): number | null {
+    return this.switching ? this.switching.to : null;
+  }
+
   get applyingPlate(): boolean {
     return this.utility?.kind === 'plate';
   }
@@ -241,7 +248,7 @@ export class WeaponSystem {
     return base + mv + air + this.bloom;
   }
 
-  hudInfo(slot: 0 | 1): HudWeaponInfo | null {
+  hudInfo(slot: number): HudWeaponInfo | null {
     const c = this.host.inv.slots[slot];
     if (!c) return null;
     const d = WEAPONS[c.id];
@@ -355,10 +362,14 @@ export class WeaponSystem {
 
     // ---- switching ----
     if (!input.locked && !this.utility) {
-      let want: 0 | 1 | null = input.slot;
+      let want: number | null = input.slot;
       if (input.wheel !== 0) want = host.inv.activeSlot === 0 ? 1 : 0;
       if (want !== null && want !== host.inv.activeSlot && host.inv.slots[want] && !this.switching) {
         this.beginSwitch(want);
+      } else if (want !== null && this.switching && host.inv.arsenal && want !== this.switching.to && host.inv.slots[want]) {
+        // ZARYA's arsenal: a step taken mid-switch goes on to that gun (the one in hand keeps going down, or goes back down)
+        this.switching.to = want;
+        this.switching.phase = 'lower';
       }
     }
     if (this.switching) this.updateSwitch(dt);
@@ -449,7 +460,7 @@ export class WeaponSystem {
   // switching
   // ---------------------------------------------------------------------------------------------
 
-  private beginSwitch(to: 0 | 1): void {
+  private beginSwitch(to: number): void {
     const c = this.carried;
     if (c) cancelReload(c.ammo); // switching cancels a reload; nothing is transferred, nothing duplicated
     this.reloadSfx.length = 0;

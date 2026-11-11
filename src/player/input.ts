@@ -14,8 +14,14 @@ export interface Edges {
   slot1: boolean;
   slot2: boolean;
   crouch: boolean;
-  /** Number-key presses 1..6 (used by station panels). */
+  /** Number-key presses 1..9 (station panels use 1..6; ZARYA's arsenal picks with 1..9). */
   digits: number[];
+  /**
+   * Q and V themselves. Q is the armour plate (`plate`) everywhere but ZARYA, where it steps through the arsenal and the
+   * plate moves to V (`game.ts` reads these there; nothing else does).
+   */
+  keyQ?: boolean;
+  keyV?: boolean;
   wheel: number;
   firePressed: boolean;
   adsPressed: boolean;
@@ -35,8 +41,8 @@ const TOUCH_MOUSE_GUARD_MS = 800;
 const clampUnit = (v: number): number => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
 
 const GAME_KEYS = new Set([
-  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC', 'KeyE', 'KeyR', 'KeyG', 'KeyQ', 'KeyM',
-  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'ControlLeft', 'Tab',
+  'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'Space', 'KeyC', 'KeyE', 'KeyR', 'KeyG', 'KeyQ', 'KeyM', 'KeyV',
+  'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'ControlLeft', 'Tab',
 ]);
 
 export class Input {
@@ -230,7 +236,8 @@ export class Input {
         this.interactHeld = true;
         break;
       case 'KeyG': this.edges.grenade = true; break;
-      case 'KeyQ': this.edges.plate = true; break;
+      case 'KeyQ': this.edges.plate = true; this.edges.keyQ = true; break;
+      case 'KeyV': this.edges.keyV = true; break;
       case 'KeyM': this.edges.map = true; break;
       case 'KeyC': this.edges.crouch = true; break;
       case 'Digit1': this.edges.slot1 = true; this.edges.digits.push(1); break;
@@ -239,6 +246,9 @@ export class Input {
       case 'Digit4': this.edges.digits.push(4); break;
       case 'Digit5': this.edges.digits.push(5); break;
       case 'Digit6': this.edges.digits.push(6); break;
+      case 'Digit7': this.edges.digits.push(7); break;
+      case 'Digit8': this.edges.digits.push(8); break;
+      case 'Digit9': this.edges.digits.push(9); break;
       default: break;
     }
   };

@@ -5,7 +5,9 @@
  * bypass game rules except explicitly named teleport / spawn / time helpers.
  */
 import { WEAPONS } from '../config';
-import { createCarried } from '../logic/economy';
+import { addGun, createCarried } from '../logic/economy';
+import { armEntries, armIndex, armRows } from '../logic/arsenal';
+import { MELEE, type MeleeId } from '../logic/melee';
 import type { Game } from '../game/game';
 import type { Edges } from '../player/input';
 import type { WeaponId, ZombieType } from '../types';
@@ -120,7 +122,8 @@ export function installTestApi(game: Game): void {
       held.sprint = held.fire = held.ads = held.interact = false;
       game.inputState.clear();
     },
-    press(what: 'jump' | 'reload' | 'interact' | 'grenade' | 'plate' | 'map' | 'slot1' | 'slot2' | 'crouch' | 'wheel', digit?: number): void {
+    /** `q` / `v`: those keys themselves (ZARYA: Q steps through the arsenal, V is the plate); `wheelBack`: the wheel turned up. */
+    press(what: 'jump' | 'reload' | 'interact' | 'grenade' | 'plate' | 'map' | 'slot1' | 'slot2' | 'crouch' | 'wheel' | 'wheelBack' | 'q' | 'v', digit?: number): void {
       switch (what) {
         case 'jump': pending.jump = true; break;
         case 'reload': pending.reload = true; break;
@@ -132,6 +135,9 @@ export function installTestApi(game: Game): void {
         case 'slot2': pending.slot2 = true; pending.digits.push(2); break;
         case 'crouch': pending.crouch = true; break;
         case 'wheel': pending.wheel = 1; break;
+        case 'wheelBack': pending.wheel = -1; break;
+        case 'q': pending.plate = true; pending.keyQ = true; break;
+        case 'v': pending.keyV = true; break;
       }
       if (digit !== undefined) pending.digits.push(digit);
     },
@@ -214,7 +220,7 @@ export function installTestApi(game: Game): void {
     equip(id: WeaponId): void {
       const inv = game.session.inv;
       const slot = inv.slots.findIndex((c) => c?.id === id);
-      if (slot >= 0) inv.activeSlot = slot as 0 | 1;
+      if (slot >= 0) inv.activeSlot = slot;
     },
     weaponDefs: WEAPONS,
     /** Put a fresh `id` in the hands (replacing what is held). */
@@ -223,13 +229,56 @@ export function installTestApi(game: Game): void {
       inv.slots[inv.activeSlot] = createCarried(id);
       game.weapons.cancelActions();
     },
-    /** A fresh gun `id` in slot `slot` (default 0), and that slot in the hands: ZARYA's guns are handed out this way. */
-    giveGun(id: WeaponId, slot: 0 | 1 = 0): void {
+    /**
+     * A fresh gun `id` in slot `slot` (default 0), and that slot in the hands: ZARYA's guns are handed out this way.
+     * On ZARYA (its arsenal) with no `slot` given, the gun joins the others instead (a gun carried already is topped up).
+     */
+    giveGun(id: WeaponId, slot?: number): void {
       const inv = game.session.inv;
-      inv.slots[slot] = createCarried(id);
-      inv.activeSlot = slot;
+      if (inv.arsenal && slot === undefined) inv.activeSlot = addGun(inv, id).slot;
+      else {
+        inv.slots[slot ?? 0] = createCarried(id);
+        inv.activeSlot = slot ?? 0;
+      }
       game.melee?.setOut(false);
       game.weapons.cancelActions();
+    },
+    /** ZARYA: a weapon to swing, kept with the others and brought out. */
+    giveMelee(id: MeleeId): void {
+      if (!game.melee) return;
+      game.weapons.cancelActions();
+      game.melee.equip(id);
+      game.melee.setOut(true);
+    },
+    /** ZARYA: every gun and every weapon to swing there is (the arsenal), the first gun in hand. */
+    giveAll(): void {
+      const inv = game.session.inv;
+      if (!inv.arsenal) return;
+      for (const id of Object.keys(WEAPONS) as WeaponId[]) if (id !== 'hanafubuki' && id !== 'raijin') addGun(inv, id);
+      if (game.melee) for (const id of Object.keys(MELEE) as MeleeId[]) game.melee.equip(id);
+      inv.activeSlot = inv.slots.findIndex((w) => !!w);
+      game.melee?.setOut(false);
+      game.weapons.cancelActions();
+      game.weapons.redraw();
+    },
+    /** ZARYA's arsenal as the player sees it: everything carried, in the cycle's order, and which one is in hand. */
+    arsenal() {
+      const inv = game.session.inv;
+      const pack = game.melee?.pack ?? [];
+      const entries = armEntries(inv, pack);
+      const at = armIndex(entries, inv, game.melee?.out ? game.melee.carried : null);
+      return {
+        on: !!inv.arsenal,
+        at,
+        rows: armRows(entries, inv, at),
+        entries,
+        held: game.melee?.out ? game.melee.carried : (inv.slots[inv.activeSlot]?.id ?? null),
+        switching: game.weapons.switchTo,
+      };
+    },
+    /** ZARYA's arsenal: what a tap on row `i` of the phone's weapon list does. */
+    pickWeapon(i: number): void {
+      (game as unknown as { arsenalPick: number }).arsenalPick = i;
     },
     /** Mystery boxes: where they are and what they are doing. */
     boxes() {

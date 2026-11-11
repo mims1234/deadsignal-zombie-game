@@ -1,12 +1,12 @@
 /**
  * Mystery boxes (pure): what a box rolls and what taking the prize does. The box itself (the reel animation, the
  * offer the player can take or leave) lives in `game/entities.ts`.
- *   ammo      reserve for both carried weapons
+ *   ammo      reserve for every carried weapon
  *   grenades  frag grenades
  *   weapon    a gun you are not carrying; it goes into an empty gun slot, or replaces the one in your hands (the HX-7
- *             only comes from here)
+ *             only comes from here). ZARYA's arsenal (`Inventory.arsenal`) keeps it beside every other gun instead
  *   melee     a weapon to swing (only where a map's box holds one: ZARYA's sack has the Kisten); it goes into the hand
- *             that swings, never into a gun slot
+ *             that swings, never into a gun slot, and joins the others carried
  * A map can add prizes of its own to its box (`MYSTERY_BOX.mapPrizes`): ZARYA's sack is the only place the Raketa and
  * the Kisten come from. Every other map's box rolls exactly as before.
  */
@@ -14,7 +14,7 @@ import { GRENADE, MYSTERY_BOX, WEAPONS } from '../config';
 import type { Region, WeaponId } from '../types';
 import type { MapId } from '../world/layout/data';
 import { addReserve } from './ammo';
-import { activeWeapon, carries, createCarried, type Inventory } from './economy';
+import { activeWeapon, addGun, carries, createCarried, type Inventory } from './economy';
 import { MELEE, type MeleeId } from './melee';
 import type { Rng } from './rng';
 
@@ -70,6 +70,8 @@ export function prizeLabel(p: BoxPrize): string {
 export interface BoxContext {
   map?: MapId;
   melee?: MeleeId | null;
+  /** ZARYA's arsenal: every weapon to swing carried (none of them comes up again). */
+  owned?: readonly MeleeId[];
 }
 
 /**
@@ -84,7 +86,7 @@ export function rollBox(region: Region, inv: Inventory, rng: Rng, relics = false
   const ids = [...(Object.keys(MYSTERY_BOX.guns) as WeaponId[])];
   for (const [id] of own.guns) if (!ids.includes(id)) ids.push(id);
   const pool: BoxPrize[] = ids.filter((id) => weight(id) > 0 && !carries(inv, id)).map((id) => ({ kind: 'weapon', id }));
-  for (const [id] of own.melee) if (at.melee !== id) pool.push({ kind: 'melee', id });
+  for (const [id] of own.melee) if (at.melee !== id && !at.owned?.includes(id)) pool.push({ kind: 'melee', id });
   const ownMelee = new Map(own.melee);
   const roll = rng.f();
   if (pool.length > 0 && roll < odds.weapon) {
@@ -113,10 +115,11 @@ export interface TakeResult {
  * Take the prize. Fails (and changes nothing) when it would do nothing: grenades or ammo already full, the weapon to
  * swing already in hand (`melee`: what is carried to swing now).
  */
-export function takePrize(inv: Inventory, p: BoxPrize, melee: MeleeId | null = null): TakeResult {
+export function takePrize(inv: Inventory, p: BoxPrize, melee: MeleeId | null = null, owned: readonly MeleeId[] = []): TakeResult {
   if (p.kind === 'melee') {
-    if (melee === p.id) return { ok: false, message: 'Already carried', swapped: false };
-    const old = melee ? MELEE[melee].short : null;
+    if (melee === p.id || owned.includes(p.id)) return { ok: false, message: 'Already carried', swapped: false };
+    // (ZARYA's arsenal keeps what it had: nothing is replaced)
+    const old = melee && !inv.arsenal ? MELEE[melee].short : null;
     return { ok: true, message: old ? `${MELEE[p.id].short} REPLACES ${old}` : `${MELEE[p.id].short} ACQUIRED`, swapped: false, melee: p.id };
   }
   if (p.kind === 'grenades') {
@@ -128,8 +131,7 @@ export function takePrize(inv: Inventory, p: BoxPrize, melee: MeleeId | null = n
   }
   if (p.kind === 'ammo') {
     let total = 0;
-    for (const slot of [0, 1] as const) {
-      const w = inv.slots[slot];
+    for (const w of inv.slots) {
       if (w) total += addReserve(w.ammo, Math.round(w.ammo.magSize * MYSTERY_BOX.ammoMags));
     }
     if (total <= 0) return { ok: false, message: 'Ammunition full', swapped: false };
@@ -137,15 +139,19 @@ export function takePrize(inv: Inventory, p: BoxPrize, melee: MeleeId | null = n
     return { ok: true, message: `+${total} AMMO`, swapped: false };
   }
   // a gun: if you picked up the same one meanwhile, it tops that one up instead
-  for (const slot of [0, 1] as const) {
-    const w = inv.slots[slot];
+  for (const w of inv.slots) {
     if (w && w.id === p.id) {
       const got = addReserve(w.ammo, w.ammo.reserveMax);
       return got > 0 ? { ok: true, message: `+${got} ${WEAPONS[p.id].short} AMMO`, swapped: false } : { ok: false, message: 'Already carried', swapped: false };
     }
   }
-  // an empty gun slot takes it first (ZARYA begins with empty hands); otherwise it replaces the gun in your hands
-  const empty: 0 | 1 | null = inv.slots[inv.activeSlot] === null ? inv.activeSlot : inv.slots[0] === null ? 0 : inv.slots[1] === null ? 1 : null;
+  // ZARYA's arsenal: it joins the others and comes to hand, nothing is put down
+  if (inv.arsenal) {
+    inv.activeSlot = addGun(inv, p.id).slot;
+    return { ok: true, message: `${WEAPONS[p.id].short} ACQUIRED`, swapped: true };
+  }
+  // an empty gun slot takes it first; otherwise it replaces the gun in your hands
+  const empty: number | null = inv.slots[inv.activeSlot] === null ? inv.activeSlot : inv.slots[0] === null ? 0 : inv.slots[1] === null ? 1 : null;
   if (empty !== null) {
     inv.slots[empty] = createCarried(p.id);
     inv.activeSlot = empty;

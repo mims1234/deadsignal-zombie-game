@@ -34,6 +34,8 @@ export class VitalsView {
   private pipsOn = -1;
   private lvl = '';
   private exhausted = false;
+  /** The plate's key (Q; ZARYA's arsenal has Q and puts the plate on V). */
+  private readonly plateKey: TextCell;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'ds-vitals ds-panel ds-brk', parent);
@@ -56,7 +58,7 @@ export class VitalsView {
     el('span', 'ic', pRow).appendChild(icon('plate'));
     this.platePips = el('div', 'pips', pRow);
     el('span', 'lbl', pRow, 'PLATES');
-    el('kbd', 'key', pRow, 'Q');
+    this.plateKey = new TextCell(el('kbd', 'key', pRow, 'Q'));
 
     const sRow = el('div', 'ds-stam', this.root);
     this.stam = el('i', '', sRow);
@@ -75,6 +77,7 @@ export class VitalsView {
       }
     }
     this.hpNum.set(String(Math.ceil(s.health)));
+    this.plateKey.set(s.plateKey ?? 'Q');
 
     // armour segments (one per plate worth of armour)
     const segs = Math.max(1, Math.round(s.maxArmor / 50));
@@ -225,8 +228,17 @@ export class WeaponView {
       }
     }
     const o = s.otherWeapon;
-    setHidden(this.otherRoot, !o);
-    if (o) {
+    const c = s.carried;
+    setHidden(this.otherRoot, !o && !c);
+    if (c && !o) {
+      // ZARYA's arsenal: which of everything carried is in hand, and how many (the key steps through them)
+      const sig = `c|${c.at}|${c.of}|${c.key}`;
+      if (sig !== this.otherSig) {
+        this.otherSig = sig;
+        this.otherKey.set(c.key);
+        this.other.set(`${c.at}/${c.of} CARRIED`);
+      }
+    } else if (o) {
       const sig = `${o.short}|${o.tier}|${o.mag}|${o.reserve}|${s.activeSlot}`;
       if (sig !== this.otherSig) {
         this.otherSig = sig;

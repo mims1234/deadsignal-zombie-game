@@ -94,8 +94,15 @@ export interface HudState {
   weapon: HudWeaponInfo | null;
   /** The holstered weapon (small display), or null. */
   otherWeapon: HudWeaponInfo | null;
-  /** 0 = primary slot (key 1), 1 = secondary slot (key 2). */
-  activeSlot: 0 | 1;
+  /** 0 = primary slot (key 1), 1 = secondary slot (key 2); ZARYA's arsenal has more. */
+  activeSlot: number;
+  /**
+   * ZARYA's arsenal: which of everything carried is in hand (1-based) and how many there are, shown small in place of
+   * the holstered gun; the key that steps through them (PC). Absent elsewhere.
+   */
+  carried?: { at: number; of: number; key: string };
+  /** The key the armour plate is on (default Q; ZARYA, where Q steps through the arsenal: V). */
+  plateKey?: string;
 
   region: Region;
   regionName: string;

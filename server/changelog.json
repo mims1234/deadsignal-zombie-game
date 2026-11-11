@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.388",
+      "date": "2026-11-11",
+      "title": "ZARYA: keep every weapon",
+      "notes": [
+        "On ZARYA you keep every gun and every weapon to swing you pick up, buy, build or pull from the sack; nothing is thrown away, and taking one you already have tops up its ammunition.",
+        "PC: the wheel and Q cycle, the number keys pick directly. Phones: tap the weapon panel to cycle, or open the weapon list from the menu dot and pick any in one tap.",
+        "Other maps keep their two gun slots."
+      ]
+    },
+    {
       "version": "0.4.387",
       "date": "2026-11-11",
       "title": "A new title menu",

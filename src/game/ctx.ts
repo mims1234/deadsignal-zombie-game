@@ -28,7 +28,7 @@ export interface GameCtx {
   readonly input: Input;
   readonly weapons: WeaponSystem;
   /** What is swung beside the guns, on a map with melee (ZARYA); a box's weapon to swing goes here (`game/entities.ts`). */
-  readonly melee?: { readonly carried: MeleeId | null; equip(id: MeleeId): void; setOut(out: boolean): void } | null;
+  readonly melee?: { readonly carried: MeleeId | null; readonly pack: readonly MeleeId[]; equip(id: MeleeId): void; setOut(out: boolean): void } | null;
   readonly zombies: ZombieManager;
   readonly grenades: GrenadeSystem;
   readonly flow: FlowField;

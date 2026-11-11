@@ -501,8 +501,8 @@ export class Entities {
     switch (p.kind) {
       case 'ammo': {
         let total = 0;
-        for (const slot of [0, 1] as const) {
-          const w = inv.slots[slot];
+        // (every gun carried: two, or ZARYA's whole arsenal)
+        for (const w of inv.slots) {
           if (!w || isFull(w.ammo)) continue;
           total += addReserve(w.ammo, Math.round(w.ammo.magSize * ECONOMY.ammoPickupMags));
         }
@@ -570,8 +570,9 @@ export class Entities {
   }
 
   /** What a roll needs beyond the guns carried: this map (its own prizes) and what is carried to swing. */
-  private boxAt(): { map: MapId; melee: MeleeId | null } {
-    return { map: this.ctx.level.data.id, melee: this.ctx.melee?.carried ?? null };
+  private boxAt(): { map: MapId; melee: MeleeId | null; owned?: readonly MeleeId[] } {
+    // (ZARYA's arsenal: none of the weapons to swing already carried comes up)
+    return { map: this.ctx.level.data.id, melee: this.ctx.melee?.carried ?? null, owned: this.ctx.melee?.pack };
   }
 
   /** Take what a box is offering. Leaves it on offer (and says why) when it would do nothing. */
@@ -581,7 +582,7 @@ export class Entities {
     if (this.coop && c.owner !== this.coop.me()) return false; // the opener's prize
     // (a weapon to swing needs a hand that swings: only on a map with melee)
     if (c.prize.kind === 'melee' && !ctx.melee) return false;
-    const r = takePrize(ctx.session.inv, c.prize, ctx.melee?.carried ?? null);
+    const r = takePrize(ctx.session.inv, c.prize, ctx.melee?.carried ?? null, ctx.melee?.pack);
     if (!r.ok) {
       ctx.audio.play('buy_denied', { priority: 2, volume: 0.8 });
       ctx.feed(r.message.toUpperCase(), 'warn');
@@ -619,9 +620,9 @@ export class Entities {
     // (a gun fills an empty slot first; a weapon to swing replaces only the one swung)
     const swung = this.ctx.melee?.carried ?? null;
     const sub =
-      p.kind === 'weapon' && held && held.id !== p.id && inv.slots[0] && inv.slots[1]
+      p.kind === 'weapon' && held && held.id !== p.id && inv.slots[0] && inv.slots[1] && !inv.arsenal
         ? `Replaces your ${WEAPONS[held.id].short} - or leave it (${left}s)`
-        : p.kind === 'melee' && swung && swung !== p.id
+        : p.kind === 'melee' && swung && swung !== p.id && !inv.arsenal
           ? `Replaces what you swing - or leave it (${left}s)`
           : `Leave it and it sinks back into the box (${left}s)`;
     return { text: `TAKE ${prizeLabel(p)}`, sub, mine: true };
