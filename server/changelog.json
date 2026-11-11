@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.386",
+      "date": "2026-11-11",
+      "title": "ZARYA: the matryoshkas call them in",
+      "notes": [
+        "Stand by a painted matryoshka that still has shells shut and the infected come to it, steadily, from thirty-odd metres off: a stand at a doll is a fight, not a wait. With the squad, a doll opens in about a minute."
+      ]
+    },
+    {
       "version": "0.4.385",
       "date": "2026-11-11",
       "title": "ZARYA: the matryoshkas",

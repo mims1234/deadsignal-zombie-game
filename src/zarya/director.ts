@@ -25,7 +25,7 @@ import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { Level } from '../world/level';
 import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type Spot, type ZaryaZone } from './places';
-import { CH, F, G, LOOKED, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
+import { CH, DOLLS, F, G, LOOKED, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
 import { yawTo } from './types';
 
 /** What the director saw this frame, for the story to note. */
@@ -196,7 +196,11 @@ export class ZaryaDirector {
     };
   }
 
+  /** Seconds to the next one the doll a player stands by calls in. */
+  private dollT = 0;
+
   reset(): void {
+    this.dollT = 0;
     this.lure = { t: 0, len: 1, mul: 1, cap: 0 };
     this.view = ZaryaStory.empty();
     this.gena = this.guard = null;
@@ -417,6 +421,30 @@ export class ZaryaDirector {
     }
     if (v.end !== 0) this.stop();
     if (this.over) return this.notes;
+
+    // a painted doll with shells still shut and one of the squad standing by it: they come to it, steadily, from
+    // thirty-odd metres off, so a stand at the doll is a fight and not a wait (`story.kill` counts what falls)
+    if (v.ch >= CH.act2 && !(v.g & G.pond)) {
+      const at = DOLLS.findIndex((d, i) => ZaryaStory.shells(v, i) < STORY.dollShells && up.some((p) => Math.hypot(p.x - d.x, p.z - d.z) <= STORY.dollStand));
+      if (at < 0) this.dollT = Math.min(this.dollT, 1.5);
+      else {
+        this.dollT -= dt;
+        const d = DOLLS[at]!;
+        let near = 0;
+        for (const z of zm.zombies) if (z.alive && !z.isBoss && Math.hypot(z.x - d.x, z.z - d.z) < 45) near++;
+        if (this.dollT <= 0 && near < 7) {
+          this.dollT = 1.6 + rng.f() * 1.4;
+          const a = rng.f() * Math.PI * 2;
+          const r = 28 + rng.f() * 8;
+          const spot = this.level.nav.randomFreeNear(d.x + Math.cos(a) * r, d.z + Math.sin(a) * r, 5, () => rng.f());
+          if (spot && ZaryaStory.zoneOf(spot.x, spot.z) === ZaryaStory.zoneOf(d.x, d.z)) {
+            const q = this.put(rng.f() < 0.25 ? 'runner' : 'shambler', spot.x, spot.z, rng, null, true);
+            const p = up.reduce((b, c) => (Math.hypot(c.x - d.x, c.z - d.z) < Math.hypot(b.x - d.x, b.z - d.z) ? c : b));
+            q.aggro(p.x, p.z);
+          }
+        }
+      }
+    }
 
     this.cast(v, rng);
 
