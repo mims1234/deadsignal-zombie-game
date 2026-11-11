@@ -2,6 +2,15 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.385",
+      "date": "2026-11-11",
+      "title": "ZARYA: the matryoshkas",
+      "notes": [
+        "The three painted matryoshkas now count every infected put down while one of you stands by the doll, wherever it falls and whoever put it down, Timur and Vera included. Before, it had to fall right next to the doll, which the squad's guns made nearly impossible.",
+        "The objective now says what to do: stand by a painted doll while the squad fights."
+      ]
+    },
+    {
       "version": "0.4.384",
       "date": "2026-11-11",
       "title": "ZARYA: the rest of the town, and a polish pass",

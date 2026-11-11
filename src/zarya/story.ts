@@ -181,6 +181,8 @@ export const STORY = {
   dollKills: 4,
   dollShells: 5,
   dollReach: 26,
+  /** A player standing this close to a doll makes every kill count for it, wherever the infected falls and whoever put it down (the squad's kills count too). */
+  dollStand: 9,
   /** What three pageant tickets cost (one player pays for the squad). */
   tickets: 900,
   /** Sleepers covered for Morozko to believe the answer. */
@@ -798,12 +800,15 @@ export class ZaryaStory {
   }
 
   /** A kill made at (x, z): counted at any matryoshka in reach, until its last shell is open. */
-  kill(x: number, z: number): void {
+  kill(x: number, z: number, stand: readonly Stand[] = []): void {
     if (this.ch < CH.act2 || (this.g & G.pond)) return;
     const max = STORY.dollKills * STORY.dollShells;
     DOLLS.forEach((d, i) => {
       const n = (this.dolls >> (i * 6)) & 63;
-      if (n >= max || Math.hypot(d.x - x, d.z - z) > STORY.dollReach) return;
+      if (n >= max) return;
+      // it counts when it falls near the doll, or when one of the squad stands by the doll as it falls
+      const guarded = stand.some((p) => p.up && Math.hypot(d.x - p.x, d.z - p.z) <= STORY.dollStand);
+      if (!guarded && Math.hypot(d.x - x, d.z - z) > STORY.dollReach) return;
       this.dolls += 1 << (i * 6);
       if ((n + 1) % STORY.dollKills === 0) this.events.push({ kind: 'doll', i, shells: (n + 1) / STORY.dollKills });
     });

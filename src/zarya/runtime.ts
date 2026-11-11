@@ -369,7 +369,7 @@ export class ZaryaRuntime {
       if (sv.ch >= CH.town && !ZaryaStory.has(sv, F.bear) && g.entities.crates.some((c) => c.phase !== 'closed')) this.story.note('bearUp');
       for (const e of this.story.drain()) this.director.onEvent(e, this.story.view, stand, g.rng);
       for (const n of this.director.step(dt, this.story.view, stand, g.rng)) this.story.note(n);
-      for (const k of this.director.drainKills()) this.story.kill(k.x, k.z);
+      for (const k of this.director.drainKills()) this.story.kill(k.x, k.z, stand);
     }
     const v = this.view;
     this.react(this.prev, v);
@@ -1487,7 +1487,7 @@ export class ZaryaRuntime {
         if (v.dolls > 0) {
           const shut = DOLLS.filter((_, i) => ZaryaStory.shells(v, i) < STORY.dollShells);
           const shells = DOLLS.map((_, i) => `${ZaryaStory.shells(v, i)}`).join(', ');
-          gate('dolls', 'THE MATRYOSHKAS', `Every few put down near one opens a shell: ${shells} of ${STORY.dollShells}`, shut.length ? nearest(shut) : null, { label: 'MATRYOSHKA' });
+          gate('dolls', 'THE MATRYOSHKAS', `Stand by a painted doll while the squad fights: every ${STORY.dollKills} down opens a shell. ${shells} of ${STORY.dollShells}`, shut.length ? nearest(shut) : null, { label: 'MATRYOSHKA' });
         } else if (Unlock.has(v.gates, CHAIN.depot)) gate('pond', 'THE POND ROAD', 'Iced shut, west of the depot', GATES.find((q) => q.id === 'pond') ?? null);
       } else if (!did(G.code)) {
         if ((v.clues & (1 << CLUE.plaque)) !== 0) gate('code', 'THE CHECKPOINT', 'The keypad: the year on the plaque', AT.code, { label: 'KEYPAD' });

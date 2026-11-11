@@ -382,7 +382,7 @@ export class SessionSim {
       if (e.kind === 'end' && !this.zaryaEnd) this.zaryaEnd = { at: this.elapsed, end: e.end };
     }
     for (const n of dir.step(dt, q.view, stand, this.rng)) q.note(n);
-    for (const k of dir.drainKills()) q.kill(k.x, k.z);
+    for (const k of dir.drainKills()) q.kill(k.x, k.z, stand);
     applyZaryaDoors(this.level, q.view);
     // the fourth key has turned: the ending's last lines, then the results
     const end = this.zaryaEnd;

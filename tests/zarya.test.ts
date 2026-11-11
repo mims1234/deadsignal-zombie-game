@@ -267,3 +267,26 @@ describe('the map', () => {
     for (const p of level.data.spawnPoints) expect(inShelter(p.x)).toBe(false);
   });
 });
+
+describe('the matryoshkas', () => {
+  it('count every kill while one of the squad stands by a doll, wherever it falls and whoever made it', async () => {
+    const { DOLLS: dolls, STORY: S, ZaryaStory: ZS } = await import('../src/zarya/story');
+    const s = new ZS();
+    (s as unknown as { ch: number }).ch = CH.act2;
+    const d = dolls[1]!;
+    const count = (): number => (s.view.dolls >> 6) & 63;
+    // far from the doll and nobody by it: nothing
+    s.kill(d.x + 80, d.z + 80, [{ x: 0, z: 0, up: true }]);
+    expect(count()).toBe(0);
+    // far from the doll, but a player stands by it: it counts
+    s.kill(d.x + 80, d.z + 80, [{ x: d.x + 2, z: d.z, up: true }]);
+    expect(count()).toBe(1);
+    // a player who is down does not guard it
+    s.kill(d.x + 80, d.z + 80, [{ x: d.x + 2, z: d.z, up: false }]);
+    expect(count()).toBe(1);
+    // and a kill close to the doll still counts with nobody there
+    s.kill(d.x + 3, d.z, []);
+    expect(count()).toBe(2);
+    expect(S.dollStand).toBeGreaterThan(5);
+  });
+});
