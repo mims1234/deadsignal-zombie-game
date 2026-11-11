@@ -206,6 +206,16 @@ const WEAPON_PATHS: Record<WeaponId, string[]> = {
     // the flash on its handle
     'M124 20h6v26h-6zM122 10h6l14-7v24l-14-7h-6z',
   ],
+  raketa: [
+    // the round canister on its side, its band and the handle on top
+    'M8 26a16 16 0 1 0 32 0a16 16 0 1 0-32 0z',
+    'M16 6h16v5H16z',
+    // the hose looping up from the canister into the wand
+    'M36 18q10-14 26-6l-2 4q-12-6-20 5z',
+    // the wand, its grip, and the wide flat nozzle
+    'M58 12h66v7H58zM70 19h9l-3 13h-9z',
+    'M124 9h8l18-5v22l-18-5h-8z',
+  ],
 };
 
 export function weaponSilhouette(id: WeaponId, cls = ''): SVGSVGElement {

@@ -7,7 +7,8 @@ import * as THREE from 'three';
 import { groundRect, solidBlock } from '../structures';
 import type { Ctx } from './util';
 import { CORE, KIOSKS, LAMPS, SQUARE, ZARYA, type KioskKind } from '../../zarya/places';
-import { AT } from '../../zarya/story';
+import { AT, SHUTTERS } from '../../zarya/story';
+import { shutterKiosk } from './zaryaShutters';
 import { GOODS, Z, ball, bench, box, bulbString, cyl, firTree, goods, lampPost, slab, solid } from './zaryaKit';
 
 const B = CORE;
@@ -198,7 +199,23 @@ function palace(c: Ctx): void {
   for (const [m0, m1] of [[q.z0, zc - pass], [zc + pass, q.z1]] as const) box(b, Z.cream, (q.x0 + q.x1) / 2, 6.5, (m0 + m1) / 2, q.x1 - q.x0, 13, m1 - m0);
   box(b, Z.cream, (q.x0 + q.x1) / 2, 9.1, zc, q.x1 - q.x0, 7.8, pass * 2);
   box(b, Z.woodDark, (q.x0 + q.x1) / 2, 0.03, zc, q.x1 - q.x0, 0.06, pass * 2, 0, false);
-  for (const s of [-1, 1]) slab(b, Z.woodDark, q.x1 + 0.9, 2.5, zc + s * (pass + 0.75), 0.1, 5, 1.7, 0, s * 1.1, 0);
+  // the passage through the front block to the foyer: indoors (a roof: no snow falls in it), the red carpet running
+  // on from the doors to the foyer's, dark panelling to the shoulder, a lamp on each wall half way (the doors
+  // themselves are the story's: `zarya/look.ts` swings them in from the square once the tickets are bought)
+  const px = (q.x0 + q.x1) / 2;
+  const plen = q.x1 - q.x0;
+  b.collide({ x: px, z: zc, hx: plen / 2, hz: pass, y0: 5.2, y1: 5.6, mapKind: 'none', tag: 'roof' });
+  box(b, Z.redDark, px - 0.3, 0.07, zc, plen - 0.6, 0.02, 2.8, 0, false);
+  for (const s of [-1, 1]) {
+    box(b, Z.gold, px - 0.3, 0.075, zc + s * 1.46, plen - 0.6, 0.02, 0.12, 0, false);
+    box(b, Z.woodDark, px, 0.65, zc + s * (pass - 0.03), plen, 1.3, 0.06, 0, false);
+    box(b, Z.gold, px, 1.32, zc + s * (pass - 0.05), plen, 0.06, 0.08, 0, false);
+    for (const x of [q.x0 + 6.5, q.x1 - 6.5]) {
+      box(b, Z.gold, x, 3.0, zc + s * (pass - 0.2), 0.06, 0.06, 0.34, 0, false);
+      ball(b, Z.bulb, x, 3.15, zc + s * (pass - 0.38), 0.14);
+    }
+  }
+  b.light({ x: px, y: 4.2, z: zc, color: 0xffcf96, intensity: 14, distance: 14, mode: 'steady', pool: 4, weight: 0.6 });
   box(b, Z.snow, (q.x0 + q.x1) / 2, 13.1, zc, q.x1 - q.x0 + 0.6, 0.25, d + 0.6, 0, false);
   // the portico: steps, eight columns, the entablature and a stepped pediment
   for (const s of [-1, 1]) for (let i = 0; i < 3; i++) box(b, Z.concrete, q.x1 + 1.6 - i * 0.5, 0.125 + i * 0.25, zc + s * ((d - 8) / 4 + 1.6), 4.6 - i, 0.25, (d - 8) / 2 - 3.2);
@@ -312,7 +329,7 @@ function iceTown(c: Ctx): void {
   };
   maiden(-66, 24);
   bear(-44, 22);
-  for (const [x, z] of [[-72, 31], [-40, 49]] as const) {
+  for (const [x, z] of [[-75.4, 29.5], [-40, 49]] as const) {
     for (let i = 0; i < 3; i++) ball(b, Z.snow, x, 0.55 + i * 0.85 - i * i * 0.07, z, 0.62 - i * 0.14, 1, 9);
     solid(c, x, z, 1.2, 1.2, 2.2, 'zarya-ice', { kind: 'none' });
   }
@@ -327,7 +344,16 @@ function iceTown(c: Ctx): void {
   box(b, Z.woodPale, tx, S.top - 0.08, S.z, 4, 0.16, 3.4);
   for (const dz of [-1.6, 1.6]) box(b, Z.wood, tx, S.top + 0.9, S.z + dz, 3.8, 0.1, 0.1, 0, false);
   for (const s of [-1, 1]) slab(b, Z.red, tx + s * 1.05, S.top + 2.75, S.z, 2.5, 0.1, 3.8, 0, 0, -s * 0.5, false);
-  for (let i = 0; i < 12; i++) box(b, Z.woodPale, tx - 2.3 - i * 0.45, S.top - 0.2 - i * 0.34, S.z, 0.45, 0.1, 1.6);
+  // the stair down the tower's north side, inside the walls, roped off at its foot (the slide is shut for the night)
+  const sz0 = S.z - 1.7;
+  for (let i = 0; i < 12; i++) box(b, Z.woodPale, tx, S.top - 0.2 - i * 0.34, sz0 - 0.225 - i * 0.45, 1.6, 0.1, 0.45);
+  const sLen = Math.hypot(12 * 0.45, S.top);
+  for (const s of [-1, 1]) {
+    slab(b, Z.wood, tx + s * 0.85, S.top / 2 - 0.1, sz0 - 2.7, 0.1, 0.3, sLen, -Math.atan2(S.top, 12 * 0.45), 0, 0);
+    cyl(b, Z.brass, tx + s * 1.0, 0, sz0 - 5.75, 0.05, 0.05, 1, 6);
+  }
+  box(b, Z.redDark, tx, 0.86, sz0 - 5.75, 2.0, 0.06, 0.06, 0, false);
+  box(b, Z.white, tx, 0.62, sz0 - 5.76, 0.5, 0.3, 0.03, 0, false);
   const run = S.x1 - S.x0;
   const drop = S.top - 0.35;
   const ang = Math.atan2(drop, run);
@@ -338,7 +364,8 @@ function iceTown(c: Ctx): void {
     const h = S.top - ((x - S.x0) / run) * drop - 0.2;
     for (const s of [-1, 1]) box(b, Z.ice, x, h / 2, S.z + s * 1.1, 0.7, h, 0.7);
   }
-  solid(c, tx - 2.6, S.z, 9.6, 3.6, S.top + 1, 'zarya-slide', { kind: 'prop', surface: 'wood' });
+  solid(c, tx, S.z, 4.2, 3.6, S.top + 1, 'zarya-slide', { kind: 'prop', surface: 'wood' });
+  solid(c, tx, sz0 - 2.9, 2.2, 5.8, S.top, 'zarya-slide', { shots: false, kind: 'prop', surface: 'wood' });
   solid(c, (S.x0 + S.x1) / 2 - 5, S.z, run - 10, S.w + 1.2, 2.6, 'zarya-slide', { kind: 'prop' });
   solid(c, S.x1 - 5, S.z, 10, S.w + 1.2, 1.2, 'zarya-slide', { shots: false, kind: 'none' });
   // the hook at its foot, where the fair hangs a prize
@@ -402,7 +429,10 @@ function treeAndStage(c: Ctx): void {
   for (const s of [-1, 1]) {
     const sx = S.x + s * (S.w / 2 - 1);
     for (let i = 0; i < 4; i++) box(b, Z.woodPale, sx, (S.h - i * 0.25) / 2, z1 + 0.2 + i * 0.4, 1.8, S.h - i * 0.25, 0.4);
-    solid(c, sx, z1 + 0.8, 1.8, 1.6, 0.6, 'zarya-stage', { shots: false, kind: 'none', surface: 'wood' });
+    // the steps are for the performers: a rope across their foot on two brass posts
+    for (const d of [-1, 1]) cyl(b, Z.brass, sx + d * 0.95, 0, z1 + 1.75, 0.05, 0.05, 1, 6);
+    box(b, Z.redDark, sx, 0.86, z1 + 1.75, 1.9, 0.06, 0.06, 0, false);
+    solid(c, sx, z1 + 0.95, 2.0, 1.9, 1, 'zarya-stage', { shots: false, kind: 'none', surface: 'wood' });
   }
   b.light({ x: S.x, y: S.h + 3.4, z: S.z + 1, color: 0xffc888, intensity: 22, distance: 20, mode: 'steady', pool: 7, weight: 1 });
 }
@@ -462,6 +492,8 @@ export function buildSquare(c: Ctx): void {
   clock(c);
   van(c);
   KIOSKS.forEach((k, i) => kiosk(c, k.kind, k.x, k.z, k.face, i));
+  // one more at the south end of the west row, its shutter down for the holiday (bought open: `zarya/mods.ts`)
+  shutterKiosk(c, SHUTTERS[0]!.at, SHUTTERS[0]!.yaw, 6);
   LAMPS.forEach((l) => lampPost(c, l.x, l.z, true));
   for (const [x, z, yaw] of [[-30, 26, 0], [-18, -30, Math.PI], [12, 26, 0], [44, -30, Math.PI], [56, 30, -Math.PI / 2], [-44, 0, Math.PI / 2], [0, 48, 0], [40, 50, 0]] as const) bench(c, x, z, yaw);
 

@@ -1808,8 +1808,9 @@ export class Game implements GameCtx {
     this.stairwellCd = Math.max(0, this.stairwellCd - dt);
 
     // ---- weapons ----
-    // (ZARYA's Zenit is never fired for you: it has twelve flashbulbs and no more)
-    const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen && this.weapons.def?.id !== 'zenit' ? this.autoFire(dt) : 0;
+    // (ZARYA's Zenit is never fired for you: it has twelve flashbulbs and no more; nor the Raketa from the sack, which
+    // fires when the trigger is let go: held for you, it would hold them reeling and never fire)
+    const auto = this.touchMode && this.settings.autoFire && alive && !this.interaction.panelOpen && this.weapons.def?.id !== 'zenit' && this.weapons.def?.id !== 'raketa' ? this.autoFire(dt) : 0;
     // something to swing (ZARYA) takes its turn in the weapon cycle after the guns, and 3 brings it straight out;
     // while it is in hand the guns are holstered and the trigger, the aim and the reload are its own
     const melee = this.melee;

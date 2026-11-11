@@ -788,6 +788,19 @@ function island(c: Ctx, q: (typeof RYNOK_STALLS)[number], i: number): void {
       // a basin and a coil of hose on the end counter
       box(b, Z.white, q.x1 - 0.42, 1.12, zc, 0.6, 0.22, 0.5);
       cyl(b, Z.black, q.x1 - 0.42, 1.24, zc + 0.5, 0.2, 0.2, 0.12, 10);
+      // the pipe handles (`RYNOK.pipes`, a part of the bolt cutters): a tray of steel pipes on the south counter, a
+      // black grip on one end of each and a tee on the other, so the glint over it has something to be
+      {
+        const P = R.pipes;
+        box(b, Z.woodPale, P.x, 1.04, P.z - 0.02, 1.0, 0.06, 0.5);
+        for (let k = 0; k < 4; k++) {
+          const z = P.z - 0.18 + k * 0.12;
+          const e = k % 2 ? 1 : -1;
+          box(b, Z.steel, P.x, 1.105, z, 0.86, 0.06, 0.06);
+          box(b, Z.black, P.x - e * 0.32, 1.105, z, 0.22, 0.075, 0.075);
+          box(b, Z.iron, P.x + e * 0.44, 1.105, z, 0.06, 0.08, 0.11);
+        }
+      }
       break;
     }
     case 'iron': {
@@ -810,6 +823,28 @@ function island(c: Ctx, q: (typeof RYNOK_STALLS)[number], i: number): void {
       }
       box(b, Z.black, q.x0 + 0.42, 1.2, zc, 0.3, 0.36, 0.26, 0.3);
       box(b, Z.greenDark, q.x0 + 0.42, 1.2, zc + 0.14, 0.14, 0.07, 0.02, 0.3);
+      // the welding gear on the floor against the north counter (`RYNOK.canister`, a part of the nail gun): an open
+      // crate of small gas canisters where the glint is, and beside it the welder's trolley, a tall oxygen cylinder
+      // and a squat gas one, the hoses coiled over them and the mask on top
+      {
+        const C = R.canister;
+        box(b, Z.woodPale, C.x, 0.16, C.z, 0.62, 0.32, 0.42);
+        for (let k = 0; k < 6; k++) cyl(b, k % 3 === 1 ? Z.red : Z.orange, C.x - 0.2 + (k % 3) * 0.2, 0.3, C.z - 0.09 + Math.floor(k / 3) * 0.18, 0.065, 0.065, 0.22, 8);
+        solid(c, C.x, C.z, 0.62, 0.42, 0.5, 'zarya-crate', { shots: false, kind: 'none', surface: 'wood' });
+        const tx = C.x + 1.05;
+        box(b, Z.iron, tx, 0.06, C.z, 0.7, 0.08, 0.36);
+        cyl(b, Z.blue, tx - 0.17, 0.1, C.z, 0.12, 0.12, 1.25, 10);
+        cyl(b, Z.iron, tx - 0.17, 1.35, C.z, 0.05, 0.05, 0.12, 6);
+        cyl(b, Z.red, tx + 0.17, 0.1, C.z, 0.14, 0.14, 0.8, 10);
+        cyl(b, Z.iron, tx + 0.17, 0.9, C.z, 0.05, 0.05, 0.1, 6);
+        box(b, Z.iron, tx, 0.6, C.z + 0.2, 0.62, 0.04, 0.04);
+        const hose = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.03, 5, 12), Z.black);
+        hose.position.set(tx + 0.05, 0.62, C.z - 0.21);
+        own(c, hose);
+        box(b, Z.black, tx - 0.17, 1.5, C.z, 0.24, 0.3, 0.12, 0.2);
+        box(b, Z.greenDark, tx - 0.17, 1.52, C.z - 0.07, 0.13, 0.06, 0.02, 0.2);
+        solid(c, tx, C.z, 0.72, 0.4, 1.5, 'zarya-welder', { shots: false, kind: 'none', surface: 'metal' });
+      }
       break;
     }
     case 'veg': {
@@ -1037,11 +1072,20 @@ function coldStore(c: Ctx): BoxCollider {
   groundRect(b, M.coldFloor, K.x0, zn, xe, zs, 0.032);
 
   // ---- inside: five rails of carcasses with the aisle to the door between them, frost on everything ----
+  // (the two rails between the aisle and the hatch have their middle carcass taken down: a way through to the hatch,
+  // which is in sight from the aisle)
   for (const z of [-19, -16, -13, -7, -4]) {
+    const gap = z > R.coldDoor.z;
     box(b, Z.iron, 235, 3.3, z, 9.6, 0.08, 0.08);
     for (const x of [230.3, 235, 239.7]) box(b, Z.iron, x, 3.95, z, 0.06, 1.24, 0.06);
-    for (let k = 0; k < 7; k++) carcass(c, 231 + k * 1.33, z, k + Math.round(z + 20) * 3);
-    solid(c, 235, z, 9, 0.5, 3, 'zarya-carcass', { kind: 'none', surface: 'wood' });
+    for (let k = 0; k < 7; k++) if (!gap || k !== 3) carcass(c, 231 + k * 1.33, z, k + Math.round(z + 20) * 3);
+    if (!gap) solid(c, 235, z, 9, 0.5, 3, 'zarya-carcass', { kind: 'none', surface: 'wood' });
+    else {
+      solid(c, 232.3, z, 3.6, 0.5, 3, 'zarya-carcass', { kind: 'none', surface: 'wood' });
+      solid(c, 237.7, z, 3.6, 0.5, 3, 'zarya-carcass', { kind: 'none', surface: 'wood' });
+      // the empty hook where the carcass came down
+      box(b, Z.iron, 235, 3.14, z, 0.03, 0.26, 0.03);
+    }
   }
   // frost creeping up the walls and across the floor, icicles under the pipes
   for (const [x, z, w, d] of [[232, zn + 0.9, 5, 1.6], [239, zn + 0.7, 3.4, 1.2], [xe - 0.9, -11, 1.6, 6], [xi + 0.8, -2, 1.2, 4.4], [236, zs - 0.8, 6, 1.4], [xi + 0.9, -18, 1.4, 4]] as const) box(b, Z.ice, x, 0.045, z, w, 0.02, d);
@@ -1078,6 +1122,10 @@ function coldStore(c: Ctx): BoxCollider {
     box(b, Z.iron, R.hatchIn.x + 0.3, 0.95, z + s * 0.07, 0.06, 0.3, 0.05);
     for (const y of [0.7, 1.2]) box(b, Z.iron, R.hatchIn.x - 0.42, y, z + s * 0.07, 0.1, 0.14, 0.04);
   }
+  // inside, a caged lamp over it, so it is seen from the aisle through the gap in the rails
+  box(b, Z.iron, R.hatchIn.x, 1.92, zs - 0.1, 0.3, 0.06, 0.2);
+  ball(b, Z.bulb, R.hatchIn.x, 1.8, zs - 0.16, 0.1);
+  b.glow({ x: R.hatchIn.x, y: 1.8, z: zs - 0.22, color: 0xcfe4ff, size: 1.1, intensity: 2, mode: 'steady' });
   box(b, Z.woodPale, R.hatch.x, 0.16, K.z1 + 0.55, 1.1, 0.32, 0.8);
   box(b, Z.snow, R.hatch.x, 0.35, K.z1 + 0.55, 1.0, 0.06, 0.7);
   solid(c, R.hatch.x, K.z1 + 0.55, 1.1, 0.8, 0.34, 'zarya-step', { shots: false, kind: 'none', surface: 'wood' });

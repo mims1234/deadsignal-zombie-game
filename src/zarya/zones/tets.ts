@@ -37,6 +37,8 @@ export const TETS = {
   valve: { x: 10.5, z: -98.9 } as Spot,
   /** The new bright pipe welded into the chimney's base, coming from the west wall (a clue: stand here, south of the joint, and look at it), and the chimney itself. */
   pipe: { x: -94.3, z: -149.4 } as Spot,
+  /** The Zenit's marked spot (a faint frost ring, `photos.ts`): under the new pipe, where a man in an Institute coat stood at it at 23:57. */
+  zenit: { x: -95.6, z: -149.8 } as Spot,
   chimney: { x: -88, z: -152 } as Spot,
   /** The checkpoint's keypad post, on this side of the west gate at (-104, -130), south of the road; the booth beside it. */
   keypad: { x: -100.3, z: -126.3 } as Spot,

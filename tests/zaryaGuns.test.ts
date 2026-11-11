@@ -61,16 +61,16 @@ describe("ZARYA's guns: the table", () => {
     expect(getWeaponStats(WEAPONS.ottepel, 2).magSize).toBe(100);
   });
 
-  it('never turns up in a mystery box', () => {
+  it("never turns up in a mystery box (but the Raketa, which only comes out of ZARYA's sack)", () => {
     for (const id of ZARYA_GUN_IDS) {
       expect(MYSTERY_BOX.guns[id]).toBe(0);
       expect(reelFor(true).map(prizeKey)).not.toContain(id);
-      expect(decodePrize(`w:${id}`)).toBeNull();
+      if (id !== 'raketa') expect(decodePrize(`w:${id}`)).toBeNull();
     }
   });
 
   it('knows which stock gun each is held like', () => {
-    expect(ZARYA_BASE).toEqual({ signalka: 'pistol', zenit: 'pistol', arbalet: 'rifle', gvozdomyot: 'rifle', salyut: 'rpg', ottepel: 'rpg' });
+    expect(ZARYA_BASE).toEqual({ signalka: 'pistol', zenit: 'pistol', arbalet: 'rifle', gvozdomyot: 'rifle', salyut: 'rpg', ottepel: 'rpg', raketa: 'rpg' });
     expect(isZaryaGun('ottepel')).toBe(true);
     expect(isZaryaGun('rifle')).toBe(false);
     expect(isZaryaGun('raijin')).toBe(false);

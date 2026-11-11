@@ -26,10 +26,22 @@ export const DEPOT = {
   blade: { x: 164.5, z: -98 } as Spot,
   /** One of the repairman's three tools (a multimeter, on the desk in the dispatcher's booth). */
   tool: { x: 193.5, z: -140.6 } as Spot,
+  /**
+   * The kiosk shutter bought open with points (`zarya/mods.ts`): the middle of the shutter's foot on a shut kiosk on the
+   * street's south pavement, opposite the canteen, facing `shutterYaw` (north, onto the street). Built by `zaryaDepot.ts`.
+   * (Act-2 polish: east of the poster column, not at x 196, where its back stood square in the walk from the Rynok's
+   * gate, nine metres in: the first thing through the gate was a wall.)
+   */
+  shutter: { x: 207, z: -82.62 } as Spot,
+  shutterYaw: 0,
+  /** A weapon mod part (`zarya/mods.ts`): a gunsmith's tin of springs and sights at the east end of the Okhotnik's counter. */
+  modPart: { x: 168.8, z: -104.3 } as Spot,
   /** A red fire board on the canteen's street wall, its axe behind a padlocked bar: a heavy blow breaks the lock. The spot is where the axe hangs. */
   fireBoard: { x: 204.2, z: -96.7 } as Spot,
   /** A glass ornament, rolled under the little fir at the west end of the street. */
   ornament: { x: 151.9, z: -99 } as Spot,
+  /** One of the places Ded Moroz's sack turns up (`zarya/sack.ts`): on the south side of the street, across from the depot's garage, on open snow with room all round. */
+  sack: { x: 226, z: -86 } as Spot,
   /** A sleeper who can be covered against the cold (a person stands here: see `depotPeople`): at the dead brazier behind the canteen. */
   cover: [{ x: 202, z: -116 }] as Spot[],
   /** Where the ones woken wrong come from: out of sight, in the corners of the yard and the street. */

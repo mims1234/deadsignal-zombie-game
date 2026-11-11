@@ -13,7 +13,7 @@ import { canFire, cancelReload, consumeRound, reloadProgress, requestShellStop, 
 import { applyPlate, canApplyPlate, type Vitals, zombieHitDamage } from '../logic/damage';
 import { activeWeapon, type CarriedWeapon, type Inventory } from '../logic/economy';
 import { falloffMul, getWeaponStats, type WeaponStats } from '../logic/weaponStats';
-import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, stepGauge } from '../logic/zaryaGuns';
+import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, pullToward, stepGauge, stepSuck } from '../logic/zaryaGuns';
 import type { Player } from '../player/player';
 import type { GameRenderer } from '../render/renderer';
 import type { HudEvent, HudWeaponInfo } from '../ui/hudTypes';
@@ -48,6 +48,16 @@ export interface WeaponHost {
   recordShot(hitZombie: boolean): void;
   onPlateApplied(armorAdded: number): void;
   alive(): boolean;
+}
+
+/**
+ * A map's weapon mods (ZARYA's `zarya/mods.ts`): how much harder this shot of the gun in hand strikes, told of every shot
+ * fired and of every infected a round (a bullet, a pellet, a nail, a bolt) strikes.
+ */
+export interface WeaponModHook {
+  damageMul(c: CarriedWeapon): number;
+  shot(c: CarriedWeapon): void;
+  hit(z: Parameters<ZombieManager['damage']>[0], c: CarriedWeapon): void;
 }
 
 export interface WeaponInput {
@@ -101,6 +111,15 @@ export class WeaponSystem {
   private flareFlyT = 0;
   /** The Zenit: seconds left of its flash's white light. */
   private whiteT = 0;
+  /**
+   * The Raketa (`vacuum`): sucking last frame, seconds toward its next round, the next streak drawn in, its motor's
+   * hum, and when each infected in its cone was last made to reel (so it is held, not re-staggered every frame).
+   */
+  private vacOn = false;
+  private vacT = 0;
+  private vacFxT = 0;
+  private vacLoop: LoopHandle | null = null;
+  private readonly vacHeld = new Map<object, number>();
   private readonly rayHit = makeRayHit();
   private readonly camPos = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
@@ -159,12 +178,16 @@ export class WeaponSystem {
       s.shellPump *= k;
     }
     s.fireInterval *= this.perkFireIntervalMul;
+    // a map's weapon mods (ZARYA's Charge mod: one shot at triple damage)
+    if (this.mods) s.damage *= this.mods.damageMul(c);
     return s;
   }
 
   /** Perk multipliers on reload durations and on the time between shots (1 = none). */
   perkReloadMul = 1;
   perkFireIntervalMul = 1;
+  /** A map's weapon mods (`WeaponModHook`), or none. */
+  mods: WeaponModHook | null = null;
 
   private rigFor(id: WeaponId): ViewmodelRig {
     return this.rigs[id] ?? (isZaryaGun(id) ? this.rigs[ZARYA_BASE[id]] : id === 'raijin' ? this.rigs.rpg : this.rigs.rifle);
@@ -231,8 +254,9 @@ export class WeaponSystem {
       // (the Ottepel's "magazine" is its pressure gauge, which moves by fractions)
       mag: c.id === 'ottepel' ? Math.floor(c.ammo.mag) : c.ammo.mag,
       magSize: c.ammo.magSize,
-      // (...and it is never out for good: an empty gauge is "dry" for a moment, not "no ammunition")
-      reserve: c.id === 'ottepel' ? 1 : c.ammo.reserve,
+      // (...and it is never out for good: an empty gauge is "dry" for a moment, not "no ammunition"; nor is the Raketa,
+      // which swallows its rounds off the ground)
+      reserve: c.id === 'ottepel' || c.id === 'raketa' ? 1 : c.ammo.reserve,
       reloading: !!c.ammo.reload,
       reloadProgress: reloadProgress(c.ammo),
       auto: d.auto,
@@ -268,6 +292,9 @@ export class WeaponSystem {
     this.steamT = this.steamFxT = this.flareT = this.flareFlyT = this.whiteT = 0;
     this.steamLock = false;
     this.stopSteam();
+    this.vacOn = false;
+    this.vacT = 0;
+    this.stopVacuum();
     for (const r of this.allRigs()) r.reset();
     this.hideAll();
     this.host.renderer.zoom = 1;
@@ -294,6 +321,9 @@ export class WeaponSystem {
     this.fireBuffer = 0;
     this.dryReloadTimer = -1;
     this.stopSteam();
+    // (the Raketa: a suck cut short fires nothing; what it swallowed stays in it)
+    this.vacOn = false;
+    this.stopVacuum();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -345,6 +375,10 @@ export class WeaponSystem {
     // ---- ZARYA's Ottepel on the back: its gauge makes pressure back there as well as in the hands (`steam`) ----
     for (const w of host.inv.slots) if (w && w !== carried && w.id === 'ottepel') w.ammo.mag = stepGauge(w.ammo.mag, false, dt, w.ammo.magSize);
     if (!carried || carried.id !== 'ottepel') this.stopSteam();
+    if (!carried || carried.id !== 'raketa') {
+      this.vacOn = false;
+      this.stopVacuum();
+    }
 
     // ---- weapon logic ----
     if (carried && s && d) {
@@ -374,6 +408,8 @@ export class WeaponSystem {
       const ready = this.raise >= 0.85 && !this.switching && !this.utility && this.sprintT < 0.35;
       // (ZARYA's Ottepel has a gauge and no rounds: it throws steam for as long as the trigger is held and the gauge lasts)
       if (d.id === 'ottepel') this.steam(dt, carried, s, wantsFire && ready);
+      // (the Raketa sucks while the trigger is held and fires what it swallowed when it is let go)
+      else if (d.id === 'raketa') this.vacuum(dt, carried, d, s, wantsFire && ready, !input.locked && ready);
       else if (wantsFire && ready && this.cooldown <= 0) {
         this.tryFire(carried, d, s, input);
       }
@@ -499,6 +535,8 @@ export class WeaponSystem {
       return;
     }
     if (!consumeRound(ammo)) return;
+    // (this shot's damage is already in `s`: a mod that spends itself on a shot is told now)
+    this.mods?.shot(c);
     this.fireBuffer = 0;
     this.cooldown = s.fireInterval;
     this.shotIndex++;
@@ -729,6 +767,7 @@ export class WeaponSystem {
       // a killing blow throws the body along the shot: a nudge from a rifle, a real shove from the shotgun
       const fade = Math.max(0.35, falloffMul(d, dist));
       const killed = host.zombies.damage(zh.zombie, dmg, zh.head, zenv, shotYaw, RAGDOLL.push[d.id] * fade, RAGDOLL.lift[d.id] * fade, impulse);
+      if (this.mods && this.carried) this.mods.hit(zh.zombie, this.carried);
       host.fx.blood({ x: zh.x, y: zh.y, z: zh.z }, dir, { head: zh.head, kill: killed, amount: killed ? 1 : 0.6 });
       return { x: zh.x, y: zh.y, z: zh.z, hitZombie: true, head: zh.head, kill: killed, surface: 'flesh' };
     }
@@ -803,6 +842,7 @@ export class WeaponSystem {
           through.add(zh.zombie);
           const dmg = zombieHitDamage(s.damage, zh.zombie.def, zh.head, s.headshotMul, s.armorPierce, 1);
           const killed = zs.damage(zh.zombie, dmg, zh.head, zenv, shotYaw, RAGDOLL.push.arbalet, RAGDOLL.lift.arbalet);
+          if (this.mods) this.mods.hit(zh.zombie, c);
           host.fx.blood({ x: zh.x, y: zh.y, z: zh.z }, dir, { head: zh.head, kill: killed, amount: killed ? 1 : 0.6 });
           hit = true;
           if (zh.head) head = true;
@@ -1012,6 +1052,163 @@ export class WeaponSystem {
     if (!this.steamLoop) return;
     this.steamLoop.stop(0.2);
     this.steamLoop = null;
+  }
+
+  /**
+   * The Raketa, one frame. While the trigger is held (`want`) it sucks along its cone: the infected in it are dragged
+   * toward the player and held reeling (not a boss, never through a wall), and it swallows a round every so often, up to
+   * its gauge. Let go with anything in it (`may`: nothing stops it firing now) and every round leaves at once, each in
+   * its own line inside a narrow cone, each a heavy hit that throws back what it does not kill.
+   */
+  private vacuum(dt: number, c: CarriedWeapon, d: WeaponDef, s: WeaponStats, want: boolean, may: boolean): void {
+    const host = this.host;
+    const G = ZARYA_GUNS.raketa;
+    const a = c.ammo;
+    const sucking = want && this.cooldown <= 0;
+    if (!sucking) {
+      const was = this.vacOn;
+      this.vacOn = false;
+      this.vacT = 0;
+      this.stopVacuum();
+      if (was && may && a.mag > 0) this.vacuumBlast(c, d, s);
+      return;
+    }
+    this.vacOn = true;
+    this.fireBuffer = 0.1; // no sprinting while it sucks
+    const p = host.player;
+    const cy = Math.cos(p.pitch);
+    this.fwd.set(-Math.sin(p.yaw) * cy, Math.sin(p.pitch), -Math.cos(p.yaw) * cy);
+    this.camPos.set(p.x, p.eyeY(), p.z);
+    const o = this.camPos;
+    const rig = this.rigFor(c.id);
+    this.muzzleWorld(rig.muzzle, this.muzzleW);
+    // what lies loose goes in: a round on the gauge every so often
+    const before = a.mag;
+    const got = stepSuck(a.mag, this.vacT, dt, a.magSize);
+    a.mag = got.rounds;
+    this.vacT = got.t;
+    if (a.mag > before) host.audio.play('pickup_ammo', { priority: 1, volume: 0.35, rate: 0.6 + a.mag * 0.08 });
+    // its hum, and streaks of snow drawn into the nozzle
+    this.vacLoop ??= host.audio.startLoop('gas', { volume: 0.7, rate: 0.55, fadeIn: 0.1 });
+    this.vacFxT -= dt;
+    if (this.vacFxT <= 0) {
+      this.vacFxT = 0.045;
+      const r = G.range * (0.35 + Math.random() * 0.6);
+      const spread = Math.tan((G.cone * DEG) / 2) * 0.8;
+      this.right.set(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
+      this.up.crossVectors(this.right, this.fwd).normalize();
+      this.tmp.copy(this.muzzleW).addScaledVector(this.fwd, r).addScaledVector(this.right, (Math.random() * 2 - 1) * spread * r).addScaledVector(this.up, (Math.random() * 2 - 1) * spread * r * 0.6);
+      host.fx.tracer(this.tmp, this.muzzleW, 0xdfe8f2);
+      rig.onFire(c.tier, 0.25);
+    }
+    // the drag: everyone in the cone comes in toward the player, reeling
+    const zs = host.zombies;
+    const zenv = host.zombieEnv();
+    const now = this.time;
+    for (const z of zs.zombies) {
+      if (!z.active || z.dormant || z.isBoss || z.invulnerable) continue;
+      if (!inCone(o.x, o.y, o.z, this.fwd.x, this.fwd.y, this.fwd.z, z.x, z.y + 1.1, z.z, G.range, G.cone)) continue;
+      if (host.world.segmentBlocked(o.x, o.y, o.z, z.x, z.y + 1.1, z.z, 'shots')) continue;
+      if ((this.vacHeld.get(z) ?? -1e9) < now - G.holdEvery) {
+        this.vacHeld.set(z, now);
+        zs.affect(z, zenv, 0, G.stagger, 0);
+      }
+      const to = pullToward(p.x, p.z, z.x, z.z, dt);
+      if ((to.x !== z.x || to.z !== z.z) && !host.world.circleBlocked(to.x, to.z, z.def.radius, z.y + 0.4, z.y + 1.6)) {
+        z.x = to.x;
+        z.z = to.z;
+      }
+    }
+    if (this.vacHeld.size > 64) for (const [k, t] of this.vacHeld) if (t < now - 2) this.vacHeld.delete(k);
+    if (this.time - this.lastNoise > 0.3) {
+      this.lastNoise = this.time;
+      host.noise(d.noise * 0.6);
+    }
+  }
+
+  /** The Raketa lets go: every round it holds, at once (`vacuum`). */
+  private vacuumBlast(c: CarriedWeapon, d: WeaponDef, s: WeaponStats): void {
+    const host = this.host;
+    const G = ZARYA_GUNS.raketa;
+    const p = host.player;
+    const rounds = c.ammo.mag;
+    c.ammo.mag = 0;
+    this.cooldown = s.fireInterval;
+    this.shotIndex++;
+    const yaw = p.yaw + p.kickYaw;
+    const pitch = p.pitch + p.kickPitch;
+    const cy = Math.cos(pitch);
+    this.fwd.set(-Math.sin(yaw) * cy, Math.sin(pitch), -Math.cos(yaw) * cy);
+    this.right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    this.up.crossVectors(this.right, this.fwd).normalize();
+    this.camPos.set(p.x, p.eyeY(), p.z);
+    const rig = this.rigFor(c.id);
+    this.muzzleWorld(rig.muzzle, this.muzzleW);
+    const zs = host.zombies;
+    const zenv = host.zombieEnv();
+    const o = this.camPos;
+    const half = (G.blastCone * DEG) / 2;
+    let hit = false;
+    let kill = false;
+    let head = false;
+    const thrown = new Set<object>();
+    for (let i = 0; i < rounds; i++) {
+      // each round in its own line inside the cone (the first straight down the middle)
+      const r = i === 0 ? 0 : Math.sqrt(Math.random()) * half;
+      const ang = Math.random() * Math.PI * 2;
+      this.dir.copy(this.fwd).addScaledVector(this.right, Math.tan(r) * Math.cos(ang)).addScaledVector(this.up, Math.tan(r) * Math.sin(ang)).normalize();
+      // who it will hit, looked up before the hit lands (a killed body no longer answers a ray)
+      const wall = host.world.raycast(o.x, o.y, o.z, this.dir.x, this.dir.y, this.dir.z, d.maxRange, 'shots', this.rayHit);
+      const zh = zs.raycast(o.x, o.y, o.z, this.dir.x, this.dir.y, this.dir.z, wall ? wall.t : d.maxRange);
+      const res = this.resolveRay(this.dir, d, s, zenv, G.impulse);
+      hit ||= res.hitZombie;
+      head ||= res.head;
+      kill ||= res.kill;
+      // what it does not kill is thrown back (once a blast), reeling
+      const z = zh?.zombie;
+      if (z && z.active && !z.isBoss && !z.invulnerable && !thrown.has(z)) {
+        thrown.add(z);
+        const dx = z.x - p.x;
+        const dz = z.z - p.z;
+        const dd = Math.max(0.3, Math.hypot(dx, dz));
+        for (let k = 4; k >= 1; k--) {
+          const nx = z.x + (dx / dd) * G.knock * (k / 4);
+          const nz = z.z + (dz / dd) * G.knock * (k / 4);
+          if (host.world.circleBlocked(nx, nz, z.def.radius, z.y + 0.4, z.y + 1.6)) continue;
+          z.x = nx;
+          z.z = nz;
+          break;
+        }
+        zs.affect(z, zenv, 0, 0.9, 0);
+      }
+      host.fx.tracer(this.muzzleW, this.tmp2.set(res.x, res.y, res.z), d.tracerColors[c.tier]!);
+    }
+    // the burst of snow out of the nozzle
+    host.fx.steam(this.muzzleW, this.fwd, 6, Math.tan(half * 1.6));
+    host.fx.muzzleSmoke(this.muzzleW, this.fwd, rounds >= 4);
+    host.recordShot(hit);
+    if (hit) {
+      host.hudEvent({ type: 'hit', head, kill });
+      host.audio.play(kill ? 'kill_confirm' : head ? 'hit_head' : 'hit_body', { priority: 2, volume: kill ? 0.8 : 0.6 });
+    }
+    host.audio.play('shotgun_shot', { priority: 3, rate: 0.62 + Math.random() * 0.05, volume: 0.6 + rounds * 0.07 });
+    const k = 0.4 + rounds / 6;
+    const adsMul = 1 - 0.3 * this.adsAmount;
+    const kp = s.recoilPitch * DEG * adsMul * k;
+    const ky = s.recoilYaw * DEG * adsMul * (Math.random() * 2 - 1) * k;
+    p.kickPitch += kp;
+    p.kickYaw += ky;
+    p.pitch = Math.min(Math.PI / 2 - 0.02, p.pitch + kp * 0.35);
+    p.yaw += ky * 0.25;
+    rig.onFire(c.tier, 0.6 + k);
+    host.noise(d.noise);
+    this.lastNoise = this.time;
+  }
+
+  private stopVacuum(): void {
+    if (!this.vacLoop) return;
+    this.vacLoop.stop(0.2);
+    this.vacLoop = null;
   }
 
   // ---------------------------------------------------------------------------------------------

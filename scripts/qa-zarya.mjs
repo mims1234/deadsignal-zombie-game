@@ -56,12 +56,12 @@ const N = await D(async () => {
   const st = await import('/src/zarya/story.ts');
   const un = await import('/src/zarya/unlock.ts');
   return JSON.parse(JSON.stringify({
-    ZARYA: pl.ZARYA, RYNOK: pl.RYNOK, DVOR: pl.DVOR, GARAGES: pl.GARAGES, DEPOT: pl.DEPOT, DK: pl.DK, BANYA: pl.BANYA, TETS: pl.TETS, INSTITUTE: pl.INSTITUTE, CANTEEN: pl.CANTEEN, BERLOGA: pl.BERLOGA,
+    ZARYA: pl.ZARYA, RYNOK: pl.RYNOK, DVOR: pl.DVOR, GARAGES: pl.GARAGES, DEPOT: pl.DEPOT, DK: pl.DK, BANYA: pl.BANYA, TETS: pl.TETS, INSTITUTE: pl.INSTITUTE, CANTEEN: pl.CANTEEN, BERLOGA: pl.BERLOGA, UPSTAIRS: pl.UPSTAIRS,
     STOPS: pl.STOPS, GATES: pl.GATES, CH: st.CH, F: st.F, G: st.G, CLUES: st.CLUES, CLUE: st.CLUE, COVERS: st.COVERS, ORNAMENTS: st.ORNAMENTS, DOLLS: st.DOLLS, TOOLS: st.TOOLS, BENCHES: st.BENCHES, AT: st.AT, STORY: st.STORY, KEYS: st.KEYS,
     parts: un.TOWN.parts, PART: un.PART, RECIPE: un.RECIPE, CHAIN: un.CHAIN,
   }));
 });
-const { ZARYA, RYNOK, DVOR, GARAGES, DEPOT, DK, BANYA, TETS, INSTITUTE, CANTEEN, BERLOGA, STOPS, GATES, CH, F, G, CLUES, CLUE, COVERS, ORNAMENTS, DOLLS, TOOLS, AT, STORY, KEYS, PART, RECIPE, CHAIN } = N;
+const { ZARYA, RYNOK, DVOR, GARAGES, DEPOT, DK, BANYA, TETS, INSTITUTE, CANTEEN, BERLOGA, UPSTAIRS, STOPS, GATES, CH, F, G, CLUES, CLUE, COVERS, ORNAMENTS, DOLLS, TOOLS, AT, STORY, KEYS, PART, RECIPE, CHAIN } = N;
 const PARTS = N.parts;
 
 const state = () => D(() => {
@@ -202,7 +202,7 @@ await shot('02-fair-alive');
 // ---- the staff door, the stairs, the shelter ----
 await go(ZARYA.laneDoor.x, ZARYA.laneDoor.z + 3, ZARYA.laneDoor.x, ZARYA.laneDoor.z - 5, 0.6);
 await shot('03-staff-door');
-await go(137.4, 22.4, 137.4, 19, 0.4);
+await go(ZARYA.stairHead.x, ZARYA.stairHead.z + 0.2, ZARYA.stairHead.x, ZARYA.stairHead.z - 6, 0.4); // the head of the stairs (zaryaStore.ts stairPit)
 s = await state();
 check('the stairs down offer themselves at their doorway', /ENTER|DOWN|STAIR/i.test(s.prompt ?? ''), say(s));
 await go(ZARYA.stairFoot.x + 2, 0, ZARYA.blastDoor.x + 2, 0, 0.5);
@@ -477,10 +477,9 @@ await at(gateOf('depot'), 2);
 s = await state();
 check('the depot gate is chained, and says what would cut it', s.shut.depot === true && !s.can && /CHAINED/.test(s.prompt ?? '') && /cutters/i.test(s.sub), say(s));
 
-// ---- the store again: the shears, an ornament, the girl by the escalator, the padlock ----
+// ---- the store again: the shears, the girl by the escalator, the padlock (the store's ornament is upstairs) ----
 await sweep();
 await part('shears');
-await at(ORNAMENTS[0], 1);
 await go(ZARYA.girl.x - 1, ZARYA.girl.z + 0.9, ZARYA.girl.x, ZARYA.girl.z, 0.3);
 s = await state();
 const girlOffered = /^COVER HER$/.test(s.prompt ?? '');
@@ -501,7 +500,7 @@ await part('shaft');
 await at(TOOLS[0], 1);
 await at(DVOR.ornament, 1);
 s = await state();
-check("one of the repairman's tools, and another ornament, in passing", bit(s.m, 6) && count(s.orn) >= 3, `m ${s.m}, orn ${s.orn}`);
+check("one of the repairman's tools, and another ornament, in passing", bit(s.m, 6) && bit(s.orn, ORNAMENTS.findIndex((o) => o.x === DVOR.ornament.x && o.z === DVOR.ornament.z)), `m ${s.m}, orn ${s.orn}`);
 await at(DVOR.babushka);
 s = await state();
 const babOffered = /^COVER HER$/.test(s.prompt ?? '');
@@ -584,21 +583,12 @@ await at(gateOf('pond'), 2, 'x');
 s = await state();
 check('the pond road gate is frozen shut', s.shut.pond === true && !s.can && /FROZEN/.test(s.prompt ?? ''), say(s));
 
-// ---- the square: the Salyut's crate, the last ornament, the tree ----
+// ---- the square: the Salyut's crate, an ornament (the tree waits for the one on the store's second floor) ----
 await ride('depot', 'rynok', true);
 await ride('rynok', 'square', true);
 await sweep();
 await part('crate');
 await at(ORNAMENTS[1], 1);
-s = await state();
-check('six glass ornaments', count(s.orn) === ORNAMENTS.length, `orn ${s.orn}`);
-await at(AT.hang);
-s = await state();
-const hangOffered = /^HANG THE ORNAMENTS$/.test(s.prompt ?? '');
-await use(2);
-s = await state();
-check('hung back on the town tree', hangOffered && did(s, G.hung), `${say(s)}; g ${s.g}`);
-await shot('24-tree-whole');
 
 // ---- Timur's bench: the strong ones ----
 await at(DVOR.bench);
@@ -623,7 +613,7 @@ s = await state();
 check('and each lies on the bench to be taken', took.length === 3 && (s.slots.includes('gvozdomyot') || s.slots.includes('salyut')) && s.melee?.carried === 'rogatina', `${took.join(', ')}; ${JSON.stringify(s.slots)}; ${s.melee?.carried}`);
 await shot('25-timur-bench');
 
-// ---- the escalator, the canteen, the Tamada ----
+// ---- the escalator, the second floor, the canteen, the Tamada ----
 await at(DVOR.woodpile);
 await use();
 await go(AT.escalator.x, AT.escalator.z + 0.4, AT.escalator.x, AT.escalator.z - 3, 0.3);
@@ -634,7 +624,25 @@ s = await state();
 check('a heavy blow breaks the padlock on the escalator', padOffered && did(s, G.escalator) && s.escalator === false, `${say(s)}; g ${s.g}; closed ${s.escalator}`);
 await advance(0.4);
 s = await state();
-check('and the escalator offers the way up', /CANTEEN/.test(s.prompt ?? '') && /escalator/i.test(s.sub), say(s));
+check('and the escalator offers the way up to the second floor', /SECOND FLOOR/.test(s.prompt ?? '') && /^Up the escalator$/.test(s.sub), say(s));
+await use(0.6);
+await advance(0.6);
+s = await state();
+check('up the escalator: on the second floor, only it drawn, at the head of the escalator', s.zone === 'upstairs' && s.drawn === 1 && by(s, UPSTAIRS.foot, 2.5), `${s.zone} ${s.drawn}; ${s.x.toFixed(1)}, ${s.z.toFixed(1)}`);
+await shot('26a-second-floor');
+await sweep();
+await at(ORNAMENTS[0], 1);
+s = await state();
+check("the store's glass ornament, by the toy railway", bit(s.orn, 0), `orn ${s.orn}`);
+await notice('den', /^LOOK INTO THE DEN$/);
+await shot('26b-den');
+await go(UPSTAIRS.up.x - 1.2, UPSTAIRS.up.z, UPSTAIRS.up.x + 3, UPSTAIRS.up.z, 0.4);
+s = await state();
+check('the next escalator offers the way on up to the canteen', /CANTEEN/.test(s.prompt ?? '') && /^Up the escalator$/.test(s.sub), say(s));
+await use(0.6);
+await advance(0.6);
+s = await state();
+check('up it: in the canteen', s.zone === 'canteen' && by(s, CANTEEN.head, 3), `${s.zone}; ${s.x.toFixed(1)}, ${s.z.toFixed(1)}`);
 await sweep();
 await go(CANTEEN.head.x + 3, CANTEEN.head.z, CANTEEN.tamada.x, CANTEEN.tamada.z, 0.8);
 s = await state();
@@ -665,6 +673,20 @@ await use();
 s = await state();
 check('his camera is taken from the stage', zenitOffered && s.slots.includes('zenit'), `${say(s)}; ${JSON.stringify(s.slots)}`);
 await shot('27-zenit');
+await go(CANTEEN.head.x + 1.2, CANTEEN.head.z, CANTEEN.head.x - 3, CANTEEN.head.z, 0.4);
+s = await state();
+check('the way down from the canteen is to the second floor', /SECOND FLOOR/.test(s.prompt ?? '') && /^Down the escalator$/.test(s.sub), say(s));
+
+// ---- the town tree, whole again ----
+s = await state();
+check('six glass ornaments', count(s.orn) === ORNAMENTS.length, `orn ${s.orn}`);
+await at(AT.hang);
+s = await state();
+const hangOffered = /^HANG THE ORNAMENTS$/.test(s.prompt ?? '');
+await use(2);
+s = await state();
+check('hung back on the town tree', hangOffered && did(s, G.hung), `${say(s)}; g ${s.g}`);
+await shot('24-tree-whole');
 
 // ---- the Palace: tickets, the museum, Baba Yaga ----
 await at(gateOf('palace'), 2, 'x');

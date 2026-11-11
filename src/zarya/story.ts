@@ -29,7 +29,7 @@
  *
  * Nothing is timed. Nothing can be failed or missed: what has happened stays happened.
  */
-import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, SHELTER, STOPS, TETS, ZARYA, ZARYA_ZONES, inRect, inShelter, onSquare, type GateKey, type Spot, type StopKey, type ZaryaZone } from './places';
+import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, SHELTER, STOPS, TETS, UPSTAIRS, ZARYA, ZARYA_ZONES, inRect, inShelter, onSquare, type GateKey, type Spot, type StopKey, type ZaryaZone } from './places';
 import { CHAIN, PART, RECIPE, TOWN, Unlock, type UnlockEvent, type UnlockView } from './unlock';
 
 export const CH = { arrive: 0, sealed: 1, ground: 2, town: 3, act2: 4, finale: 5, ended: 6 } as const;
@@ -92,8 +92,19 @@ export const G = {
   morozkoDown: 1 << 20,
 } as const;
 
-/** Things to notice: each is somewhere, and says something about what happened to the town. */
-export const CLUES: readonly { id: string; name: string; at: Spot; zone: ZaryaZone }[] = [
+/**
+ * The Zenit's marked spot on the square (the square has no zone file of its own): in front of the stage, where its
+ * audience stood at 23:57.
+ */
+const SQUARE_ZENIT: Spot = { x: -8, z: 20.5 };
+
+/**
+ * Things to notice: each is somewhere, and says something about what happened to the town. The six marked `zenit`
+ * are not looked at but photographed: the Tamada's Zenit flashed at a marked spot from within `STORY.zenit` m develops
+ * a picture of that place at 23:57 (`photos.ts`). They count as clues (one more of Morozko's weak points each), not
+ * toward his health.
+ */
+export const CLUES: readonly { id: string; name: string; at: Spot; zone: ZaryaZone; zenit?: true }[] = [
   { id: 'tv', name: 'THE TELEVISION', at: DVOR.tv, zone: 'dvor' },
   { id: 'ledger', name: "THE BUTCHER'S LEDGER", at: RYNOK.ledger, zone: 'rynok' },
   { id: 'crates', name: 'THE CRATES', at: GARAGES.crates, zone: 'garages' },
@@ -106,13 +117,24 @@ export const CLUES: readonly { id: string; name: string; at: Spot; zone: ZaryaZo
   { id: 'office', name: "THE DIRECTOR'S OFFICE", at: INSTITUTE.office, zone: 'institute' },
   { id: 'dens', name: 'THE GLASS DENS', at: BERLOGA.dens, zone: 'berloga' },
   { id: 'danya', name: 'BED FORTY-ONE', at: BERLOGA.danya, zone: 'berloga' },
+  // ---- the Zenit's photographs (`photos.ts`) ----
+  { id: 'stillSquare', name: 'THE STAGE AT 23:57', at: SQUARE_ZENIT, zone: 'square', zenit: true },
+  { id: 'stillDk', name: 'THE PAGEANT AT 23:57', at: DK.zenit, zone: 'dk', zenit: true },
+  { id: 'stillRynok', name: 'THE COLD STORE AT 23:57', at: RYNOK.zenit, zone: 'rynok', zenit: true },
+  { id: 'stillDvor', name: 'THE YARD AT 23:57', at: DVOR.zenit, zone: 'dvor', zenit: true },
+  { id: 'stillTets', name: 'THE NEW PIPE AT 23:57', at: TETS.zenit, zone: 'tets', zenit: true },
+  { id: 'stillClock', name: 'THE MASTER CLOCK AT 23:57', at: INSTITUTE.zenit, zone: 'institute', zenit: true },
+  // ---- the store's second floor: where Kostya was last seen ----
+  { id: 'den', name: "KOSTYA'S DEN", at: UPSTAIRS.den, zone: 'upstairs' },
 ];
-export const CLUE = { tv: 0, ledger: 1, crates: 2, sheet: 3, plaque: 4, photo: 5, faces: 6, pipe: 7, clock: 8, office: 9, dens: 10, danya: 11 } as const;
+export const CLUE = { tv: 0, ledger: 1, crates: 2, sheet: 3, plaque: 4, photo: 5, faces: 6, pipe: 7, clock: 8, office: 9, dens: 10, danya: 11, stillSquare: 12, stillDk: 13, stillRynok: 14, stillDvor: 15, stillTets: 16, stillClock: 17, den: 18 } as const;
+/** The clues that are looked at or read (the bits of `StoryView.clues` that are not photographs). */
+export const LOOKED = CLUES.reduce((m, c, i) => (c.zenit ? m : m | (1 << i)), 0);
 
 /** Sleepers who can be covered against the cold (Vera's "hundred and ninety-nine to go"). */
 export const COVERS: readonly Spot[] = [ZARYA.girl, DVOR.babushka, ...RYNOK.cover, ...DVOR.cover, ...GARAGES.cover, ...DEPOT.cover, ...DK.cover, ...BANYA.cover, ...TETS.cover, ...INSTITUTE.cover, BERLOGA.danya];
 /** The glass ornaments missing from the town tree. */
-export const ORNAMENTS: readonly Spot[] = [{ x: 96.4, z: 0.4 }, { x: -13, z: 26 }, RYNOK.ornament, DVOR.ornament, GARAGES.ornament, DEPOT.ornament];
+export const ORNAMENTS: readonly Spot[] = [UPSTAIRS.ornament, { x: -13, z: 26 }, RYNOK.ornament, DVOR.ornament, GARAGES.ornament, DEPOT.ornament];
 /** The three painted matryoshkas. */
 export const DOLLS: readonly Spot[] = [{ x: 44, z: -24 }, RYNOK.doll, DVOR.doll];
 /** The repairman's three tools, to be brought back to his booth. */
@@ -124,6 +146,26 @@ export const BENCHES: readonly { at: Spot; main: boolean }[] = [
   { at: GARAGES.bench, main: true },
   { at: INSTITUTE.bench, main: true },
 ];
+// ---- kiosk shutters and weapon mods (`mods.ts`): the shared half, kept in `StoryView.k` ----
+/**
+ * The shut kiosks a player pays to roll open, for the whole squad: the middle of each shutter's foot, the way it faces
+ * (a yaw: a player stands that way from it), its zone, and where it is in words. The square has no zone file: its
+ * kiosk is the southmost of the fair's west row (`zaryaSquare.ts`), one step south of the souvenir stall.
+ */
+export const SHUTTERS: readonly { at: Spot; yaw: number; zone: ZaryaZone; name: string }[] = [
+  { at: { x: 21.62, z: 23 }, yaw: -Math.PI / 2, zone: 'square', name: 'at the fair' },
+  { at: RYNOK.shutter, yaw: RYNOK.shutterYaw, zone: 'rynok', name: "down the Rynok's west side" },
+  { at: DVOR.shutter, yaw: DVOR.shutterYaw, zone: 'dvor', name: "inside the Dvor's way in from the street" },
+  { at: DEPOT.shutter, yaw: DEPOT.shutterYaw, zone: 'depot', name: 'on the depot street' },
+  { at: BANYA.shutter, yaw: BANYA.shutterYaw, zone: 'banya', name: 'on the banya road' },
+];
+/** Weapon mod parts lying where they would be (every kiosk holds one more). */
+export const MOD_PARTS: readonly Spot[] = [DEPOT.modPart, GARAGES.modPart];
+/** What each weapon mod costs in parts (the Charge, the Drum, the Frost coat), and whether it wants Timur's bench. */
+export const MOD_COST = [2, 1, 1] as const;
+export const MOD_MAIN = [true, false, false] as const;
+/** `StoryView.k`: bit `KBIT.shutter + i` a shutter is up, `KBIT.part + i` a lying part is taken, and from `KBIT.spent` the parts spent on mods. */
+export const KBIT = { shutter: 0, part: 5, spent: 8 } as const;
 /** The four keys, in the order of the figures on the Univermag's mosaic. */
 export const KEYS = ['COSMONAUT', 'SUN', 'WHEAT', 'DOVE'] as const;
 
@@ -143,6 +185,10 @@ export const STORY = {
   tickets: 900,
   /** Sleepers covered for Morozko to believe the answer. */
   warm: 9,
+  /** How near a marked spot the Zenit must flash to develop its photograph. */
+  zenit: 10,
+  /** What rolling a kiosk's shutter up costs (one player pays for the squad: `mods.ts`). */
+  shutter: 750,
 } as const;
 
 export interface StoryView extends UnlockView {
@@ -161,6 +207,8 @@ export interface StoryView extends UnlockView {
   turned: number;
   /** How it ended: 1 the whole town wakes, 2 only the heated buildings, 3 he turned the keys himself. */
   end: number;
+  /** The kiosk shutters bought open and the mod parts found and spent (`KBIT`, `mods.ts`). */
+  k: number;
 }
 
 export type StoryEvent =
@@ -176,13 +224,23 @@ export type StoryEvent =
   | { kind: 'valve'; i: number; n: number }
   | { kind: 'tool'; i: number; n: number }
   | { kind: 'turn'; key: number; n: number }
-  | { kind: 'end'; end: number };
+  | { kind: 'end'; end: number }
+  /** A player blocked or swung into Morozko's question, standing at (x, z) (the director decides whether it caught him). */
+  | { kind: 'parry'; x: number; z: number }
+  /** A kiosk's shutter rolled up; a lying mod part taken (`n` parts in hand now); parts spent on mod `i` (`mods.ts`). */
+  | { kind: 'shutter'; i: number }
+  | { kind: 'modPart'; i: number; n: number }
+  | { kind: 'mod'; i: number; n: number };
 
 /** What a player can ask for (each is checked against where they stand). */
 export type StoryAct =
   | 'arm' | 'release' | 'plug' | 'notice' | 'part' | 'build' | 'flare' | 'line' | 'fusebox' | 'fitHandle' | 'fitFuse' | 'prize' | 'board'
   | 'cut' | 'tickets' | 'clue' | 'cover' | 'ornament' | 'hang' | 'tool' | 'bar' | 'cosmoKey' | 'lever' | 'escalator' | 'unplug' | 'fireBoard' | 'sickleCase'
-  | 'code' | 'valve' | 'slots' | 'answer' | 'turn';
+  | 'code' | 'valve' | 'slots' | 'answer' | 'turn'
+  // the Zenit flashed at a marked spot (`photos.ts`); a block or a swing into Morozko's question (`director.ts`)
+  | 'photo' | 'parry'
+  // a kiosk's shutter paid for; a mod part picked up in passing; a weapon mod fitted at a bench (`mods.ts`)
+  | 'shutter' | 'modPart' | 'mod';
 
 /** Someone standing somewhere (the players). */
 export interface Stand {
@@ -238,15 +296,17 @@ export class ZaryaStory {
   private dolls = 0;
   private turned = 0;
   private end = 0;
+  /** `StoryView.k` (`mods.ts`). */
+  private k = 0;
   private events: StoryEvent[] = [];
 
   static empty(): StoryView {
-    return { ch: CH.arrive, f: 0, g: 0, m: 0, clues: 0, covered: 0, orn: 0, dolls: 0, turned: 0, end: 0, parts: 0, built: 0, gates: 0 };
+    return { ch: CH.arrive, f: 0, g: 0, m: 0, clues: 0, covered: 0, orn: 0, dolls: 0, turned: 0, end: 0, k: 0, parts: 0, built: 0, gates: 0 };
   }
 
   get view(): StoryView {
     const u = this.unlock.view;
-    return { ch: this.ch, f: this.f, g: this.g, m: this.m, clues: this.clues, covered: this.covered, orn: this.orn, dolls: this.dolls, turned: this.turned, end: this.end, parts: u.parts, built: u.built, gates: u.gates };
+    return { ch: this.ch, f: this.f, g: this.g, m: this.m, clues: this.clues, covered: this.covered, orn: this.orn, dolls: this.dolls, turned: this.turned, end: this.end, k: this.k, parts: u.parts, built: u.built, gates: u.gates };
   }
 
   static has(v: { f: number }, flag: number): boolean {
@@ -261,6 +321,14 @@ export class ZaryaStory {
   static shells(v: { dolls: number }, i: number): number {
     return Math.min(STORY.dollShells, Math.floor(((v.dolls >> (i * 6)) & 63) / STORY.dollKills));
   }
+  /** Mod parts the squad has found and not yet spent (`mods.ts`). */
+  static modParts(v: { k: number }): number {
+    return count(v.k & ((1 << KBIT.spent) - 1)) - (v.k >> KBIT.spent);
+  }
+  /** Kiosk `i`'s shutter is up. */
+  static shutterUp(v: { k: number }, i: number): boolean {
+    return (v.k & bit(KBIT.shutter + i)) !== 0;
+  }
   /** The keys the squad holds, in the mosaic's order. */
   static keys(v: StoryView): boolean[] {
     return [ZaryaStory.did(v, G.cosmoKey), ZaryaStory.has(v, F.bearDown), ZaryaStory.did(v, G.yagaDown), ZaryaStory.did(v, G.tamadaDown)];
@@ -269,7 +337,7 @@ export class ZaryaStory {
   reset(): void {
     this.unlock.reset();
     this.ch = CH.arrive;
-    this.f = this.g = this.m = this.clues = this.covered = this.orn = this.dolls = this.turned = this.end = 0;
+    this.f = this.g = this.m = this.clues = this.covered = this.orn = this.dolls = this.turned = this.end = this.k = 0;
     this.events = [];
   }
 
@@ -352,6 +420,8 @@ export class ZaryaStory {
         return (v.g & G.pond) !== 0;
       case 'institute':
         return (v.g & G.code) !== 0;
+      // the store's second floor and the canteen over it: up the escalator, once its padlock is broken
+      case 'upstairs':
       case 'canteen':
         return (v.g & G.escalator) !== 0;
       case 'berloga':
@@ -398,13 +468,23 @@ export class ZaryaStory {
       case 'cut':
         return GATES.find((q) => q.id === TOWN.gates[i]?.id) ?? null;
       case 'clue':
+      case 'photo':
         return CLUES[i]?.at ?? null;
+      case 'parry':
+        return BERLOGA.morozko;
       case 'cover':
         return COVERS[i] ?? null;
       case 'ornament':
         return ORNAMENTS[i] ?? null;
       case 'tool':
         return TOOLS[i] ?? null;
+      // (a kiosk's shutter, a mod part lying about; a mod is fitted at any bench, like `build`)
+      case 'shutter':
+        return SHUTTERS[i]?.at ?? null;
+      case 'modPart':
+        return MOD_PARTS[i] ?? null;
+      case 'mod':
+        return null;
       case 'unplug':
         return CANTEEN.plugs[i] ?? null;
       case 'valve':
@@ -461,8 +541,14 @@ export class ZaryaStory {
         return act2 && Unlock.canOpen(TOWN, v, i);
       case 'tickets':
         return act2 && !did(G.tickets);
+      case 'photo':
+        // the camera is the Tamada's: nobody has it before he is down
+        if (i < 0 || i >= CLUES.length || !CLUES[i]!.zenit || (v.clues & bit(i)) !== 0 || v.ch >= CH.ended) return false;
+        return did(G.tamadaDown) && ZaryaStory.zoneOpen(v, CLUES[i]!.zone);
+      case 'parry':
+        return did(G.asked) && !did(G.believed) && !did(G.morozkoDown) && v.ch < CH.ended;
       case 'clue':
-        if (i < 0 || i >= CLUES.length || (v.clues & bit(i)) !== 0) return false;
+        if (i < 0 || i >= CLUES.length || CLUES[i]!.zenit || (v.clues & bit(i)) !== 0) return false;
         // the hall's own are there to be seen from the moment its door opens
         return CLUES[i]!.zone === 'berloga' ? v.ch >= CH.finale : ZaryaStory.zoneOpen(v, CLUES[i]!.zone);
       case 'cover':
@@ -473,6 +559,13 @@ export class ZaryaStory {
         return act2 && !did(G.hung) && count(v.orn) === ORNAMENTS.length;
       case 'tool':
         return act2 && i >= 0 && i < TOOLS.length && (v.m & bit(6 + i)) === 0;
+      // ---- kiosk shutters and weapon mods (`mods.ts`) ----
+      case 'shutter':
+        return act2 && i >= 0 && i < SHUTTERS.length && !ZaryaStory.shutterUp(v, i) && ZaryaStory.zoneOpen(v, SHUTTERS[i]!.zone);
+      case 'modPart':
+        return act2 && i >= 0 && i < MOD_PARTS.length && (v.k & bit(KBIT.part + i)) === 0;
+      case 'mod':
+        return v.ch >= CH.ground && v.ch < CH.ended && i >= 0 && i < MOD_COST.length && ZaryaStory.modParts(v) >= MOD_COST[i]!;
       case 'bar':
         return did(G.boryaIn) && !did(G.barred);
       case 'cosmoKey':
@@ -518,6 +611,25 @@ export class ZaryaStory {
       return this.unlock.build(i);
     }
     if (act === 'flare') return onSquare(p.x, p.z) && this.raise(F.flare);
+    if (act === 'mod') {
+      // a weapon mod fitted at a bench: the parts are the squad's, the mod the fitter's own (`mods.ts`); the Charge wants Timur's
+      const bench = BENCHES.find((q) => near(p, q.at, STORY.reach + 1));
+      if (!bench || (MOD_MAIN[i] && !bench.main)) return false;
+      this.k += MOD_COST[i]! << KBIT.spent;
+      this.events.push({ kind: 'mod', i, n: ZaryaStory.modParts(this.view) });
+      return true;
+    }
+    if (act === 'parry') {
+      this.events.push({ kind: 'parry', x: p.x, z: p.z });
+      return true;
+    }
+    if (act === 'photo') {
+      // (the runtime asks only when the flash was aimed at the spot and nothing stood between)
+      if (!near(p, CLUES[i]!.at, STORY.zenit)) return false;
+      this.clues |= bit(i);
+      this.events.push({ kind: 'clue', i });
+      return true;
+    }
     const at = ZaryaStory.where(act, i);
     if (!at || !near(p, at, STORY.reach + (act === 'board' || act === 'cut' || act === 'answer' ? 3 : 0))) return false;
     switch (act) {
@@ -571,6 +683,15 @@ export class ZaryaStory {
       case 'tool':
         this.m |= bit(6 + i);
         this.events.push({ kind: 'tool', i, n: count((this.m >> 6) & 7) });
+        return true;
+      // (the shutter's price is paid by whoever asked, on their own screen, before asking: `runtime.ts`)
+      case 'shutter':
+        this.k |= bit(KBIT.shutter + i);
+        this.events.push({ kind: 'shutter', i });
+        return true;
+      case 'modPart':
+        this.k |= bit(KBIT.part + i);
+        this.events.push({ kind: 'modPart', i, n: ZaryaStory.modParts(this.view) });
         return true;
       case 'bar':
         return this.does(G.barred);
@@ -707,13 +828,14 @@ export class ZaryaStory {
 
 /** The shared state as a co-op report's row, and back (null when the row is not one). */
 export function encodeStory(v: StoryView): number[] {
-  return [v.ch, v.f, v.parts, v.built, v.gates, v.g, v.m, v.clues, v.covered, v.orn, v.dolls, v.turned, v.end];
+  // (`k`, the kiosks and the mods, last: a row from before it had one decodes with none)
+  return [v.ch, v.f, v.parts, v.built, v.gates, v.g, v.m, v.clues, v.covered, v.orn, v.dolls, v.turned, v.end, v.k];
 }
 
 export function decodeStory(row: unknown): StoryView | null {
   if (!Array.isArray(row) || row.length < 13 || !row.every((n) => Number.isInteger(n) && n >= 0)) return null;
   const r = row as number[];
-  return { ch: r[0]!, f: r[1]!, parts: r[2]!, built: r[3]!, gates: r[4]!, g: r[5]!, m: r[6]!, clues: r[7]!, covered: r[8]!, orn: r[9]!, dolls: r[10]!, turned: r[11]!, end: r[12]! };
+  return { ch: r[0]!, f: r[1]!, parts: r[2]!, built: r[3]!, gates: r[4]!, g: r[5]!, m: r[6]!, clues: r[7]!, covered: r[8]!, orn: r[9]!, dolls: r[10]!, turned: r[11]!, end: r[12]!, k: r[13] ?? 0 };
 }
 
 void SHELTER;

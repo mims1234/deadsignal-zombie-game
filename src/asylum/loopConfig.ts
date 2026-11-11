@@ -72,4 +72,5 @@ export const WALL_PRICES: Record<WeaponId, number> = {
   salyut: 0,
   ottepel: 0,
   zenit: 0,
+  raketa: 0,
 };

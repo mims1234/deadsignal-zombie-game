@@ -55,6 +55,8 @@ export const GARAGES = {
   guard: { x: 140.4, z: 154.6 } as Spot,
   /** One of the repairman's three tools (a set of screwdrivers on the wing of the stripped car in the watchman's yard, by its raised bonnet). */
   tool: { x: 233.4, z: 145.2 } as Spot,
+  /** A weapon mod part (`zarya/mods.ts`): a box of Timur's gun parts on his garage's back wall, east of his workbench. */
+  modPart: { x: 175.4, z: 111.2 } as Spot,
   /** By the cooperative's little fir and a child's sledge, against the south fence. */
   ornament: { x: 119.6, z: 167.4 } as Spot,
   /** The watchman's hut (its middle: he stands inside at the window, and nobody else gets in), and the stripped car on blocks (its middle, and the way its nose points). */

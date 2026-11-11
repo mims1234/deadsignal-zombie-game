@@ -27,15 +27,16 @@ import { GARAGES, garagesPeople } from './zones/garages';
 import { INSTITUTE, institutePeople } from './zones/institute';
 import { RYNOK, rynokPeople } from './zones/rynok';
 import { TETS, tetsPeople } from './zones/tets';
+import { UPSTAIRS, upstairsPeople } from './zones/upstairs';
 
 export { inRect };
 export type { Person, PersonRole, Rect, Spot, ZaryaZone };
-export { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, INSTITUTE, RYNOK, TETS };
+export { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, INSTITUTE, RYNOK, TETS, UPSTAIRS };
 
 /** The street map: the whole town, ten zones. */
 export const ZARYA_BOUNDS = { minX: -230, maxX: 246, minZ: -190, maxZ: 172 };
-/** All the space there is: the street map, and the interiors built beside it (the shelter, the canteen, the Berloga hall). */
-export const ZARYA_SPACE = { minX: -230, maxX: 580, minZ: -190, maxZ: 172 };
+/** All the space there is: the street map, and the interiors built beside it (the shelter, the canteen, the Berloga hall, the store's second floor). */
+export const ZARYA_SPACE = { minX: -230, maxX: 700, minZ: -190, maxZ: 172 };
 /** The middle band the first two zones were built in (the square and the store measure themselves against it). */
 export const CORE = { minX: -104, maxX: 146, minZ: -70, maxZ: 72 };
 
@@ -59,6 +60,8 @@ export const ZARYA_ZONES: readonly Zone<ZaryaZone>[] = [
   { id: 'shelter', name: 'THE SHELTER', x0: 350, z0: -40, x1: 410, z1: 40, near: [] },
   { id: 'canteen', name: 'THE CANTEEN', x0: CANTEEN.rect.x0 - 8, z0: -40, x1: CANTEEN.rect.x1 + 8, z1: 40, near: [] },
   { id: 'berloga', name: 'THE BERLOGA HALL', x0: BERLOGA.rect.x0 - 8, z0: -40, x1: BERLOGA.rect.x1 + 8, z1: 40, near: [] },
+  // the Univermag's second floor: up the store's escalator, and on up from it to the canteen
+  { id: 'upstairs', name: 'UNIVERMAG, SECOND FLOOR', x0: UPSTAIRS.rect.x0 - 8, z0: -40, x1: UPSTAIRS.rect.x1 + 8, z1: 40, near: [] },
 ];
 
 /** What opens a gate (`story.ts` says when each is true). */
@@ -85,16 +88,18 @@ export const GATES: readonly { id: string; name: string; x: number; z: number; a
 export type StopKey = 'always' | 'act2' | 'cutDepot' | 'pond';
 /**
  * Line One's stops, in the order Zina drives them (a loop). A tram stands at each (the frame builds the stop and the
- * car: the car lies east-west with its doors on its south side, `door` is where a player boards). A zone's layout
- * keeps a strip 44 m by 9 m clear round its stop.
+ * car: the car lies east-west with its doors on the side `door` is on, two cars coupled at `x`). `door` is where a
+ * player boards and gets off: in front of the second car's near door, 2.7 m east of the coupling (the ride back is
+ * asked for 6 m west of it, in front of the first car's near door). A zone's layout keeps a strip 44 m by 9 m clear
+ * round its stop.
  */
 export const STOPS: readonly { id: string; name: string; zone: ZaryaZone; x: number; z: number; door: Spot; opens: StopKey }[] = [
-  { id: 'square', name: 'ZARYA SQUARE', zone: 'square', x: 24, z: -54, door: { x: 24, z: -52 }, opens: 'always' },
-  { id: 'rynok', name: 'RYNOK', zone: 'rynok', x: 194, z: -54, door: { x: 194, z: -52 }, opens: 'act2' },
-  { id: 'depot', name: 'TRAM DEPOT', zone: 'depot', x: 176, z: -128, door: { x: 176, z: -126 }, opens: 'cutDepot' },
-  { id: 'pond', name: 'POND ROAD', zone: 'banya', x: 76, z: -82, door: { x: 76, z: -80 }, opens: 'pond' },
-  { id: 'plant', name: 'INSTITUTE ROAD', zone: 'tets', x: -60, z: -82, door: { x: -60, z: -80 }, opens: 'pond' },
-  { id: 'dvor', name: 'STROITELEY STREET', zone: 'dvor', x: -24, z: 165, door: { x: -24, z: 163 }, opens: 'act2' },
+  { id: 'square', name: 'ZARYA SQUARE', zone: 'square', x: 24, z: -54, door: { x: 26.7, z: -52 }, opens: 'always' },
+  { id: 'rynok', name: 'RYNOK', zone: 'rynok', x: 194, z: -54, door: { x: 196.7, z: -52 }, opens: 'act2' },
+  { id: 'depot', name: 'TRAM DEPOT', zone: 'depot', x: 176, z: -128, door: { x: 178.7, z: -126 }, opens: 'cutDepot' },
+  { id: 'pond', name: 'POND ROAD', zone: 'banya', x: 76, z: -82, door: { x: 78.7, z: -80 }, opens: 'pond' },
+  { id: 'plant', name: 'INSTITUTE ROAD', zone: 'tets', x: -60, z: -82, door: { x: -57.3, z: -80 }, opens: 'pond' },
+  { id: 'dvor', name: 'STROITELEY STREET', zone: 'dvor', x: -24, z: 165, door: { x: -21.3, z: 163 }, opens: 'act2' },
 ];
 
 /** The square's paving. */
@@ -162,7 +167,7 @@ export const ZARYA = {
   stop: { x: -4, z: -49.2 },
   tram: { x0: 8, x1: 40, z: -54 },
   cab: { x: 38.6, z: -52.2 },
-  tramDoor: { x: 24, z: -52 },
+  tramDoor: { x: 26.7, z: -52 }, // in front of the second car's near door (as `STOPS` square's door)
   fuseBox: { x: -10.5, z: -50.4 },
   /** Where Ded Moroz stands at the act's end: on the track the tram has just left. */
   morozko: { x: -30, z: -54 },
@@ -191,9 +196,10 @@ export const ZARYA = {
   maintenance: { x0: 122, z0: 14, x1: 131.5, z1: 25 },
   stairRoom: { x0: 131.5, z0: 14, x1: 140, z1: 25 },
   bench: { x: 126.8, z: 15.6 },
-  /** The door from the service lane into the stair room (Nina holds it), and the head of the stairs down. */
+  /** The door from the service lane into the stair room (Nina holds it), and the head of the stairs down (an opening in
+   * the floor along the east wall, the flight going down northwards: `world/layout/zaryaStore.ts` `stairPit`). */
   laneDoor: { x: 135.5, z: 25 },
-  stairHead: { x: 138.2, z: 17.2 },
+  stairHead: { x: 137.95, z: 23.15 },
 
   // ---- the shelter ----
   stairFoot: { x: 362, z: 0 },
@@ -213,7 +219,7 @@ export const SPEAKERS: readonly Spot[] = [...LAMPS, { x: 100, z: 13 }, { x: 131,
 
 /** Under the shelter's ceiling. */
 export const inShelter = (x: number): boolean => x > 350 && x < 410;
-/** In one of the interiors built beside the map (the shelter, the canteen, the Berloga hall). */
+/** In one of the interiors built beside the map (the shelter, the canteen, the Berloga hall, the store's second floor). */
 export const inInterior = (x: number): boolean => x > ZARYA_BOUNDS.maxX + 20;
 /** Inside the store's walls. */
 export const inStore = (x: number, z: number): boolean => inRect(STORE, x, z);
@@ -242,6 +248,8 @@ function keptClear(x: number, z: number): boolean {
   // the ice town's walls and slide (people stand inside it, but not in its walls)
   if (inRect(Z.ice, x, z, 1) && (Math.abs(x - Z.ice.x0) < 2 || Math.abs(x - Z.ice.x1) < 2 || Math.abs(z - Z.ice.z0) < 2 || Math.abs(z - Z.ice.z1) < 2)) return true;
   if (x > Z.slide.x0 - 4 && x < Z.slide.x1 + 3 && Math.abs(z - Z.slide.z) < 3.2) return true;
+  // the stair down the slide tower's north side, and the rope at its foot
+  if (Math.abs(x - (Z.slide.x0 - 2)) < 2 && z > Z.slide.z - 9 && z < Z.slide.z) return true;
   // the foot of the slide and its hook: the bear's ground
   if (Math.hypot(x - Z.hook.x, z - (Z.hook.z + 1)) < 5) return true;
   // lamp posts, the clock, the sack
@@ -309,7 +317,7 @@ export function people(): readonly Person[] {
   const shop = (n: number): void => {
     for (let i = 0, tries = 0; i < n && tries < n * 20; tries++) {
       const x = S.x0 + 3 + r() * (S.x1 - S.x0 - 6);
-      const z = S.z0 + 7.5 + r() * (S.strip - S.z0 - 9.5);
+      const z = S.z0 + 7.5 + r() * (S.strip - S.z0 - 11); // not in the strip along the noticeboard and the soda machines
       if (storeSolid(x, z) || !free(x, z, 1.3)) continue;
       // the way out of the staff rooms, the foot of the escalator and the doors are left clear
       if (Math.hypot(x - Z.staffDoor.x, z - Z.staffDoor.z) < 4 || Math.hypot(x - Z.gena.x, z - Z.gena.z) < 3.5 || (x < 76 && Math.abs(z + 2) < 10)) continue;
@@ -326,7 +334,7 @@ export function people(): readonly Person[] {
   // ---- the shelter ----
   add(Z.nina.x, Z.nina.z, yawTo(Z.nina.x, Z.nina.z, Z.blastDoor.x, 0), 'nina', true);
   add(Z.kostya.x, Z.kostya.z, yawTo(Z.kostya.x, Z.kostya.z, Z.blastDoor.x, 0), 'kostya', true);
-  for (const [seed, fn] of [[11, rynokPeople], [12, dvorPeople], [13, garagesPeople], [14, depotPeople], [15, dkPeople], [16, banyaPeople], [17, tetsPeople], [18, institutePeople], [19, berlogaPeople], [20, canteenPeople]] as const) {
+  for (const [seed, fn] of [[11, rynokPeople], [12, dvorPeople], [13, garagesPeople], [14, depotPeople], [15, dkPeople], [16, banyaPeople], [17, tetsPeople], [18, institutePeople], [19, berlogaPeople], [20, canteenPeople], [21, upstairsPeople]] as const) {
     const zr = lcg(1957 + seed * 7919);
     fn((x, z, yaw, role = 'towns', solid = true, y = 0) => out.push({ x, z, y, yaw, role, seed: zr(), solid }), zr);
   }

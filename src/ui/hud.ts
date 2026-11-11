@@ -215,8 +215,8 @@ class Hud implements HudApi {
         this.feed.push(e.text, e.tone);
         break;
       case 'radio':
-        if (onPhone()) this.topLine.radio(e.speaker, e.text);
-        else this.radio.push(e.speaker, e.text, e.duration);
+        if (onPhone()) this.topLine.radio(e.speaker, e.text, e.now);
+        else this.radio.push(e.speaker, e.text, e.duration, e.now);
         break;
       case 'flash':
         this.fx.flash(e.color, e.strength);

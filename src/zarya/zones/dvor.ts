@@ -22,6 +22,8 @@ export const DVOR = {
    * with role 'babushka' is at it, inside, 1.1 m north of the spot). West yard, in the north block just west of the archway.
    */
   babushka: { x: -38, z: 87.7 } as Spot,
+  /** The Zenit's marked spot (a faint frost ring, `photos.ts`): on the path below the grandmother's window, where the yard looked up at the first snow at 23:57. */
+  zenit: { x: -37.4, z: 91.6 } as Spot,
   /**
    * A lit ground-floor window to look through (the spot is half a metre out from it): a family at the New Year table,
    * and the television's frozen frame (a clue). In the north block, at the top of the east yard.
@@ -41,6 +43,13 @@ export const DVOR = {
   shaft: { x: 94.7, z: 105.6 } as Spot,
   /** One of the repairman's three tools (a soldering iron on a ground-floor windowsill of the west block, 1.5 m up, beside a radio with its back off). */
   tool: { x: -91.2, z: 110.5 } as Spot,
+  /**
+   * The kiosk shutter bought open with points (`zarya/mods.ts`): the middle of the shutter's foot on a shut kiosk just
+   * inside the west yard's way in from the street (the gap in the board fence), its back to the east, facing `shutterYaw`
+   * (west: whoever comes in off the street walks straight at it). The kiosk is `zaryaDvor.ts`'s, built by `shutterKiosk`.
+   */
+  shutter: { x: -65.12, z: 153.2 } as Spot,
+  shutterYaw: Math.PI / 2,
   /** A glass ornament: by the box of them under the yard fir in the east yard. */
   ornament: { x: 47.4, z: 109.5 } as Spot,
   /** Sleepers who can be covered against the cold (a person stands at each: see `people`). */
@@ -51,6 +60,8 @@ export const DVOR = {
   doors: [{ x: -62, z: 87.2 }, { x: 50.8, z: 88.2 }] as Spot[],
   /** The yard fir in the east yard, strung with lights. */
   fir: { x: 46, z: 108 } as Spot,
+  /** One of the places Ded Moroz's sack turns up (`zarya/sack.ts`): in the east yard by the yard fir (south-east of it), on open snow with room all round. */
+  sack: { x: 52, z: 114 } as Spot,
   /** How high the floor of a ground-floor room is above the yard (the people in the two rooms stand on it). */
   roomFloor: 0.35,
   /** The hockey box in the south of the west yard (boards a metre high: shots pass over), and the way into it, in the middle of its north side (2.6 m wide). */
@@ -145,4 +156,7 @@ export const dvorPeople: PeopleFn = (add, r) => {
   for (const [dx, dz, role, sink] of [[0.35, 1.05, 'towns', 0.45], [1.55, 1.8, 'towns', 0.45], [-1.9, 1.3, 'towns', 0], [-0.75, 1.45, 'child', 0.4]] as const) {
     add(t.x + dx, zf + dz, yawTo(t.x + dx, zf + dz, tvx, tvz), role, false, f - sink);
   }
+  // in each open stairwell door, on its top step: someone caught stepping out, holding the door, who fills the doorway
+  // (the dark stairwell behind is not a way in: the porch is solid, and now the doorway is plainly taken)
+  for (const d of DVOR.doors) add(d.x - 0.1, d.z - 1.75, yawTo(0, 0, 0.15, 1), 'towns', false, 0.45);
 };

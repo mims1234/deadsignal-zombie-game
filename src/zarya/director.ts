@@ -25,7 +25,7 @@ import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { Level } from '../world/level';
 import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type Spot, type ZaryaZone } from './places';
-import { CH, F, G, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
+import { CH, F, G, LOOKED, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
 import { yawTo } from './types';
 
 /** What the director saw this frame, for the story to note. */
@@ -54,6 +54,44 @@ export const BOSS = {
    */
   morozko: { near: 3, hp: 1, gap: 4, cap: 5 },
 } as const;
+
+/**
+ * Morozko's question. Before each heavy blow (the Warden body's slam) he stops, asks "Are you warm?" and holds the
+ * blow for its wind-up (1.1 s): a guard raised to him, or a swing landing in that pause, is a parry. He reels for
+ * `stagger` seconds and the weak points open on his coat, one for every clue the squad has found (`weakMax` at most):
+ * a blow landing on the side of him an open one is on is worth `weakMul` and closes it. The rest close when he
+ * recovers. His health is not changed by any of this (`stepMorozko` scales it by the clues that were looked at).
+ */
+export const PARRY = {
+  stagger: 3,
+  weakMul: 3,
+  weakMax: 6,
+  /** A parry asked for this long after his question is over still counts (in co-op the request takes a moment to arrive). */
+  grace: 0.35,
+  /** Only a player this near him can have blocked or struck him. */
+  reach: 5,
+  /** Seconds from one heavy blow (and its question) to the next (the Warden's own are 9 apart). */
+  every: 6,
+} as const;
+
+/** Which side of his coat each weak point is on (0 front, 1 back, 2 his left, 3 his right), in the order they open. */
+export const WEAK_SIDE: readonly (0 | 1 | 2 | 3)[] = [0, 1, 2, 3, 0, 1];
+
+/** The side of someone facing `yaw` that a blow travelling `hitDirYaw` lands on: 0 front, 1 back, 2 their left, 3 their right. */
+export function sideHit(yaw: number, hitDirYaw: number): 0 | 1 | 2 | 3 {
+  const a = wrap(hitDirYaw - yaw);
+  const abs = Math.abs(a);
+  if (abs >= (Math.PI * 3) / 4) return 0;
+  if (abs <= Math.PI / 4) return 1;
+  // travelling toward his right: it came from his left
+  return a < 0 ? 2 : 3;
+}
+
+/** The open weak point (a bit of `mask`) a blow on `side` lands on, or -1. */
+export function weakAt(mask: number, side: number): number {
+  for (let i = 0; i < WEAK_SIDE.length; i++) if ((mask & (1 << i)) !== 0 && WEAK_SIDE[i] === side) return i;
+  return -1;
+}
 
 const WEST = yawTo(0, 0, -1, 0);
 const EAST = yawTo(0, 0, 1, 0);
@@ -122,6 +160,16 @@ export class ZaryaDirector {
   /** Morozko: his health with every clue found (one weak point each), and whether he is fighting. */
   private morozkoBase = 0;
   private fight = false;
+  /**
+   * Morozko's question (`PARRY`): he is asking now; seconds since he last finished asking; his health when he began;
+   * seconds he still reels from a parry; the weak points open on his coat (bits, `WEAK_SIDE`); parries so far.
+   */
+  private asking = false;
+  private askT = Infinity;
+  private askHp = 0;
+  private reelT = 0;
+  private weak = 0;
+  private parries = 0;
   private readonly canteen: Room = { rect: CANTEEN.rect, spots: CANTEEN.spawns, t: 0, gap: 1, cap: 0, next: 1.5 };
   private readonly berloga: Room = { rect: BERLOGA.rect, spots: BERLOGA.spawns, t: 0, gap: BOSS.morozko.gap, cap: BOSS.morozko.cap, next: 1.5 };
   /** An ending has come: everyone stands where they stood, and nothing spawns again. */
@@ -162,6 +210,9 @@ export class ZaryaDirector {
     this.tamadaDown = false;
     this.morozkoBase = 0;
     this.fight = false;
+    this.asking = false;
+    this.askT = Infinity;
+    this.askHp = this.reelT = this.weak = this.parries = 0;
     // the first to answer a toast, or Morozko, takes a moment to get to the door
     this.canteen.t = this.berloga.t = 0;
     this.canteen.next = this.berloga.next = 1.5;
@@ -189,6 +240,11 @@ export class ZaryaDirector {
   spared(z: Zombie): boolean {
     if (z.invulnerable) return true;
     return z.script instanceof Hold && z !== this.named.yaga;
+  }
+
+  /** Morozko's weak points as they stand: which are open (bits of `WEAK_SIDE`), how long he still reels, how many parries so far. */
+  get morozko(): { weak: number; reel: number; parries: number } {
+    return { weak: this.reelT > 0 ? this.weak : 0, reel: this.reelT, parries: this.parries };
   }
 
   /** Where each infected died since the last call (the matryoshkas count them: `ZaryaStory.kill`). Not the named bosses. */
@@ -264,6 +320,12 @@ export class ZaryaDirector {
       return;
     }
     if (this.over) return;
+    if (e.kind === 'parry') {
+      // someone blocked or swung into Morozko's question: it counts if he was asking (or just had) and they were near him
+      const m = this.where('morozko');
+      if (m && this.fight && this.reelT <= 0 && (this.asking || this.askT <= PARRY.grace) && Math.hypot(e.x - m.x, e.z - m.z) <= PARRY.reach) this.parry(m, v);
+      return;
+    }
     if (e.kind === 'chapter') {
       if (e.ch === CH.ground) {
         // Gena, at the foot of the escalator with his back to the stairs: he does not look round until someone is in the hall
@@ -413,7 +475,7 @@ export class ZaryaDirector {
     this.stepBorya(v, up);
     this.stepYaga(dt, v, up);
     this.stepTamada(dt, v, up);
-    this.stepMorozko(v, up);
+    this.stepMorozko(dt, v, up);
     this.room(this.canteen, dt, up, rng);
     this.room(this.berloga, dt, up, rng);
     return this.notes;
@@ -572,22 +634,26 @@ export class ZaryaDirector {
   /**
    * MOROZKO. He stands and waits; once he has asked, a blow lands. Believed, he never fights. Otherwise the fight
    * starts the moment the answer is not believed, or he is hurt, or a standing player walks right up to him: he hunts,
-   * and the hall's sleepers keep waking for as long as he stands. Every clue the squad found is one weak point more.
+   * and the hall's sleepers keep waking for as long as he stands. Every clue the squad found is one weak point more
+   * (`PARRY`), and every clue that was looked at takes something off his health.
    */
-  private stepMorozko(v: StoryView, up: readonly Stand[]): void {
+  private stepMorozko(dt: number, v: StoryView, up: readonly Stand[]): void {
     const m = this.named.morozko;
     if (!m) return;
     const did = (flag: number): boolean => (v.g & flag) !== 0;
     if (!m.alive) {
       this.named.morozko = null;
       this.fight = false;
+      this.asking = false;
+      this.reelT = this.weak = 0;
       this.berloga.t = 0;
       this.notes.push('morozkoDown');
       // the hall goes quiet: whoever else was woken in it stands where they are
       for (const z of this.zombies.zombies) if (z.alive && inRect(BERLOGA.rect, z.x, z.z)) this.hold(z, null);
       return;
     }
-    const want = this.morozkoBase * (2.4 - 0.1 * ZaryaStory.count(v.clues));
+    // (the Zenit's photographs open weak points, but take nothing off his health)
+    const want = this.morozkoBase * (2.4 - 0.1 * ZaryaStory.count(v.clues & LOOKED));
     if (Math.abs(m.maxHp - want) > 1e-6) {
       const left = m.hp / m.maxHp;
       m.maxHp = want;
@@ -595,6 +661,8 @@ export class ZaryaDirector {
     }
     if (did(G.believed)) {
       m.invulnerable = true;
+      this.asking = false;
+      this.reelT = this.weak = 0;
       if (this.fight) {
         // believed after the fight had started (the answer can be given mid-fight, from 6.6 m): he stops, and so does
         // the hall, as when he falls - a believed Morozko never goes on fighting the squad that warmed his town
@@ -608,6 +676,7 @@ export class ZaryaDirector {
     if (this.fight) {
       // for as long as he stands (and anyone stands against him: `room`)
       this.berloga.t = 1;
+      this.question(dt, m, v);
       return;
     }
     if (!did(G.asked)) return;
@@ -616,8 +685,59 @@ export class ZaryaDirector {
     if (did(G.answered) || hurt || up.some((p) => Math.hypot(p.x - m.x, p.z - m.z) <= BOSS.morozko.near)) {
       this.fight = true;
       this.berloga.t = 1;
+      // his heavy blow comes with his question, and a swing into it is a parry (`Zombie.windingUp`)
+      m.parrySlam = true;
+      m.slamGap = PARRY.every;
+      m.hurtMul = (amount, dir) => this.weakHit(m, amount, dir);
       this.wake(m, up);
     }
+  }
+
+  /**
+   * Morozko fighting, one frame: he asks his question in each slam's wind-up (the screens show it from his pose:
+   * `Zombie.poseMode` 'slam'). A swing landing in it staggers him (`meleeSystem`, any screen that runs the infected):
+   * that is a parry. A guard raised to him in it is asked for (`story.act('parry')`, `onEvent`).
+   */
+  private question(dt: number, m: Zombie, v: StoryView): void {
+    const slam = m.windingUp && m.poseMode === 'slam';
+    if (slam && !this.asking) {
+      this.asking = true;
+      this.askHp = m.hp;
+    } else if (!slam && this.asking) {
+      this.asking = false;
+      this.askT = 0;
+    } else if (!slam) this.askT += dt;
+    // a blow that landed in the pause and threw him back
+    if (this.reelT <= 0 && (this.asking || this.askT <= PARRY.grace) && m.state === 'stagger' && m.hp < this.askHp - 1e-6) this.parry(m, v);
+    if (this.reelT > 0) {
+      this.reelT -= dt;
+      if (this.reelT <= 0) {
+        this.reelT = 0;
+        this.weak = 0;
+      } else if (m.state !== 'stagger') {
+        // something else stopped him for less (the Zenit's flash): he reels for the rest of it
+        m.stagger(this.reelT);
+      }
+    }
+  }
+
+  /** Caught in his question: he reels, and his weak points open (one for every clue found, `PARRY.weakMax` at most). */
+  private parry(m: Zombie, v: StoryView): void {
+    this.asking = false;
+    this.askT = Infinity;
+    this.reelT = PARRY.stagger;
+    this.weak = (1 << Math.min(PARRY.weakMax, ZaryaStory.count(v.clues))) - 1;
+    this.parries++;
+    m.stagger(PARRY.stagger);
+  }
+
+  /** A blow on Morozko: on an open weak point's side it is worth `PARRY.weakMul`, and that one closes. */
+  private weakHit(m: Zombie, amount: number, dir: number): number {
+    if (this.reelT <= 0 || this.weak === 0) return amount;
+    const i = weakAt(this.weak, sideHit(m.yaw, dir));
+    if (i < 0) return amount;
+    this.weak &= ~(1 << i);
+    return amount * PARRY.weakMul;
   }
 
   /**

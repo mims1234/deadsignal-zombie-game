@@ -186,6 +186,12 @@ export class Zombie {
   invulnerable = false;
   /** ZARYA's bear suit: the share of a blow that is lost in the padding unless it lands from behind (0 = none). */
   frontArmor = 0;
+  /** ZARYA's Morozko: the wind-up of his slam (he asks his question in it) can be parried like a blow's (`windingUp`). */
+  parrySlam = false;
+  /** ZARYA's Morozko: seconds between his slams (null: the Warden's own `WARDEN.slamCooldown`). */
+  slamGap: number | null = null;
+  /** ZARYA's Morozko: what is left of a blow (travelling `hitDirYaw`) once his weak points have had their say. */
+  hurtMul: ((amount: number, hitDirYaw: number) => number) | null = null;
   /** Jorogumo: up on the ceiling (drawn there; drops when close). */
   ceiling = false;
   /** Infected it calls up (the miko, the Empress): the manager spawns them after the update. */
@@ -358,6 +364,9 @@ export class Zombie {
     this.isAmbient = opts.ambient ?? false;
     this.enraged = false;
     this.markedT = 0;
+    this.parrySlam = false;
+    this.slamGap = null;
+    this.hurtMul = null;
     this.buried = (this.variant === 'rooted' || this.variant === 'drowned') && (opts.state ?? 'idle') === 'idle';
     this.ceiling = false;
     this.varT = this.variant === 'empress' || this.variant === 'overseer' ? 12 : 0;
@@ -1423,6 +1432,7 @@ export class Zombie {
       }
       return false;
     }
+    if (this.hurtMul) amount = this.hurtMul(amount, hitDirYaw);
     this.hp -= amount;
     this.hitKick = 1;
     if (this.state === 'idle') {
@@ -1462,14 +1472,15 @@ export class Zombie {
     if (this.active) this.markedT = Math.max(this.markedT, seconds);
   }
 
-  stagger(duration: number, env: ZombieEnv): void {
+  stagger(duration: number, env?: ZombieEnv): void {
     if (!this.active) return;
     this.enterState('stagger');
     this.staggerT = 0;
     this.staggerDur = duration;
     this.vx = this.vz = 0;
     this.chargeLock = false;
-    this.say(env, 'zombie_hurt', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.8, priority: 1 });
+    // (no `env`: ZARYA's director, which has no sound to play, staggers Morozko for a parry)
+    if (env) this.say(env, 'zombie_hurt', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.8, priority: 1 });
   }
 
   private fallStyle(env: ZombieEnv, hitDirYaw: number): void {
@@ -1983,7 +1994,7 @@ export class Zombie {
 
   /** Drawing back for a blow that has not landed yet: the moment a swung weapon can parry it (`logic/melee.ts`). */
   get windingUp(): boolean {
-    return this.state === 'attack' && this.attackKind === 'melee' && this.attackTime < this.attackTimes().windup;
+    return this.state === 'attack' && (this.attackKind === 'melee' || (this.parrySlam && this.attackKind === 'slam')) && this.attackTime < this.attackTimes().windup;
   }
 
   private attackTimes(): { windup: number; strike: number; recovery: number } {
@@ -2076,7 +2087,7 @@ export class Zombie {
     else if (this.act === 2) this.actCd = ZARYA_HABITS.cast.cooldown * (0.85 + env.rng.f() * 0.3);
     this.enterState(env.player.alive ? 'chase' : 'idle');
     this.cooldown = this.variant === 'court' ? 1.1 + env.rng.f() * 0.8 : this.attackKind === 'melee' ? 0.15 : 0.9;
-    if (this.attackKind === 'slam') this.slamCd = WARDEN.slamCooldown;
+    if (this.attackKind === 'slam') this.slamCd = this.slamGap ?? WARDEN.slamCooldown;
     if (this.attackKind === 'charge') this.chargeCd = this.isBoss ? WARDEN.chargeCooldown : ZARYA_HABITS.charge.cooldown;
     this.chargeLock = false;
   }

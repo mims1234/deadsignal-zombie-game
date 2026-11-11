@@ -6,6 +6,7 @@
 import type { QualityLevel, Region, Settings, WeaponId, ZombieType } from './types';
 import type { MapId } from './world/layout/data';
 import type { SoundId } from './audio/ids';
+import type { MeleeId } from './logic/melee';
 
 // ---------------------------------------------------------------------------------------------
 // Weapons
@@ -842,9 +843,59 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       zaryaTier('MK III', 'A brighter bulb.', 99999, 1, 0, 0, 1),
     ],
   },
+  // ---- ZARYA's sack gun: out of Ded Moroz's sack only, never built, bought or sold (`MYSTERY_BOX.mapPrizes`) ----
+  raketa: {
+    id: 'raketa',
+    name: 'Raketa Vacuum Cannon',
+    short: 'RAKETA',
+    auto: true,
+    /** Damage of EACH round it fires back (`ZARYA_GUNS.raketa`): hold to suck rounds in, let go to fire them all. `magSize` is how many it holds; there is no reserve. */
+    damage: 160,
+    pellets: 1,
+    headshotMul: 1.25,
+    /** The seconds after a blast before it sucks again. */
+    fireInterval: 0.55,
+    magSize: 6,
+    reserveStart: 0,
+    reserveMax: 0,
+    reloadStyle: 'magazine',
+    reloadTactical: 1,
+    reloadEmpty: 1,
+    reloadTransferAt: 0.7,
+    shellStart: 0,
+    shellEach: 0,
+    shellEnd: 0,
+    shellPump: 0,
+    spreadHip: 0,
+    spreadAds: 0,
+    spreadMove: 0,
+    spreadAir: 0,
+    spreadPerShot: 0,
+    spreadMax: 0,
+    spreadRecover: 4,
+    recoilPitch: 5.5,
+    recoilYaw: 1.2,
+    recoilRecover: 7,
+    falloffStart: 9,
+    falloffEnd: 18,
+    minMul: 0.5,
+    maxRange: 18,
+    adsFovMul: 0.9,
+    adsTime: 0.26,
+    moveMul: 0.92,
+    noise: 34,
+    drawTime: 0.6,
+    tracerColors: [0xe8eef6, 0xffe4c0, 0xc8f0ff],
+    price: 0,
+    ammoPrice: 0,
+    tiers: [
+      zaryaTier('MK II', 'A second motor: +25% blast damage.', 3000, 1.25, 0, 0, 1),
+      zaryaTier('MK III', "The factory's export model: +50% blast damage.", 5600, 1.5, 0, 0, 1),
+    ],
+  },
 };
 
-export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit'];
+export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit', 'raketa'];
 
 /** An upgrade tier of one of ZARYA's guns (no change to the fire rate, the recoil, the spread or the pellets). */
 function zaryaTier(label: string, description: string, cost: number, damageMul: number, magSizeAdd: number, reserveMaxAdd: number, reloadMul: number, armorPierce = 0): UpgradeTier {
@@ -904,6 +955,29 @@ export const ZARYA_GUNS = {
     stagger: 3.5,
     bossStagger: 1,
   },
+  /**
+   * The Raketa, a Soviet household vacuum cleaner made into a gun: held, it sucks along a cone in front, dragging the
+   * infected in it toward the player and holding them reeling, and swallows what lies loose (a round on its gauge every
+   * `fill` seconds, up to its `magSize`); let go, it fires every round back at once as one heavy blast in a narrow cone.
+   */
+  raketa: {
+    /** The suck: a cone this long (m) and this wide (degrees, the whole angle), blocked by walls. */
+    range: 8,
+    cone: 60,
+    /** How fast the infected in it are dragged in (m/s), and the nearest they are dragged (m from the player). */
+    pull: 2.6,
+    stopAt: 1.7,
+    /** Each one in it reels this long, again every `holdEvery` seconds while it stays in the cone (a boss: never). */
+    stagger: 0.6,
+    holdEvery: 0.5,
+    /** Seconds of sucking for each round it swallows. */
+    fill: 0.38,
+    /** The blast: each round leaves inside a cone this wide (degrees, the whole angle). */
+    blastCone: 12,
+    /** How hard a round pushes at its target's poise, and how far a blast throws back the ones it does not kill (m). */
+    impulse: 2.5,
+    knock: 1.6,
+  },
 } as const;
 
 /** Raijin's Drum: a shockwave in front of you, and a bolt that leaps from infected to infected. */
@@ -941,8 +1015,8 @@ export const ROCKET = {
  * How hard a killing blow throws the body (m/s along the shot, and up). Explosions scale with distance from the blast.
  */
 export const RAGDOLL = {
-  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, signalka: 3, arbalet: 5, gvozdomyot: 2.6, salyut: 0, ottepel: 2, zenit: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
-  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, signalka: 1, arbalet: 1.2, gvozdomyot: 0.6, salyut: 0, ottepel: 0.8, zenit: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
+  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, signalka: 3, arbalet: 5, gvozdomyot: 2.6, salyut: 0, ottepel: 2, zenit: 0, raketa: 7, ally: 1.8 } as Record<WeaponId | 'ally', number>,
+  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, signalka: 1, arbalet: 1.2, gvozdomyot: 0.6, salyut: 0, ottepel: 0.8, zenit: 0, raketa: 2.6, ally: 0.6 } as Record<WeaponId | 'ally', number>,
   /** Explosions: speed at the centre, falling off to `blastEdge` at the edge; lift is `blastLift` times that. */
   blastCenter: 15,
   blastEdge: 5,
@@ -1359,10 +1433,23 @@ export const MYSTERY_BOX = {
   /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
   /** The Sakura District's relics are never in its boxes (weight 0): there they are earned at Kisaragi. */
   /** ZARYA's guns are never in a box either (weight 0): they are built, bought or dropped there. */
-  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0, signalka: 0, arbalet: 0, gvozdomyot: 0, salyut: 0, ottepel: 0, zenit: 0 } as Record<WeaponId, number>,
+  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0, signalka: 0, arbalet: 0, gvozdomyot: 0, salyut: 0, ottepel: 0, zenit: 0, raketa: 0 } as Record<WeaponId, number>,
   /** Maps whose boxes hold the relics too, and how often (MUJIN: the station they came through). */
   relicMaps: ['mujin'] as readonly MapId[],
   relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
+  /**
+   * What only one map's box holds, beside the stock guns, by weight among them (the stock guns' weights add up to 10):
+   * ZARYA's sack is the only place the Raketa vacuum cannon and the Kisten flail come from. A gun goes into a gun
+   * slot, a weapon to swing into the hand that swings (`logic/mysteryBox.ts`: `takePrize`).
+   */
+  mapPrizes: {
+    zarya: { guns: { raketa: 2 }, melee: { kisten: 2 } },
+  } as Partial<Record<MapId, { guns?: Partial<Record<WeaponId, number>>; melee?: Partial<Record<MeleeId, number>> }>>,
+  /**
+   * A box that moves (ZARYA's sack): after this many openings it is gone from where it stands and turns up at another of
+   * its places (`logic/boxMove.ts`; the places are the map's own, `zarya/sack.ts`).
+   */
+  moves: { zarya: { every: 4 } } as Partial<Record<MapId, { every: number }>>,
   /** A paid box (MUJIN's): what a turn costs, and the seconds after its prize is gone before the next turn. */
   paidCost: 150,
   paidRearm: 1.2,

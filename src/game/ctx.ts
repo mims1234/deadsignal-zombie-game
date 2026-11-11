@@ -3,6 +3,7 @@ import type * as THREE from 'three';
 import type { AudioEngineApi } from '../audio/ids';
 import type { ZombieManager } from '../enemies/zombieManager';
 import type { FxApi } from '../fx/fxTypes';
+import type { MeleeId } from '../logic/melee';
 import type { Rng } from '../logic/rng';
 import type { Input } from '../player/input';
 import type { Player } from '../player/player';
@@ -26,6 +27,8 @@ export interface GameCtx {
   readonly player: Player;
   readonly input: Input;
   readonly weapons: WeaponSystem;
+  /** What is swung beside the guns, on a map with melee (ZARYA); a box's weapon to swing goes here (`game/entities.ts`). */
+  readonly melee?: { readonly carried: MeleeId | null; equip(id: MeleeId): void; setOut(out: boolean): void } | null;
   readonly zombies: ZombieManager;
   readonly grenades: GrenadeSystem;
   readonly flow: FlowField;

@@ -171,6 +171,10 @@ function shell(c: Ctx): void {
   wall(b, { ...outer, x0: K.x0 + T / 2, z0: K.z0, x1: K.x0 + T / 2, z1: K.z1 });
   // the south side: the director's windows and the cold lab's
   wall(b, { ...outer, x0: K.x0, z0: K.z1 - T / 2, x1: K.x1, z1: K.z1 - T / 2, openings: [win(5.5, 3.4, 1.8, 1), win(11, 3.4, 1.8, 1), win(19.5, 4, 1.8, 1), win(25.5, 4, 1.8, 1)] });
+  // the lit panes (warm, curtained) are how the block looks from the road at night; from inside, the same windows look
+  // out onto the dark: a night pane just inside each
+  for (const [at, w] of [[5.5, 3.4], [11, 3.4], [19.5, 4], [25.5, 4]] as const) box(b, NIGHT, K.x0 + at, 1.9, K.z1 - T / 2 - 0.05, w - 0.12, 1.68, 0.02, 0, false);
+  for (const at of [16, 23, 37, 44]) box(b, NIGHT, K.x1 - T / 2 - 0.05, 1.95, K.z0 + at, 0.02, 2.78, 5.88, 0, false);
   // the rooms
   const part = (x0: number, z0: number, x1: number, z1: number, openings?: ReturnType<typeof door>[]): void => {
     wall(b, { x0, z0, x1, z1, height: H, thickness: 0.3, material: 'concreteWall', tag: 'zarya-partition', cast: false, openings });
@@ -443,12 +447,23 @@ function corridor(c: Ctx): void {
     for (let k = 0; k < 4; k++) slab(b, k % 2 ? M.black : YELLOW, xf + 0.14, 0.2 + k * 0.2, -130 + s * 1.58, 0.02, 0.14, 0.7, 0.6 * s, 0, 0, false);
     box(b, M.iron, xf - 1.7, 1.4, -130 + s * 1.82, 3.3, 2.8, 0.06, 0, false);
   }
-  box(b, M.black, K.x0 + T + 0.06, 1.4, -130, 0.06, 2.8, 3.7, 0, false);
-  box(b, M.black, xf - 1.7, 2.78, -130, 3.4, 0.06, 3.7, 0, false);
-  box(b, M.iron, xf - 1.7, 0.045, -130, 3.4, 0.03, 3.6, 0, false);
+  // the car, standing at this floor with its doors open: steel walls, a chequer-plate floor, a cage lamp lit in its
+  // roof, the car's own panel of buttons by the doors, a hand rail round it (it has to read as a lift from the lobby)
+  box(b, M.grey, K.x0 + T + 0.06, 1.4, -130, 0.06, 2.8, 3.7, 0, false);
+  for (let k = 0; k < 4; k++) box(b, M.iron, K.x0 + T + 0.1, 1.4, -131.38 + k * 0.92, 0.03, 2.76, 0.05, 0, false);
+  box(b, M.steel, K.x0 + T + 0.14, 1.0, -130, 0.06, 0.06, 3.5, 0, false);
+  box(b, M.grey, xf - 1.7, 2.78, -130, 3.4, 0.06, 3.7, 0, false);
+  box(b, M.steel, xf - 1.7, 0.045, -130, 3.4, 0.03, 3.6, 0, false);
+  for (let k = 0; k < 6; k++) box(b, M.iron, xf - 3.1 + k * 0.56, 0.065, -130, 0.05, 0.012, 3.5, 0, false);
   for (let k = 0; k < 9; k++) box(b, k % 2 ? M.black : YELLOW, xf + 0.32, 0.05, -131.2 + k * 0.3, 0.26, 0.03, 0.3, 0, false);
-  // the cage's lamp, out; the cables; the call panel on the north wall; the floor lamps over the doors
-  for (const dz of [-0.5, 0.5]) box(b, M.iron, xf - 2.6, 1.6, -130 + dz, 0.05, 3, 0.05, 0, false);
+  for (const s of [-1, 1]) box(b, M.steel, xf - 1.8, 1.0, -130 + s * 1.74, 2.8, 0.06, 0.06, 0, false);
+  box(b, M.grey, xf - 0.4, 1.35, -128.3, 0.3, 0.7, 0.05);
+  for (let k = 0; k < 4; k++) box(b, k === 3 ? M.redLamp : M.bulb, xf - 0.4, 1.58 - k * 0.15, -128.33, 0.08, 0.08, 0.02, 0, false);
+  box(b, M.grey, xf - 1.7, 2.72, -130, 1.2, 0.08, 0.5, 0, false);
+  box(b, M.bulb, xf - 1.7, 2.67, -130, 1.0, 0.03, 0.34, 0, false);
+  b.light({ x: xf - 1.6, y: 2.3, z: -130, color: 0xe8f0ff, intensity: 10, distance: 7, mode: 'steady', pool: 2.5, weight: 0.8 });
+  // the cables over the car; the call panel on the north wall; the floor lamps over the doors
+  for (const dz of [-0.5, 0.5]) box(b, M.iron, xf - 1.7, 3.6, -130 + dz, 0.05, 1.6, 0.05, 0, false);
   box(b, M.grey, xf + 1.2, 1.3, ZC0 + 0.2, 0.34, 0.5, 0.1);
   box(b, M.redLamp, xf + 1.2, 1.42, ZC0 + 0.26, 0.07, 0.07, 0.03, 0, false);
   box(b, M.black, xf + 1.2, 1.24, ZC0 + 0.26, 0.07, 0.07, 0.03, 0, false);

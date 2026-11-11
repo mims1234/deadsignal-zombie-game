@@ -17,7 +17,9 @@ import * as THREE from 'three';
 import { addBox, groundRect, solidBlock, type Side } from '../structures';
 import type { Ctx } from './util';
 import { DVOR } from '../../zarya/zones/dvor';
+import { STOPS } from '../../zarya/places';
 import type { LevelBuilder } from '../builder';
+import { shutterKiosk } from './zaryaShutters';
 import { Z, box as kitBox, cyl as kitCyl, slab as kitSlab, solid } from './zaryaKit';
 
 const HEX = {
@@ -810,6 +812,11 @@ function woodpile(c: Ctx): void {
     box(b, S.woodPale, W.x + Math.cos(a) * d, 0.07, W.z + Math.sin(a) * d, 0.36, 0.13, 0.15, k * 0.9);
   }
   solid(c, W.x, W.z, 0.6, 0.6, 0.56, 'zarya-block', { shots: false, kind: 'none', surface: 'wood' });
+  // the splitting maul (a find: it is taken from here, and the glint over the block was all there was of it), its
+  // head sunk in the block where the last swing left it, the haft leaning back
+  box(b, S.iron, W.x + 0.05, 0.63, W.z, 0.3, 0.14, 0.12);
+  box(b, S.tin, W.x + 0.21, 0.6, W.z, 0.04, 0.1, 0.13);
+  slab(b, S.woodPale, W.x - 0.22, 1.0, W.z, 0.05, 0.86, 0.05, 0, 0, 0.55);
 }
 
 /** The kennel: a little house under a pitched roof, straw at its door, a bowl, and the post (the spot) its chain is hung on. */
@@ -831,6 +838,20 @@ function kennel(c: Ctx): void {
   solid(c, hx, hz, 1.3, 1.2, 1.2, 'zarya-kennel', { shots: false, kind: 'none', surface: 'wood' });
   cyl(b, S.woodDark, P.x, 0, P.z, 0.07, 0.06, 1.1, 6);
   box(b, S.iron, P.x - 0.09, 0.9, P.z, 0.1, 0.03, 0.03);
+  // the dog chain (a find, taken here) hanging from the hook in a loop, its end in the snow: there was only the hook
+  for (let k = 0; k < 11; k++) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 4, 8), S.tin);
+    m.position.set(P.x - 0.15, 0.84 - k * 0.075, P.z + k * 0.012);
+    m.rotation.y = k % 2 ? Math.PI / 2 : 0;
+    put(b, m);
+  }
+  for (let k = 0; k < 5; k++) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 4, 8), S.tin);
+    m.position.set(P.x - 0.15, 0.03, P.z + 0.2 + k * 0.075);
+    m.rotation.x = Math.PI / 2;
+    m.rotation.z = k % 2 ? Math.PI / 2 : 0;
+    put(b, m);
+  }
   snow(c, P.x, 1.13, P.z, 0.16, 0.06, 0.16);
   solid(c, P.x, P.z, 0.2, 0.2, 1.1, 'zarya-pole', { shots: false, kind: 'none', surface: 'wood' });
 }
@@ -855,6 +876,19 @@ function leanTo(c: Ctx): void {
   fbox(c, S.wood, f, a + 0.7, 1.56, 0.4, 1.9, 0.04, 0.3);
   const tins = [S.tin, S.rust, S.woodDark, S.teal, S.tin, S.greenDark];
   for (let i = 0; i < 6; i++) fbox(c, tins[i]!, f, a - 0.1 + i * 0.26, 1.58 + 0.07 + (i % 2) * 0.03, 0.42, 0.14, 0.14 + (i % 2) * 0.06, 0.14);
+  // the friction tape (`DVOR.tape`, a part of the bolt cutters): two black rolls on a nail in the board under the
+  // shelf, where its glint is (there was nothing there to be tape)
+  for (const [dv, dy] of [[0.3, 1.3], [0.27, 1.19]] as const) {
+    const [tx, tz] = fpos(f, DVOR.tape.x, dv);
+    const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 12), S.black);
+    roll.position.set(tx, dy, tz);
+    roll.rotation.x = Math.PI / 2;
+    put(b, roll);
+  }
+  {
+    const [nx, nz] = fpos(f, DVOR.tape.x, 0.26);
+    box(b, S.iron, nx, 1.36, nz, 0.02, 0.02, 0.14);
+  }
   // a crate to sit on, a car's wheel against the wall
   fbox(c, S.wood, f, a + 2.9, 0.25, 0.5, 0.6, 0.5, 0.6);
   const [wx, wz] = fpos(f, a - 2.6, 0.2);
@@ -1059,6 +1093,24 @@ function street(c: Ctx): void {
     snow(c, (x0 + x1) / 2, 0.22, 169.55, x1 - x0, 0.44, 1.0);
     snow(c, (x0 + x1) / 2, 0.5, 169.8, x1 - x0, 0.3, 0.5);
   }
+  // Line One down the street either side of the stop's own sixty metres (the frame lays those): the rails ended in
+  // the snow at both ends of the stop, as if the tram had been set down there; now they run the street's length,
+  // under the wire, on poles along the far kerb like the stop's own
+  {
+    const S0 = STOPS.find((q) => q.id === 'dvor')!;
+    for (const [x0, x1] of [[R.x0 + 0.5, S0.x - 30], [S0.x + 30, R.x1 - 0.5]] as const) {
+      // (in this zone's own finishes, so the street's length adds no batches)
+      for (const s of [-1, 1]) box(b, S.concreteDark, (x0 + x1) / 2, 0.05, S0.z + s * 0.72, x1 - x0, 0.09, 0.08);
+      box(b, S.black, (x0 + x1) / 2, 5.5, S0.z, x1 - x0, 0.03, 0.03);
+    }
+    for (const dx of [-78, -52, 52, 78, 104]) {
+      const px = S0.x + dx;
+      if (px < R.x0 + 2 || px > R.x1 - 2) continue;
+      cyl(b, S.iron, px, 0, S0.z + 3.2, 0.14, 0.1, 6.2, 8);
+      box(b, S.iron, px, 5.9, S0.z + 1.6, 0.07, 0.07, 3.2);
+      solid(c, px, S0.z + 3.2, 0.3, 0.3, 6.2, 'zarya-pole', { kind: 'none', surface: 'metal' });
+    }
+  }
   box(b, S.concrete, xm, 0.06, 158.05, len, 0.12, 0.22);
   for (const [x, lit] of [[-84, false], [-54, true], [-12, false], [24, false], [56, true], [92, false]] as const) yardLamp(c, x, 158.9, Math.PI, lit);
   // the shelter of the stop: its back to the fence, a bench under it
@@ -1158,6 +1210,8 @@ export function buildDvor(c: Ctx): DvorHandles {
   plinth(c);
   rink(c);
   woodpile(c);
+  // a shut kiosk, its shutter bought open with points (`zarya/mods.ts`, `zaryaShutters.ts`)
+  shutterKiosk(c, DVOR.shutter, DVOR.shutterYaw, 2);
   fort(c, -42, 102);
   for (const [x, z, yaw] of [[-66.5, 88.3, Math.PI], [-57.5, 88.3, Math.PI], [-48.5, 88.3, Math.PI], [-69, 125.2, 0], [-52.5, 108, Math.PI / 2], [0.5, 117.5, Math.PI / 2]] as const) seat(c, x, z, yaw);
   washing(c, -16, -6, 100, 3);

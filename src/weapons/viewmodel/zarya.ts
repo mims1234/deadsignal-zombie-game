@@ -1,5 +1,5 @@
 /**
- * ZARYA's six guns, in your hands. Each stands on one of the stock rigs for its HANDS and its MOTION only (the pistol's
+ * ZARYA's seven guns, in your hands (the seventh, the Raketa vacuum cannon, comes out of Ded Moroz's sack). Each stands on one of the stock rigs for its HANDS and its MOTION only (the pistol's
  * for the Signalka and the Zenit, the rifle's for the crossbow and the nail gun, the launcher's for the Salyut and the
  * Ottepel): the stock gun itself is put away and the thing is built here from its own parts, round the places those
  * hands already hold. What moves on each (a barrel breaking open, a string drawn, a needle on a gauge) is driven from
@@ -58,8 +58,11 @@ interface Look {
   /** The whole rig (hands and all) moved from where the stock gun is held: at the hip, and aimed. */
   hip?: V3;
   ads?: V3;
-  /** What moves on it: called every frame after the hands are placed. `fired` is 1 at a shot and falls away. */
-  animate?(pose: ViewmodelPose, fired: number): void;
+  /**
+   * What moves on it: called every frame after the hands are placed. `fired` is 1 at a shot and falls away; `kick` is
+   * how hard that last shot was (`onFire`'s strength: the Raketa sucking is a light one, its blast a heavy one).
+   */
+  animate?(pose: ViewmodelPose, fired: number, kick: number): void;
 }
 
 class ZaryaRig implements ViewmodelRig {
@@ -67,6 +70,7 @@ class ZaryaRig implements ViewmodelRig {
   readonly muzzle: THREE.Object3D;
   readonly ejectPort: THREE.Object3D;
   private fired = 0;
+  private kick = 1;
 
   constructor(
     readonly id: ZaryaGunId,
@@ -92,13 +96,14 @@ class ZaryaRig implements ViewmodelRig {
     const h = this.look.hip;
     const s = this.look.ads;
     this.root.position.set((h?.[0] ?? 0) * (1 - a) + (s?.[0] ?? 0) * a, (h?.[1] ?? 0) * (1 - a) + (s?.[1] ?? 0) * a, (h?.[2] ?? 0) * (1 - a) + (s?.[2] ?? 0) * a);
-    this.look.animate?.(pose, this.fired);
+    this.look.animate?.(pose, this.fired, this.kick);
     this.root.updateMatrixWorld(true);
   }
 
   onFire(tier: number, strength?: number): void {
     this.inner.onFire(tier, strength);
     this.fired = 1;
+    this.kick = strength ?? 1;
   }
 
   setTier(tier: number): void {
@@ -108,6 +113,7 @@ class ZaryaRig implements ViewmodelRig {
   reset(): void {
     this.inner.reset();
     this.fired = 0;
+    this.kick = 1;
   }
 
   dispose(): void {
@@ -523,7 +529,119 @@ export function createOttepel(tex: SharedTextures): ViewmodelRig {
   });
 }
 
+// -------------------------------------------------------------------------------------------------
+// Raketa: a Soviet canister vacuum cleaner made into a gun (the round enamelled canister slung under the chrome wand
+// between the two hands, its corrugated hose looping out of it and up into the wand, a wide floor nozzle on the end,
+// and on the canister's back cap, facing you, a dial of six lamps that count what it has swallowed)
+// -------------------------------------------------------------------------------------------------
+
+export function createRaketa(tex: SharedTextures): ViewmodelRig {
+  const inner = createRpg(tex);
+  const lampOn = mat(0xffb040, 0.4, 0, 0xff9a20, 2.2);
+  const lampOff = mat(0x3a2a1a, 0.5, 0, 0x000000, 0);
+  const k = strip(inner, { enamel: mat(0x8fb7c6, 0.42, 0.05), chrome: mat(0xd2d6da, 0.22, 0.9), stripe: mat(0xb8241e, 0.5), bore: mat(0x070707, 0.95), lampOn, lampOff });
+  const WY = TY + 0.004; // the wand's axis
+  const W0 = -0.015;
+  const W1 = 0.5;
+  const CX = TX; // the canister's axis, under the wand
+  const CR = 0.06;
+  const CY = WY - 0.019 - CR - 0.012;
+  const C0 = 0.112; // its back and front (f), between the trigger hand and the other
+  const C1 = 0.262;
+  // the canister rumbles while it sucks: it is its own group
+  const can = new THREE.Group();
+  inner.gun.add(can);
+  k.part((b) => {
+    // the body, its chrome caps, the red band, the ribs round its front (the motor's vents)
+    b.cyl('enamel', CR, CR, C1 - C0 - 0.03, CX, CY, F((C0 + C1) / 2), 'z', 24);
+    b.cyl('chrome', CR - 0.006, CR + 0.002, 0.016, CX, CY, F(C1 - 0.007), 'z', 24);
+    b.cyl('chrome', CR + 0.002, CR - 0.006, 0.016, CX, CY, F(C0 + 0.007), 'z', 24);
+    b.cyl('stripe', CR + 0.0015, CR + 0.0015, 0.02, CX, CY, F(C0 + 0.05), 'z', 24);
+    for (let i = 0; i < 3; i++) b.torus('chrome', CR + 0.001, 0.002, CX, CY, F(C1 - 0.03 - i * 0.011), undefined, 24);
+    // the back cap's dial plate, the lamps' ring is set in it
+    b.cyl('blued', CR - 0.012, CR - 0.012, 0.004, CX, CY, F(C0 - 0.001), 'z', 24);
+    b.cyl('chrome', 0.012, 0.012, 0.006, CX, CY, F(C0 - 0.003), 'z', 14);
+    // two straps hang it from the wand
+    for (const f of [C0 + 0.035, C1 - 0.035]) {
+      b.box('blued', 0.012, WY - CY - CR + 0.012, 0.014, CX, (WY + CY + CR) / 2, F(f), 0.002);
+      b.torus('blued', CR + 0.003, 0.0035, CX, CY, F(f), undefined, 24);
+    }
+    // the hose's fitting on top of the front cap
+    b.cyl('chrome', 0.017, 0.019, 0.022, CX + 0.034, CY + 0.034, F(C1 + 0.006), 'z', 14);
+  }, can);
+  // the six lamps, a dial down the left of the back cap (the side the eye sees past the wand), top to bottom: lit for
+  // every round it holds
+  const lampGeo = new THREE.SphereGeometry(0.0058, 10, 8);
+  k.own.push(lampGeo);
+  const lamps: THREE.Mesh[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI * (0.6 + (i / 5) * 0.8);
+    const m = new THREE.Mesh(lampGeo, lampOff);
+    m.position.set(CX + Math.cos(a) * 0.033, CY + Math.sin(a) * 0.033, F(C0) + 0.004);
+    can.add(m);
+    lamps.push(m);
+  }
+  k.part((b) => {
+    // the pistol grip under the wand's back, its trigger (the motor's switch) and the block it is bolted through
+    b.side('grip', RPG_GRIP, 0.03, TX + 0.012, 0.002, 0.9, 0);
+    b.box('blued', 0.03, 0.028, 0.08, TX + 0.004, TY - 0.018, F(0.07), 0.004);
+    b.box('red', 0.008, 0.016, 0.01, TX + 0.012, TY - 0.044, F(0.098), 0.002);
+    // the corrugated hose: out of the canister's front, round to the right and back, and up into the wand's back end
+    const hose = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(CX + 0.034, CY + 0.034, F(C1 + 0.02)),
+      new THREE.Vector3(CX + 0.085, CY + 0.03, F(C1 - 0.01)),
+      new THREE.Vector3(CX + 0.095, CY + 0.045, F(0.16)),
+      new THREE.Vector3(CX + 0.07, WY + 0.03, F(0.04)),
+      new THREE.Vector3(TX + 0.03, WY + 0.022, F(W0 - 0.012)),
+      new THREE.Vector3(TX + 0.004, WY + 0.004, F(W0 + 0.004)),
+    ]);
+    b.add('rubber', new THREE.TubeGeometry(hose, 28, 0.0145, 8, false));
+    for (let i = 1; i < 16; i++) {
+      const t = i / 16;
+      const at = hose.getPointAt(t);
+      const tan = hose.getTangentAt(t);
+      const ring = new THREE.TorusGeometry(0.0148, 0.0024, 5, 12);
+      ring.lookAt(tan);
+      ring.translate(at.x, at.y, at.z);
+      b.add('blued', ring);
+    }
+    // the chrome wand, its collars, and the grip the other hand holds
+    b.cyl('chrome', 0.0165, 0.018, W1 - W0, TX, WY, F((W0 + W1) / 2), 'z', 14);
+    b.cyl('blued', 0.021, 0.021, 0.026, TX, WY, F(W0 + 0.012), 'z', 14);
+    b.cyl('blued', 0.02, 0.02, 0.018, TX, WY, F(0.38), 'z', 14);
+    b.side('grip', RPG_FORE, 0.028, TX - 0.004, 0.002, 0.9, 0);
+    b.box('blued', 0.026, 0.026, 0.05, TX - 0.004, TY - 0.02, F(0.3), 0.003);
+    // the floor nozzle: a flared neck, the wide flat mouth with its rubber lip and its dark slot, the little wheels
+    b.cyl('chrome', 0.026, 0.018, 0.05, TX, WY, F(W1 + 0.02), 'z', 14);
+    b.box('enamel', 0.16, 0.042, 0.06, TX, WY, F(W1 + 0.07), 0.01);
+    b.box('chrome', 0.164, 0.008, 0.064, TX, WY + 0.022, F(W1 + 0.07), 0.003);
+    b.box('rubber', 0.166, 0.046, 0.012, TX, WY, F(W1 + 0.1), 0.004);
+    b.box('bore', 0.14, 0.018, 0.004, TX, WY, F(W1 + 0.107), 0.001);
+    for (const x of [-0.068, 0.068]) b.cyl('rubber', 0.011, 0.011, 0.01, TX + x, WY - 0.024, F(W1 + 0.05), 'x', 10);
+    // a sighting notch on the neck
+    b.box('blued', 0.004, 0.014, 0.004, TX - 0.01, WY + 0.026, F(W1 + 0.02), 0.0008);
+  });
+  inner.muzzle.position.set(TX, WY, F(W1 + 0.11));
+  let lit = -1;
+  return new ZaryaRig('raketa', inner, k.stock, k.own, {
+    flash: false,
+    ads: [0.035, -0.045, 0],
+    animate(pose, fired, kick) {
+      // the lamps count what it holds
+      const n = Math.round(Math.max(0, Math.min(6, pose.ammo)));
+      if (n !== lit) {
+        lit = n;
+        for (let i = 0; i < lamps.length; i++) lamps[i]!.material = i < n ? lampOn : lampOff;
+      }
+      // sucking (light kicks) the canister rumbles; a blast throws it back a little
+      const suck = kick < 0.5 ? fired : 0;
+      can.position.set(Math.sin(pose.time * 73) * 0.0012 * suck, Math.sin(pose.time * 91) * 0.0012 * suck, kick >= 0.5 ? 0.01 * fired * fired : 0);
+    },
+  });
+}
+
 export const ZARYA_RIGS: Record<ZaryaGunId, (tex: SharedTextures) => ViewmodelRig> = {
+  raketa: createRaketa,
   signalka: createSignalka,
   arbalet: createArbalet,
   gvozdomyot: createGvozdomyot,

@@ -238,13 +238,16 @@ function escalator(c: Ctx): void {
     slab(b, GREY, cx, cy, z, L, 0.9, 0.24, 0, 0, ang, false);
     slab(b, Z.black, cx - Math.sin(ang) * 0.49, cy + Math.cos(ang) * 0.49, z, L, 0.08, 0.3, 0, 0, ang, false);
     solid(c, 431.6, z, 3.7, 0.3, 1.05, 'zarya-escalator', { shots: false, kind: 'prop', surface: 'metal' });
-    // the well's sides
-    B(b, Z.black, 427.4, -0.4, s * 1.56, 4.8, 6.4, 0.1);
+    // the well's sides (painted, not black: with the lamp below they show the steps going on down)
+    B(b, GREY, 427.4, -0.4, s * 1.56, 4.8, 6.4, 0.1);
     // the opening's steel trim
     B(b, Z.steel, XW + 0.02, PIT.top / 2, s * (PIT.half + 0.02), 0.1, PIT.top, 0.14);
   }
   B(b, Z.black, 425, -0.4, 0, 0.1, 6.4, 3.2);
-  slab(b, Z.black, 427.6, 1.55, 0, 5.6, 0.1, 3.1, 0, 0, ang, false);
+  slab(b, WALL, 427.6, 1.55, 0, 5.6, 0.1, 3.1, 0, 0, ang, false);
+  // a lamp in the well's ceiling, part way down: the escalator reads as going somewhere, not into a black hole
+  orb(b, Z.bulb, 428.4, 1.78, 0, 0.14);
+  b.light({ x: 428.4, y: 1.2, z: 0, color: 0xffe6c0, intensity: 7, distance: 6, mode: 'steady', pool: 0, weight: 0.6 });
   B(b, Z.steel, XW + 0.02, PIT.top + 0.04, 0, 0.1, 0.14, PIT.half * 2 + 0.18);
   // the shutter that closed it, rolled up into its box
   B(b, Z.steel, XW + 0.16, PIT.top + 0.3, 0, 0.34, 0.4, PIT.half * 2 + 0.3);

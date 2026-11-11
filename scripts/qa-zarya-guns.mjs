@@ -15,7 +15,7 @@ const w = Number(process.argv[3] ?? 640);
 const h = Number(process.argv[4] ?? 360);
 const out = process.env.SC ?? 'shots/zarya';
 mkdirSync(out, { recursive: true });
-const all = ['signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit'];
+const all = ['signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit', 'raketa'];
 const ids = process.env.ONLY ? process.env.ONLY.split(',') : all;
 
 const { browser, context, page, logs } = await openPage({ w, h });
@@ -97,10 +97,23 @@ if (process.env.LOOK !== '0') {
       window.__dead.releaseAll();
       window.__dead.advance(0.6);
     });
+    // (the Raketa: first the suck, held, with its lamps counting; its shot is the blast as it is let go)
+    if (id === 'raketa') {
+      await D(() => {
+        const d = window.__dead;
+        d.game.weapons.carried.ammo.mag = 0;
+        d.hold({ fire: true });
+        d.advance(1.0);
+      });
+      await snap('suck');
+    }
     // the moment of a shot (two frames in), then the middle of whatever reload follows
     await D((id) => {
       const d = window.__dead;
-      if (id === 'ottepel' || id === 'gvozdomyot') {
+      if (id === 'raketa') {
+        d.releaseAll();
+        d.advance(2 / 60);
+      } else if (id === 'ottepel' || id === 'gvozdomyot') {
         d.hold({ fire: true });
         d.advance(0.35);
       } else {
@@ -114,10 +127,10 @@ if (process.env.LOOK !== '0') {
       d.releaseAll();
       const def = d.weaponDefs[id];
       if (id === 'gvozdomyot') d.press('reload');
-      if (id === 'ottepel' || id === 'zenit') d.advance(0.5);
+      if (id === 'ottepel' || id === 'zenit' || id === 'raketa') d.advance(0.5);
       else d.advance(0.5 + def.reloadEmpty * 0.42);
     }, id);
-    await snap(id === 'ottepel' ? 'after' : id === 'zenit' ? 'after' : 'reload');
+    await snap(id === 'ottepel' || id === 'zenit' || id === 'raketa' ? 'after' : 'reload');
     await sheet.setViewportSize({ width: w * 2, height: (h + 22) * 2 });
     await sheet.setContent(`<body style="margin:0;background:#111;display:grid;grid-template-columns:repeat(2,${w}px);font:13px sans-serif;color:#eee">${tiles
       .map((t) => `<div><div style="height:22px;line-height:22px;padding-left:6px">${id} / ${t.label}</div><img src="${t.src}" width="${w}" height="${h}" style="display:block"></div>`)
@@ -374,6 +387,33 @@ if (process.env.NUM !== '0') {
       check('for 3.5 seconds, a boss for 1', Math.abs(times[0] - 3.5) < 0.1 && Math.abs(times[1] - 1) < 0.1, `${times[0].toFixed(2)} s, boss ${times[1].toFixed(2)} s`);
       const n = await D(() => { const d = window.__dead; d.giveWeapon('zenit'); d.advance(1); let n = 0; const a = d.game.weapons.carried.ammo; d.hold({ fire: false }); const t0 = a.mag; d.click(); d.advance(0.6); d.click(); d.advance(0.5); const mid = t0 - a.mag; d.advance(0.3); d.click(); d.advance(0.1); n = t0 - a.mag; return { mid, n, reload: !!a.reload, reserve: a.reserve }; });
       check('1.2 s between flashes, no reload', n.mid === 1 && n.n === 2 && !n.reload && n.reserve === 0, `1 flash in the first 1.1 s, ${n.n} after 1.5 s`);
+    }
+
+    // ZARYA's sack gun: hold to suck (drags the infected in its cone in, reeling, and swallows rounds), let go to fire them all
+    if (id === 'raketa') {
+      check('six rounds in it, no reserve', def.mag === 6 && def.reserve === 0, `${def.mag} / ${def.reserve}`);
+      const emptied = await D(() => { const d = window.__dead; d.look(-Math.PI / 2, 0.9); d.hold({ fire: true }); d.advance(0.1); d.releaseAll(); d.advance(0.8); return d.game.weapons.carried.ammo.mag; });
+      check('let go, it fires everything it holds at once', emptied === 0, `${emptied} left`);
+      // one in the cone 7 m ahead, one 7 m ahead and 7 m to the side
+      const row = await spawnRow('shambler', [7, 7], [0, 7]);
+      await still();
+      const where = (ids) => D((ids) => { const p = window.__dead.game.player; return ids.map((i) => { const z = window.__dead.game.zombies.zombies.find((q) => q.id === i); return +Math.hypot(z.x - p.x, z.z - p.z).toFixed(2); }); }, ids);
+      const d0 = await where(row);
+      await D(() => { const d = window.__dead; d.look(-Math.PI / 2, 0); d.hold({ fire: true }); d.advance(2.5); });
+      const d1 = await where(row);
+      const held = await D(() => window.__dead.game.weapons.carried.ammo.mag);
+      const st = await zs(row);
+      check('held, it swallows a round every 0.38 s up to six', held === 6, `${held} after 2.5 s`);
+      check('it drags the one in its cone in toward the player, not the one beside it', d1[0] < d0[0] - 3 && d1[0] >= 1.6 && Math.abs(d1[1] - d0[1]) < 0.05, `${d0[0]} -> ${d1[0]} m; beside ${d0[1]} -> ${d1[1]} m`);
+      check('and holds it reeling', st[0].state === 'stagger', st[0].state);
+      await aimAt(row[0]);
+      await D(() => { const d = window.__dead; d.releaseAll(); d.advance(2 / 60); });
+      const lost = await hpLost(row);
+      const d2 = await where(row);
+      check('let go, the six rounds land on it: six times 160', lost[0] >= 6 * 160 * 0.95 && lost[0] <= 6 * 160 * 1.25 + 1 && lost[1] === 0, `${lost.join(', ')}`);
+      check('and throw it back', d2[0] > d1[0] + 1, `${d1[0]} -> ${d2[0]} m`);
+      const left = await D(() => window.__dead.game.weapons.carried.ammo.mag);
+      check('the gauge is empty again after the blast', left === 0, `${left}`);
     }
   }
 }

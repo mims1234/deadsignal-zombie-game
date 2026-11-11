@@ -79,6 +79,11 @@ export class Interaction {
   private readonly out: InteractionOutput = { prompt: null, panel: null, panelOpen: false };
   /** Extra interaction targets from other modules (the Asylum's barricades), asked every frame. */
   readonly providers: (() => InteractTarget | null)[] = [];
+  /**
+   * A map may refuse a station for now (ZARYA's repair booth, until its repairman's tools are back): what the refusal
+   * says, shown as a prompt that cannot be used; null lets the station be used.
+   */
+  stationGate: ((def: StationRuntime['def']) => { text: string; sub: string } | null) | null = null;
   /** Co-op revive holds are multiplied by this (the Asylum's SECOND WIND perk picks teammates up faster). */
   reviveMul: () => number = () => 1;
 
@@ -217,6 +222,11 @@ export class Interaction {
     for (const s of this.entities.stations) {
       const d = Math.hypot(s.def.x - px, s.def.z - pz);
       if (d > ECONOMY.stationRange || !facing(s.def.x, s.def.z, d)) continue;
+      const refused = this.stationGate?.(s.def);
+      if (refused) {
+        targets.push({ id: `station:${s.def.id}`, dist: d, text: refused.text, sub: refused.sub, tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
+        continue;
+      }
       targets.push({
         id: `station:${s.def.id}`,
         dist: d,

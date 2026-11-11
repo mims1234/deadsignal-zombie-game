@@ -8,8 +8,11 @@
  *  - Ground is flat at y = 0.
  */
 
-/** ZARYA's own guns (`config.ts`: `ZARYA_GUNS`): built, bought or dropped there, never sold or boxed elsewhere. */
-export type ZaryaGunId = 'signalka' | 'arbalet' | 'gvozdomyot' | 'salyut' | 'ottepel' | 'zenit';
+/**
+ * ZARYA's own guns (`config.ts`: `ZARYA_GUNS`): built, bought or dropped there, never sold or boxed elsewhere. The
+ * Raketa is the one exception: it comes only out of Ded Moroz's sack, ZARYA's mystery box.
+ */
+export type ZaryaGunId = 'signalka' | 'arbalet' | 'gvozdomyot' | 'salyut' | 'ottepel' | 'zenit' | 'raketa';
 
 export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin' | ZaryaGunId;
 

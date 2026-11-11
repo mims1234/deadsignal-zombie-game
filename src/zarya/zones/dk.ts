@@ -41,6 +41,8 @@ export const DK = {
   apron: { x0: -172, z0: -32, x1: -170.4, z1: -14 } as Rect,
   stageTop: 0.3,
   hut: { x: -180, z: -23 } as Spot,
+  /** The Zenit's marked spot (a faint frost ring on the boards, `photos.ts`): the front of the stage, where Kostya's class stood in line for the pageant at 23:57. */
+  zenit: { x: -174.6, z: -17.5 } as Spot,
   lever: { x: -171, z: -9 } as Spot,
   /** The seats: rows across the hall facing west, in two sections (the cross aisle between them) and two blocks (the middle aisle between them). `x` is a section's front row. */
   seats: {

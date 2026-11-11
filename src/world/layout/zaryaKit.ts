@@ -40,6 +40,8 @@ export const Z = {
   orange: std(0xe08a1e, 0.8),
   gold: std(0xd6aa3c, 0.5, 0.5),
   plush: std(0x6b4a2b, 1),
+  /** Shop-door glass, seen at night from a lit hall: dark, a little shine (plain, so it bakes with the rest). */
+  glass: std(0x34465a, 0.25, 0.4),
   // what glows
   warm: lit(0xffb866, 1.6),
   bulb: lit(0xffd9a0, 2.6),

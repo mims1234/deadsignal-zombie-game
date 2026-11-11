@@ -67,6 +67,8 @@ import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/d
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
+import { boxHome, boxPlace, dueToMove, placeBox } from '../logic/boxMove';
+import { SACK_EVERY, SACK_PLACES, nextSackPlace } from '../zarya/sack';
 import { ZaryaDirector } from '../zarya/director';
 import { applyDoors as applyZaryaDoors } from '../zarya/doors';
 import { zaryaVariantPicker } from '../zarya/kinds';
@@ -562,6 +564,8 @@ export class SessionSim {
     this.aboard.clear();
     this.allies = [];
     this.shots = [];
+    // (a box that moved last run, ZARYA's sack, starts the run back where the map put it: `logic/boxMove.ts`)
+    for (const c of this.level.data.crates) placeBox(this.level.world, c, boxHome(c));
     this.loot = createLoot(this.level.data.crates.length, this.level.data.crates.map((c) => !!c.cost));
     this.records = createRecords();
     this.wakeAt = null;
@@ -1172,9 +1176,22 @@ export class SessionSim {
 
   // ---- story -----------------------------------------------------------------------------------
 
+  /**
+   * ZARYA: Ded Moroz's sack has closed for the next turn. Opened often enough, it goes to another of its places whose
+   * zone the squad can reach (`zarya/sack.ts`); its def and collider go with it, and the place goes out with the box.
+   */
+  private readonly moveSack = (i: number, b: { paid: boolean; opens: number; spot: number }): number | null => {
+    const def = this.level.data.crates[i];
+    if (!this.zarya || !def || !b.paid || !dueToMove(b.opens, SACK_EVERY)) return null;
+    const to = nextSackPlace(this.zarya.view, b.spot, this.rng.f());
+    if (to === null) return null;
+    placeBox(this.level.world, def, boxPlace(def, SACK_PLACES, to));
+    return to;
+  };
+
   private tickStory(dt: number, envs: ZombieEnv[], up: number, reported: number): void {
     this.elapsed += dt;
-    tickLoot(this.loot, dt);
+    tickLoot(this.loot, dt, this.zarya ? this.moveSack : undefined);
     const peers = this.upPeers();
     // the squad: allies who are fighting are targets too
     const allyEnvs: ZombieEnv[] = [];
@@ -1541,8 +1558,8 @@ export class SessionSim {
       const pw = this.powerups;
       out.pu = [r1(pw.timers.instaKill), r1(pw.timers.doublePoints)];
       out.pd = pw.drops.map((q) => [q.id, POWERUP_KINDS.indexOf(q.kind), r1(q.x), r1(q.z), r1(q.age)]);
-      // shared loot: each box [phase, opener, prize, seconds in phase]; each drop [id, kind, x, z]
-      out.bx = this.loot.boxes.map((b) => [b.phase, b.owner ?? '', b.prize, r1(b.t)]);
+      // shared loot: each box [phase, opener, prize, seconds in phase, place (a box that moves)]; each drop [id, kind, x, z]
+      out.bx = this.loot.boxes.map((b) => [b.phase, b.owner ?? '', b.prize, r1(b.t), b.spot]);
       out.dr = this.loot.drops.map((q) => [q.id, q.kind, q.x, q.z]);
       if (this.asylum) {
         out.rc = bits(this.records.found); // the patient files taken

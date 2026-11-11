@@ -19,6 +19,8 @@ export const RYNOK = {
   coldStore: { x0: 228, z0: -22, x1: 242, z1: 2 } as Rect,
   /** The cold store's door (in the wall between the hall and the store): its middle, and the wall's x. Walkers pass through it east-west. It is 2.4 m wide. */
   coldDoor: { x: 228, z: -10 } as Spot,
+  /** The Zenit's marked spot (a faint frost ring, `photos.ts`): in the hall before the cold store's door, where Borya stood with the Institute's order at 23:57. */
+  zenit: { x: 224.6, z: -10.4 } as Spot,
   /** Deep inside the cold store, in the aisle between the carcass rows: Borya has to be past this point before the door can be barred. */
   coldInside: { x: 238, z: -10 } as Spot,
   /** Outside the side hatch: where a player comes out, in the open air south of the cold store (NOT inside it). */
@@ -38,8 +40,17 @@ export const RYNOK = {
   /** The repair booth (the game's own upgrade station stands here under the striped awning, facing `boothYaw`: a player stands east of it). */
   booth: { x: 156, z: 20 } as Spot,
   boothYaw: -Math.PI / 2,
+  /**
+   * The kiosk shutter bought open with points (`zarya/mods.ts`): the middle of the shutter's foot on the southmost of
+   * the four shut kiosks down the west side (`zaryaRynok.ts` westSide), which faces `shutterYaw` (east: a player stands
+   * east of it, on the lane).
+   */
+  shutter: { x: 150.82, z: -24.2 } as Spot,
+  shutterYaw: -Math.PI / 2,
   /** The painted matryoshka, two metres tall on a plinth (its top is 0.6 m up), out in the yard with ten metres of clear ground round it. */
   doll: { x: 197, z: 38 } as Spot,
+  /** One of the places Ded Moroz's sack turns up (`zarya/sack.ts`): on the open yard just north-east of the matryoshka, on clear, walkable snow with room all round (nobody asleep within 3.5 m). */
+  sack: { x: 203, z: 34 } as Spot,
   /** Parts lying where they would be: a gas canister (on the floor against the ironmonger's stall, with the welding gear), pipe handles (on the plumber's counter), a samovar (on the tea stall's counter, beside the stall's own). */
   canister: { x: 176, z: -25.3 } as Spot,
   pipes: { x: 203.6, z: 4.2 } as Spot,

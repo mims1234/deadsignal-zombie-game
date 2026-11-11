@@ -837,20 +837,9 @@ function checkpoint(c: Ctx): void {
   box(b, Z.iron, Q.x + 1.6, 2.5, Q.z - 1.6, 0.6, 0.06, 0.06, Math.PI / 4);
   ball(b, Z.bulb, Q.x + 1.85, 2.4, Q.z - 1.85, 0.15);
   b.light({ x: Q.x + 2.2, y: 2.4, z: Q.z - 2.2, color: SODIUM, intensity: 18, distance: 15, mode: 'steady', pool: 5, glow: 1, weight: 1.1 });
-  // the barrier: its post south of the road, the striped arm raised, the rest it drops onto across the road
+  // (the checkpoint's barrier is the story's own arm across the gate between the frame's posts, `zarya/look.ts`: down
+  // until the code is in, then up. A second, always-raised arm here read as the way already being open.)
   const px = -95.4;
-  const pz = -125.95;
-  box(b, Z.iron, px, 0.6, pz, 0.34, 1.2, 0.34);
-  solid(c, px, pz, 0.4, 0.4, 1.3, 'zarya-barrier', { shots: false, kind: 'none', surface: 'metal' });
-  const up = 0.26;
-  for (let i = 0; i < 6; i++) {
-    const dd = 0.15 + (i + 0.5) * 1.05;
-    slab(b, i % 2 ? LIME : STRIPE, px, 1.05 + dd * Math.cos(up), pz - dd * Math.sin(up), 0.13, 1.05, 0.13, -up, 0, 0, false);
-  }
-  slab(b, Z.iron, px, 1.05 - 0.4 * Math.cos(up), pz + 0.4 * Math.sin(up), 0.3, 0.7, 0.3, -up, 0, 0);
-  box(b, Z.iron, px, 0.5, -134.1, 0.14, 1, 0.14);
-  box(b, Z.iron, px, 1.02, -134.1, 0.14, 0.06, 0.4);
-  solid(c, px, -134.1, 0.3, 0.3, 1.1, 'zarya-barrier', { shots: false, kind: 'none', surface: 'metal' });
   // a no-entry disc on a post north of the road
   cyl(b, Z.iron, px - 1.2, 0, -135.4, 0.05, 0.05, 2.4, 6);
   disc(b, STRIPE, px - 1.16, 2.1, -135.4, 0.36, 0.05, true, 16);

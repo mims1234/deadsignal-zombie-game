@@ -11,6 +11,7 @@ import { addBox, groundRect, wall } from '../structures';
 import type { LevelBuilder } from '../builder';
 import type { Ctx } from './util';
 import { DEPOT } from '../../zarya/zones/depot';
+import { shutterKiosk } from './zaryaShutters';
 import { GOODS, Z, ball, bench, box, counter, cyl, firTree, goods, lampPost, shelves, slab, solid } from './zaryaKit';
 
 const std = (color: number, roughness = 0.9): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, roughness });
@@ -899,6 +900,13 @@ function fireBoard(c: Ctx): void {
   slab(b, Z.iron, x + 0.42, 2.5, z + 0.15, 0.2, 0.03, 0.03, 0, 0, -0.7, false);
   // where the axe hangs (the story draws it): two pegs, the bar across it, the padlock
   for (const y of [1.4, 2.3]) box(b, Z.iron, F.x, y, z + 0.14, 0.1, 0.05, 0.1, 0, false);
+  // the axe on its pegs behind the bar (it was only a place before, which the board's padlock made no sense of): a
+  // pale haft, a dark head with a bright edge and a pick behind, against the red (taking it leaves the board as it
+  // is: the axe can be taken again)
+  box(b, Z.woodPale, F.x, 1.8, z + 0.19, 0.06, 1.06, 0.04, 0, false);
+  box(b, Z.iron, F.x + 0.12, 2.22, z + 0.19, 0.3, 0.16, 0.05, 0, false);
+  box(b, Z.white, F.x + 0.29, 2.22, z + 0.19, 0.05, 0.22, 0.045, 0, false);
+  slab(b, Z.iron, F.x - 0.13, 2.2, z + 0.19, 0.22, 0.06, 0.045, 0, 0, 0.25, false);
   box(b, Z.iron, F.x, 1.85, z + 0.24, 0.96, 0.08, 0.03, 0, false);
   for (const s of [-1, 1]) box(b, Z.iron, F.x + s * 0.48, 1.85, z + 0.16, 0.06, 0.18, 0.16, 0, false);
   box(b, C.yellow, F.x + 0.48, 1.7, z + 0.26, 0.11, 0.13, 0.05, 0, false);
@@ -1250,6 +1258,8 @@ export function buildDepot(c: Ctx): DepotHandles {
   fireBoard(c);
   garage(c);
   street(c);
+  // a shut kiosk, its shutter bought open with points (`zarya/mods.ts`, `zaryaShutters.ts`)
+  shutterKiosk(c, DEPOT.shutter, DEPOT.shutterYaw, 1);
   yard(c);
   return {};
 }

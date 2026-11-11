@@ -13,7 +13,7 @@ export interface Spot {
   z: number;
 }
 
-export type ZaryaZone = 'square' | 'store' | 'rynok' | 'dvor' | 'garages' | 'depot' | 'dk' | 'banya' | 'tets' | 'institute' | 'shelter' | 'canteen' | 'berloga';
+export type ZaryaZone = 'square' | 'store' | 'rynok' | 'dvor' | 'garages' | 'depot' | 'dk' | 'banya' | 'tets' | 'institute' | 'shelter' | 'upstairs' | 'canteen' | 'berloga';
 
 export type PersonRole = 'towns' | 'child' | 'staff' | 'guard' | 'nina' | 'kostya' | 'zina' | 'moroz' | 'girl' | 'babushka' | 'danya' | 'masked';
 export interface Person {

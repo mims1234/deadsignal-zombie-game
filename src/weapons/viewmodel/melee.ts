@@ -16,6 +16,9 @@
  * hand), so each brings its own (`OWN`): its own carry, guard and swings, and three more numbers a row saying WHICH
  * WAY ITS WORKING SIDE FACES (an edge, a hammer's face, a sickle's point), so the edge leads the cut and the flat of a
  * blade is turned to the eye when it is carried, whatever the hand is doing.
+ *
+ * The Kisten (out of Ded Moroz's sack) swings the chain's moves, but from a short handle held in the fist: its own,
+ * heavier chain hangs from the handle's tip with the iron weight on the end.
  */
 import * as THREE from 'three';
 import { MELEE, swingHand, type MeleeId, type MeleeType, type SwingPhase } from '../../logic/melee';
@@ -366,6 +369,10 @@ const FIST = wrapped(HAND_POSES.fist);
 const CHAIN_SEGS = 3;
 const CHAIN_LINKS = 4;
 const LINK = 0.04;
+// the Kisten: its handle's length (the chain leaves its tip), and its chain's thicker links
+const KISTEN_HANDLE = 0.2;
+const KISTEN_TIP = new THREE.Vector3(0, KISTEN_HANDLE + 0.012, 0);
+const KISTEN_LINK = 0.036;
 
 export class MeleeRig {
   readonly root = new THREE.Group();
@@ -379,6 +386,9 @@ export class MeleeRig {
   private shown: MeleeId | null = null;
   private readonly chainSegs: THREE.Group[] = [];
   private readonly chainDirs: THREE.Vector3[] = [];
+  /** The Kisten's own chain, the same way (from its handle's tip, not the fist). */
+  private readonly kistenSegs: THREE.Group[] = [];
+  private readonly kistenDirs: THREE.Vector3[] = [];
   private readonly builders: PartBuilder[] = [];
   // a hand's pose: x, y, z, where the weapon points, and (an earned weapon's rows) which way its working side faces
   private readonly a = [0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -536,6 +546,32 @@ export class MeleeRig {
       this.chainSegs.push(g);
       this.chainDirs.push(new THREE.Vector3(0, -1, 0));
     }
+
+    // ---- out of Ded Moroz's sack ----
+    // the Kisten: a short turned handle bound with leather, an iron cap and the ring the chain is forged to
+    held('kisten', (b) => {
+      b.cyl('wood', 0.0155, 0.018, KISTEN_HANDLE, 0, KISTEN_HANDLE / 2 - 0.03, 0, 'y', 10);
+      b.cyl('leather', 0.0185, 0.0185, 0.07, 0, 0.0, 0, 'y', 10);
+      b.cyl('wood', 0.021, 0.019, 0.016, 0, -0.04, 0, 'y', 10);
+      b.cyl('iron', 0.02, 0.017, 0.03, 0, KISTEN_HANDLE - 0.035, 0, 'y', 10);
+      b.torus('iron', 0.012, 0.004, 0, KISTEN_HANDLE - 0.012, 0, { ry: Math.PI / 2 }, 10);
+    });
+    // its chain: thicker links, and on the end the weight, a round of iron with four blunt studs
+    for (let s = 0; s < CHAIN_SEGS; s++) {
+      const g = make((b) => {
+        for (let i = 0; i < CHAIN_LINKS; i++) b.torus('iron', 0.0135, 0.0048, 0, KISTEN_LINK * (i + 0.5), 0, { ry: (s * CHAIN_LINKS + i) % 2 ? Math.PI / 2 : 0 }, 10);
+        if (s === CHAIN_SEGS - 1) {
+          const wy = KISTEN_LINK * CHAIN_LINKS + 0.042;
+          b.sphere('iron', 0.046, 0, wy, 0, 1, 1.08, 1, 14);
+          for (const [x, z] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) b.cyl('iron', 0.004, 0.014, 0.022, x * 0.048, wy, z * 0.048, x ? 'x' : 'z', 8);
+          b.cyl('iron', 0.004, 0.014, 0.022, 0, wy + 0.05, 0, 'y', 8);
+        }
+      });
+      g.visible = false;
+      this.root.add(g);
+      this.kistenSegs.push(g);
+      this.kistenDirs.push(new THREE.Vector3(0, -1, 0));
+    }
   }
 
   /** Show or hide a hand's own fingers (a boxing glove covers them, and they would poke through it). */
@@ -623,7 +659,10 @@ export class MeleeRig {
     this.lh.root.visible = paired;
     this.bare(this.rh, !fists);
     if (paired) this.bare(this.lh, !fists);
-    for (const g of this.chainSegs) g.visible = flail;
+    // (a flail on a handle, the Kisten, holds the handle and swings its own chain from the handle's tip)
+    const handled = flail && this.weapons.has(view.id);
+    for (const g of this.chainSegs) g.visible = flail && !handled;
+    for (const g of this.kistenSegs) g.visible = handled;
 
     const own = OWN[view.id];
     const edged = own !== undefined;
@@ -642,10 +681,10 @@ export class MeleeRig {
 
     const right = this.sample(rows, leftThrows ? 0 : u, guard, k, this.a);
     this.orient(this.rh, right, false, dx, dy);
-    this.rh.setPose(fists || flail ? FIST : own ? HOLD : GRIP);
+    this.rh.setPose(fists || (flail && !handled) ? FIST : own ? HOLD : GRIP);
     const weapon = this.weapons.get(view.id);
-    if (weapon && !fists && !flail) this.lay(weapon, right, edged);
-    if (flail) this.hang(style, u, idle, view, dt, ms);
+    if (weapon && !fists && (!flail || handled)) this.lay(weapon, right, edged);
+    if (flail) this.hang(style, u, idle, view, dt, ms, handled ? weapon! : null);
     if (paired) {
       const rowsL = own?.restL ? rowsFor(view.id, type, style, true) : rows;
       const left = this.sample(rowsL, leftThrows ? u : 0, own?.guardL ?? guard, k, this.b);
@@ -658,7 +697,7 @@ export class MeleeRig {
   }
 
   /** The chain: each length swings toward where the swing sends it, the far ones later than the near ones. */
-  private hang(style: Style, u: number, idle: boolean, view: MeleeView, dt: number, ms: number): void {
+  private hang(style: Style, u: number, idle: boolean, view: MeleeView, dt: number, ms: number, handle: THREE.Group | null): void {
     const rows = CHAIN[style];
     if (rows && !idle) sampleRows(rows, u, this.c);
     else {
@@ -668,22 +707,31 @@ export class MeleeRig {
       this.c[2] = 0.06 + Math.sin(view.bobPhase * 2) * 0.06 * view.move * ms;
     }
     const want = this.w.set(this.c[0]!, this.c[1]!, this.c[2]!).normalize();
-    const at = this.v.copy(FIST_END).applyMatrix4(this.rh.root.matrix);
+    // from the fist, or from the tip of the handle the fist holds
+    let at: THREE.Vector3;
+    if (handle) {
+      handle.updateMatrix();
+      at = this.v.copy(KISTEN_TIP).applyMatrix4(handle.matrix).applyMatrix4(this.rh.root.matrix);
+    } else at = this.v.copy(FIST_END).applyMatrix4(this.rh.root.matrix);
+    const segs = handle ? this.kistenSegs : this.chainSegs;
+    const dirs = handle ? this.kistenDirs : this.chainDirs;
+    const len = (handle ? KISTEN_LINK : LINK) * CHAIN_LINKS;
     for (let s = 0; s < CHAIN_SEGS; s++) {
-      const dir = this.chainDirs[s]!;
-      // a still frame (dt 0) snaps; otherwise the first length keeps up and the last one lags
-      const rate = dt > 0 ? Math.min(1, dt * (46 - s * 14)) : 1;
+      const dir = dirs[s]!;
+      // a still frame (dt 0) snaps; otherwise the first length keeps up and the last one lags (a heavy weight lags more)
+      const rate = dt > 0 ? Math.min(1, dt * ((handle ? 40 : 46) - s * 14)) : 1;
       dir.lerp(want, rate).normalize();
-      const g = this.chainSegs[s]!;
+      const g = segs[s]!;
       g.position.copy(at);
       g.quaternion.setFromUnitVectors(UP, dir);
-      at.addScaledVector(dir, LINK * CHAIN_LINKS);
+      at.addScaledVector(dir, len);
     }
   }
 
   reset(): void {
     this.root.visible = false;
     for (const d of this.chainDirs) d.set(0, -1, 0);
+    for (const d of this.kistenDirs) d.set(0, -1, 0);
   }
 
   dispose(): void {

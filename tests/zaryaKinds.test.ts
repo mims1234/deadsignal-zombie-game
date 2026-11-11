@@ -85,6 +85,7 @@ describe("ZARYA's kinds: who is where", () => {
     tets: [],
     institute: [],
     shelter: [],
+    upstairs: [],
     canteen: [],
     berloga: [],
   };

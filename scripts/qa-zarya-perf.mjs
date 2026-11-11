@@ -65,6 +65,7 @@ if (map === 'zarya') {
     ['banya pond', 60, -125, 60, -150], ['banya house+squad', 114, -159, 137, -162, 1],
     ['tets', -40, -128, -40, -165], ['tets+squad', 10, -112, -30, -100, 1],
     ['institute', -140, -100, -194, -130], ['institute+squad', -150, -130, -194, -130, 1],
+    ['upstairs', 642, -18.8, 628, -24], ['upstairs+squad', 636, -2, 615, -20, 1],
     ['canteen', 440, 0, 468, 0], ['canteen+squad', 465, 10, 440, -10, 1],
     ['berloga', 510, 0, 545, 0], ['berloga+squad', 550, -5, 510, 5, 1],
   ];

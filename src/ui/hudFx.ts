@@ -378,9 +378,18 @@ export class RadioView {
     this.textEl = el('div', 'text', this.root);
   }
 
-  push(speaker: string, text: string, duration?: number): void {
+  /** `now`: cut in ahead of the line being shown and of those waiting. */
+  push(speaker: string, text: string, duration?: number, now = false): void {
+    const item = { speaker, text, duration: duration ?? clamp(2.6 + text.length * 0.05, 3, 8) };
+    if (now) {
+      // what it cut off is said again after it, for what was left of its time
+      if (this.cur) this.queue.unshift({ speaker: this.tag.textContent ?? '', text: this.textEl.textContent ?? '', duration: Math.max(2, this.cur.dur - this.cur.t) });
+      this.queue.unshift(item);
+      this.cur = null;
+      return;
+    }
     if (this.queue.length >= 3) this.queue.shift();
-    this.queue.push({ speaker, text, duration: duration ?? clamp(2.6 + text.length * 0.05, 3, 8) });
+    this.queue.push(item);
   }
 
   update(dt: number): void {
@@ -477,8 +486,15 @@ export class TopLineView {
     this.trim();
   }
 
-  radio(speaker: string, text: string): void {
-    for (const piece of TopLineView.pieces(text, TopLineView.room(speaker))) this.queue.push({ tag: speaker, text: piece, tone: 'radio', duration: TopLineView.hold(piece) });
+  /** `now`: cut in ahead of the line being shown and of everything waiting. */
+  radio(speaker: string, text: string, now = false): void {
+    const items: TopLineItem[] = TopLineView.pieces(text, TopLineView.room(speaker)).map((piece) => ({ tag: speaker, text: piece, tone: 'radio', duration: TopLineView.hold(piece) }));
+    if (now) {
+      // what it cut off is shown again after it
+      if (this.cur) this.queue.unshift({ tag: this.tagEl.textContent ?? '', text: this.textEl.textContent ?? '', tone: (this.root.dataset.tone as Tone | 'radio') ?? 'radio', duration: Math.max(1.6, this.cur.dur - this.cur.t) });
+      this.queue.unshift(...items);
+      this.cur = null;
+    } else this.queue.push(...items);
     this.trim();
   }
 

@@ -8,7 +8,7 @@ import type { HudObjective, HudPrompt, HudState, HudWeaponInfo, StationPanel } f
 import { type IconName, icon, weaponSilhouette } from './icons';
 
 /** The fire-mode word of ZARYA's guns (the nail gun is plain AUTO). */
-const ZARYA_MODE: Partial<Record<WeaponId, string>> = { signalka: 'FLARE', arbalet: 'BOLT', salyut: 'VOLLEY', ottepel: 'STEAM', zenit: 'FLASH' };
+const ZARYA_MODE: Partial<Record<WeaponId, string>> = { signalka: 'FLARE', arbalet: 'BOLT', salyut: 'VOLLEY', ottepel: 'STEAM', zenit: 'FLASH', raketa: 'SUCK' };
 
 // ---------------------------------------------------------------------------------------------
 // vitals: health, armour, plates, stamina
@@ -181,7 +181,8 @@ export class WeaponView {
     this.root.classList.toggle('none', !w);
     if (w) {
       this.name.set(w.short);
-      const showTier = w.tier > 0;
+      // (a map's weapon mod words ride in the label too: ZARYA's `zarya/modsRuntime.ts`)
+      const showTier = w.tier > 0 || w.tierLabel !== '';
       setHidden(this.tier, !showTier);
       this.tierText.set(w.tierLabel);
       setAttr(this.tier, 'data-tier', String(w.tier));
@@ -195,7 +196,7 @@ export class WeaponView {
       }
       this.magText.set(w.melee ? '-' : String(w.mag));
       // (the Ottepel's gauge refills by itself and the Zenit has only the bulbs in it: neither has a reserve to count)
-      this.resText.set(w.melee || w.id === 'ottepel' || w.id === 'zenit' ? '-' : String(w.reserve));
+      this.resText.set(w.melee || w.id === 'ottepel' || w.id === 'zenit' || w.id === 'raketa' ? '-' : String(w.reserve));
       const dry = !w.melee && w.mag === 0 && w.reserve === 0;
       let magState = 'ok';
       if (dry) magState = 'empty';

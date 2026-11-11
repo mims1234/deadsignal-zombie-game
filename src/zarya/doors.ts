@@ -3,7 +3,8 @@
  * and the co-op simulation both call this every frame; it only touches a door when its state has changed.
  *
  * The shelter's blast door, the store's jammed shutter, the gates between zones, the Rynok's cold store door, the
- * Berloga's door with four key slots, and the escalator up to the canteen.
+ * Berloga's door with four key slots, and the escalator up to the store's second floor (the one on up from there to
+ * the canteen is never shut: the padlock below is the only lock on the way).
  */
 import type { BoxCollider } from '../world/collision';
 import type { Level } from '../world/level';

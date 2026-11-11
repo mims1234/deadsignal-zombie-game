@@ -32,6 +32,7 @@ const SPECS: Record<WeaponId, Spec> = {
   salyut: { len: 0.07, rad: 0.0105, shell: true },
   ottepel: { len: 0.045, rad: 0.0058, shell: false },
   zenit: { len: 0.029, rad: 0.0049, shell: false },
+  raketa: { len: 0.045, rad: 0.0058, shell: false },
 };
 
 function brassGeometry(): THREE.BufferGeometry {

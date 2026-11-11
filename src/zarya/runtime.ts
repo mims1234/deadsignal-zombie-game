@@ -22,10 +22,15 @@ import { ZoneSwitch } from '../world/zones';
 import { ZaryaDirector, type Named } from './director';
 import { applyDoors } from './doors';
 import { zaryaPull, zaryaVariantPicker } from './kinds';
-import { LINES, NINA_WIRE, lineSeconds, type Beat, type Line } from './lines';
+import { LINES, NINA_WIRE, SACK_MOVED, lineSeconds, type Beat, type Line } from './lines';
 import { TownLook } from './look';
-import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, GATES, INSTITUTE, RYNOK, STOPS, TETS, ZARYA, ZARYA_ZONES, inInterior, inRect, inShelter, inStore, onSquare, type Spot, type ZaryaZone } from './places';
+import { SACK_EVERY, SACK_PLACES, nextSackPlace, sackPlaceOpen } from './sack';
+import { ZenitPhotos } from './photos';
+import { MorozkoQuestion } from './weakPoints';
+import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, GATES, INSTITUTE, RYNOK, STOPS, TETS, UPSTAIRS, ZARYA, ZARYA_ZONES, inInterior, inRect, inShelter, inStore, onSquare, type Spot, type ZaryaZone } from './places';
 import { AT, BENCHES, CH, CLUE, CLUES, COVERS, DOLLS, F, G, KEYS, ORNAMENTS, STORY, TOOLS, ZaryaStory, decodeStory, type StoryAct, type StoryView } from './story';
+// (kiosks and mods: the shutters, the weapon mods, the repair booth's tools)
+import { KiosksAndMods } from './modsRuntime';
 import { CHAIN, OKHOTNIK, PART, POLICE, RECIPE, TOWN, Unlock, buyOffer, type Gives, type OfferDef } from './unlock';
 
 /** How near a thing lying about has to be to be picked up in passing. */
@@ -57,7 +62,7 @@ const WHERE = [
 const SHORT = ['SIGNALKA', 'LINE ONE', 'BOLT CUTTERS', 'NAIL GUN', 'SALYUT', 'ROGATINA', 'OTTEPEL'];
 /** The clues that are read rather than looked at, and what the prompt calls the ones whose name is a place. */
 const READ = new Set(['ledger', 'sheet', 'plaque']);
-const CLUE_VERB: Record<string, string> = { office: 'READ THE NOTES ON THE DESK', dens: 'LOOK INTO THE GLASS DENS' };
+const CLUE_VERB: Record<string, string> = { office: 'READ THE NOTES ON THE DESK', dens: 'LOOK INTO THE GLASS DENS', den: 'LOOK INTO THE DEN' };
 /** What each clue told the squad (the journal), in the order of `CLUES`. */
 const KNOWN = [
   'Every television in the Dvor is stopped on the same frame: three minutes to twelve.',
@@ -72,6 +77,10 @@ const KNOWN = [
   "Zimin's notes: the plant would not last the winter. Asleep, they need nothing; asleep, they can wait for spring. He asked nobody.",
   'Under the Institute there are bears asleep behind glass. That is where he learned it.',
   'Danya is in bed forty-one. Two winters, and he has not aged a day.',
+  // the Zenit's six photographs (`photos.ts`): their own page in the journal, not a line here
+  '', '', '', '', '', '',
+  // the store's second floor (`den`, index 18)
+  "Behind the toy counter on the second floor, a den of cartons with Kostya's red hat in it. Every Saturday, and Valya on toys pretends not to see him.",
 ];
 const DOLL_AT = ['AT THE FAIR', 'IN THE RYNOK', 'IN THE DVOR'];
 const TOOL_NAME = ['SOLDERING IRON', 'SCREWDRIVERS', 'MULTIMETER'];
@@ -100,8 +109,8 @@ const RIDE = { arrive: 1, clear: 1.7 };
 const ROAM: StoryView = { ...ZaryaStory.empty(), ch: CH.town, f: F.armed | F.released | F.gena | F.plug };
 
 /** The three rooms built beside the map, and the way into and out of each (the HUD points at these). */
-type Room = 'shelter' | 'canteen' | 'berloga';
-const ROOMS = ZARYA_ZONES.filter((q) => q.id === 'shelter' || q.id === 'canteen' || q.id === 'berloga');
+type Room = 'shelter' | 'upstairs' | 'canteen' | 'berloga';
+const ROOMS = ZARYA_ZONES.filter((q) => q.id === 'shelter' || q.id === 'upstairs' || q.id === 'canteen' || q.id === 'berloga');
 const roomOf = (x: number): Room | null => {
   if (!inInterior(x)) return null;
   for (const q of ROOMS) if (x >= q.x0 && x < q.x1) return q.id as Room;
@@ -109,9 +118,14 @@ const roomOf = (x: number): Room | null => {
 };
 const WAY: Record<Room, { in: Spot; out: Spot }> = {
   shelter: { in: ZARYA.stairHead, out: ZARYA.stairFoot },
-  canteen: { in: AT.escalator, out: CANTEEN.head },
+  // the store's second floor, up the escalator from the hall; the canteen, up the next escalator from the second floor
+  upstairs: { in: AT.escalator, out: UPSTAIRS.foot },
+  canteen: { in: UPSTAIRS.up, out: CANTEEN.head },
   berloga: { in: INSTITUTE.lift, out: BERLOGA.liftFoot },
 };
+
+/** The room each room is entered from (null: the street). */
+const ENTERED_FROM: Record<Room, Room | null> = { shelter: null, upstairs: null, canteen: 'upstairs', berloga: null };
 
 const title = (s: string): string => s.toLowerCase().replace(/(^|[\s-])([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());
 const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
@@ -148,6 +162,9 @@ export class ZaryaRuntime {
   request: ((a: StoryAct, i: number, heavy: boolean) => void) | null = null;
   private readonly director: ZaryaDirector;
   private readonly look = new TownLook();
+  // ---- the Zenit's photographs and Morozko's question (`photos.ts`, `weakPoints.ts`) ----
+  private readonly photos: ZenitPhotos;
+  private readonly question: MorozkoQuestion;
   private active = false;
   private remote = false;
   private wire: StoryView | null = null;
@@ -179,14 +196,43 @@ export class ZaryaRuntime {
   private seenSlots = false;
   /** The prompts being gathered this frame (`targets`). */
   private reachOut: InteractionTarget[] = [];
+  /** Kiosks and mods: the shutters, this player's weapon mods, the repair booth (`modsRuntime.ts`). */
+  private readonly kiosks: KiosksAndMods;
 
   constructor(private readonly g: Game) {
     this.zones = new ZoneSwitch(ZARYA_ZONES, g.level.zones);
     this.director = new ZaryaDirector(g.level, g.zombies);
     g.worldRoot.add(this.look.root);
+    // (the Zenit's photographs and Morozko's question)
+    this.photos = new ZenitPhotos(g, this.look.root);
+    this.question = new MorozkoQuestion(g);
     g.interaction.sources.push((t) => this.targets(t));
     g.menus.pauseTab = () => ({ label: 'JOURNAL', build: () => this.journal() });
     g.interaction.boxName = "DED MOROZ'S SACK";
+    // kiosks and mods (`modsRuntime.ts`): it plugs this player's mods into the weapons and gates the repair booth
+    this.kiosks = new KiosksAndMods(g, (a, i) => this.act(a, i), () => this.view, () => this.active);
+    // ---- Ded Moroz's sack moves: after a few openings it turns up somewhere the squad can reach (`zarya/sack.ts`;
+    // the box itself is moved by `game/entities.ts`, in co-op by the host), and Kostya says where on the wire ----
+    g.entities.mover = {
+      every: SACK_EVERY,
+      places: SACK_PLACES,
+      open: (i) => sackPlaceOpen(this.view, i),
+      next: (current, roll) => nextSackPlace(this.view, current, roll),
+      moved: (_crate, place, quiet) => {
+        const p = SACK_PLACES[place];
+        if (quiet || !p) return;
+        this.say('sackGone');
+        this.queue.push(SACK_MOVED[p.zone]);
+      },
+    };
+    // the sack is drawn taller than a crate (`look.ts`): its prize and its "?" float over the top of it, not inside it;
+    // and the sack is the box, so the stock loot crate under it is not drawn (its lid flipped open out of the sack)
+    for (const c of g.entities.crates) {
+      c.lift = 1;
+      c.moved();
+      c.model.root.visible = false;
+    }
+    // ---- end of the sack's block ----
   }
 
   /** The story as it stands (the simulation's in co-op). */
@@ -212,6 +258,8 @@ export class ZaryaRuntime {
 
   /** What going through one of the town's doorways is called (`Game.stairwellPrompt`): into the room named `room`, or out of it. Null: the game's own words. */
   wayWords(room: string, into: boolean): string | null {
+    // the store's second floor: up from the hall, down from the canteen, down again to the hall
+    if (/second floor/i.test(room)) return into && roomOf(this.g.player.x) !== 'canteen' ? 'Up the escalator' : 'Down the escalator';
     if (/canteen/i.test(room)) return into ? 'Up the escalator' : 'Down the escalator';
     if (/berloga/i.test(room)) return into ? 'Down in the freight lift' : 'Up in the freight lift';
     if (/shelter/i.test(room)) return into ? 'Down the staff stairs' : 'Up into the store';
@@ -270,6 +318,7 @@ export class ZaryaRuntime {
     this.roofed = false;
     this.setVeil(0);
     this.story.reset();
+    this.kiosks.reset(coop); // kiosks and mods
     if (!coop) {
       this.director.reset();
       g.zombies.spawnAllowed = this.director.spawnAllowed();
@@ -285,6 +334,9 @@ export class ZaryaRuntime {
     this.area = 0;
     applyDoors(g.level, this.view);
     this.look.reset();
+    // (the Zenit's photographs and Morozko's question)
+    this.photos.reset();
+    this.question.reset();
     this.zones.update(g.player.x, g.player.z);
     g.banner('ZARYA-12  //  22:41', "New Year's Eve. A boy has gone missing in the Univermag. The staff door is round the back of the store.", 'info', 7);
   }
@@ -323,6 +375,13 @@ export class ZaryaRuntime {
     this.react(this.prev, v);
     this.prev = { ...v };
     applyDoors(g.level, v);
+    // kiosks and mods: the mods in hand, the parts lying about, a shutter going up
+    this.kiosks.update(dt, v, alive, this.remote);
+
+    // ---- the Zenit's photographs (a flash at a marked spot asks for one; a new one is developed and shown) and
+    // Morozko's question (its caption, a guard or blow in it asked for as a parry, his weak points drawn) ----
+    this.photos.update(dt, v, (i) => this.act('photo', i));
+    this.question.update(dt, v, this.named('morozko'), this.remote ? null : this.director.morozko, () => this.act('parry'));
 
     // with nothing in their hands there is nothing to raise
     const bare = this.unarmed;
@@ -349,6 +408,10 @@ export class ZaryaRuntime {
       const z = this.named(n.who);
       if (z) this.look.dress(n.who, z);
     }
+    // ---- Ded Moroz's sack: the drawn sack stands where the box is (it moves: `zarya/sack.ts`) ----
+    const sackBox = g.entities.crates.find((c) => c.cost > 0);
+    if (sackBox) this.look.placeSack(sackBox.def.x, sackBox.def.z);
+    // ---- end of the sack's block ----
     this.look.update(dt, v, g.renderer.camera.position, this.underRoof(dt), g.renderer.renderer.domElement.clientHeight || 720);
     if (this.endT >= 0) {
       // the last lines are said over a town going dark (or light); then the run is won
@@ -770,11 +833,13 @@ export class ZaryaRuntime {
     this.rideT += dt;
     const stop = STOPS[this.rideTo];
     if (stop && this.rideT >= RIDE.arrive) {
-      // out of the car's doors, on its south side
+      // out of the car's doors, facing away from the car (act-2 polish: Stroiteley Street's doors are on the north
+      // side, where facing south had the squad step off nose to the tram's flank)
       this.rideTo = -1;
-      g.player.teleport(stop.door.x, stop.door.z, Math.PI);
+      const away = stop.door.z > stop.z ? Math.PI : 0;
+      g.player.teleport(stop.door.x, stop.door.z, away);
       this.area = g.level.floors.areaAt(stop.door.x, 0, stop.door.z);
-      g.squad.regroupAt(stop.door.x, stop.door.z, Math.PI, this.area);
+      g.squad.regroupAt(stop.door.x, stop.door.z, away, this.area);
       this.zones.update(stop.door.x, stop.door.z);
     }
     if (this.rideT >= RIDE.clear) {
@@ -801,10 +866,14 @@ export class ZaryaRuntime {
     const room = roomOf(p.x);
     if (room === 'shelter') this.inShelter(q);
     else if (room === 'canteen') this.inCanteen(q);
+    else if (room === 'upstairs') {
+      // the store's second floor has nothing of its own to prompt: its den is `seen`, its ornament picked up `passing`
+    }
     else if (room === 'berloga') this.inBerloga(q);
     else {
       this.inStoreAndSquare(q);
       if (q.v.ch >= CH.act2) this.inTown(q);
+      this.kiosks.targets(out, q.v); // kiosks and mods: BUY THE SHUTTER, FIT A MOD at a bench
       this.atStops(q);
     }
     if (room !== 'shelter') this.seen(q);
@@ -1242,7 +1311,10 @@ export class ZaryaRuntime {
     const there = roomOf(at.x);
     const here = roomOf(this.g.player.x);
     if (there === here) return at;
-    return here ? WAY[here].out : WAY[there!].in;
+    // into the room it is in, or the room that room opens off, if that opens off this one (the canteen is up from the
+    // second floor, which is up from the street); else out of this one
+    for (let r = there; r; r = ENTERED_FROM[r]) if (ENTERED_FROM[r] === here) return WAY[r].in;
+    return WAY[here!].out;
   }
 
   decorateHud(st: HudState, md: MapDynamic): void {
@@ -1250,6 +1322,7 @@ export class ZaryaRuntime {
     st.timer = { ...st.timer, hidden: true };
     st.subTimer = null;
     if (!this.active) return;
+    this.kiosks.decorate(st); // kiosks and mods: the mod's word on the weapon panel
     const v = this.view;
     const p = this.g.player;
     const has = (flag: number): boolean => ZaryaStory.has(v, flag);
@@ -1409,7 +1482,7 @@ export class ZaryaRuntime {
       if (!did(G.tickets)) gate('tickets', 'THE PALACE OF CULTURE', `Tickets only: three for $${STORY.tickets}, at the box office by its doors`, AT.tickets, { label: 'BOX OFFICE' });
       else if (!did(G.yaga) && !did(G.yagaDown)) gate('pageant', 'THE PAGEANT', 'The Palace doors are open', DK.hallCentre);
       if (!did(G.escalator)) gate('escalator', 'THE ESCALATOR', this.heavy ? 'Padlocked. What you carry will break it' : 'Padlocked. It wants something heavy to swing', AT.escalator);
-      else if (!did(G.tamada) && !did(G.tamadaDown)) gate('party', 'THE STAFF PARTY', 'Up the escalator, on the third floor', CANTEEN.tamada);
+      else if (!did(G.tamada) && !did(G.tamadaDown)) gate('party', 'THE STAFF PARTY', 'Up the escalators, on the third floor', CANTEEN.tamada);
       if (!did(G.pond)) {
         if (v.dolls > 0) {
           const shut = DOLLS.filter((_, i) => ZaryaStory.shells(v, i) < STORY.dollShells);
@@ -1466,6 +1539,8 @@ export class ZaryaRuntime {
     }
     if (!has(F.notice)) add('notice', 'THE STAFF NOTICEBOARD', 'By the cloakroom. Worth a look', ZARYA.noticeboard, { quiet: true });
     if (!act2) return;
+    // ---- the store's second floor, once the escalator is open: where Kostya was last seen (quiet: on the map, never tracked) ----
+    if (did(G.escalator) && (v.clues & (1 << CLUE.den)) === 0) add('toys', 'THE TOY DEPARTMENT', 'Second floor. Where Kostya was last seen', UPSTAIRS.toys, { quiet: true });
     if (ZaryaStory.can(v, 'hang')) add('hang', 'THE TOWN TREE', 'All six ornaments found. They hang on it', AT.hang);
     else if (v.orn !== 0 && !did(G.hung)) add('orn', `GLASS ORNAMENTS  ${count(v.orn)} OF ${ORNAMENTS.length}`, 'Off the town tree', null, { progress: count(v.orn) / ORNAMENTS.length, quiet: true });
     if (v.covered !== 0) add('covered', `SLEEPERS COVERED  ${count(v.covered)}`, 'Against the cold', null, { quiet: true });
@@ -1507,7 +1582,7 @@ export class ZaryaRuntime {
     if (did(G.borya)) know.push('Borya the butcher walks into his cold store forty times a day. It has one door, and a hatch he does not fit through.');
     if (v.dolls > 0) know.push('The painted matryoshkas open a shell when enough of the ones woken wrong are put down beside them.');
     CLUES.forEach((_, i) => {
-      if ((v.clues & (1 << i)) !== 0) know.push(KNOWN[i]!);
+      if ((v.clues & (1 << i)) !== 0 && KNOWN[i]) know.push(KNOWN[i]!);
     });
     if (ZaryaStory.count((v.m >> 3) & 7) === 3) know.push('The heating plant is set to push steam the right way round. It needs someone at the other end.');
     if (did(G.asked)) know.push('In the story, the girl tells Morozko she is warm. Freezing, and she says yes. And he lets her live.');
@@ -1540,11 +1615,19 @@ export class ZaryaRuntime {
     if (building.length) section('WHAT YOU ARE BUILDING', building);
     if (v.ch >= CH.town) section(`SLEEPERS COVERED  -  ${ZaryaStory.count(v.covered)}`, []);
     if (v.ch >= CH.act2) section(`ORNAMENTS  -  ${ZaryaStory.count(v.orn)} OF ${ORNAMENTS.length}${did(G.hung) ? ', BACK ON THE TREE' : ''}`, []);
+    // kiosks and mods: the squad's mod parts, and what the gun in hand wears
+    const mods = this.kiosks.journalLine(v);
+    if (mods) section('WEAPON MODS', [mods, 'Fitted at any workbench to the gun in your hands; the Charge mod wants a proper bench.']);
+    // (the Zenit's photographs: their own page)
+    const prints = this.photos.journal(v);
+    if (prints) root.appendChild(prints);
     return root;
   }
 
   dispose(): void {
     this.look.dispose();
+    this.photos.dispose();
+    this.question.dispose();
     this.veil?.remove();
   }
 }

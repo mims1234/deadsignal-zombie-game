@@ -22,8 +22,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Zombie } from '../enemies/zombie';
 import { Z as KIT } from '../world/layout/zaryaKit';
 import { Crowd, Snowfall } from './crowd';
+import { FrostRings } from './photos';
 import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, LAMPS, RYNOK, SHELTER, STOPS, STORE, TETS, ZARYA, ZARYA_ZONES, inInterior, inRect, people, type Rect, type Spot } from './places';
-import { CH, CLUES, COVERS, DOLLS, F, G, ORNAMENTS, STORY, TOOLS, ZaryaStory, type StoryView } from './story';
+import { CH, CLUES, COVERS, DOLLS, F, G, MOD_PARTS, ORNAMENTS, SHUTTERS, STORY, TOOLS, ZaryaStory, type StoryView } from './story';
 import { yawTo } from './types';
 import { PART, TOWN, Unlock } from './unlock';
 
@@ -32,7 +33,7 @@ export type Named = 'mishka' | 'borya' | 'yaga' | 'tamada' | 'morozko';
 const AMBER = 0xffb84a;
 /** How high each part lies (on a shelf, a counter, a table, in a box on a post; lower where it lies on the ground). */
 const PART_Y: Record<string, number> = { tube: 1.5, cartridges: 1.34, handle: 1.24, fuse: 1.34, shears: 1.3, pipes: 1.1, tape: 1.3, nailer: 1.05, canister: 0.6, strips: 1.05, tubes: 1.2, crate: 0.75, cord: 0.45, blade: 1.2, shaft: 1, guard: 0.7, samovar: 1.25, coil: 0.95, valve: 1.05, vesna: 1.3 };
-const CLUE_Y: Record<string, number> = { tv: 1.45, ledger: 1.1, crates: 1.25, sheet: 1.5, plaque: 1.6, photo: 1.6, faces: 1.55, pipe: 1.2, clock: 1.65, office: 1, dens: 1.35, danya: 1.25 };
+const CLUE_Y: Record<string, number> = { tv: 1.45, ledger: 1.1, crates: 1.25, sheet: 1.5, plaque: 1.6, photo: 1.6, faces: 1.55, pipe: 1.2, clock: 1.65, office: 1, dens: 1.35, danya: 1.25, den: 0.55 };
 /** The glass ornaments' colours, and the four keys' (cosmonaut, sun, wheat, dove). */
 const GLASS = [0xd8262e, 0x2f6fd8, 0xe0a820, 0x2fa860, 0x9a4ad0, 0xc8d4e8];
 const KEY_TINT = [0x3a66c8, 0xf07820, 0x30a89c, 0x6ab4f0];
@@ -188,6 +189,8 @@ export class TownLook {
   readonly root = new THREE.Group();
   readonly crowd: Crowd;
   private readonly snow = new Snowfall();
+  /** The Zenit's marked spots: a faint ring of frost on the ground at each not yet photographed (`photos.ts`). */
+  private readonly rings = new FrostRings();
   private readonly geos: THREE.BufferGeometry[] = [];
   private readonly mats: THREE.Material[] = [];
   private readonly sites: Site[] = [];
@@ -206,6 +209,9 @@ export class TownLook {
   private readonly flare = new THREE.Group();
   private readonly flareMat: THREE.MeshBasicMaterial;
   private readonly prize: THREE.Mesh;
+  /** Ded Moroz's sack, which moves (`placeSack`), and the site it is drawn from. */
+  private readonly sack: THREE.Mesh;
+  private readonly sackSite: Site;
   private readonly guardIdx: number;
   private readonly morozIdx: number;
 
@@ -218,6 +224,10 @@ export class TownLook {
   private readonly partAt: number;
   private readonly findAt: number;
   private readonly toolAt: number;
+  /** Kiosks and mods: the mod parts lying about (in `sparks`), each kiosk rolled open, the sleeping repairman's tools back on his bench. */
+  private readonly modPartAt: number;
+  private readonly kiosks: { site: Site; open: THREE.Mesh }[] = [];
+  private readonly booth: { site: Site; tools: THREE.Mesh[] };
   private readonly clueAt: number;
 
   // ---- the town ----
@@ -238,6 +248,8 @@ export class TownLook {
   private readonly hall: { site: Site; slab: THREE.Mesh; y: number };
   private readonly shelter: Site;
   private readonly front: Site;
+  /** The store hall's escalator (polish, square/store session): the rope and padlock at its foot, the shutter at its head (`G.escalator`). */
+  private readonly escal: { rope: THREE.Mesh; slack: THREE.Mesh; curtain: THREE.Mesh; k: number };
   private readonly fair: Site;
 
   // ---- the named, and the one who watches ----
@@ -268,7 +280,7 @@ export class TownLook {
     this.crowd = new Crowd(list);
     this.guardIdx = this.crowd.indexOf('guard');
     this.morozIdx = this.crowd.indexOf('moroz');
-    this.root.add(this.crowd.root, this.snow.points);
+    this.root.add(this.crowd.root, this.snow.points, this.rings.root);
     this.coverOf = COVERS.map((c) => this.crowd.nearest(c.x, c.z, 2.2));
 
     this.paint = this.mat(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.05 }));
@@ -322,6 +334,21 @@ export class TownLook {
     // the jammed shutter: a steel curtain half down over the southern doors, its motor still trying
     this.shutter = this.mesh(new Paint().box(STEEL, 0, 0, 0, 0.07, 3.3, 3.3), this.front.g);
     this.shutter.position.set(STORE.x0 + 0.5, 3.35, ZARYA.shutter.z);
+    // ---- the store hall's escalator (polish, square/store session): roped and padlocked at its foot, shuttered at its
+    // head; once the padlock is broken the rope hangs from one post and the shutter rolls up into its drum. The brass
+    // posts are the layout's (`world/layout/zaryaStore.ts`).
+    {
+      const E = ZARYA.escalator;
+      const ex = (E.x0 + E.x1) / 2;
+      const rz = E.z1 + 0.6;
+      const rope = new Paint().box(0x7a1c18, 0, 0, 0, 2.6, 0.06, 0.06).box(0xc79a3c, 0, -0.14, 0.03, 0.18, 0.2, 0.08).box(0x9aa0aa, 0, 0.0, 0.03, 0.12, 0.1, 0.03);
+      const slack = new Paint().box(0x7a1c18, 0, -0.42, 0, 0.06, 0.84, 0.06).box(0x7a1c18, 0.55, -0.83, 0.1, 1.1, 0.04, 0.06, 0.2);
+      const curtain = this.mesh(new Paint().box(STEEL, 0, 0, 0, 2.9, 1.9, 0.1), this.front.g);
+      curtain.position.set(ex, 4.3, E.z0 + 3.4);
+      this.escal = { rope: this.mesh(rope, this.front.g), slack: this.mesh(slack, this.front.g), curtain, k: 0 };
+      this.escal.rope.position.set(ex, 0.86, rz);
+      this.escal.slack.position.set(ex - 1.3, 0.86, rz);
+    }
 
     // the Signalka's red star
     this.flareMat = this.mat(new THREE.MeshBasicMaterial({ color: 0xff3a22, transparent: true, opacity: 1, fog: false }));
@@ -331,11 +358,14 @@ export class TownLook {
     this.flare.visible = false;
     this.root.add(this.flare);
 
-    // the red sack under the little fir (it sits over the box the game keeps there), a prize for the hook
+    // the red sack under the little fir (it sits over the box the game keeps there; when the box moves, it goes with
+    // it: `placeSack`), a prize for the hook
     {
       const S = ZARYA.sack;
-      const p = new Paint().ball(0xa8201a, S.x, 0.6, S.z, 0.72, 1.15, 0.95, 1, 12).cyl(0xa8201a, S.x, 1.38, S.z, 0.2, 0.34, 0.4, 10).torus(GOLD, S.x, 1.24, S.z, 0.24, 0.035, Math.PI / 2);
-      this.mesh(p, this.fair.g);
+      const p = new Paint().ball(0xa8201a, 0, 0.6, 0, 0.72, 1.15, 0.95, 1, 12).cyl(0xa8201a, 0, 1.38, 0, 0.2, 0.34, 0.4, 10).torus(GOLD, 0, 1.24, 0, 0.24, 0.035, Math.PI / 2);
+      this.sackSite = this.site(S.x, S.z, 110);
+      this.sack = this.mesh(p, this.sackSite.g);
+      this.sack.position.set(S.x, 0, S.z);
       this.prize = this.mesh(new Paint().box(RED, 0, 0, 0, 0.34, 0.3, 0.34).box(GOLD, 0, 0, 0, 0.36, 0.06, 0.36).box(GOLD, 0, 0, 0, 0.06, 0.32, 0.36), this.fair.g);
       this.prize.position.set(ZARYA.hook.x, 2.1, ZARYA.hook.z + 1.25);
     }
@@ -353,6 +383,9 @@ export class TownLook {
     // the repairman's tools: a colder light
     this.toolAt = this.sparks.length;
     for (const t of TOOLS) spark(this.sparks, t.x, 1.1, t.z, hex(0x8fd8ff, 1.8), 0.85, { spin: 1.4, bob: 0.05 });
+    // kiosks and mods: a weapon mod part, a brass glint (on a counter, on a shelf)
+    this.modPartAt = this.sparks.length;
+    for (const m of MOD_PARTS) spark(this.sparks, m.x, 1.15, m.z, hex(0xffd27a, 1.6), 0.7, { spin: 2, bob: 0.04 });
     // things worth a look: a speck that catches the eye from close by, nothing more
     this.clueAt = this.sparks.length;
     for (const c of CLUES) spark(this.sparks, c.at.x, CLUE_Y[c.id] ?? 1.3, c.at.z, hex(0xfff0c8, 0.9), 0.3, { spin: 0.6 });
@@ -696,6 +729,11 @@ export class TownLook {
     }
 
     // =====================================================================================================
+    // kiosks and mods (`mods.ts`): the kiosks rolled open, the repairman asleep at his bench and his tools
+    // =====================================================================================================
+    this.booth = this.buildKiosksAndBooth();
+
+    // =====================================================================================================
     // the named ones' costumes, and the one who watches
     // =====================================================================================================
     this.costumes = this.tailor();
@@ -725,6 +763,14 @@ export class TownLook {
   }
 
   /** A place: its group is in the scene only while the camera is near. */
+  /** Ded Moroz's sack stands over the box wherever the box is now (it moves: `zarya/sack.ts`). */
+  placeSack(x: number, z: number): void {
+    if (this.sack.position.x === x && this.sack.position.z === z) return;
+    this.sack.position.set(x, 0, z);
+    this.sackSite.x = x;
+    this.sackSite.z = z;
+  }
+
   private site(x: number, z: number, r: number): Site {
     const s: Site = { x, z, r, g: new THREE.Group() };
     this.sites.push(s);
@@ -744,6 +790,94 @@ export class TownLook {
     m.count = 0;
     this.root.add(m);
     return m;
+  }
+
+  /**
+   * Kiosks and mods: each kiosk's open face (drawn over its shut shutter once it is paid for: the dark inside, two
+   * shelves of cartridges, tins and boxes, the shutter rolled into its drum at the top, the padlock lying open), and at
+   * the Rynok's repair booth the repairman asleep on a stool at the end of his bench, his head on his arms, with a place
+   * on the bench for each of his three tools. One mesh a kiosk, one for him, one a tool: each hidden while far off.
+   */
+  private buildKiosksAndBooth(): { site: Site; tools: THREE.Mesh[] } {
+    const DARK = 0x17130f;
+    const BOARD = 0x7b5a3a;
+    const STEEL = 0x8a8f98;
+    const GOODS = [0x5d6b3a, 0xb3261e, 0x3c6f8a, 0xd6aa3c, 0x4f6f52, 0xd8cfb8];
+    for (const s of SHUTTERS) {
+      const fx = -Math.sin(s.yaw);
+      const fz = -Math.cos(s.yaw);
+      const site = this.site(s.at.x, s.at.z, 60);
+      // in the kiosk's own frame: +x out through the shutter (its foot is 1.62 m out), +z along it
+      const p = new Paint().box(DARK, 1.7, 1.79, 0, 0.03, 1.46, 3.52);
+      for (const y of [1.42, 1.92]) {
+        p.box(BOARD, 1.74, y, 0, 0.1, 0.03, 3.4);
+        let z = -1.58;
+        for (let k = 0; z < 1.5; k++) {
+          const w = 0.18 + ((k * 7 + Math.round(y * 10)) % 3) * 0.08;
+          const h = 0.12 + ((k * 5) % 4) * 0.05;
+          p.box(GOODS[(k + Math.round(y * 3)) % GOODS.length]!, 1.76, y + 0.015 + h / 2, z + w / 2, 0.12, h, w);
+          z += w + 0.05;
+        }
+      }
+      // cartridge boxes and a tin on the counter shelf, the padlock lying open beside them
+      for (const [z, c] of [[-1.2, GOODS[0]!], [-0.85, GOODS[1]!], [0.9, GOODS[3]!]] as const) p.box(c, 1.82, 1.13, z, 0.22, 0.12, 0.28);
+      p.cyl(0x8c939b, 1.82, 1.14, 0.3, 0.07, 0.07, 0.14, 8);
+      p.box(0xb08a3a, 1.86, 1.08, 1.35, 0.08, 0.05, 0.1).torus(0x9aa1a7, 1.86, 1.1, 1.35, 0.035, 0.008, Math.PI / 2, 0.4, 0);
+      // the shutter, rolled into its drum under the colour strip
+      p.cyl(STEEL, 1.72, 2.6, 0, 0.1, 0.1, 3.56, 10, Math.PI / 2);
+      const open = this.mesh(p, site.g);
+      open.position.set(s.at.x - fx * 1.62, 0, s.at.z - fz * 1.62);
+      open.rotation.y = Math.atan2(-fz, fx);
+      open.visible = false;
+      this.kiosks.push({ site, open });
+    }
+
+    // the repairman, asleep at the north end of his bench (the game's upgrade bench, its top a metre up)
+    const B = RYNOK.booth;
+    const site = this.site(B.x, B.z, 50);
+    // a quilted work jacket in faded blue, so he reads against the dark bench
+    const COAT = 0x6f7f96;
+    const TROUSER = 0x3a3d46;
+    const SKIN = 0xd2b49a;
+    const x = B.x + 0.05;
+    const z0 = B.z - 1.78;
+    const man = new Paint();
+    // his stool
+    man.cyl(0x4d3725, x, 0.6, z0, 0.19, 0.19, 0.05, 10);
+    for (const a of [0.4, 2.5, 4.6]) man.rod(0x2b2f36, x + Math.cos(a) * 0.14, 0, z0 + Math.sin(a) * 0.14, x + Math.cos(a) * 0.08, 0.58, z0 + Math.sin(a) * 0.08, 0.018);
+    for (const sx of [-0.11, 0.11]) {
+      // thighs forward, shins down, boots
+      man.rod(TROUSER, x + sx, 0.68, z0 + 0.02, x + sx, 0.64, z0 + 0.42, 0.075, 0.065);
+      man.rod(TROUSER, x + sx, 0.64, z0 + 0.42, x + sx, 0.1, z0 + 0.46, 0.06, 0.055);
+      man.box(0x1a1a1c, x + sx, 0.05, z0 + 0.52, 0.11, 0.1, 0.26);
+    }
+    // slumped forward over the bench: his back, his shoulders, his arms folded on the top, his head on them
+    man.rod(COAT, x, 0.66, z0, x, 1.08, z0 + 0.48, 0.17, 0.19);
+    man.ball(COAT, x, 1.08, z0 + 0.5, 0.2, 1.2, 0.65, 0.85);
+    for (const sx of [-1, 1]) man.rod(COAT, x + sx * 0.2, 1.08, z0 + 0.55, x + sx * 0.16, 1.04, z0 + 0.86, 0.065, 0.06);
+    man.box(COAT, x, 1.035, z0 + 0.94, 0.46, 0.09, 0.16);
+    for (const sx of [-1, 1]) man.ball(SKIN, x + sx * 0.2, 1.04, z0 + 1.02, 0.045);
+    man.ball(SKIN, x + 0.02, 1.15, z0 + 0.86, 0.11, 1, 0.9, 1);
+    // his flat cap, and a pencil behind his ear
+    man.cyl(0x4a4640, x + 0.02, 1.23, z0 + 0.84, 0.12, 0.125, 0.06, 10, 0.5).box(0x4a4640, x + 0.02, 1.2, z0 + 0.98, 0.16, 0.02, 0.1, 0, 0.5);
+    man.rod(0xd6aa3c, x + 0.12, 1.2, z0 + 0.8, x + 0.12, 1.16, z0 + 0.92, 0.008);
+    this.mesh(man, site.g);
+    // his three tools, each on the bench's front edge once it is back: the soldering iron, the screwdrivers in their
+    // roll, the multimeter
+    const tx = B.x + 0.32;
+    const ty = 1.0;
+    const tools: THREE.Mesh[] = [];
+    const iron = new Paint().rod(0x8c939b, tx, ty + 0.03, z0 + 1.42, tx, ty + 0.03, z0 + 1.62, 0.006).rod(0x7a1c18, tx, ty + 0.03, z0 + 1.62, tx, ty + 0.03, z0 + 1.8, 0.018).box(0x2b2f36, tx - 0.06, ty + 0.02, z0 + 1.62, 0.08, 0.04, 0.06);
+    const roll = new Paint().box(0x6b5a3a, tx - 0.02, ty + 0.012, z0 + 2.02, 0.22, 0.02, 0.26);
+    for (let k = 0; k < 5; k++) roll.rod([0xb3261e, 0xd6aa3c, 0x2f4f8f, 0xb3261e, 0x4f6f52][k]!, tx - 0.11 + k * 0.045, ty + 0.035, z0 + 1.92, tx - 0.11 + k * 0.045, ty + 0.035, z0 + 2.14, 0.012);
+    const meter = new Paint().box(0xe08a1e, tx - 0.03, ty + 0.035, z0 + 2.42, 0.14, 0.07, 0.2).box(0xe6dcc2, tx + 0.04, ty + 0.05, z0 + 2.4, 0.01, 0.04, 0.08).cyl(0x101216, tx + 0.045, ty + 0.035, z0 + 2.48, 0.025, 0.025, 0.01, 8, 0, 0, Math.PI / 2);
+    meter.rod(0xb3261e, tx - 0.03, ty + 0.01, z0 + 2.52, tx - 0.1, ty + 0.01, z0 + 2.7, 0.006).rod(0x101216, tx - 0.01, ty + 0.01, z0 + 2.52, tx + 0.04, ty + 0.01, z0 + 2.72, 0.006);
+    for (const t of [iron, roll, meter]) {
+      const m = this.mesh(t, site.g);
+      m.visible = false;
+      tools.push(m);
+    }
+    return { site, tools };
   }
 
   /** The watcher: Morozko's blue coat and tall hat, a white beard to the belt, a staff. Not one of the infected, not solid. */
@@ -955,6 +1089,7 @@ export class TownLook {
     this.t += dt;
     // free roam hands over only the first act's fields: the rest have not happened
     const v: StoryView = view.g === undefined ? { ...ZaryaStory.empty(), ...view } : view;
+    this.rings.update(this.t, v);
     const snap = this.snap;
     this.snap = false;
     const has = (flag: number): boolean => ZaryaStory.has(v, flag);
@@ -996,6 +1131,16 @@ export class TownLook {
     } else this.doorA = ZaryaStory.doorShut(v) ? 0 : 1.9;
     // the shutter's motor: a bang every four seconds, until its plug is out
     if (this.front.g.visible) this.shutter.position.y = 3.35 + (has(F.plug) ? 0 : Math.max(0, 1 - (this.t % 4) / 0.35)) * 0.16;
+    // the escalator (polish, square/store session): the rope drops at once, the shutter rolls up into its drum
+    {
+      const open = ZaryaStory.did(v, G.escalator);
+      const e = this.escal;
+      e.k = snap ? (open ? 1 : 0) : approach(e.k, open ? 1 : 0, dt * 0.8);
+      e.rope.visible = !open;
+      e.slack.visible = open;
+      e.curtain.scale.y = 1 - e.k * 0.9;
+      e.curtain.position.y = 4.3 + e.k * 0.85;
+    }
     if (this.flareT >= 0) {
       this.flareT += dt;
       const k = Math.min(1, this.flareT / 5);
@@ -1015,6 +1160,10 @@ export class TownLook {
     TOWN.parts.forEach((_, i) => (S[this.partAt + i]!.on = ZaryaStory.can(v, 'part', i)));
     TOWN.finds.forEach((_, i) => (S[this.findAt + i]!.on = v.ch >= CH.ground && v.ch < CH.ended));
     TOOLS.forEach((_, i) => (S[this.toolAt + i]!.on = ZaryaStory.can(v, 'tool', i)));
+    MOD_PARTS.forEach((_, i) => (S[this.modPartAt + i]!.on = ZaryaStory.can(v, 'modPart', i)));
+    // kiosks and mods: a shutter once paid for stays up; each tool the squad brings back lies on the repairman's bench
+    this.kiosks.forEach((k, i) => (k.open.visible = ZaryaStory.shutterUp(v, i)));
+    this.booth.tools.forEach((t, i) => (t.visible = (v.m & (1 << (6 + i))) !== 0));
     CLUES.forEach((_, i) => (S[this.clueAt + i]!.on = ZaryaStory.can(v, 'clue', i)));
     this.fill(this.gems, S, cam, 70);
 
@@ -1331,6 +1480,7 @@ export class TownLook {
   dispose(): void {
     this.crowd.dispose();
     this.snow.dispose();
+    this.rings.dispose();
     for (const c of Object.values(this.costumes)) for (const o of [c.head, c.hips, c.hand]) o?.removeFromParent();
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();

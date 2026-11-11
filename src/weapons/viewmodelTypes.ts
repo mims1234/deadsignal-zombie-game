@@ -92,6 +92,8 @@ export interface ViewmodelSet {
   salyut?: ViewmodelRig;
   ottepel?: ViewmodelRig;
   zenit?: ViewmodelRig;
+  /** ZARYA's Raketa: out of Ded Moroz's sack only. */
+  raketa?: ViewmodelRig;
   dispose(): void;
 }
 

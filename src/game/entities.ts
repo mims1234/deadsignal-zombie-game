@@ -2,14 +2,17 @@
 import * as THREE from 'three';
 import { ECONOMY, GRENADE, MYSTERY_BOX, PLAYER, REGIONS, WEAPONS } from '../config';
 import { addReserve, isFull } from '../logic/ammo';
+import { type BoxPlace, boxHome, boxPlace, dueToMove, placeBox } from '../logic/boxMove';
 import { addCash, rollCrateReward, spendCash } from '../logic/economy';
 import { type BoxPrize, prizeKey, prizeLabel, reelFor, rollBox, takePrize } from '../logic/mysteryBox';
 import { BOX_PHASE, DROP_KINDS, type DropKind, decodePrize, encodePrize } from '../logic/sharedLoot';
+import type { MeleeId } from '../logic/melee';
 import type { Region } from '../types';
 import type { CrateDef, StationDef } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
 import { createLootCrate, createPickupModel, createStationModel, type CrateModel, type PickupKind, type StationModel } from '../world/models';
-import { createBoxMark, createGunDisplay } from '../world/models/boxDisplay';
+import type { MapId } from '../world/layout/data';
+import { createBoxMark, createGunDisplay, createMeleeDisplay } from '../world/models/boxDisplay';
 import type { GameCtx } from './ctx';
 
 /** closed -> (opened) spin -> offer -> gone. A box opens once per run. */
@@ -38,12 +41,18 @@ export class CrateRuntime {
   private readonly reelFaces: readonly BoxPrize[];
   /** What a turn costs (0: a free box, opened once a run). */
   readonly cost: number;
+  /** A box that moves (ZARYA's sack, `logic/boxMove.ts`): which of its places it stands at, and its openings there. */
+  spot = 0;
+  opens = 0;
+  /** How much higher than a crate's the prize and the "?" float (a map that draws its box taller: ZARYA's sack). */
+  lift = 0;
   constructor(
     readonly def: CrateDef,
     readonly model: CrateModel,
     readonly relics = false,
+    map?: MapId,
   ) {
-    this.reelFaces = reelFor(relics);
+    this.reelFaces = reelFor(relics, map);
     this.cost = def.cost ?? 0;
     this.mark = createBoxMark();
     this.mark.position.set(def.x, 1.55 + (def.y ?? 0), def.z);
@@ -71,6 +80,8 @@ export class CrateRuntime {
       let m: THREE.Object3D;
       if (p.kind === 'weapon') {
         m = createGunDisplay(p.id);
+      } else if (p.kind === 'melee') {
+        m = createMeleeDisplay(p.id);
       } else {
         m = createPickupModel(p.kind === 'ammo' ? 'ammo' : 'grenade', mats);
         m.scale.setScalar(p.kind === 'ammo' ? 1.7 : 2.2);
@@ -79,7 +90,7 @@ export class CrateRuntime {
       g.add(m);
       this.faces.push(m);
     }
-    g.position.set(this.def.x, 0.7 + (this.def.y ?? 0), this.def.z);
+    g.position.set(this.def.x, 0.7 + this.base, this.def.z);
     parent.add(g);
     return g;
   }
@@ -93,7 +104,7 @@ export class CrateRuntime {
   spin(prize: BoxPrize, parent: THREE.Object3D, mats: MaterialLib): void {
     this.reel ??= this.buildReel(parent, mats);
     this.reel.visible = true;
-    this.reel.position.y = 0.7 + (this.def.y ?? 0);
+    this.reel.position.set(this.def.x, 0.7 + this.base, this.def.z); // (a box that moves: over where it stands now)
     this.reel.scale.setScalar(1);
     this.prize = prize;
     this.phase = 'spin';
@@ -109,7 +120,7 @@ export class CrateRuntime {
     if (this.phase === 'gone' && this.cost > 0 && (this.goneFor += dt) >= MYSTERY_BOX.paidRearm) return 'rearm';
     if (this.phase === 'closed') {
       if (!this.mark.visible) return null;
-      this.mark.position.y = 1.55 + (this.def.y ?? 0) + Math.sin(time * 2.2 + this.def.x) * 0.08;
+      this.mark.position.y = 1.55 + this.base + Math.sin(time * 2.2 + this.def.x) * 0.08;
       return null;
     }
     if (!reel || this.phase === 'gone') {
@@ -126,7 +137,7 @@ export class CrateRuntime {
     reel.rotation.y += dt * (this.phase === 'spin' ? 5 : 1.4);
     if (this.phase === 'spin') {
       const k = Math.min(1, this.t / MYSTERY_BOX.spin);
-      reel.position.y = 0.7 + (this.def.y ?? 0) + 0.8 * (1 - (1 - k) * (1 - k));
+      reel.position.y = 0.7 + this.base + 0.8 * (1 - (1 - k) * (1 - k));
       if (this.t >= MYSTERY_BOX.spin) {
         this.show(Math.max(0, this.reelFaces.findIndex((p) => prizeKey(p) === prizeKey(this.prize!))));
         this.phase = 'offer';
@@ -142,13 +153,24 @@ export class CrateRuntime {
       return null;
     }
     // offer: the prize bobs over the open box until it is taken or the time runs out
-    reel.position.y = 1.5 + (this.def.y ?? 0) + Math.sin(time * 2.6) * 0.06;
+    reel.position.y = 1.5 + this.base + Math.sin(time * 2.6) * 0.06;
     if (this.t >= MYSTERY_BOX.offer) {
       this.phase = 'gone';
       this.t = 0;
       return 'expire';
     }
     return null;
+  }
+
+  /** The height the prize and the "?" are measured from: the floor the box stands on, and its `lift`. */
+  private get base(): number {
+    return (this.def.y ?? 0) + this.lift;
+  }
+
+  /** The box was moved (its def already says where), or lifted: its "?" and its reel go with it. */
+  moved(): void {
+    this.mark.position.set(this.def.x, 1.55 + this.base, this.def.z);
+    if (this.reel) this.reel.position.set(this.def.x, this.reel.position.y, this.def.z);
   }
 
   /** The prize was taken: it vanishes at once. */
@@ -186,10 +208,28 @@ export interface LootLink {
   pick(id: number): void;
 }
 
+/**
+ * A map whose box moves (ZARYA's sack: `zarya/sack.ts`, set by `zarya/runtime.ts`): how many openings it stays for,
+ * its places (place 0 is where the map put it), which of them it may go to now, and who is told when it has moved
+ * (`quiet`: a late joiner catching up, nothing to say).
+ */
+export interface BoxMover {
+  every: number;
+  places: readonly BoxPlace[];
+  open(i: number): boolean;
+  /** Where to go from `current`, or null to stay (`roll` 0..1). */
+  next(current: number, roll: number): number | null;
+  moved(crate: number, place: number, quiet: boolean): void;
+}
+
 export class Entities {
   readonly crates: CrateRuntime[] = [];
   /** Set while in a co-op session. */
   coop: LootLink | null = null;
+  /** Set on a map whose box moves (paid boxes only). */
+  mover: BoxMover | null = null;
+  /** Co-op: the simulation's boxes have been seen once (a box found somewhere else after that has just moved). */
+  private boxesSeen = false;
   /** The squad's drops by id, and the one we asked to pick up (and when). */
   private readonly shared = new Map<number, Pickup>();
   private pickAsked = new Map<number, number>();
@@ -208,7 +248,8 @@ export class Entities {
       model.root.position.set(def.x, def.y ?? 0, def.z); // an upper floor's box stands on that floor
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);
-      const c = new CrateRuntime(def, model, MYSTERY_BOX.relicMaps.includes(ctx.level.data.id));
+      boxHome(def); // where the map put it: a box that moves comes back here for a new run
+      const c = new CrateRuntime(def, model, MYSTERY_BOX.relicMaps.includes(ctx.level.data.id), ctx.level.data.id);
       this.root.add(c.mark);
       this.crates.push(c);
     }
@@ -222,7 +263,13 @@ export class Entities {
   }
 
   reset(): void {
-    for (const c of this.crates) c.reset();
+    for (const c of this.crates) {
+      c.reset();
+      // a box that moved goes back where the map put it
+      if (c.spot !== 0) this.moveCrate(c, 0);
+      c.opens = 0;
+    }
+    this.boxesSeen = false;
     for (const s of this.stations) s.model.setState('idle');
     this.clearPickups();
   }
@@ -245,12 +292,20 @@ export class Entities {
   // co-op: the simulation's boxes and drops
   // ---------------------------------------------------------------------------------------------
 
-  /** The boxes as the simulation sees them: [phase, opener, prize, seconds in phase] each. */
+  /** The boxes as the simulation sees them: [phase, opener, prize, seconds in phase, place] each. */
   applyBoxes(rows: readonly (readonly (number | string)[])[]): void {
     const ctx = this.ctx;
+    const seen = this.boxesSeen;
+    this.boxesSeen = true;
     rows.forEach((r, i) => {
       const c = this.crates[i];
       if (!c) return;
+      // a box that moves: the host moved it (a late joiner just finds it where it is)
+      const spot = Number(r[4] ?? 0) || 0;
+      if (this.mover && c.cost && spot !== c.spot) {
+        this.moveCrate(c, spot);
+        this.mover.moved(i, spot, !seen);
+      }
       const phase = Number(r[0]);
       c.owner = String(r[1] ?? '') || null;
       if (phase === BOX_PHASE.closed) {
@@ -360,7 +415,11 @@ export class Entities {
       } else if (ev === 'expire') {
         if (!c.cost) c.model.setLooted(true);
         ctx.feed('THE MYSTERY BOX TOOK ITS PRIZE BACK', 'warn');
-      } else if (ev === 'rearm' && !this.coop) c.reset(); // co-op: the simulation closes it (and says so)
+      } else if (ev === 'rearm' && !this.coop) {
+        // co-op: the simulation closes it (and says so), and moves a box that moves
+        c.reset();
+        this.maybeMove(c);
+      }
     }
     for (const s of this.stations) {
       const d2 = (s.def.x - px) ** 2 + (s.def.z - pz) ** 2;
@@ -399,6 +458,29 @@ export class Entities {
         this.pickups.splice(i, 1);
       }
     }
+  }
+
+  /** Solo: a box that moves has closed for the next turn; opened often enough, it goes to another of its places. */
+  private maybeMove(c: CrateRuntime): void {
+    const m = this.mover;
+    if (!m || !c.cost || !dueToMove(c.opens, m.every)) return;
+    const to = m.next(c.spot, this.ctx.rng.f());
+    if (to === null) return; // nowhere else is open yet: it goes next time
+    this.moveCrate(c, to);
+    m.moved(this.crates.indexOf(c), to, false);
+  }
+
+  /** Put a box at place `i` of its map's places (0: where the map put it): its def, collider, model, "?" and reel. */
+  private moveCrate(c: CrateRuntime, i: number): void {
+    const to = boxPlace(c.def, this.mover?.places ?? [], i);
+    placeBox(this.ctx.level.world, c.def, to);
+    c.model.root.position.set(c.def.x, c.def.y ?? 0, c.def.z);
+    c.model.root.rotation.y = c.def.yaw;
+    c.moved();
+    c.spot = i;
+    c.opens = 0;
+    // the map shows where it went
+    c.discovered = true;
   }
 
   spawnPickup(kind: PickupKind, x: number, z: number): void {
@@ -461,15 +543,16 @@ export class Entities {
       // co-op: ask the simulation; the first to ask wins the box (the reel shows when it says so)
       if (c.pendingAt > performance.now() - 2000) return false;
       c.pendingAt = performance.now();
-      this.coop.open(this.crates.indexOf(c), encodePrize(rollBox(c.def.region, ctx.session.inv, ctx.rng, c.relics)));
+      this.coop.open(this.crates.indexOf(c), encodePrize(rollBox(c.def.region, ctx.session.inv, ctx.rng, c.relics, this.boxAt())));
       return true;
     }
     c.opened = true;
+    c.opens++;
     ctx.session.stats.cratesOpened++;
     const inv = ctx.session.inv;
     if (c.cost) {
       spendCash(inv, c.cost);
-      c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics), this.root, ctx.mats);
+      c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics, this.boxAt()), this.root, ctx.mats);
       ctx.audio.play('crate_open', { pos: { x: c.def.x, y: 0.6, z: c.def.z }, priority: 2 });
       ctx.hudEvent({ type: 'cash', amount: -c.cost });
       ctx.feed(`MYSTERY BOX  -$${c.cost}`, 'normal');
@@ -477,7 +560,7 @@ export class Entities {
     }
     const cash = rollCrateReward(c.def.region, inv, ctx.rng).cash;
     addCash(inv, cash);
-    c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics), this.root, ctx.mats);
+    c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics, this.boxAt()), this.root, ctx.mats);
     ctx.audio.play('crate_open', { pos: { x: c.def.x, y: 0.6, z: c.def.z }, priority: 2 });
     ctx.audio.play('pickup_cash', { priority: 1, volume: 0.7 });
     ctx.fx.sparkle({ x: c.def.x, y: 0.9, z: c.def.z }, 0xffe08a, 16);
@@ -486,22 +569,39 @@ export class Entities {
     return true;
   }
 
+  /** What a roll needs beyond the guns carried: this map (its own prizes) and what is carried to swing. */
+  private boxAt(): { map: MapId; melee: MeleeId | null } {
+    return { map: this.ctx.level.data.id, melee: this.ctx.melee?.carried ?? null };
+  }
+
   /** Take what a box is offering. Leaves it on offer (and says why) when it would do nothing. */
   takeBoxPrize(c: CrateRuntime): boolean {
     if (c.phase !== 'offer' || !c.prize) return false;
     const ctx = this.ctx;
     if (this.coop && c.owner !== this.coop.me()) return false; // the opener's prize
-    const r = takePrize(ctx.session.inv, c.prize);
+    // (a weapon to swing needs a hand that swings: only on a map with melee)
+    if (c.prize.kind === 'melee' && !ctx.melee) return false;
+    const r = takePrize(ctx.session.inv, c.prize, ctx.melee?.carried ?? null);
     if (!r.ok) {
       ctx.audio.play('buy_denied', { priority: 2, volume: 0.8 });
       ctx.feed(r.message.toUpperCase(), 'warn');
       return false;
     }
-    if (r.swapped) ctx.weapons.cancelActions();
+    if (r.melee && ctx.melee) {
+      // a weapon to swing goes into the hand that swings, and comes out
+      ctx.weapons.cancelActions();
+      ctx.melee.equip(r.melee);
+      ctx.melee.setOut(true);
+    }
+    if (r.swapped) {
+      // a gun goes into a gun slot: it is brought to hand (whatever was being swung is put away)
+      ctx.weapons.cancelActions();
+      ctx.melee?.setOut(false);
+    }
     this.coop?.take(this.crates.indexOf(c));
     c.taken();
     if (!c.cost) c.model.setLooted(true);
-    ctx.audio.play(c.prize.kind === 'weapon' ? 'weapon_draw' : 'pickup_ammo', { priority: 2 });
+    ctx.audio.play(c.prize.kind === 'weapon' || c.prize.kind === 'melee' ? 'weapon_draw' : 'pickup_ammo', { priority: 2 });
     ctx.fx.sparkle({ x: c.def.x, y: 1.5, z: c.def.z }, 0xffc860, 14);
     ctx.feed(r.message, 'good');
     return true;
@@ -513,9 +613,17 @@ export class Entities {
     if (this.coop && c.owner && c.owner !== this.coop.me()) {
       return { text: `${prizeLabel(p)}`, sub: `${this.coop.nameOf(c.owner)} opened this box - their prize`, mine: false };
     }
-    const held = this.ctx.session.inv.slots[this.ctx.session.inv.activeSlot];
+    const inv = this.ctx.session.inv;
+    const held = inv.slots[inv.activeSlot];
     const left = Math.max(0, Math.ceil(MYSTERY_BOX.offer - c.t));
-    const sub = p.kind === 'weapon' && held && held.id !== p.id ? `Replaces your ${WEAPONS[held.id].short} - or leave it (${left}s)` : `Leave it and it sinks back into the box (${left}s)`;
+    // (a gun fills an empty slot first; a weapon to swing replaces only the one swung)
+    const swung = this.ctx.melee?.carried ?? null;
+    const sub =
+      p.kind === 'weapon' && held && held.id !== p.id && inv.slots[0] && inv.slots[1]
+        ? `Replaces your ${WEAPONS[held.id].short} - or leave it (${left}s)`
+        : p.kind === 'melee' && swung && swung !== p.id
+          ? `Replaces what you swing - or leave it (${left}s)`
+          : `Leave it and it sinks back into the box (${left}s)`;
     return { text: `TAKE ${prizeLabel(p)}`, sub, mine: true };
   }
 

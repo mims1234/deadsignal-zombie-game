@@ -4,11 +4,12 @@
  * Gun models lie along X (muzzle at +X) at about real size; geometry and materials are shared.
  */
 import * as THREE from 'three';
+import type { MeleeId } from '../../logic/melee';
 import type { WeaponId } from '../../types';
 
 type Part = [geo: THREE.BufferGeometry, mat: 'dark' | 'steel' | 'olive' | 'wood' | 'glow', x: number, y: number, z: number, rz?: number];
 
-let shared: { mats: Record<Part[1], THREE.Material>; guns: Record<WeaponId, Part[]>; mark: THREE.SpriteMaterial } | null = null;
+let shared: { mats: Record<Part[1], THREE.Material>; guns: Record<WeaponId, Part[]>; melee: Partial<Record<MeleeId, Part[]>>; mark: THREE.SpriteMaterial } | null = null;
 
 const box = (w: number, h: number, d: number): THREE.BufferGeometry => new THREE.BoxGeometry(w, h, d);
 const tube = (r: number, len: number, r2 = r): THREE.BufferGeometry => new THREE.CylinderGeometry(r2, r, len, 12).rotateZ(-Math.PI / 2);
@@ -115,8 +116,31 @@ function getShared(): NonNullable<typeof shared> {
       [tube(0.03, 0.06), 'steel', 0, 0, 0.05],
       [box(0.05, 0.03, 0.04), 'steel', 0, 0.055, 0],
     ],
+    // ZARYA's sack: the vacuum cleaner's round canister, its hose, the wand and the wide nozzle
+    raketa: [
+      [tube(0.1, 0.26), 'olive', -0.24, 0, 0],
+      [tube(0.104, 0.03), 'steel', -0.24, 0, 0],
+      [box(0.12, 0.03, 0.04), 'dark', -0.24, 0.12, 0],
+      [new THREE.TorusGeometry(0.08, 0.016, 6, 12, Math.PI), 'dark', -0.06, 0.02, 0],
+      [tube(0.02, 0.44), 'steel', 0.22, 0.02, 0],
+      [box(0.05, 0.11, 0.03), 'dark', 0.06, -0.05, 0, -0.2],
+      [box(0.07, 0.05, 0.2), 'dark', 0.47, 0.02, 0],
+    ],
   };
-  shared = { mats, guns, mark: questionMark() };
+  // what a box holds to swing (ZARYA's sack): the Kisten's handle, its chain and the iron weight
+  const link = box(0.035, 0.012, 0.02);
+  const melee: Partial<Record<MeleeId, Part[]>> = {
+    kisten: [
+      [tube(0.016, 0.26), 'wood', -0.13, 0, 0],
+      [tube(0.02, 0.03), 'steel', 0.01, 0, 0],
+      [link, 'steel', 0.045, -0.01, 0, -0.5],
+      [link, 'steel', 0.07, -0.035, 0, -0.9],
+      [link, 'steel', 0.085, -0.068, 0, -1.3],
+      [link, 'steel', 0.09, -0.1, 0, -1.6],
+      [new THREE.IcosahedronGeometry(0.045, 1), 'dark', 0.09, -0.15, 0],
+    ],
+  };
+  shared = { mats, guns, melee, mark: questionMark() };
   return shared;
 }
 
@@ -131,6 +155,21 @@ export function createGunDisplay(id: WeaponId): THREE.Group {
     if (rz) m.rotation.z = rz;
     g.add(m);
   }
+  return g;
+}
+
+/** A floating weapon to swing for the mystery box reel (the ones a box can hold: ZARYA's Kisten). */
+export function createMeleeDisplay(id: MeleeId): THREE.Group {
+  const s = getShared();
+  const g = new THREE.Group();
+  g.name = `BoxMelee:${id}`;
+  for (const [geo, mat, x, y, z, rz] of s.melee[id] ?? []) {
+    const m = new THREE.Mesh(geo, s.mats[mat]);
+    m.position.set(x, y, z);
+    if (rz) m.rotation.z = rz;
+    g.add(m);
+  }
+  g.scale.setScalar(1.6);
   return g;
 }
 

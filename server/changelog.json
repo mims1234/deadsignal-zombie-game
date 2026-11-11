@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.384",
+      "date": "2026-11-11",
+      "title": "ZARYA: the rest of the town, and a polish pass",
+      "notes": [
+        "The Univermag has a second floor: the toy department where Kostya was last seen, fabrics, furniture, a photo studio and a records counter. The hall's escalator now goes up to it, and a second escalator goes on to the staff canteen.",
+        "Ded Moroz's sack holds two weapons you can't get anywhere else: the Raketa, a vacuum cleaner that sucks infected in and blasts back what it swallowed, and the Kisten, an old weighted flail. After a few openings the sack moves to another part of town, and Nina tells you where.",
+        "Shuttered kiosks round the town can be bought open: ammunition, a mod part, and sometimes a shortcut. Three weapon mods fit at any workbench: the Charge mod, a Drum and a Frost coat.",
+        "The Rynok's repair booth works only once the sleeping repairman's three tools are back on his counter.",
+        "The Zenit camera develops photographs at six places where something happened at three minutes to midnight. They go in the journal.",
+        "Morozko asks \"Are you warm?\" before each heavy strike. Block or parry in that pause and he staggers, opening weak points on his coat, one for every clue you found.",
+        "A polish pass over every zone: the stairs down to the shelter are a real staircase now, doorways that were blocked for no reason are open, closed ones show why, and misplaced props, hidden hatches and tram doors are fixed."
+      ]
+    },
+    {
       "version": "0.4.383",
       "date": "2026-11-11",
       "title": "ZARYA: a new map",

@@ -26,6 +26,8 @@ const BOUGHT: MeleeId[] = ['bat', 'gloves', 'hockey'];
 const COMMON: MeleeId[] = [...FOUND, ...BOUGHT];
 // and the four that are built from parts or fought for
 const EARNED: MeleeId[] = ['rogatina', 'fireAxe', 'serpMolot', 'shashka'];
+// and the one that only comes out of Ded Moroz's sack (`tests/zaryaSack.test.ts`)
+const SACK: MeleeId[] = ['kisten'];
 
 describe('melee: the six weapons', () => {
   it('has one weapon of every type, and each has a job of its own', () => {
@@ -51,7 +53,7 @@ describe('melee: the six weapons', () => {
   });
 
   it('every weapon is in the table under its own id, with a name and a short one that fits the readout', () => {
-    expect([...MELEE_IDS].sort()).toEqual([...COMMON, ...EARNED].sort());
+    expect([...MELEE_IDS].sort()).toEqual([...COMMON, ...EARNED, ...SACK].sort());
     for (const id of MELEE_IDS) {
       const d = MELEE[id];
       expect(d.id).toBe(id);

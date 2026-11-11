@@ -11,7 +11,7 @@ import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
 import type { SpireHandle, TransmitterHandle } from '../landmarks';
 import type { Ctx } from './util';
-import { BANYA, BERLOGA, CANTEEN, CORE, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, STOPS, STORE, TETS, ZARYA, ZARYA_BOUNDS, ZARYA_ZONES, people, type ZaryaZone } from '../../zarya/places';
+import { BANYA, BERLOGA, CANTEEN, CORE, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, STOPS, STORE, TETS, UPSTAIRS, ZARYA, ZARYA_BOUNDS, ZARYA_ZONES, people, type ZaryaZone } from '../../zarya/places';
 import type { Region } from '../../types';
 import { Z, box, cyl, solid } from './zaryaKit';
 import { buildBanya } from './zaryaBanya';
@@ -26,6 +26,7 @@ import { buildRynok } from './zaryaRynok';
 import { buildSquare, tramStop } from './zaryaSquare';
 import { buildShelter, buildStore } from './zaryaStore';
 import { buildTets } from './zaryaTets';
+import { buildUpstairs } from './zaryaUpstairs';
 
 export interface ZaryaHandles {
   /** The doorway under the store's jammed shutter (built open; a run shuts it until the plug is pulled). */
@@ -41,9 +42,15 @@ export interface ZaryaHandles {
   gates: Record<string, BoxCollider>;
   /** The Rynok's cold store door (built open; barred behind Borya). */
   coldDoor: BoxCollider;
-  /** The canteen on the store's third floor: its area, and the escalator up to it (shut until its padlock is broken). */
-  canteenArea: number;
+  /**
+   * The store's second floor: its area, and the escalator up to it from the ground floor (shut until its padlock is
+   * broken). The canteen on the third floor: its area, and the escalator on up to it from the second floor (always
+   * open: the padlock below is the only lock on the way).
+   */
+  upstairsArea: number;
   escalator: FloorLink;
+  canteenArea: number;
+  escalatorUp: FloorLink;
   /** The Berloga hall under the Institute: its area, the lift down to it, and the door with four key slots. */
   berlogaArea: number;
   lift: FloorLink;
@@ -96,11 +103,14 @@ function gate(c: Ctx, g: (typeof GATES)[number]): BoxCollider {
   return b.collide({ x: g.x, z: g.z, hx: alongX ? g.half : 0.25, hz: alongX ? 0.25 : g.half, y1: WALL_H, blocksMove: false, blocksShots: false, mapKind: 'none', surface: 'metal', tag: `zarya-gate-${g.id}` });
 }
 
-/** A doorway between the street and an interior built beside the map: walk in at `top` heading `top.yaw`, come out at `foot` facing `foot.yaw`. */
-function doorway(c: Ctx, area: number, top: { x: number; z: number; yaw: number }, foot: { x: number; z: number; yaw: number }): FloorLink {
+/**
+ * A doorway into an interior built beside the map, from the street (or from another interior, `from`): walk in at
+ * `top` heading `top.yaw`, come out at `foot` facing `foot.yaw`.
+ */
+function doorway(c: Ctx, area: number, top: { x: number; z: number; yaw: number }, foot: { x: number; z: number; yaw: number }, from = 0): FloorLink {
   const step = (o: { x: number; z: number; yaw: number }, d: number) => ({ x: o.x - Math.sin(o.yaw) * d, y: 0, z: o.z - Math.cos(o.yaw) * d });
-  // lower end first: [interior out-point, interior foot, street entry, street out-point]
-  return c.floors.addLink(area, 0, [step(foot, 1.6), { x: foot.x, y: 0, z: foot.z }, { x: top.x, y: 0, z: top.z }, step(top, -1.6)], true);
+  // lower end first: [interior out-point, interior foot, entry on the near side, out-point on the near side]
+  return c.floors.addLink(area, from, [step(foot, 1.6), { x: foot.x, y: 0, z: foot.z }, { x: top.x, y: 0, z: top.z }, step(top, -1.6)], true);
 }
 
 export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: SpireHandle; handles: ZaryaHandles } {
@@ -125,11 +135,13 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   inZone('banya', () => buildBanya(c));
   inZone('tets', () => buildTets(c));
   inZone('institute', () => buildInstitute(c));
-  // the two interiors reached by a doorway of their own: up the store's escalator, down the Institute's lift
-  const canteen = inZone('canteen', () => buildCanteen(c, (area) => doorway(c, area, { x: 112, z: -0.9, yaw: 0 }, { x: CANTEEN.head.x, z: CANTEEN.head.z, yaw: -Math.PI / 2 })));
+  // the interiors reached by a doorway of their own: up the store's escalator to its second floor, on up the next
+  // escalator from there to the canteen on the third, down the Institute's lift
+  const upstairs = inZone('upstairs', () => buildUpstairs(c, (area) => doorway(c, area, { x: 112, z: -0.9, yaw: 0 }, { x: UPSTAIRS.foot.x, z: UPSTAIRS.foot.z, yaw: 0 })));
+  const canteen = inZone('canteen', () => buildCanteen(c, (area) => doorway(c, area, { x: UPSTAIRS.up.x, z: UPSTAIRS.up.z, yaw: -Math.PI / 2 }, { x: CANTEEN.head.x, z: CANTEEN.head.z, yaw: -Math.PI / 2 }, upstairs.area)));
   const berloga = inZone('berloga', () => buildBerloga(c, (area) => doorway(c, area, { x: INSTITUTE.lift.x, z: INSTITUTE.lift.z, yaw: INSTITUTE.liftYaw }, { x: BERLOGA.liftFoot.x, z: BERLOGA.liftFoot.z, yaw: -Math.PI / 2 })));
   // the escalator is roped off and shuttered until its padlock is broken (`zarya/runtime.ts`)
-  canteen.link.closed = true;
+  upstairs.link.closed = true;
 
   // ---- the walls between zones, and the gates in them (each wall drawn with the zone on its far side from the square) ----
   inZone('dvor', () => border(c, CORE.minX, 72, 100, 72, gapsOn('x', 72)));
@@ -160,7 +172,20 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   for (const g of GATES) gates[g.id] = inZone(g.zones[1], () => gate(c, g));
 
   // ---- Line One: a stop and a car at every stop but the square's (which the square builds itself, with Zina in the cab) ----
-  for (const s of STOPS) if (s.id !== 'square') inZone(s.zone, () => tramStop(c, s.x, s.z, s.door.z > s.z ? 1 : -1, GATES));
+  for (const s of STOPS) {
+    if (s.id === 'square') continue;
+    const side = s.door.z > s.z ? 1 : -1;
+    inZone(s.zone, () => {
+      tramStop(c, s.x, s.z, side, GATES);
+      // the folding steps under each open door (the doors were gaps 0.9 m up a red flank, with nothing to climb by):
+      // a car's near doors are 2.7 m either side of the coupling, its far doors 13.8 m (`STOPS[].door` is one of them)
+      for (const dx of [-13.8, -2.7, 2.7, 13.8]) {
+        box(c.b, Z.iron, s.x + dx, 0.5, s.z + side * 1.42, 1.3, 0.06, 0.36, 0, false);
+        box(c.b, Z.iron, s.x + dx, 0.24, s.z + side * 1.66, 1.3, 0.06, 0.32, 0, false);
+        for (const e of [-1, 1]) box(c.b, Z.iron, s.x + dx + e * 0.62, 0.38, s.z + side * 1.5, 0.05, 0.36, 0.5, 0, false);
+      }
+    });
+  }
 
   // ---- the edges of the map, and the ground nobody can get to ----
   for (const [x0, z0, x1, z1] of [
@@ -203,6 +228,7 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
     ['banya', 'high', BANYA.spawns],
     ['tets', 'high', TETS.spawns],
     ['institute', 'high', INSTITUTE.spawns],
+    ['upstairs', 'medium', UPSTAIRS.spawns],
     ['canteen', 'high', CANTEEN.spawns],
     ['berloga', 'high', BERLOGA.spawns],
   ];
@@ -266,8 +292,10 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
       people: stood,
       gates,
       coldDoor: rynok.coldDoor,
+      upstairsArea: upstairs.area,
+      escalator: upstairs.link,
       canteenArea: canteen.area,
-      escalator: canteen.link,
+      escalatorUp: canteen.link,
       berlogaArea: berloga.area,
       lift: berloga.link,
       keyDoor: berloga.keyDoor,

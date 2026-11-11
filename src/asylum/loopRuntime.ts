@@ -791,6 +791,7 @@ function chalkTexture(weapon: WeaponId): THREE.CanvasTexture {
     salyut: [],
     ottepel: [],
     zenit: [],
+    raketa: [],
   };
   for (const [sx, sy, sw, sh] of shapes[weapon]) rough(sx, sy, sw, sh, 1);
   x.font = `bold 34px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;

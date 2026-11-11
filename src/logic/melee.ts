@@ -1,14 +1,14 @@
 /**
  * Melee: the weapons a player swings, as pure rules. Six types, each with a job of its own (ZARYA's plan): a blade that
  * is fast, a blunt thing that staggers, a pole that reaches, a heavy thing that cleaves, a pair that chains, a flail
- * that sweeps wide. Eight are found lying about or bought, and four are earned (built from parts, or the prize of a
- * long errand) and hit like it. This file holds the numbers, the swing's timeline (a tap is a light swing, a hold
+ * that sweeps wide. Eight are found lying about or bought, four are earned (built from parts, or the prize of a long
+ * errand) and hit like it, and one comes only out of Ded Moroz's sack. This file holds the numbers, the swing's timeline (a tap is a light swing, a hold
  * winds up a heavy one, taps chain into a combo), who a swing reaches, and what a guard stops. No drawing, no sound,
  * no game objects: `weapons/meleeSystem.ts` runs it against the world.
  */
 
 export type MeleeType = 'blade' | 'blunt' | 'pole' | 'heavy' | 'paired' | 'flail';
-export type MeleeId = 'knife' | 'skillet' | 'skiPole' | 'maul' | 'gloves' | 'chain' | 'bat' | 'hockey' | 'rogatina' | 'fireAxe' | 'serpMolot' | 'shashka';
+export type MeleeId = 'knife' | 'skillet' | 'skiPole' | 'maul' | 'gloves' | 'chain' | 'bat' | 'hockey' | 'rogatina' | 'fireAxe' | 'serpMolot' | 'shashka' | 'kisten';
 
 export interface MeleeDef {
   id: MeleeId;
@@ -47,6 +47,8 @@ export interface MeleeDef {
   moveMul: number;
   /** Light swings that chain before the full recovery is owed. */
   combo: number;
+  /** A flail's weight wraps their legs: each it strikes and does not kill trips, down this long (a heavy swing longer; never a boss). */
+  trip?: number;
 }
 
 export const MELEE: Record<MeleeId, MeleeDef> = {
@@ -106,6 +108,16 @@ export const MELEE: Record<MeleeId, MeleeDef> = {
     windup: 0.2, active: 0.16, recover: 0.34, chargeTime: 0.6, heavyRecover: 0.55,
     maxTargets: 3, heavyTargets: 5, impulse: 1.2, heavyImpulse: 2.4, push: 3.5, lift: 0.6,
     headMul: 1.2, guard: 0, moveMul: 0.97, combo: 2,
+  },
+  // out of Ded Moroz's sack only (`config.ts`: `MYSTERY_BOX.mapPrizes`): the old Russian kisten, an iron weight on a
+  // chain on a short handle. Twice the dog chain's blow, a touch more reach, and the weight wraps the legs of what it
+  // does not kill, so the front of a crowd goes down
+  kisten: {
+    id: 'kisten', name: 'KISTEN FLAIL', short: 'KISTEN', type: 'flail',
+    damage: 72, heavyDamage: 165, reach: 3.4, arc: 1.0, heavyArc: 1.3,
+    windup: 0.2, active: 0.16, recover: 0.32, chargeTime: 0.6, heavyRecover: 0.55,
+    maxTargets: 3, heavyTargets: 5, impulse: 2, heavyImpulse: 4, push: 4.5, lift: 0.9,
+    headMul: 1.3, guard: 0, moveMul: 0.97, combo: 2, trip: 0.9,
   },
   // the four that are earned: each is a clear step up from everything of its type that is found or bought
   // the red fire axe: the maul's cleave, a little faster, and it comes back the other way

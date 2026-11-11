@@ -37,6 +37,8 @@ export const BANYA = {
   steam: { x: 137.8, z: -162 } as Spot,
   /** The bathhouse's outer door, in its south wall (into the changing room). */
   door: { x: 110, z: -152 } as Spot,
+  /** One of the places Ded Moroz's sack turns up (`zarya/sack.ts`): on the bathhouse's forecourt, south-east of its door under the lamp, on open snow with room all round. */
+  sack: { x: 124, z: -140 } as Spot,
   /** A part: the stove's heating coil, at the mouth of the steam room's stove (the stove stands against the south wall). */
   coil: { x: 135, z: -154 } as Spot,
   /** The sleepers in the washing room have colour in their faces (a clue: look at them). Between the two middle benches. */
@@ -66,6 +68,12 @@ export const BANYA = {
   ] as FishHole[],
   /** A fisherman out on the open ice with no tent behind him (he can be covered against the cold). */
   cover: [{ x: 70, z: -121 }] as Spot[],
+  /**
+   * The kiosk shutter bought open with points (`zarya/mods.ts`): the middle of the shutter's foot on a shut kiosk at the
+   * south edge of the park, facing `shutterYaw` (south, onto the tram street's pavement). Built by `zaryaBanya.ts`.
+   */
+  shutter: { x: 124, z: -88.68 } as Spot,
+  shutterYaw: Math.PI,
   spawns: [[24, -176], [142, -174], [24, -100], [102, -177], [50, -177.5]] as [number, number][],
 } as const;
 

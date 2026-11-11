@@ -227,6 +227,8 @@ export class MeleeSystem {
       const k = heavy ? 1.5 : 1;
       // (the last argument: a heavy kind of weapon, which is what breaks the crate ZARYA's loader carries in front of him)
       const killed = host.zombies.damage(z, dmg, isHead, env, yaw, d.push * k, d.lift * k, heavy ? d.heavyImpulse : d.impulse, d.type === 'heavy');
+      // (a flail with a weight on it, the Kisten: what it does not kill trips)
+      if (d.trip && !killed && z.active && !z.isBoss && !parry) host.zombies.affect(z, env, 0, d.trip * (heavy ? 1.4 : 1), 0);
       this.at.set(z.x, z.y + (isHead ? z.def.height * 0.9 : z.def.height * 0.62), z.z);
       this.dir.set(z.x - p.x, 0, z.z - p.z).normalize();
       host.fx.blood(this.at, this.dir, { amount: heavy ? 1.4 : 0.8, head: isHead, kill: killed });

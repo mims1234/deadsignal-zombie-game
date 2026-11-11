@@ -11,6 +11,7 @@ import { groundRect, wall } from '../structures';
 import type { Ctx } from './util';
 import { BANYA, fisher, type FishHole } from '../../zarya/zones/banya';
 import { GOODS, Z, ball, bench, box, counter, cyl, firTree, lampPost, slab, solid } from './zaryaKit';
+import { shutterKiosk } from './zaryaShutters';
 
 export interface BanyaHandles {
   /** Nothing the story moves here yet. */
@@ -1252,6 +1253,8 @@ export function buildBanya(c: Ctx): BanyaHandles {
   pond(c);
   boatStation(c);
   park(c);
+  // a shut kiosk, its shutter bought open with points (`zarya/mods.ts`, `zaryaShutters.ts`)
+  shutterKiosk(c, BANYA.shutter, BANYA.shutterYaw, 4);
   street(c);
   northEdge(c);
   return {};

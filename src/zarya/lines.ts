@@ -94,6 +94,8 @@ export const LINES = {
     ['KOSTYA', 'What?'],
     ['TIMUR', '...Money. He takes money now. Times are hard.'],
   ],
+  // the sack is gone from where it stood, the first time (`SACK_MOVED` then says where it went, every time)
+  sackGone: [['NINA', 'Ded Moroz never leaves the sack in one place for long. Thirty years. Nobody has ever seen him move it.']],
   line: [
     ['TIMUR', 'Tyotya Zina. Thirty-one years on Line One.'],
     ['TIMUR', "Her handle's gone. Without it the car doesn't move. She never leaves it in the cab. She takes it to tea."],
@@ -194,6 +196,11 @@ export const LINES = {
   ],
   photo: [['NINA', "The first New Year tree, nineteen eighty-seven. That's Arkady Zimin in the coat. Director of the Institute, and our Ded Moroz every year since."]],
   escalator: [['TIMUR', "Staff party's on the third floor. They never invite the depot."]],
+  // Kostya's den behind the toy counter, on the store's second floor (a clue)
+  den: [
+    ['KOSTYA', "That's my den. You're supposed to knock."],
+    ['NINA', 'Every Saturday since he could walk. Valya on toys pretends she cannot see him.'],
+  ],
   tamada: [
     ['NINA', "Vitya from accounts. Toastmaster. He will not stop while there's a microphone."],
     ['TIMUR', 'Three speakers. Three plugs.'],
@@ -236,6 +243,13 @@ export const LINES = {
     ['MIRA', 'Danya.'],
     ['MIRA', "...Two winters. He hasn't aged a day. He's still wearing my scarf."],
   ],
+  // ---- the Zenit's photographs: the place at 23:57 (`photos.ts`; each is also the caption under its picture) ----
+  stillSquare: [['KOSTYA', 'Everybody is looking up at the snow. Ded Moroz is looking at his watch.']],
+  stillDk: [['KOSTYA', "There's Anya, and the wolves. That gap is the Hare. ...I was in the shelter."]],
+  stillRynok: [['TIMUR', "Three to twelve, and Borya's handing over the Institute's order. On New Year's Eve."]],
+  stillDvor: [['VERA', "The whole yard's looking at the sky. She's looking at the tree. She was waiting for me."]],
+  stillTets: [['TIMUR', 'Night shift at the boilers. One man at the new pipe, in an Institute coat and a gas mask.']],
+  stillClock: [['TIMUR', 'A white coat on a ladder, and the spanner going in. Somebody stood here and waited for three to twelve.']],
   asked: [
     ['ZIMIN', 'Are you warm, child?'],
     ['NINA', 'Arkady. ...In the story the girl says yes. Freezing, and she says yes. And he lets her live.'],
@@ -265,6 +279,18 @@ export const LINES = {
 
 export type Beat = keyof typeof LINES;
 
+/**
+ * Where Ded Moroz's sack has gone (`zarya/sack.ts`), said on the wire each time it turns up somewhere else. Kostya
+ * knows; he always knows where the sack is.
+ */
+export const SACK_MOVED: Readonly<Record<'square' | 'rynok' | 'dvor' | 'depot' | 'banya', Line>> = {
+  square: ['KOSTYA', "The sack's back under the little fir on the square. He always comes back to the square."],
+  rynok: ['KOSTYA', "The sack's at the market now. By the big matryoshka. He likes her."],
+  dvor: ['KOSTYA', "He's put the sack in the courtyards. Under the yard fir. He likes a fir best."],
+  depot: ['KOSTYA', "The sack's on the depot street. By the trams. He rides Line One too."],
+  banya: ['KOSTYA', "The sack's outside the banya. Not inside. It's too hot in there for him."],
+};
+
 /** Nina on the wire while the squad fights on the square: she tells them who people are. One at a time, never twice. */
 export const NINA_WIRE: readonly string[] = [
   'The one by the kiosk in the blue scarf is Lida, from the pharmacy. Breathing. Leave her be.',
@@ -273,6 +299,12 @@ export const NINA_WIRE: readonly string[] = [
   'That is the whole of School Number Two by the stage. Their teacher counts them every ten minutes. She will want them all.',
   'If you see a man with a samovar under his arm, he took it from my canteen. I want it back when this is over.',
 ];
+
+/**
+ * Morozko's question before each heavy blow (`director.ts`): he stops, asks, and holds the blow for a second. A guard
+ * or a swing in that pause staggers him. Said in turn, round and round.
+ */
+export const ARE_YOU_WARM: readonly string[] = ['Are you warm?', 'Are you warm, child?', 'And now? Are you warm?', 'Warm yet?', 'Still warm, child?'];
 
 /** How long a line stays up: long enough to read it on a phone. */
 export function lineSeconds(text: string): number {

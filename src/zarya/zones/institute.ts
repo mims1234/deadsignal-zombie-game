@@ -19,6 +19,8 @@ export const INSTITUTE = {
   lobby: { x: -148, z: -130 } as Spot,
   /** The master clock room: every clock in town runs off this one, and it is stopped at 23:57 (a clue). Here a player stands in front of its dial. */
   clockRoom: { x: -189.8, z: -141 } as Spot,
+  /** The Zenit's marked spot (a faint frost ring, `photos.ts`): on the floor before the master clock's plinth, where the ladder stood at 23:57. */
+  zenit: { x: -189.8, z: -142.9 } as Spot,
   /** The director's office: Dr Zimin's desk (this spot is in front of it), the Ded Moroz coat's empty hanger, his notes (a clue). */
   office: { x: -192.3, z: -116.3 } as Spot,
   /** A lab bench things can be built at (the clear workbench on the north wall of the lab next to the lobby), and the reagent "Vesna" in a cold cabinet (a part; in the lab south of the corridor, against its east wall: the spot is the shelf behind the cabinet's open door, and a player stands in front of it). */

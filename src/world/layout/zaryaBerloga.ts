@@ -61,7 +61,9 @@ const STRAW2 = std(0x9a8038);
 const FUR = std(0x5a3d26);
 const FUR2 = std(0x6e4a2c);
 const TAN = std(0xb08a5a);
-const DENWALL = std(0x6fc08d);
+/** The dens' pale green paint, lit from inside by their cold strips (a little glow of its own, so a den far from the
+ * hall's lights does not read as an empty grey box). */
+const DENWALL = new THREE.MeshStandardMaterial({ color: 0x6fc08d, roughness: 0.85, emissive: 0x2f7a4c, emissiveIntensity: 0.55 });
 const BLANKET = std(0x6d7480);
 const SKIN = std(0xdcc0a8);
 const HAIR = [std(0x2c2118), std(0x6a4a2a), std(0x9a9488), std(0x4a3524)];
@@ -210,10 +212,19 @@ function landing(c: Ctx): void {
     for (let k = 0; k < 4; k++) slab(b, k % 2 ? M.black : YELLOW, xf + 0.12, 0.2 + k * 0.2, s * 1.64, 0.02, 0.14, 0.7, 0.6 * s, 0, 0, false);
     box(b, M.iron, R.x0 + 1, 1.4, s * 1.32, 1.9, 2.8, 0.06, 0, false);
   }
-  box(b, M.black, R.x0 + 0.2, 1.4, 0, 0.06, 2.8, 2.7, 0, false);
-  box(b, M.black, R.x0 + 1, 2.76, 0, 1.9, 0.06, 2.7, 0, false);
-  box(b, M.iron, R.x0 + 1, 0.035, 0, 1.9, 0.03, 2.6, 0, false);
-  for (const dz of [-0.4, 0.4]) box(b, M.iron, R.x0 + 0.5, 1.6, dz, 0.05, 3, 0.05, 0, false);
+  // the car that brought the squad down, its doors open: steel walls, a chequer-plate floor, its cage lamp lit, its
+  // panel by the doors (so the way back up reads as the lift it is)
+  box(b, M.grey, R.x0 + 0.2, 1.4, 0, 0.06, 2.8, 2.7, 0, false);
+  for (let k = 0; k < 3; k++) box(b, M.iron, R.x0 + 0.24, 1.4, -0.9 + k * 0.9, 0.03, 2.76, 0.05, 0, false);
+  box(b, M.steel, R.x0 + 0.28, 1.0, 0, 0.06, 0.06, 2.5, 0, false);
+  box(b, M.grey, R.x0 + 1, 2.76, 0, 1.9, 0.06, 2.7, 0, false);
+  box(b, M.steel, R.x0 + 1, 0.035, 0, 1.9, 0.03, 2.6, 0, false);
+  for (let k = 0; k < 3; k++) box(b, M.iron, R.x0 + 0.4 + k * 0.6, 0.055, 0, 0.05, 0.012, 2.5, 0, false);
+  for (const s of [-1, 1]) box(b, M.steel, R.x0 + 1, 1.0, s * 1.24, 1.7, 0.06, 0.06, 0, false);
+  box(b, M.grey, R.x0 + 1.6, 1.35, 1.27, 0.3, 0.7, 0.04);
+  for (let k = 0; k < 4; k++) box(b, k === 0 ? M.redLamp : M.bulb, R.x0 + 1.6, 1.58 - k * 0.15, 1.24, 0.08, 0.08, 0.02, 0, false);
+  box(b, M.bulb, R.x0 + 1, 2.71, 0, 0.9, 0.03, 0.34, 0, false);
+  b.light({ x: R.x0 + 1.1, y: 2.3, z: 0, color: 0xe8f0ff, intensity: 8, distance: 6, mode: 'steady', pool: 2, weight: 0.8 });
   for (let k = 0; k < 9; k++) box(b, k % 2 ? M.black : YELLOW, xf + 0.3, 0.035, -1.2 + k * 0.3, 0.26, 0.03, 0.3, 0, false);
   solid(c, (R.x0 + xf) / 2, 0, xf - R.x0, 2.6, H, 'zarya-lift', { kind: 'none', surface: 'metal' });
   // the call panel, the floor lamps over the doors
@@ -323,7 +334,11 @@ function dens(c: Ctx): void {
   const zm = (zb + zf) / 2;
   // the mass over them, their end walls; inside, pale green paint on the back wall, the dividers and the ceiling
   box(b, M.concreteDark, xm, (DEN.h + H) / 2, zm + 0.1, x1 - x0 + 0.4, H - DEN.h, zf - zb + 0.2, 0, false);
-  for (const x of [x0, x1]) box(b, M.concreteDark, x, DEN.h / 2, zm, 0.4, DEN.h, zf - zb, 0, false);
+  for (const x of [x0, x1]) {
+    box(b, M.concreteDark, x, DEN.h / 2, zm, 0.4, DEN.h, zf - zb, 0, false);
+    // painted inside like the dividers (the end dens showed bare dark concrete)
+    box(b, DENWALL, x + (x === x0 ? 0.23 : -0.23), DEN.h / 2, zm - 0.1, 0.04, DEN.h, zf - zb - 0.3, 0, false);
+  }
   box(b, DENWALL, xm, DEN.h / 2, zb + 0.03, x1 - x0, DEN.h, 0.06, 0, false);
   box(b, DENWALL, xm, DEN.h - 0.03, zm, x1 - x0, 0.06, zf - zb, 0, false);
   box(b, STRAW2, xm, 0.08, zm, x1 - x0, 0.16, zf - zb - 0.2, 0, false);

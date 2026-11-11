@@ -157,7 +157,8 @@ export type HudEvent =
   /** Small log line, e.g. "+$160  Armored Infected" / "+1 ARMOR PLATE". */
   | { type: 'feed'; text: string; tone?: 'normal' | 'good' | 'warn' | 'danger' }
   /** Radio subtitle line. */
-  | { type: 'radio'; speaker: string; text: string; duration?: number }
+  /** `now`: cut in ahead of whatever is being said (ZARYA: Morozko's question, the moment to parry). */
+  | { type: 'radio'; speaker: string; text: string; duration?: number; now?: boolean }
   | { type: 'flash'; color: string; strength: number }
   /** Cash gained/spent floating next to the cash counter. */
   | { type: 'cash'; amount: number }

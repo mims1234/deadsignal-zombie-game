@@ -9,7 +9,6 @@ import * as THREE from 'three';
 import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
 import { groundRect, wall } from '../structures';
-import { stairwellDown } from './storeys';
 import type { Ctx } from './util';
 import { COLUMNS, CORE, SHELTER, STORE, STORE_BLOCKS, ZARYA } from '../../zarya/places';
 import { GOODS, Z, ball, box, counter, cyl, firTree, garland, goods, mandarins, shelves, slab, solid } from './zaryaKit';
@@ -18,6 +17,18 @@ const S = STORE;
 const P = ZARYA;
 const B = CORE;
 const T = 0.5;
+/** The opening in the stair room's floor the stairs down to the shelter go through (`stairPit`): floors leave it open. */
+const PIT = { x0: 136.4, x1: 139.5, z0: 15.2, z1: 22.4, deep: 4, steps: 16 } as const;
+
+/** A flat ground cover over a rectangle, leaving the stair opening uncovered. */
+function floorAroundPit(c: Ctx, mat: THREE.Material, x0: number, z0: number, x1: number, z1: number, y: number): void {
+  const px0 = PIT.x0 - 0.22;
+  const px1 = Math.min(x1, PIT.x1 + 0.22);
+  groundRect(c.b, mat, x0, z0, px0, z1, y);
+  if (px1 < x1) groundRect(c.b, mat, px1, z0, x1, z1, y);
+  groundRect(c.b, mat, px0, z0, px1, PIT.z0 - 0.22, y);
+  groundRect(c.b, mat, px0, PIT.z1 + 0.22, px1, z1, y);
+}
 
 /** A flat disc on the store's west face (the mosaic is made of them). */
 function disc(c: Ctx, mat: THREE.Material, y: number, z: number, r: number, sy = 1, sz = 1, out = 0.1, tilt = 0): void {
@@ -79,7 +90,7 @@ function shell(c: Ctx): void {
   // the south side: the door from the service lane into the stair room
   wall(b, { x0: S.x0, z0: S.z1 - T / 2, x1: S.x1, z1: S.z1 - T / 2, height: S.h, thickness: T, material: 'concreteWall', tag: 'zarya-store', openings: [door(P.laneDoor.x - S.x0, 1.7, 2.4)] });
   // the floor, the ceiling, the roof slab over it (a roof overhead is what tells the game it is indoors)
-  groundRect(b, Z.terrazzo, S.x0 + T, S.z0 + T, S.x1 - T, S.z1 - T, 0.03);
+  floorAroundPit(c, Z.terrazzo, S.x0 + T, S.z0 + T, S.x1 - T, S.z1 - T, 0.03);
   const ceil = new THREE.Mesh(new THREE.PlaneGeometry(w - T * 2, d - T * 2), Z.cream);
   ceil.rotation.x = Math.PI / 2;
   ceil.position.set(xc, S.h - 0.02, zc);
@@ -101,10 +112,34 @@ function shell(c: Ctx): void {
     solid(c, S.x0 - 4, z, 0.3, 0.3, 3.6, 'zarya-post', { kind: 'none' });
   }
   for (const z of [-8, 2]) b.light({ x: S.x0 - 2.4, y: 3.2, z, color: 0xffc27a, intensity: 22, distance: 18, mode: 'steady', pool: 7, weight: 1 });
-  // the jammed shutter: a steel curtain half down over the southern doors, its motor box above (the run shuts the
-  // doorway under it; pulling the plug frees it: `zarya/runtime.ts`)
-  box(b, Z.steel, S.x0 + 0.6, 3.2, P.shutter.z, 0.1, 0.5, 3.4, 0, false);
-  box(b, Z.grey, S.x0 + 0.75, 3.0, P.shutter.z + 2.1, 0.5, 0.5, 0.7);
+  // the glass doors: the two northern pairs folded back against the inside of the wall (the way in), the southern pair
+  // shut under the jammed shutter
+  for (const z of P.mainDoors) {
+    const shut = z === P.shutter.z;
+    for (const sd of [-1, 1]) {
+      if (shut) {
+        const lz = z + sd * 0.8;
+        box(b, Z.glass, S.x0 + T / 2, 1.5, lz, 0.04, 2.9, 1.5, 0, false);
+        box(b, Z.iron, S.x0 + T / 2, 1.5, lz + sd * 0.76, 0.08, 3, 0.08, 0, false);
+        box(b, Z.iron, S.x0 + T / 2, 1.5, lz - sd * 0.76, 0.08, 3, 0.08, 0, false);
+        for (const y of [0.06, 2.96]) box(b, Z.iron, S.x0 + T / 2, y, lz, 0.08, 0.1, 1.6, 0, false);
+        box(b, Z.steel, S.x0 + T / 2 + 0.08, 1.05, lz, 0.04, 0.05, 1.2, 0, false);
+      } else {
+        const lz = z + sd * 1.66;
+        box(b, Z.glass, S.x0 + T + 0.8, 1.5, lz, 1.5, 2.9, 0.04, 0, false);
+        box(b, Z.iron, S.x0 + T + 1.56, 1.5, lz, 0.08, 3, 0.08, 0, false);
+        for (const y of [0.06, 2.96]) box(b, Z.iron, S.x0 + T + 0.8, y, lz, 1.6, 0.1, 0.08, 0, false);
+      }
+    }
+  }
+  // the jammed shutter: its curtain (half down, drawn by `zarya/look.ts`) runs in two guide rails from a roll box over the
+  // doors; the motor beside it bangs; the doors under it are shut for the whole story (`zarya/doors.ts`)
+  box(b, Z.steel, S.x0 + T + 0.12, 5.0, P.shutter.z, 0.36, 0.4, 3.7);
+  for (const sd of [-1, 1]) box(b, Z.steel, S.x0 + T + 0.06, 2.5, P.shutter.z + sd * 1.72, 0.12, 5, 0.1, 0, false);
+  box(b, Z.grey, S.x0 + T + 0.25, 4.6, P.shutter.z + 2.25, 0.5, 0.5, 0.6);
+  // the motor's lead runs down the wall and along to its plug in a socket
+  box(b, Z.iron, S.x0 + T + 0.03, 2.9, P.shutter.z + 2.25, 0.04, 2.9, 0.04, 0, false);
+  box(b, Z.iron, S.x0 + T + 0.03, 1.45, (P.shutter.z + 2.25 + P.plug.z) / 2, 0.04, 0.04, P.plug.z - P.shutter.z - 2.25, 0, false);
   box(b, Z.grey, P.plug.x - 0.55, 1.3, P.plug.z, 0.1, 0.26, 0.26);
 }
 
@@ -140,10 +175,9 @@ function hall(c: Ctx): void {
     const t = (i + 0.5) / 26;
     box(b, Z.steel, ex, S.h * (1 - t) + 0.08, E.z0 + t * run, 2.1, 0.06, 0.3, 0, false);
   }
-  // roped off at its foot, shuttered at its head
+  // roped off at its foot, shuttered at its head: the posts are here; the rope with its padlock and the shutter are the
+  // story's (`zarya/look.ts`: the rope drops and the shutter rolls up once the padlock is broken)
   for (const s of [-1, 1]) cyl(b, Z.brass, ex + s * 1.3, 0, E.z1 + 0.6, 0.06, 0.06, 1, 6);
-  box(b, Z.redDark, ex, 0.86, E.z1 + 0.6, 2.6, 0.06, 0.06, 0, false);
-  box(b, Z.steel, ex, 4.3, E.z0 + 3.4, 2.9, 1.9, 0.1);
   solid(c, ex, (E.z0 + E.z1) / 2 + 0.3, E.x1 - E.x0 + 0.9, run + 0.8, S.h, 'zarya-escalator', { kind: 'prop', surface: 'metal' });
 
   // ---- the departments along the north wall: shelving behind, a counter in front ----
@@ -242,6 +276,10 @@ function southStrip(c: Ctx): { stairs: (area: number) => FloorLink } {
   wall(b, { x0: P.corridor.x0, z0: z, x1: P.corridor.x0, z1: zin, height: S.h, thickness: 0.3, material: 'plaster', tag: 'zarya-partition', cast: false });
   wall(b, { x0: P.corridor.x1, z0: z, x1: P.corridor.x1, z1: zin, height: S.h, thickness: 0.3, material: 'plaster', tag: 'zarya-partition', cast: false, openings: [{ at: 5.6, width: 1.6, height: 2.4, kind: 'door' }] });
   wall(b, { x0: P.maintenance.x1, z0: z, x1: P.maintenance.x1, z1: zin, height: S.h, thickness: 0.3, material: 'plaster', tag: 'zarya-partition', cast: false, openings: [{ at: 7.6, width: 1.6, height: 2.4, kind: 'door' }] });
+  // the doors themselves, each swung open against the wall of the room it opens into (a doorway is a door, held open)
+  openLeaf(c, P.staffDoor.x - 0.85, z + 0.15, 'z', 1.6, Z.woodDark);
+  openLeaf(c, P.corridor.x1 + 0.15, 19.6 - 0.8, 'x', 1.5, Z.woodDark);
+  openLeaf(c, P.maintenance.x1 + 0.15, 21.6 - 0.8, 'x', 1.5, Z.woodDark);
   // the staff noticeboard: rotas, and two sheets that matter (`zarya/lines.ts`)
   const N = P.noticeboard;
   box(b, Z.woodPale, N.x, 1.7, z - 0.2, 3.4, 1.6, 0.06);
@@ -266,20 +304,129 @@ function southStrip(c: Ctx): { stairs: (area: number) => FloorLink } {
   box(b, Z.woodPale, W.x, 2.0, z + 0.2, 3.2, 1.3, 0.05, 0, false);
   for (let i = 0; i < 8; i++) box(b, Z.iron, W.x - 1.3 + i * 0.37, 2.0 + ((i * 3) % 4) * 0.12, z + 0.25, 0.06, 0.4, 0.03, ((i * 5) % 3) * 0.2, false);
   solid(c, W.x, W.z, 3.4, 0.9, 1, 'zarya-bench', { shots: false, kind: 'prop', surface: 'wood' });
-  shelves(c, P.maintenance.x1 - 0.6, 22, 3.6, true, 81, { goods: [Z.grey, Z.brass, Z.iron], h: 2.2, rows: 3 });
+  // the shelves of jars stand north of the door from the stair room (in front of it they shut the way through)
+  shelves(c, P.maintenance.x1 - 0.6, 17.4, 3.4, true, 81, { goods: [Z.grey, Z.brass, Z.iron], h: 2.2, rows: 3 });
   b.light({ x: W.x, y: 2.8, z: 18, color: 0xffd0a0, intensity: 16, distance: 11, mode: 'steady', pool: 4.5, weight: 1 });
   b.light({ x: 118, y: 2.8, z: 19, color: 0xffd0a0, intensity: 10, distance: 9, mode: 'steady', pool: 4, weight: 0.6 });
   b.light({ x: 134, y: 2.8, z: 22, color: 0xffd0a0, intensity: 12, distance: 10, mode: 'steady', pool: 4, weight: 0.8 });
-  // the stairs down, in the stair room (walk in at the doorway; `floors.ts` carries walkers to the shelter's vestibule)
-  return {
-    stairs: (area) => stairwellDown(c, { x: 137.4, z: 20.8, yaw: 0 }, { area, x: P.stairFoot.x, z: P.stairFoot.z, yaw: -Math.PI / 2 }, { wall: 'plaster', roof: 'concreteDark' }),
-  };
+  // the stairs down, in the stair room (`stairPit`; `floors.ts` carries walkers to the shelter's vestibule)
+  stairPit(c);
+  return { stairs: (area) => stairLink(c, area) };
+}
+
+/**
+ * The stair room's stairs down: an opening in the floor along the east wall, railed on its two open sides, and a flight
+ * of sixteen steps going down northwards from its south end (the head, by the lane door) to a lit landing, where a steel
+ * door frame turns west under the room towards the shelter. Walkers stop at the head (the ENTER prompt is there) and
+ * come out at the foot of the same stairs in the shelter's vestibule (`floors.ts`, a teleport link).
+ */
+function stairPit(c: Ctx): void {
+  const { b } = c;
+  const { x0, x1, z0, z1 } = PIT;
+  const xc = (x0 + x1) / 2;
+  const w = x1 - x0;
+  const bottom = -PIT.deep;
+  const tread = 0.3;
+  const rise = PIT.deep / PIT.steps;
+  const foot = z1 - PIT.steps * tread;
+  // the shaft: concrete walls down to the landing, painted green to the shoulder as the shelter is, a floor at the bottom
+  box(b, Z.concrete, x0 - 0.1, bottom / 2 - 0.15, (z0 + z1) / 2, 0.2, PIT.deep + 0.3, z1 - z0);
+  box(b, Z.concrete, x1 + 0.1, bottom / 2 - 0.15, (z0 + z1) / 2, 0.2, PIT.deep + 0.3, z1 - z0);
+  box(b, Z.concrete, xc, bottom / 2 - 0.15, z0 - 0.1, w + 0.4, PIT.deep + 0.3, 0.2);
+  box(b, Z.concrete, xc, bottom / 2 - 0.15, z1 + 0.1, w + 0.4, PIT.deep + 0.3, 0.2);
+  box(b, Z.green, x1 - 0.01, bottom + 0.8, (z0 + foot) / 2, 0.02, 1.6, foot - z0, 0, false);
+  box(b, Z.green, xc, bottom + 0.8, z0 + 0.01, w, 1.6, 0.02, 0, false);
+  box(b, Z.concreteDark, xc, bottom - 0.1, (z0 + foot) / 2, w, 0.2, foot - z0 + 0.1);
+  // the flight: each step a block of concrete down to the shaft's floor, with a worn steel nosing
+  for (let i = 0; i < PIT.steps; i++) {
+    const top = -(i + 1) * rise;
+    const z = z1 - (i + 0.5) * tread;
+    box(b, Z.concreteDark, xc, (top + bottom - 0.2) / 2, z, w, top - bottom + 0.2, tread);
+    box(b, Z.steel, xc, top + 0.01, z + tread / 2 - 0.03, w, 0.02, 0.06, 0, false);
+  }
+  // the kerb round the opening, and a yellow edge at the head where the first step drops away
+  box(b, Z.concreteDark, x0 - 0.1, 0.04, (z0 + z1) / 2, 0.24, 0.08, z1 - z0 + 0.2, 0, false);
+  box(b, Z.concreteDark, xc, 0.04, z0 - 0.1, w + 0.2, 0.08, 0.24, 0, false);
+  box(b, Z.gold, xc, 0.035, z1 + 0.1, w, 0.01, 0.16, 0, false);
+  // the rail along the two open sides, waist high on posts, open at the head; a handrail down each side of the flight
+  const railY = 1.0;
+  box(b, Z.steel, x0 - 0.1, railY, (z0 + z1) / 2, 0.06, 0.06, z1 - z0 + 0.1, 0, false);
+  box(b, Z.steel, x0 - 0.1, railY / 2, (z0 + z1) / 2, 0.04, 0.04, z1 - z0, 0, false);
+  box(b, Z.steel, xc, railY, z0 - 0.1, w + 0.2, 0.06, 0.06, 0, false);
+  box(b, Z.steel, xc, railY / 2, z0 - 0.1, w + 0.2, 0.04, 0.04, 0, false);
+  for (let z = z0 - 0.1; z <= z1 + 0.01; z += (z1 - z0 + 0.1) / 5) box(b, Z.steel, x0 - 0.1, railY / 2, z, 0.06, railY, 0.06, 0, false);
+  for (const x of [xc - w / 4, xc + w / 4]) box(b, Z.steel, x, railY / 2, z0 - 0.1, 0.06, railY, 0.06, 0, false);
+  const fall = Math.atan2(PIT.deep, PIT.steps * tread);
+  const len = Math.hypot(PIT.deep, PIT.steps * tread);
+  for (const x of [x0 + 0.08, x1 - 0.08]) {
+    slab(b, Z.iron, x, -PIT.deep / 2 + 0.95, (z1 + foot) / 2, 0.05, 0.05, len, -fall, 0, 0, false);
+    for (const t of [0.15, 0.5, 0.85]) box(b, Z.iron, x, -PIT.deep * t + 0.5, z1 - t * PIT.steps * tread, 0.05, 0.9, 0.05, 0, false);
+  }
+  // the landing: a steel door frame in the west wall, the door swung back, the dark of the passage beyond
+  const dz = (z0 + foot) / 2;
+  box(b, Z.black, x0 - 0.22, bottom + 1.1, dz, 0.04, 2.2, 1.3, 0, false);
+  for (const s of [-1, 1]) box(b, Z.iron, x0 + 0.02, bottom + 1.12, dz + s * 0.7, 0.1, 2.24, 0.1, 0, false);
+  box(b, Z.iron, x0 + 0.02, bottom + 2.26, dz, 0.1, 0.1, 1.5, 0, false);
+  box(b, Z.green, x0 + 0.08, bottom + 1.1, z0 + 0.25, 0.08, 2.2, 0.06 + 0.02, 0, false);
+  box(b, Z.greenDark, x0 + 0.62, bottom + 1.1, z0 + 0.1, 1.2, 2.2, 0.08, 0, false);
+  // over it a civil-defence plate: white, a red arrow pointing through the doorway
+  downArrow(b, x0 + 0.02, bottom + 2.75, dz, 1);
+  // a caged lamp on the shaft's north wall (it lights the flight from below), and one over the head
+  cyl(b, Z.iron, xc + 0.6, bottom + 2.6, z0 + 0.12, 0.13, 0.13, 0.22, 6, false);
+  ball(b, Z.bulb, xc + 0.6, bottom + 2.6, z0 + 0.14, 0.1);
+  b.light({ x: xc + 0.4, y: bottom + 2.3, z: z0 + 0.8, color: 0xffc98a, intensity: 16, distance: 9, mode: 'steady', pool: 0, weight: 1 });
+  box(b, Z.iron, x1 - 0.2, 3.4, z1 + 0.6, 0.4, 0.06, 0.06, 0, false);
+  ball(b, Z.bulb, x1 - 0.42, 3.3, z1 + 0.6, 0.14);
+  b.light({ x: xc, y: 3.1, z: z1 + 0.4, color: 0xffd0a0, intensity: 14, distance: 10, mode: 'steady', pool: 3, weight: 1.1 });
+  // on the wall at the head: the shelter's plate (white, a red arrow down the stairs)
+  downArrow(b, x1 - 0.02, 2.0, z1 - 0.8, -1);
+  // nobody walks into the opening: the rail and the drop are one solid block (shots pass); the head is where ENTER is
+  b.collide({ x: xc - 0.05, z: (z0 + z1) / 2, hx: w / 2 + 0.15, hz: (z1 - z0) / 2 + 0.15, y1: 1.1, blocksShots: false, mapKind: 'prop', tag: 'zarya-stairwell' });
+}
+
+/** A civil-defence plate on a wall that runs north-south: white, a red arrow pointing down (`out` = the way it faces in x). */
+function downArrow(b: Ctx['b'], x: number, y: number, z: number, out: 1 | -1): void {
+  box(b, Z.white, x, y, z, 0.03, 0.56, 0.5, 0, false);
+  box(b, Z.red, x + out * 0.02, y + 0.08, z, 0.02, 0.28, 0.08, 0, false);
+  for (const s of [-1, 1]) slab(b, Z.red, x + out * 0.02, y - 0.1, z + s * 0.07, 0.02, 0.2, 0.07, s * 0.75, 0, 0, false);
+}
+
+/** The stairs' link (built with the shelter, once its area exists): the head in the store, the foot in the vestibule. */
+function stairLink(c: Ctx, area: number): FloorLink {
+  const { floors } = c;
+  const { x0, x1, z1 } = PIT;
+  const xc = (x0 + x1) / 2;
+  // the head, and a step back from it into the room (coming up, you come out there, facing the room)
+  const head = { x: P.stairHead.x, y: 0, z: P.stairHead.z };
+  const room = { x: xc - 2.4, y: 0, z: z1 + 1.0 };
+  // in the shelter: the foot of the stairs, and a step out from it into the vestibule
+  const F = P.stairFoot;
+  // lower end first: [underground out-point, underground foot, street entry, street out-point]
+  return floors.addLink(area, 0, [{ x: F.x + 1.6, y: 0, z: F.z }, { x: F.x, y: 0, z: F.z }, head, room], true);
+}
+
+
+/**
+ * A door standing open at right angles to its wall: hinged at (x, z), its leaf running `len` along +`along` from the hinge
+ * (into the room it opens into), a handle near its free edge. A thin collider so nobody walks through it.
+ */
+function openLeaf(c: Ctx, x: number, z: number, along: 'x' | 'z', len: number, mat: THREE.Material): void {
+  const { b } = c;
+  const cx = along === 'x' ? x + len / 2 : x;
+  const cz = along === 'z' ? z + len / 2 : z;
+  const w = along === 'x' ? len : 0.05;
+  const d = along === 'z' ? len : 0.05;
+  box(b, mat, cx, 1.15, cz, w, 2.3, d);
+  const hx = along === 'x' ? x + len - 0.15 : x;
+  const hz = along === 'z' ? z + len - 0.15 : z;
+  for (const s of [-1, 1]) box(b, Z.brass, hx + (along === 'z' ? s * 0.05 : 0), 1.05, hz + (along === 'x' ? s * 0.05 : 0), 0.04, 0.04, 0.12, 0, false);
+  c.b.collide({ x: cx, z: cz, hx: Math.max(w / 2, 0.05), hz: Math.max(d / 2, 0.05), y1: 2.3, blocksShots: false, mapKind: 'none', surface: 'wood', tag: 'zarya-door' });
 }
 
 /** What lies round the store: the pavement north of it, the service lane behind, and the wall that ends the map. */
 function outside(c: Ctx): void {
   const { b } = c;
-  groundRect(b, Z.snow, 68, B.minZ, B.maxX, B.maxZ, 0.004);
+  floorAroundPit(c, Z.snow, 68, B.minZ, B.maxX, B.maxZ, 0.004);
   groundRect(b, Z.packed, 68, S.z1, B.maxX, 40, 0.012);
   groundRect(b, Z.packed, 68, -47, B.maxX, S.z0, 0.012);
   // the tram line going on east
@@ -304,6 +451,8 @@ function outside(c: Ctx): void {
   box(b, Z.concreteDark, (68 + B.maxX) / 2, 1.5, 40.2, B.maxX - 68, 3, 0.4);
   box(b, Z.snow, (68 + B.maxX) / 2, 3.06, 40.2, B.maxX - 68, 0.14, 0.5, 0, false);
   solid(c, (68 + B.maxX) / 2, 40.2, B.maxX - 68, 0.4, 3, 'zarya-wall', { kind: 'wall' });
+  // the staff door, held open (Nina stands in it), its steel leaf swung out into the lane
+  openLeaf(c, P.laneDoor.x - 0.85, S.z1 + 0.25, 'z', 1.6, Z.steel);
   // a lamp over the staff door
   box(b, Z.iron, P.laneDoor.x, 3.1, S.z1 + 0.3, 0.1, 0.1, 0.6, 0, false);
   ball(b, Z.bulb, P.laneDoor.x, 3.0, S.z1 + 0.6, 0.16);
@@ -337,13 +486,73 @@ export interface ShelterHandles {
   stairs: FloorLink;
 }
 
+/** Half the width of the stair shaft coming down into the shelter's vestibule. */
+const SHAFT_HALF = 1.4;
+
+/**
+ * The foot of the staff stairs in the shelter, matching their head in the store (`stairPit`): the same sixteen concrete
+ * steps with steel nosings, coming down from the west through the vestibule's west wall out of a lit shaft (a landing at
+ * the top where the stairs turn, its caged lamp, a handrail each side, green to the shoulder). Nobody walks up them:
+ * LEAVE at their foot (`floors.ts`).
+ */
+function shaft(c: Ctx): void {
+  const { b } = c;
+  const V = SHELTER.vestibule;
+  const h = SHAFT_HALF;
+  const tread = 0.3;
+  const rise = 0.25;
+  const n = 16;
+  const start = P.stairFoot.x - 0.6; // the first step's nose
+  const top = n * rise;
+  const landing = start - n * tread; // the top step's back edge, where the landing starts
+  const west = landing - 1.4;
+  const ceil = top + 2.6;
+  // the shaft's walls (north, south, west), its ceiling, the wall over the vestibule's opening
+  box(b, Z.concrete, (west + V.x0) / 2, ceil / 2, -h - 0.15, V.x0 - west + 0.3, ceil, 0.3);
+  box(b, Z.concrete, (west + V.x0) / 2, ceil / 2, h + 0.15, V.x0 - west + 0.3, ceil, 0.3);
+  box(b, Z.concrete, west - 0.15, ceil / 2, 0, 0.3, ceil, h * 2 + 0.6);
+  box(b, Z.white, (west + V.x0) / 2, ceil + 0.1, 0, V.x0 - west + 0.3, 0.2, h * 2 + 0.6);
+  box(b, Z.concrete, V.x0, (SHELTER.h + ceil) / 2, 0, 0.4, ceil - SHELTER.h, h * 2 + 0.2);
+  box(b, Z.iron, V.x0 + 0.21, SHELTER.h - 0.06, 0, 0.04, 0.12, h * 2, 0, false);
+  // green to the shoulder, following the steps up
+  const fall = Math.atan2(top, start - landing);
+  const len = Math.hypot(top, start - landing);
+  for (const s of [-1, 1]) {
+    slab(b, Z.green, (start + landing) / 2, top / 2 + 0.8, s * (h - 0.01), len, 1.6, 0.02, 0, 0, -fall, false);
+    box(b, Z.green, (west + landing) / 2, top + 0.8, s * (h - 0.01), landing - west, 1.6, 0.02, 0, false);
+  }
+  // the steps, and their nosings
+  for (let i = 0; i < n; i++) {
+    const y = (i + 1) * rise;
+    const x = start - (i + 0.5) * tread;
+    box(b, Z.concreteDark, x, y / 2, 0, tread, y, h * 2);
+    box(b, Z.steel, x + tread / 2 - 0.03, y + 0.01, 0, 0.06, 0.02, h * 2, 0, false);
+  }
+  box(b, Z.concreteDark, (west + landing) / 2, top / 2, 0, landing - west, top, h * 2);
+  // the handrails, one each side on brackets
+  for (const s of [-1, 1]) {
+    slab(b, Z.iron, (start + landing) / 2, top / 2 + 0.95, s * (h - 0.08), len, 0.05, 0.05, 0, 0, -fall, false);
+    for (const t of [0.15, 0.5, 0.85]) box(b, Z.iron, start - t * (start - landing), top * t + 0.5, s * (h - 0.08), 0.05, 0.9, 0.05, 0, false);
+  }
+  // the landing: where the stairs turn north (the way up to the store), a dark doorway in the north wall
+  box(b, Z.black, (west + landing) / 2, top + 1.1, -h - 0.01, 1.1, 2.2, 0.04, 0, false);
+  for (const s of [-1, 1]) box(b, Z.iron, (west + landing) / 2 + s * 0.6, top + 1.12, -h + 0.02, 0.1, 2.24, 0.1, 0, false);
+  box(b, Z.iron, (west + landing) / 2, top + 2.26, -h + 0.02, 1.3, 0.1, 0.1, 0, false);
+  // its caged lamp, high on the west wall, lighting the flight down
+  cyl(b, Z.iron, west + 0.12, top + 2.1, 0, 0.13, 0.13, 0.22, 6, false);
+  ball(b, Z.bulb, west + 0.14, top + 2.1, 0, 0.1);
+  b.light({ x: west + 0.8, y: top + 1.8, z: 0, color: 0xffc98a, intensity: 16, distance: 10, mode: 'steady', pool: 0, weight: 1 });
+  // nobody walks up them: the flight is one solid block (LEAVE at its foot)
+  b.collide({ x: (start + west) / 2, z: 0, hx: (start - west) / 2, hz: h, y1: ceil, blocksShots: false, mapKind: 'none', tag: 'stairwell-door' });
+}
+
 export function buildShelter(c: Ctx, stairs: (area: number) => FloorLink): ShelterHandles {
   const { b, floors } = c;
   const H = SHELTER;
   const area = floors.addArea('The Shelter', 'under', 0, { minX: H.x0 - 2, maxX: H.x1 + 2, minZ: H.z0 - 2, maxZ: H.z1 + 2 });
   // the earth it is dug into: a dark block round it all, so no sky shows through a doorway
-  const earth = new THREE.Mesh(new THREE.BoxGeometry(H.x1 - H.x0 + 8, 12, H.z1 - H.z0 + 8), new THREE.MeshStandardMaterial({ color: 0x08090a, roughness: 1, side: THREE.BackSide }));
-  earth.position.set((H.x0 + H.x1) / 2, 4, 0);
+  const earth = new THREE.Mesh(new THREE.BoxGeometry(H.x1 - H.x0 + 12, 12, H.z1 - H.z0 + 8), new THREE.MeshStandardMaterial({ color: 0x08090a, roughness: 1, side: THREE.BackSide }));
+  earth.position.set((H.x0 + H.x1) / 2 - 2, 4, 0);
   b.add(earth, { cast: false, receive: false });
   const W = (x0: number, z0: number, x1: number, z1: number, openings?: { at: number; width: number }[], t = 0.4): void => {
     wall(b, { x0, z0, x1, z1, height: H.h, thickness: t, material: 'concreteWall', tag: 'zarya-shelter', cast: false, openings: openings?.map((o) => ({ ...o, height: 2.2, kind: 'door' as const, frame: 'steelDark' as const })) });
@@ -351,7 +560,9 @@ export function buildShelter(c: Ctx, stairs: (area: number) => FloorLink): Shelt
   const V = H.vestibule;
   W(V.x0, V.z0, V.x1, V.z0);
   W(V.x0, V.z1, V.x1, V.z1);
-  W(V.x0, V.z0, V.x0, V.z1);
+  // the vestibule's west wall is open in the middle: the stairs come down through it (`shaft` below)
+  W(V.x0, V.z0, V.x0, -SHAFT_HALF - 0.1);
+  W(V.x0, SHAFT_HALF + 0.1, V.x0, V.z1);
   W(H.doorX, H.z0, H.doorX, H.z1, [{ at: -H.z0, width: H.doorHalf * 2 }], 0.7);
   W(H.doorX, H.z0, H.x1, H.z0);
   W(H.doorX, H.z1, H.x1, H.z1);
@@ -370,9 +581,7 @@ export function buildShelter(c: Ctx, stairs: (area: number) => FloorLink): Shelt
   const M = H.main;
   for (const z of [M.z0 + 0.22, M.z1 - 0.22]) box(b, Z.green, (M.x0 + M.x1) / 2, 0.8, z, M.x1 - M.x0 - 0.5, 1.6, 0.04, 0, false);
   for (const z of [V.z0 + 0.22, V.z1 - 0.22]) box(b, Z.green, (V.x0 + V.x1) / 2, 0.8, z, V.x1 - V.x0 - 0.5, 1.6, 0.04, 0, false);
-  // the stairs' foot: the last steps coming down out of the dark on the west side
-  for (let i = 0; i < 6; i++) box(b, Z.concrete, V.x0 + 0.5 + i * 0.3, 1.3 - i * 0.24, 0, 0.3, 0.24, 2.6);
-  box(b, Z.black, V.x0 + 0.26, 2, 0, 0.1, 2.4, 2.6, 0, false);
+  shaft(c);
   // lockers along the north wall, gas-mask bags on hooks beside them
   for (let i = 0; i < 10; i++) {
     box(b, Z.locker, 370.4 + i * 0.92, 0.95, M.z0 + 0.5, 0.88, 1.9, 0.56);
@@ -395,7 +604,8 @@ export function buildShelter(c: Ctx, stairs: (area: number) => FloorLink): Shelt
     box(b, Z.cream, 372 + i * 5, 2.2, M.z1 - 0.23, 1.5, 1.0, 0.03, 0, false);
     box(b, i === 1 ? Z.black : Z.red, 372 + i * 5, 2.15, M.z1 - 0.25, 0.8, 0.6, 0.02, 0, false);
   }
-  for (const x of [373, 381.5]) {
+  // (the first stands clear of the manual release by the door)
+  for (const x of [373.8, 381.8]) {
     box(b, Z.wood, x, 0.45, M.z1 - 0.7, 6, 0.1, 0.9);
     box(b, Z.wood, x, 0.9, M.z1 - 0.3, 6, 0.6, 0.08, 0, false);
     for (const s of [-2.8, 2.8]) box(b, Z.woodDark, x + s, 0.22, M.z1 - 0.7, 0.1, 0.44, 0.9);
@@ -412,7 +622,6 @@ export function buildShelter(c: Ctx, stairs: (area: number) => FloorLink): Shelt
   cyl(b, Z.white, Tb.x - 0.4, 0.83, Tb.z, 0.13, 0.11, 0.2, 10);
   for (let i = 0; i < 5; i++) cyl(b, Z.brass, Tb.x + 0.3 + (i % 3) * 0.22, 0.83, Tb.z - 0.12 + Math.floor(i / 3) * 0.22, 0.035, 0.035, 0.1, 6, false);
   solid(c, Tb.x, Tb.z, 6.4, 1.3, 0.85, 'zarya-table', { shots: false, kind: 'prop', surface: 'wood' });
-  for (const [x, z] of [[389.6, 5.2], [390.4, 5.2]] as const) void x, void z;
   // the manual release: a grey panel by the door (its lever is drawn by `zarya/look.ts`)
   const Rl = P.release;
   box(b, Z.grey, Rl.x, 1.3, M.z1 - 0.26, 0.7, 0.9, 0.1);
