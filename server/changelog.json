@@ -2,6 +2,17 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.389",
+      "date": "2026-11-12",
+      "title": "ZARYA: faces, the squad in co-op, real parts, a closed line",
+      "notes": [
+        "Everyone who speaks on ZARYA now has a name in their own colour and a painted portrait; each is introduced the first time they talk, and the journal has a PEOPLE page. Named townspeople show a faint name plate when you are close.",
+        "Timur and Vera now play beside you in co-op too, with one, two or three players.",
+        "Every part, find, mod part, tool and ornament has its own picture in the feed, the objectives, the journal and at the workbench, and lies in the world as a small model of itself.",
+        "Line One leaves each zone through a barred tunnel mouth: the tram is the way along the line, and on foot you cross between zones only at the gates."
+      ]
+    },
+    {
       "version": "0.4.388",
       "date": "2026-11-11",
       "title": "ZARYA: keep every weapon",

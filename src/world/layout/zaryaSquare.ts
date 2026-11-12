@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { groundRect, solidBlock } from '../structures';
 import type { Ctx } from './util';
-import { CORE, KIOSKS, LAMPS, SQUARE, ZARYA, type KioskKind } from '../../zarya/places';
+import { CORE, KIOSKS, LAMPS, LINE_PORTALS, SQUARE, ZARYA, type KioskKind } from '../../zarya/places';
 import { AT, SHUTTERS } from '../../zarya/story';
 import { shutterKiosk } from './zaryaShutters';
 import { GOODS, Z, ball, bench, box, bulbString, cyl, firTree, goods, lampPost, slab, solid } from './zaryaKit';
@@ -125,22 +125,49 @@ function tramCar(c: Ctx, x0: number, x1: number, z: number, cab: boolean, doorSi
 }
 
 /**
+ * The end of a track at x (the track running on east from it): a buffer stop. Two struts from each rail lean back to a
+ * red-and-white beam across the track, a red lamp on it (in finishes the zones already batch, casting nothing: the
+ * lamp's light is the glow field).
+ */
+function bufferStop(c: Ctx, x: number, z: number): void {
+  const { b } = c;
+  for (const s of [-1, 1]) {
+    const zz = z + s * 0.72;
+    box(b, Z.black, x + 0.15, 0.45, zz, 0.14, 0.9, 0.14, 0, false);
+    slab(b, Z.black, x + 0.95, 0.45, zz, 1.75, 0.1, 0.12, 0, 0, 0.5, false);
+  }
+  box(b, Z.redDark, x + 0.05, 0.85, z, 0.32, 0.34, 2.7, 0, false);
+  for (const dz of [-0.9, 0, 0.9]) box(b, Z.white, x + 0.05, 0.85, z + dz, 0.34, 0.35, 0.3, 0, false);
+  box(b, Z.snow, x + 0.05, 1.06, z, 0.36, 0.08, 2.74, 0, false);
+  box(b, Z.black, x - 0.05, 1.2, z + 1.05, 0.08, 0.4, 0.08, 0, false);
+  box(b, Z.black, x - 0.05, 1.5, z + 1.05, 0.2, 0.3, 0.2, 0, false);
+  box(b, Z.redDark, x + 0.07, 1.52, z + 1.05, 0.06, 0.14, 0.14, 0, false);
+  b.glow({ x: x + 0.2, y: 1.52, z: z + 1.05, color: 0xff3020, size: 0.7, intensity: 2, mode: 'steady' });
+  solid(c, x + 0.75, z, 1.7, 2.8, 1.1, 'zarya-buffer', { shots: false, kind: 'prop', surface: 'metal' });
+}
+
+/**
  * A stop on Line One somewhere else in town: sixty metres of track and wire, a two-car tram standing on it with its
  * doors open on `doorSide` (+1 south, -1 north), a stop sign. (The square builds its own, with the shelter and the
- * fuse box.)
+ * fuse box.) The track runs from `o.from` to `o.to` (sixty metres round the stop unless the frame carries it on to the
+ * zone's portals, `LINE_PORTALS`), a pole every 26 m along it; `o.buffer` ends it at its west end in a buffer stop.
  */
-export function tramStop(c: Ctx, x: number, z: number, doorSide: 1 | -1, avoid: readonly { x: number; z: number }[] = []): void {
+export function tramStop(c: Ctx, x: number, z: number, doorSide: 1 | -1, avoid: readonly { x: number; z: number }[] = [], o: { from?: number; to?: number; buffer?: boolean } = {}): void {
   const { b } = c;
-  for (const s of [-1, 1]) box(b, Z.steel, x, 0.05, z + s * 0.72, 60, 0.09, 0.08, 0, false);
-  box(b, Z.black, x, 5.5, z, 60, 0.03, 0.03, 0, false);
-  for (const dx of [-26, 0, 26]) {
+  const from = o.from ?? x - 30;
+  const to = o.to ?? x + 30;
+  for (const s of [-1, 1]) box(b, Z.steel, (from + to) / 2, 0.05, z + s * 0.72, to - from, 0.09, 0.08, 0, false);
+  box(b, Z.black, (from + to) / 2, 5.5, z, to - from, 0.03, 0.03, 0, false);
+  for (let k = Math.ceil((from + 4 - x) / 26); x + k * 26 <= to - 4; k++) {
+    const dx = k * 26;
     // no pole in a gate's way (a stop near a zone's edge)
     if (avoid.some((a) => Math.hypot(a.x - (x + dx), a.z - (z - doorSide * 3.2)) < 10)) continue;
     cyl(b, Z.iron, x + dx, 0, z - doorSide * 3.2, 0.14, 0.1, 6.2, 8);
     box(b, Z.iron, x + dx, 5.9, z - doorSide * 1.6, 0.07, 0.07, 3.2, 0, false);
     solid(c, x + dx, z - doorSide * 3.2, 0.3, 0.3, 6.2, 'zarya-pole', { kind: 'none', surface: 'metal' });
   }
-  groundRect(b, Z.packed, x - 30, z - 2.2, x + 30, z + 2.2, 0.012);
+  groundRect(b, Z.packed, from, z - 2.2, to, z + 2.2, 0.012);
+  if (o.buffer) bufferStop(c, from, z);
   tramCar(c, x - 16, x - 0.5, z, false, doorSide);
   tramCar(c, x + 0.5, x + 16, z, true, doorSide);
   box(b, Z.black, x, 1.6, z, 1.2, 1.6, 1.6);
@@ -151,15 +178,19 @@ export function tramStop(c: Ctx, x: number, z: number, doorSide: 1 | -1, avoid: 
 function tramLine(c: Ctx): void {
   const { b } = c;
   const z = P.trackZ;
-  // rails and the wire, as far as the square's zone goes (the store's zone carries them on)
-  for (const s of [-1, 1]) box(b, Z.steel, (B.minX + 68) / 2, 0.05, z + s * 0.72, 68 - B.minX, 0.09, 0.08, 0, false);
-  box(b, Z.black, (B.minX + 68) / 2, 5.5, z, 68 - B.minX, 0.03, 0.03, 0, false);
+  // rails and the wire, from the portal under the Palace's north wing (`LINE_PORTALS` 'square': the frame builds it)
+  // to the edge of the square's zone (the store's zone carries them on)
+  const west = LINE_PORTALS.find((q) => q.id === 'square')!;
+  const w0 = west.x1;
+  for (const s of [-1, 1]) box(b, Z.steel, (w0 + 68) / 2, 0.05, z + s * 0.72, 68 - w0, 0.09, 0.08, 0, false);
+  box(b, Z.black, (w0 + 68) / 2, 5.5, z, 68 - w0, 0.03, 0.03, 0, false);
   for (let x = B.minX + 10; x < 68; x += 26) {
+    if (x < w0 + 3) continue;
     cyl(b, Z.iron, x, 0, z - 3.6, 0.14, 0.1, 6.2, 8);
     box(b, Z.iron, x, 5.9, z - 1.8, 0.07, 0.07, 3.6, 0, false);
     solid(c, x, z - 3.6, 0.3, 0.3, 6.2, 'zarya-pole', { kind: 'none', surface: 'metal' });
   }
-  groundRect(b, Z.packed, B.minX, z - 2.2, 68, z + 2.2, 0.012);
+  groundRect(b, Z.packed, w0, z - 2.2, 68, z + 2.2, 0.012);
   // the stop: a roofed shelter with its back to the square, a bench, the stop's sign
   const s = P.stop;
   box(b, Z.snow, s.x, 2.78, s.z, 7.4, 0.2, 2.6, 0, false);
@@ -186,8 +217,8 @@ function tramLine(c: Ctx): void {
   tramCar(c, t.x1 - half, t.x1, z, true);
   box(b, Z.black, (t.x0 + t.x1) / 2, 1.6, z, 1.2, 1.6, 1.6);
   // the wall along the far side of the line, and the town going on behind it
-  box(b, Z.concreteDark, (B.minX + 68) / 2, 1.3, z - 6.6, 68 - B.minX, 2.6, 0.3);
-  box(b, Z.snow, (B.minX + 68) / 2, 2.66, z - 6.6, 68 - B.minX, 0.14, 0.44, 0, false);
+  box(b, Z.concreteDark, (west.x0 + 68) / 2, 1.3, z - 6.6, 68 - west.x0, 2.6, 0.3);
+  box(b, Z.snow, (west.x0 + 68) / 2, 2.66, z - 6.6, 68 - west.x0, 0.14, 0.44, 0, false);
 }
 
 function palace(c: Ctx): void {

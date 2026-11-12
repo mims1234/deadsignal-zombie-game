@@ -129,6 +129,8 @@ export class SquadRuntime {
   requestRescue: ((name: string) => void) | null = null;
   /** Co-op: ask the simulation to get the downed squadmate at this index up. */
   requestHelp: ((index: number) => void) | null = null;
+  /** Co-op (ZARYA): this player rode, climbed or stepped through to (x, z): the squadmates with them come along. */
+  requestRegroup: ((x: number, z: number, yaw: number, area: number) => void) | null = null;
   private readonly world: AllyWorld;
   /** The Asylum: where the squad takes guns from the boxes (`allySupply.ts`). */
   private readonly supply: AllySupply;
@@ -147,6 +149,7 @@ export class SquadRuntime {
       followLeader: (x, z, out) => g.flow.follow(x, z, out, 10),
       holdFire: (z, a) => {
         if (g.zarya?.spared(z)) return true; // ZARYA: the ones nothing hurts yet, and Morozko while he asks
+        if (this.bare) return true; // ZARYA: empty hands before Nina's rack (as the co-op simulation's squad)
         const night = g.mission?.night;
         if (!night || !g.playerAlive()) return false;
         const p = g.player;
@@ -615,7 +618,12 @@ export class SquadRuntime {
 
   /** The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. */
   regroupAt(x: number, z: number, yaw: number, area: number): void {
-    if (!this.active || this.follow) return;
+    if (!this.active) return;
+    // ZARYA in co-op: the simulation moves the squadmates who were keeping up with this player (`requestRegroup`)
+    if (this.follow) {
+      if (this.g.mapId === 'zarya') this.requestRegroup?.(x, z, yaw, area);
+      return;
+    }
     const nav = this.g.level.floors.navOf(area);
     for (const a of this.allies) {
       if (!allyFighting(a)) continue; // one who is down follows when they are up (`allyMove`)

@@ -14,6 +14,8 @@ import type { HudState } from '../ui/hudTypes';
 import { MODS, WeaponMods, benchOffer, boothRefusal, modNames, modWord } from './mods';
 import { BENCHES, CH, KBIT, MOD_COST, MOD_PARTS, SHUTTERS, STORY, ZaryaStory, type StoryAct, type StoryView } from './story';
 import { TOWN } from './unlock';
+// (items, round 3: the mod part's picture with its feed line)
+import { MOD_ICON } from './items';
 import type { Spot } from './places';
 
 /** How near a lying mod part has to be to be picked up in passing; how near a kiosk a player must be to share in it. */
@@ -105,8 +107,8 @@ export class KiosksAndMods {
         }
         g.weapons.cancelActions();
         g.audio.play('pickup_ammo', { priority: 2 });
-        g.feed('THE SHUTTER ROLLS UP  -  AMMUNITION, AND A MOD PART', 'good');
-      } else g.feed(`A KIOSK SHUTTER ROLLS UP ${s.name.toUpperCase()}  -  A MOD PART`, 'good');
+        g.hudEvent({ type: 'feed', text: 'THE SHUTTER ROLLS UP  -  AMMUNITION, AND A MOD PART', tone: 'good', icon: MOD_ICON });
+      } else g.hudEvent({ type: 'feed', text: `A KIOSK SHUTTER ROLLS UP ${s.name.toUpperCase()}  -  A MOD PART`, tone: 'good', icon: MOD_ICON });
     });
     const found = (n: number): number => ZaryaStory.count(n & ((1 << KBIT.spent) - 1));
     const parts = ZaryaStory.modParts(v);
@@ -114,7 +116,7 @@ export class KiosksAndMods {
       const bit = 1 << (KBIT.part + i);
       if (!(k & bit) || was & bit) return;
       g.audio.play('pickup_ammo', { priority: 2, volume: 0.8 });
-      g.feed(`A MOD PART  -  ${parts} TO FIT`, 'good');
+      g.hudEvent({ type: 'feed', text: `A MOD PART  -  ${parts} TO FIT`, tone: 'good', icon: MOD_ICON });
     });
     // someone else's fit (or this player's, said once it lands): how many are left for the squad
     if (k >> KBIT.spent !== was >> KBIT.spent && !this.pending && found(k) > 0) g.feed(`MOD PARTS LEFT  -  ${parts}`, 'normal');

@@ -6,6 +6,8 @@ import type { WeaponId } from '../types';
 import { NumCell, TextCell, clamp01, el, fmtDist, fmtInt, fmtMoney, setAttr, setHidden, svgEl } from './dom';
 import type { HudObjective, HudPrompt, HudState, HudWeaponInfo, StationPanel } from './hudTypes';
 import { type IconName, icon, weaponSilhouette } from './icons';
+// (ZARYA's items: pictures on an objective row)
+import { IconStrip } from './hudItems';
 
 /** The fire-mode word of ZARYA's guns (the nail gun is plain AUTO). */
 const ZARYA_MODE: Partial<Record<WeaponId, string>> = { signalka: 'FLARE', arbalet: 'BOLT', salyut: 'VOLLEY', ottepel: 'STEAM', zenit: 'FLASH', raketa: 'SUCK' };
@@ -282,6 +284,8 @@ interface ObjRow {
   progText: TextCell;
   state: string;
   cell: NumCell;
+  /** (ZARYA's items) the parts still missing, made on the first row that has any. */
+  icons: IconStrip | null;
 }
 
 const OBJ_ICON: Record<HudObjective['state'], IconName> = {
@@ -324,12 +328,15 @@ export class ObjectivesView {
     const bar = el('span', 'barw', prog);
     const progFill = el('i', '', bar);
     const progText = new TextCell(el('span', 'pct', prog));
-    return { root, mark, title, dist, detail, prog, progFill, progText, state: '', cell: new NumCell(0.003) };
+    return { root, mark, title, dist, detail, prog, progFill, progText, state: '', cell: new NumCell(0.003), icons: null };
   }
 
   private fill(r: ObjRow, o: HudObjective): void {
     r.title.set(o.title);
     r.detail.set(o.detail);
+    // (ZARYA's items) a strip of pictures under the title, only where a map hands some over
+    if (o.icons?.length && !r.icons) r.icons = new IconStrip(r.detail.node.parentElement!, r.detail.node);
+    r.icons?.set(o.icons);
     r.dist.set(o.state === 'active' || o.state === 'available' ? fmtDist(o.distance) : '');
     if (o.state !== r.state) {
       r.state = o.state;

@@ -2,9 +2,11 @@
  * Transient HUD feedback: crosshair, hit markers, damage-direction arcs, screen effects, banners, the event feed,
  * radio subtitles and floating cash deltas. Discrete effects use the Web Animations API (no per-frame work).
  */
-import type { HudState } from './hudTypes';
+import type { HudState, RadioFace } from './hudTypes';
 import { NumCell, clamp, el, fmtSignedMoney, svgEl } from './dom';
 import { reducedMotion } from './prefs';
+// (item pictures, ZARYA round 3: a feed line's or a banner's `icon`; absent on every other map)
+import { iconEl } from './hudItems';
 
 // ---------------------------------------------------------------------------------------------
 // crosshair
@@ -219,6 +221,8 @@ interface BannerItem {
   subtitle: string;
   tone: Tone;
   duration: number;
+  /** (item pictures) a badge over the title. */
+  icon?: string;
 }
 
 export class BannerView {
@@ -239,9 +243,9 @@ export class BannerView {
     el('div', 'rule', this.root);
   }
 
-  push(title: string, subtitle: string | undefined, tone: Tone, duration = 3.6): void {
+  push(title: string, subtitle: string | undefined, tone: Tone, duration = 3.6, icon?: string): void {
     if (this.queue.length >= 4) this.queue.shift();
-    this.queue.push({ title, subtitle: subtitle ?? '', tone, duration });
+    this.queue.push({ title, subtitle: subtitle ?? '', tone, duration, icon });
     // hurry the visible banner along when others are waiting
     if (this.cur && this.cur.t < this.cur.dur - 1.1) this.cur.dur = this.cur.t + 1.1;
   }
@@ -265,6 +269,9 @@ export class BannerView {
     this.titleEl.textContent = item.title;
     this.subEl.textContent = item.subtitle;
     this.subEl.hidden = item.subtitle === '';
+    // (item pictures) the badge over the title, while this banner shows
+    this.root.querySelector('.ds-ico.lead')?.remove();
+    if (item.icon) this.root.insertBefore(iconEl(item.icon, 'lead'), this.root.firstChild);
     this.root.hidden = false;
     this.anim?.cancel();
     this.anim = reducedMotion()
@@ -318,8 +325,13 @@ export class FeedView {
     this.root.setAttribute('role', 'log');
   }
 
-  push(text: string, tone: 'normal' | 'good' | 'warn' | 'danger' = 'normal'): void {
+  push(text: string, tone: 'normal' | 'good' | 'warn' | 'danger' = 'normal', icon?: string): void {
     const node = el('div', `ds-feed-line ${tone}`, this.root, text);
+    // (item pictures) the badge of what was taken, before the words
+    if (icon) {
+      node.classList.add('has-ico');
+      node.insertBefore(iconEl(icon), node.firstChild);
+    }
     this.lines.push({ node, age: 0, fading: false });
     if (!reducedMotion()) {
       node.animate([{ opacity: 0, transform: 'translateX(-14px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'ease-out' });
@@ -359,14 +371,29 @@ interface RadioItem {
   speaker: string;
   text: string;
   duration: number;
+  face?: RadioFace;
+}
+
+/** A face on a caption (ZARYA's people): the speaker's colour on the view, their portrait shown; or neither. */
+function wearFace(root: HTMLElement, img: HTMLImageElement, face: RadioFace | undefined, colorVar: string): void {
+  root.classList.toggle('has-face', !!face);
+  if (face) {
+    root.style.setProperty(colorVar, face.color);
+    if (img.getAttribute('src') !== face.portrait) img.src = face.portrait;
+    img.hidden = false;
+  } else {
+    root.style.removeProperty(colorVar);
+    img.hidden = true;
+  }
 }
 
 export class RadioView {
   private readonly root: HTMLElement;
   private readonly tag: HTMLElement;
   private readonly textEl: HTMLElement;
+  private readonly face: HTMLImageElement;
   private readonly queue: RadioItem[] = [];
-  private cur: { t: number; dur: number } | null = null;
+  private cur: { t: number; dur: number; item: RadioItem } | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'ds-radio', parent);
@@ -374,16 +401,19 @@ export class RadioView {
     this.root.setAttribute('role', 'status');
     const bars = el('div', 'bars', this.root);
     for (let i = 0; i < 4; i++) el('i', '', bars);
+    this.face = el('img', 'face', this.root) as HTMLImageElement;
+    this.face.alt = '';
+    this.face.hidden = true;
     this.tag = el('div', 'tag', this.root);
     this.textEl = el('div', 'text', this.root);
   }
 
-  /** `now`: cut in ahead of the line being shown and of those waiting. */
-  push(speaker: string, text: string, duration?: number, now = false): void {
-    const item = { speaker, text, duration: duration ?? clamp(2.6 + text.length * 0.05, 3, 8) };
+  /** `now`: cut in ahead of the line being shown and of those waiting. `face`: who is speaking, shown with the line. */
+  push(speaker: string, text: string, duration?: number, now = false, face?: RadioFace): void {
+    const item: RadioItem = { speaker, text, duration: duration ?? clamp(2.6 + text.length * 0.05, 3, 8), face };
     if (now) {
       // what it cut off is said again after it, for what was left of its time
-      if (this.cur) this.queue.unshift({ speaker: this.tag.textContent ?? '', text: this.textEl.textContent ?? '', duration: Math.max(2, this.cur.dur - this.cur.t) });
+      if (this.cur) this.queue.unshift({ ...this.cur.item, duration: Math.max(2, this.cur.dur - this.cur.t) });
       this.queue.unshift(item);
       this.cur = null;
       return;
@@ -403,9 +433,10 @@ export class RadioView {
     }
     const next = this.queue.shift();
     if (!next) return;
-    this.cur = { t: 0, dur: next.duration };
-    this.tag.textContent = next.speaker;
+    this.cur = { t: 0, dur: next.duration, item: next };
+    this.tag.textContent = next.face?.name ?? next.speaker;
     this.textEl.textContent = next.text;
+    wearFace(this.root, this.face, next.face, '--sc');
     this.root.hidden = false;
     if (!reducedMotion()) this.root.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 180, easing: 'ease-out' });
   }
@@ -426,26 +457,35 @@ interface TopLineItem {
   text: string;
   tone: Tone | 'radio';
   duration: number;
+  face?: RadioFace;
+  /** (item pictures) a banner's badge, before its title. */
+  icon?: string;
 }
 
 /**
  * On a phone the middle of the screen stays clear: banners and radio subtitles share one line along the top edge
  * instead, one at a time. Anything longer than a short line is cut at word breaks into pieces shown one after the
- * other, so nothing is lost. Banners go ahead of the radio lines waiting.
+ * other, so nothing is lost. Banners go ahead of the radio lines waiting. A line with a face (ZARYA's people) shows the
+ * speaker's portrait and short name in their colour, and its pieces share the time the line was given, so a
+ * conversation never falls behind what is happening.
  */
 export class TopLineView {
   /** Characters a line holds, title and text together. */
   private static readonly LINE = 54;
   private readonly root: HTMLElement;
+  private readonly face: HTMLImageElement;
   private readonly tagEl: HTMLElement;
   private readonly textEl: HTMLElement;
   private readonly queue: TopLineItem[] = [];
-  private cur: { t: number; dur: number } | null = null;
+  private cur: { t: number; dur: number; item: TopLineItem } | null = null;
 
   constructor(parent: HTMLElement) {
     this.root = el('div', 'ds-topline', parent);
     this.root.hidden = true;
     this.root.setAttribute('role', 'status');
+    this.face = el('img', 'face', this.root) as HTMLImageElement;
+    this.face.alt = '';
+    this.face.hidden = true;
     this.tagEl = el('span', 'tag', this.root);
     this.textEl = el('span', 'text', this.root);
   }
@@ -467,18 +507,18 @@ export class TopLineView {
     return out;
   }
 
-  /** Room left for the text beside a title (titles are wide, spaced capitals). */
-  private static room(tag: string): number {
-    return Math.max(20, TopLineView.LINE - Math.round(tag.length * 1.3));
+  /** Room left for the text beside a title (titles are wide, spaced capitals; a portrait takes about three more). */
+  private static room(tag: string, face = false): number {
+    return Math.max(20, TopLineView.LINE - Math.round(tag.length * 1.3) - (face ? 3 : 0));
   }
 
   private static hold(text: string): number {
     return clamp(1.4 + text.length * 0.05, 2, 4);
   }
 
-  banner(title: string, subtitle: string | undefined, tone: Tone, duration = 3.6): void {
-    const sub = TopLineView.pieces(subtitle ?? '', TopLineView.room(title));
-    const items: TopLineItem[] = sub.length === 0 ? [{ tag: title, text: '', tone, duration: Math.min(duration, 3) }] : sub.map((text) => ({ tag: title, text, tone, duration: TopLineView.hold(text) }));
+  banner(title: string, subtitle: string | undefined, tone: Tone, duration = 3.6, icon?: string): void {
+    const sub = TopLineView.pieces(subtitle ?? '', TopLineView.room(title, !!icon));
+    const items: TopLineItem[] = sub.length === 0 ? [{ tag: title, text: '', tone, duration: Math.min(duration, 3), icon }] : sub.map((text) => ({ tag: title, text, tone, duration: TopLineView.hold(text), icon }));
     // ahead of the radio waiting, behind other banners
     let at = 0;
     while (at < this.queue.length && this.queue[at]!.tone !== 'radio') at++;
@@ -486,12 +526,23 @@ export class TopLineView {
     this.trim();
   }
 
-  /** `now`: cut in ahead of the line being shown and of everything waiting. */
-  radio(speaker: string, text: string, now = false): void {
-    const items: TopLineItem[] = TopLineView.pieces(text, TopLineView.room(speaker)).map((piece) => ({ tag: speaker, text: piece, tone: 'radio', duration: TopLineView.hold(piece) }));
+  /** `now`: cut in ahead of the line being shown and of everything waiting. `face`: who is speaking; `duration`: the line's time. */
+  radio(speaker: string, text: string, now = false, face?: RadioFace, duration?: number): void {
+    const tag = face?.short ?? speaker;
+    const parts = TopLineView.pieces(text, TopLineView.room(tag, !!face));
+    // with a face, the pieces share the line's own time (by length, none too short to read)
+    const share = (piece: string): number => (face && duration ? Math.max(1.8, (duration * piece.length) / Math.max(1, text.length)) : TopLineView.hold(piece));
+    const items: TopLineItem[] = parts.map((piece) => ({ tag, text: piece, tone: 'radio', duration: share(piece), face }));
+    // with a face, a conversation catches up: lines still waiting are hurried (none under 1.3 s) so the new one is
+    // shown within about three seconds of being said
+    if (face && !now) {
+      const waiting = this.queue.filter((q) => q.tone === 'radio');
+      const total = waiting.reduce((s, q) => s + q.duration, 0) + (this.cur ? Math.max(0, this.cur.dur - this.cur.t) : 0);
+      if (total > 3) for (const q of waiting) q.duration = Math.max(1.3, (q.duration * 3) / total);
+    }
     if (now) {
       // what it cut off is shown again after it
-      if (this.cur) this.queue.unshift({ tag: this.tagEl.textContent ?? '', text: this.textEl.textContent ?? '', tone: (this.root.dataset.tone as Tone | 'radio') ?? 'radio', duration: Math.max(1.6, this.cur.dur - this.cur.t) });
+      if (this.cur) this.queue.unshift({ ...this.cur.item, duration: Math.max(1.6, this.cur.dur - this.cur.t) });
       this.queue.unshift(...items);
       this.cur = null;
     } else this.queue.push(...items);
@@ -518,11 +569,15 @@ export class TopLineView {
     }
     const next = this.queue.shift();
     if (!next) return;
-    this.cur = { t: 0, dur: next.duration };
+    this.cur = { t: 0, dur: next.duration, item: next };
     this.root.dataset.tone = next.tone;
     this.tagEl.textContent = next.tag;
     this.textEl.textContent = next.text;
     this.textEl.hidden = next.text === '';
+    wearFace(this.root, this.face, next.face, '--tc');
+    // (item pictures) a banner's badge before its title
+    this.root.querySelector('.ds-ico.lead')?.remove();
+    if (next.icon) this.root.insertBefore(iconEl(next.icon, 'lead'), this.tagEl);
     this.root.hidden = false;
     if (!reducedMotion()) this.root.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: 'ease-out' });
   }

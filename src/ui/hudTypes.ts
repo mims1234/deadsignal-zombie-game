@@ -7,6 +7,8 @@ import type { FilmId } from '../films';
 import type { SwitchId } from '../switches';
 import type { TeamSkill, ZombieDifficulty } from '../config';
 import type { BestRun, GameMode, MissionStats, Region, Settings, WeaponId } from '../types';
+import type { HudIcon, ItemCard } from './hudItems';
+export type { HudIcon, ItemCard };
 
 export interface HudWeaponInfo {
   id: WeaponId;
@@ -40,6 +42,8 @@ export interface HudObjective {
   tracked: boolean;
   /** Distance to the objective marker in metres, or -1. */
   distance: number;
+  /** (ZARYA's items) pictures on the row: what is being built and the parts still missing (`hudItems.ts`). */
+  icons?: HudIcon[];
 }
 
 export interface HudPrompt {
@@ -114,6 +118,8 @@ export interface HudState {
   subTimer: HudTimer | null;
 
   objectives: HudObjective[];
+  /** (ZARYA's items) the workbench card under the objectives while a player stands at a bench; absent elsewhere. */
+  itemCard?: ItemCard | null;
   prompt: HudPrompt | null;
   panel: StationPanel | null;
 
@@ -156,16 +162,26 @@ export interface HudState {
   toxicTint?: 'toxic' | 'black';
 }
 
+/** Who is speaking a radio line, shown with it (ZARYA's people): the name in full and for a phone's short line, their colour, a portrait's address. */
+export interface RadioFace {
+  name: string;
+  short: string;
+  color: string;
+  portrait: string;
+}
+
 export type HudEvent =
   | { type: 'hit'; head: boolean; kill: boolean }
   /** `angle` = direction the damage came from relative to the player's facing, radians: 0 = ahead, +PI/2 = right, PI = behind. Omit for all-around (toxin). */
   | { type: 'damage'; angle?: number; amount: number; toxic?: boolean }
-  | { type: 'banner'; title: string; subtitle?: string; tone: 'info' | 'good' | 'warn' | 'danger'; duration?: number }
+  /** `icon` (ZARYA's items): a picture's address, shown with the banner or feed line (`hudItems.ts`). */
+  | { type: 'banner'; title: string; subtitle?: string; tone: 'info' | 'good' | 'warn' | 'danger'; duration?: number; icon?: string }
   /** Small log line, e.g. "+$160  Armored Infected" / "+1 ARMOR PLATE". */
-  | { type: 'feed'; text: string; tone?: 'normal' | 'good' | 'warn' | 'danger' }
+  | { type: 'feed'; text: string; tone?: 'normal' | 'good' | 'warn' | 'danger'; icon?: string }
   /** Radio subtitle line. */
   /** `now`: cut in ahead of whatever is being said (ZARYA: Morozko's question, the moment to parry). */
-  | { type: 'radio'; speaker: string; text: string; duration?: number; now?: boolean }
+  /** `face` (ZARYA, `zarya/people.ts`): who is speaking, by name, in their colour, with a portrait beside the line. */
+  | { type: 'radio'; speaker: string; text: string; duration?: number; now?: boolean; face?: RadioFace }
   | { type: 'flash'; color: string; strength: number }
   /** Cash gained/spent floating next to the cash counter. */
   | { type: 'cash'; amount: number }

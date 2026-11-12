@@ -27,12 +27,13 @@ import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, LA
 import { CH, CLUES, COVERS, DOLLS, F, G, MOD_PARTS, ORNAMENTS, SHUTTERS, STORY, TOOLS, ZaryaStory, type StoryView } from './story';
 import { yawTo } from './types';
 import { PART, TOWN, Unlock } from './unlock';
+// (items, round 3: every collectable as a small model of itself, all in one draw call)
+import { ItemMarks, townItems } from './items';
 
 export type Named = 'mishka' | 'borya' | 'yaga' | 'tamada' | 'morozko';
 
 const AMBER = 0xffb84a;
-/** How high each part lies (on a shelf, a counter, a table, in a box on a post; lower where it lies on the ground). */
-const PART_Y: Record<string, number> = { tube: 1.5, cartridges: 1.34, handle: 1.24, fuse: 1.34, shears: 1.3, pipes: 1.1, tape: 1.3, nailer: 1.05, canister: 0.6, strips: 1.05, tubes: 1.2, crate: 0.75, cord: 0.45, blade: 1.2, shaft: 1, guard: 0.7, samovar: 1.25, coil: 0.95, valve: 1.05, vesna: 1.3 };
+// (items, round 3: how high each part lies is `ITEM_Y` in items.ts now, the surface under it)
 const CLUE_Y: Record<string, number> = { tv: 1.45, ledger: 1.1, crates: 1.25, sheet: 1.5, plaque: 1.6, photo: 1.6, faces: 1.55, pipe: 1.2, clock: 1.65, office: 1, dens: 1.35, danya: 1.25, den: 0.55 };
 /** The glass ornaments' colours, and the four keys' (cosmonaut, sun, wheat, dove). */
 const GLASS = [0xd8262e, 0x2f6fd8, 0xe0a820, 0x2fa860, 0x9a4ad0, 0xc8d4e8];
@@ -229,6 +230,9 @@ export class TownLook {
   private readonly kiosks: { site: Site; open: THREE.Mesh }[] = [];
   private readonly booth: { site: Site; tools: THREE.Mesh[] };
   private readonly clueAt: number;
+  /** Items (round 3): every part, find, tool, mod part and rolled ornament as a model of itself (`items.ts`), one mesh. */
+  private readonly items: ItemMarks;
+  private readonly itemAt: ReturnType<typeof townItems>['at'];
 
   // ---- the town ----
   private readonly gates: GateLook[] = [];
@@ -374,18 +378,25 @@ export class TownLook {
     // what glints (one draw call), what glows (one more)
     // =====================================================================================================
     const spark = (list: Spark[], x: number, y: number, z: number, c: THREE.Color, s: number, o: Partial<Spark> = {}): number => list.push({ x, y, z, c, s, sx: 1, sy: 1, sz: 1, spin: 0, bob: 0, on: false, ...o }) - 1;
-    const amber = hex(AMBER, 1.7);
+    // ---- items (round 3): each collectable is a small model of itself lying where it lies (`items.ts`, one draw call
+    // for all of them, a soft rim of light round each); over each, a small twinkle so it is found from across a room
+    const town = townItems();
+    this.itemAt = town.at;
+    this.items = new ItemMarks(town.spots);
+    this.root.add(this.items.mesh);
+    const twinkle = (i: number, c: THREE.Color): number => {
+      const s = town.spots[i]!;
+      return spark(this.sparks, s.x, s.y + (s.kind === 'find' ? 0.3 : 0.42), s.z, c, 0.38, { spin: 1.4, bob: 0.04 });
+    };
+    const amber = hex(AMBER, 1.5);
     this.partAt = this.sparks.length;
-    for (const p of TOWN.parts) spark(this.sparks, p.x, PART_Y[p.id] ?? 1.1, p.z, amber, 1, { spin: 1.4, bob: 0.05 });
-    // what lies about to be picked up and swung: a long sliver of the same light
+    TOWN.parts.forEach((_, i) => twinkle(town.at.part + i, amber));
     this.findAt = this.sparks.length;
-    for (const f of TOWN.finds) spark(this.sparks, f.x, 1.2, f.z, amber, 1, { sx: 1.9, sy: 0.3, sz: 0.4, spin: 0.5 });
-    // the repairman's tools: a colder light
+    TOWN.finds.forEach((_, i) => twinkle(town.at.find + i, amber));
     this.toolAt = this.sparks.length;
-    for (const t of TOOLS) spark(this.sparks, t.x, 1.1, t.z, hex(0x8fd8ff, 1.8), 0.85, { spin: 1.4, bob: 0.05 });
-    // kiosks and mods: a weapon mod part, a brass glint (on a counter, on a shelf)
+    TOOLS.forEach((_, i) => twinkle(town.at.tool + i, hex(0x8fd8ff, 1.6)));
     this.modPartAt = this.sparks.length;
-    for (const m of MOD_PARTS) spark(this.sparks, m.x, 1.15, m.z, hex(0xffd27a, 1.6), 0.7, { spin: 2, bob: 0.04 });
+    MOD_PARTS.forEach((_, i) => twinkle(town.at.mod + i, hex(0xffd27a, 1.5)));
     // things worth a look: a speck that catches the eye from close by, nothing more
     this.clueAt = this.sparks.length;
     for (const c of CLUES) spark(this.sparks, c.at.x, CLUE_Y[c.id] ?? 1.3, c.at.z, hex(0xfff0c8, 0.9), 0.3, { spin: 0.6 });
@@ -1161,6 +1172,17 @@ export class TownLook {
     TOWN.finds.forEach((_, i) => (S[this.findAt + i]!.on = v.ch >= CH.ground && v.ch < CH.ended));
     TOOLS.forEach((_, i) => (S[this.toolAt + i]!.on = ZaryaStory.can(v, 'tool', i)));
     MOD_PARTS.forEach((_, i) => (S[this.modPartAt + i]!.on = ZaryaStory.can(v, 'modPart', i)));
+    // items (round 3): each model lies there exactly while its twinkle does; the ornaments while they can be picked up
+    {
+      const I = this.items;
+      const A = this.itemAt;
+      TOWN.parts.forEach((_, i) => I.set(A.part + i, S[this.partAt + i]!.on));
+      TOWN.finds.forEach((_, i) => I.set(A.find + i, S[this.findAt + i]!.on));
+      TOOLS.forEach((_, i) => I.set(A.tool + i, S[this.toolAt + i]!.on));
+      MOD_PARTS.forEach((_, i) => I.set(A.mod + i, S[this.modPartAt + i]!.on));
+      ORNAMENTS.forEach((_, i) => I.set(A.ornament + i, ZaryaStory.can(v, 'ornament', i)));
+      I.update(this.t);
+    }
     // kiosks and mods: a shutter once paid for stays up; each tool the squad brings back lies on the repairman's bench
     this.kiosks.forEach((k, i) => (k.open.visible = ZaryaStory.shutterUp(v, i)));
     this.booth.tools.forEach((t, i) => (t.visible = (v.m & (1 << (6 + i))) !== 0));
@@ -1171,7 +1193,8 @@ export class TownLook {
     const O = this.orbs;
     const n = ORNAMENTS.length;
     for (let i = 0; i < n; i++) {
-      O[i]!.on = ZaryaStory.can(v, 'ornament', i);
+      // (items, round 3: an ornament lying where it rolled is its own model now, not a lit ball)
+      O[i]!.on = false;
       O[n + i]!.on = did(G.hung);
     }
     let at = n * 2;
@@ -1481,6 +1504,7 @@ export class TownLook {
     this.crowd.dispose();
     this.snow.dispose();
     this.rings.dispose();
+    this.items.dispose();
     for (const c of Object.values(this.costumes)) for (const o of [c.head, c.hips, c.hand]) o?.removeFromParent();
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();

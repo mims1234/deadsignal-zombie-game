@@ -1786,8 +1786,9 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
     models: ['victoria.vrm'],
     fillsSeats: true,
   },
-  // ZARYA: the town's volunteer search squad is always three. You are one of them (Mira, alone); the other two fight
-  // beside you as equals, and co-op players take their places
+  // ZARYA: the town's volunteer search squad. You are Mira; Timur and Vera fight beside you as equals and are part of the
+  // story, so they are always there: solo, and in co-op beside every player (Mira and up to two more volunteers who came
+  // out with the squad tonight). No `fillsSeats`: players never take their places
   zarya: {
     names: ['Timur', 'Vera'],
     tag: 'SEARCH SQUAD',
@@ -1799,7 +1800,6 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
       { female: false, outfit: 'coat', hair: 'short', hairColor: 0x15120f, skin: 0xd9b08c, eyes: 0x2a1c12, accent: 0xe07a2a },
       { female: true, outfit: 'coat', hair: 'ponytail', hairColor: 0x6a3a22, skin: 0xf0d2bd, eyes: 0x3a5a4a, accent: 0xc8322a },
     ],
-    fillsSeats: true,
     equals: true,
   },
 };

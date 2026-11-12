@@ -32,7 +32,13 @@ import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, GATES, INSTITUTE, RYNOK, STOPS, TET
 import { AT, BENCHES, CH, CLUE, CLUES, COVERS, DOLLS, F, G, KEYS, ORNAMENTS, STORY, TOOLS, ZaryaStory, decodeStory, type StoryAct, type StoryView } from './story';
 // (kiosks and mods: the shutters, the weapon mods, the repair booth's tools)
 import { KiosksAndMods } from './modsRuntime';
+// ---- the people: a name, a colour and a face on every line, first-meeting cards, the PEOPLE page, sleepers' names (`people.ts`) ----
+import { ZaryaPeople } from './people';
 import { CHAIN, OKHOTNIK, PART, POLICE, RECIPE, TOWN, Unlock, buyOffer, type Gives, type OfferDef } from './unlock';
+// (items, round 3: every part, tool and ornament has a picture: the feed, the HUD list, the journal, the bench card)
+import { MOD_ICON, ornamentIcon, partIcon, toolIcon } from './items';
+import type { HudIcon, ItemCard } from '../ui/hudTypes';
+import { journalBuilds, journalIcons, type JournalBuild } from '../ui/hudItems';
 
 /** How near a thing lying about has to be to be picked up in passing. */
 const PICKUP = 2.4;
@@ -145,6 +151,8 @@ interface Row {
   label?: string;
   /** Someone being fought: while one is, the compass follows them, however near anything else is. */
   fight?: boolean;
+  /** (items) pictures on the row: the parts still missing. */
+  icons?: HudIcon[];
 }
 
 /** What a prompt is drawn from (`targets`). */
@@ -199,6 +207,8 @@ export class ZaryaRuntime {
   private reachOut: InteractionTarget[] = [];
   /** Kiosks and mods: the shutters, this player's weapon mods, the repair booth (`modsRuntime.ts`). */
   private readonly kiosks: KiosksAndMods;
+  /** The people (`people.ts`): who is speaking, who has been met, the sleepers' names. */
+  private readonly people: ZaryaPeople;
 
   constructor(private readonly g: Game) {
     this.zones = new ZoneSwitch(ZARYA_ZONES, g.level.zones);
@@ -212,6 +222,8 @@ export class ZaryaRuntime {
     g.interaction.boxName = "DED MOROZ'S SACK";
     // kiosks and mods (`modsRuntime.ts`): it plugs this player's mods into the weapons and gates the repair booth
     this.kiosks = new KiosksAndMods(g, (a, i) => this.act(a, i), () => this.view, () => this.active);
+    // the people: every line on the wire goes through it (`Game.radioHook`), its name plates hang in the town
+    this.people = new ZaryaPeople(g, this.look.root);
     // ---- Ded Moroz's sack moves: after a few openings it turns up somewhere the squad can reach (`zarya/sack.ts`;
     // the box itself is moved by `game/entities.ts`, in co-op by the host), and Kostya says where on the wire ----
     g.entities.mover = {
@@ -340,6 +352,7 @@ export class ZaryaRuntime {
     // (the Zenit's photographs and Morozko's question)
     this.photos.reset();
     this.question.reset();
+    this.people.reset(); // (the people: nobody met yet)
     this.zones.update(g.player.x, g.player.z);
     g.banner('ZARYA-12  //  22:41', "New Year's Eve. A boy has gone missing in the Univermag. The staff door is round the back of the store.", 'info', 7);
   }
@@ -384,6 +397,7 @@ export class ZaryaRuntime {
     // ---- the Zenit's photographs (a flash at a marked spot asks for one; a new one is developed and shown) and
     // Morozko's question (its caption, a guard or blow in it asked for as a parry, his weak points drawn) ----
     this.photos.update(dt, v, (i) => this.act('photo', i));
+    this.people.update(dt, p); // (the people: a first-meeting card, the sleepers' names near the player)
     this.question.update(dt, v, this.named('morozko'), this.remote ? null : this.director.morozko, () => this.act('parry'));
 
     // with nothing in their hands there is nothing to raise
@@ -546,12 +560,13 @@ export class ZaryaRuntime {
       if (!Unlock.has(b.parts & ~a.parts, i)) return;
       const r = TOWN.recipes.findIndex((q) => q.id === part.recipe);
       const pr = Unlock.progress(TOWN, b, r);
-      g.feed(`${part.name.toUpperCase()}  -  ${TOWN.recipes[r]!.name} ${pr.have}/${pr.need}`, 'good');
+      // (items: the part's picture with the line, and with the banner when it was the last one)
+      g.hudEvent({ type: 'feed', text: `${part.name.toUpperCase()}  -  ${TOWN.recipes[r]!.name} ${pr.have}/${pr.need}`, tone: 'good', icon: partIcon(i) });
       g.audio.play('pickup_ammo', { priority: 2, volume: 0.8 });
       if (beat[i]) this.say(beat[i]!);
       if (pr.have !== pr.need || r === RECIPE.line) return;
-      if (r === RECIPE.signalka) g.banner('BOTH PARTS FOUND', "Signalka: the workbench in the store's maintenance room", 'good', 5);
-      else g.banner('EVERY PART FOUND', `${sentence(SHORT[r]!.toLowerCase())}: ${r >= RECIPE.gvozdomyot ? "Timur's bench in the garages, or the Institute's" : 'any workbench'}`, 'good', 5);
+      if (r === RECIPE.signalka) g.hudEvent({ type: 'banner', title: 'BOTH PARTS FOUND', subtitle: "Signalka: the workbench in the store's maintenance room", tone: 'good', duration: 5, icon: partIcon(i) });
+      else g.hudEvent({ type: 'banner', title: 'EVERY PART FOUND', subtitle: `${sentence(SHORT[r]!.toLowerCase())}: ${r >= RECIPE.gvozdomyot ? "Timur's bench in the garages, or the Institute's" : 'any workbench'}`, tone: 'good', duration: 5, icon: partIcon(i) });
     });
     TOWN.recipes.forEach((rec, i) => {
       if (!Unlock.has(b.built & ~a.built, i)) return;
@@ -673,8 +688,10 @@ export class ZaryaRuntime {
     if (n(b.orn) > n(a.orn)) {
       const c = n(b.orn);
       g.audio.play('pickup_ammo', { priority: 2, volume: 0.8 });
-      g.feed(`GLASS ORNAMENT  -  ${c} OF ${ORNAMENTS.length}`, 'good');
-      if (c === ORNAMENTS.length) g.banner('SIX GLASS ORNAMENTS', 'They came off the town tree.', 'good', 5);
+      // (items: the picture of the ornament just found)
+      const oi = ORNAMENTS.findIndex((_, k) => (b.orn & ~a.orn & (1 << k)) !== 0);
+      g.hudEvent({ type: 'feed', text: `GLASS ORNAMENT  -  ${c} OF ${ORNAMENTS.length}`, tone: 'good', icon: oi >= 0 ? ornamentIcon(oi) : undefined });
+      if (c === ORNAMENTS.length) g.hudEvent({ type: 'banner', title: 'SIX GLASS ORNAMENTS', subtitle: 'They came off the town tree.', tone: 'good', duration: 5, icon: oi >= 0 ? ornamentIcon(oi) : undefined });
     }
     DOLLS.forEach((_, i) => {
       const s = ZaryaStory.shells(b, i);
@@ -697,7 +714,7 @@ export class ZaryaRuntime {
     for (let i = 0; i < TOOLS.length; i++) {
       if ((b.m & ~a.m & (1 << (6 + i))) === 0) continue;
       g.audio.play('pickup_ammo', { priority: 2, volume: 0.8 });
-      g.feed(`${TOOL_NAME[i]}  -  THE REPAIRMAN'S TOOLS ${n((b.m >> 6) & 7)} OF 3`, 'good');
+      g.hudEvent({ type: 'feed', text: `${TOOL_NAME[i]}  -  THE REPAIRMAN'S TOOLS ${n((b.m >> 6) & 7)} OF 3`, tone: 'good', icon: toolIcon(i) }); // (items: its picture)
     }
     if (b.turned !== a.turned && b.turned > 0) {
       click();
@@ -728,6 +745,12 @@ export class ZaryaRuntime {
     const near = (o: Spot, r: number): boolean => Math.hypot(o.x - p.x, o.z - p.z) < r;
     if (v.ch === CH.arrive) {
       if (this.t > 3) this.say('arrive');
+      // ---- co-op squad: the extra players are volunteers who came out with Timur and Vera tonight (`lines.ts` crew) ----
+      if (this.t > 3 && this.remote) {
+        const players = this.g.coop.room.room?.players.length ?? 1;
+        if (players >= 3) this.say('crewFive');
+        else if (players === 2) this.say('crewFour');
+      }
       if (near(ZARYA.laneDoor, 9)) this.say('door');
       if (inShelter(p.x) && p.x > ZARYA.stairFoot.x + 2) this.say('shelter');
       return;
@@ -1346,6 +1369,7 @@ export class ZaryaRuntime {
     // there is no clock to show, in a run or after it
     st.timer = { ...st.timer, hidden: true };
     st.subTimer = null;
+    st.itemCard = null; // (items: no bench card unless one is standing at a bench)
     if (!this.active) return;
     this.kiosks.decorate(st); // kiosks and mods: the mod's word on the weapon panel
     const v = this.view;
@@ -1386,7 +1410,9 @@ export class ZaryaRuntime {
         if (s.d >= 0 && (tracked < 0 || far(s) < far(shown[tracked]!))) tracked = i;
       });
     }
-    const list: HudState['objectives'] = shown.map((s, i) => ({ id: `zy-${s.r.id}`, title: s.r.title, detail: s.r.detail, state: s.r.done ? 'complete' : s.r.locked ? 'locked' : 'active', progress: s.r.progress ?? -1, tracked: i === tracked, distance: s.d }));
+    const list: HudState['objectives'] = shown.map((s, i) => ({ id: `zy-${s.r.id}`, title: s.r.title, detail: s.r.detail, state: s.r.done ? 'complete' : s.r.locked ? 'locked' : 'active', progress: s.r.progress ?? -1, tracked: i === tracked, distance: s.d, icons: s.r.icons }));
+    // (items) the workbench card while a player stands at a bench: what can be built from what is held
+    st.itemCard = this.benchCard(v, dist);
     shown.forEach((s, i) => {
       if (!s.here || !s.open) return;
       const on = i === tracked;
@@ -1426,6 +1452,47 @@ export class ZaryaRuntime {
     const from = open.length ? open : missing;
     if (!from.length) return -1;
     return TOWN.parts.indexOf(from.reduce((a, b) => (dist(this.toward(a)) <= dist(this.toward(b)) ? a : b)));
+  }
+
+  // ---- items (round 3): the parts' pictures on the HUD ----
+
+  /** The pictures of recipe `r`'s parts still missing, part `first` (the one the compass points at) first. */
+  private missingIcons(v: StoryView, r: number, first: number): HudIcon[] {
+    const id = TOWN.recipes[r]?.id;
+    const out: HudIcon[] = [];
+    TOWN.parts.forEach((p, i) => {
+      if (p.recipe !== id || Unlock.has(v.parts, i)) return;
+      const icon = { src: partIcon(i), label: p.name };
+      if (i === first) out.unshift(icon);
+      else out.push(icon);
+    });
+    return out.filter((i) => i.src);
+  }
+
+  /**
+   * The workbench card, while this player stands at a bench: each thing the squad has begun (a part of it held), its
+   * parts lit where held and dim where not, and whether it can be built here; then the mod parts waiting to be fitted.
+   * Null away from a bench, or when there is nothing to show.
+   */
+  private benchCard(v: StoryView, dist: (o: Spot) => number): ItemCard | null {
+    if (v.ch < CH.sealed || v.ch >= CH.ended) return null;
+    const bench = BENCHES.find((b) => dist(b.at) <= STORY.reach + 1.5);
+    if (!bench) return null;
+    const rows: ItemCard['rows'] = [];
+    TOWN.recipes.forEach((rec, r) => {
+      if (r === RECIPE.line || Unlock.has(v.built, r)) return;
+      const pr = Unlock.progress(TOWN, v, r);
+      if (pr.have === 0) return;
+      const icons = TOWN.parts.flatMap((p, i) => (p.recipe === rec.id ? [{ src: partIcon(i), dim: !Unlock.has(v.parts, i), label: p.name }] : []));
+      const can = Unlock.canBuild(TOWN, v, r);
+      const here = can && (bench.main || r < RECIPE.gvozdomyot);
+      rows.push({ name: SHORT[r]!, icons, note: here ? 'READY' : can ? "TIMUR'S BENCH" : `${pr.have} OF ${pr.need}`, ready: here });
+    });
+    rows.sort((a, b) => Number(!!b.ready) - Number(!!a.ready) || a.icons.filter((i) => i.dim).length - b.icons.filter((i) => i.dim).length);
+    const mods = ZaryaStory.modParts(v);
+    if (mods > 0) rows.push({ name: 'WEAPON MODS', icons: Array.from({ length: Math.min(mods, 6) }, () => ({ src: MOD_ICON, label: 'Mod part' })), note: `${mods} TO FIT` });
+    if (!rows.length) return null;
+    return { title: 'WORKBENCH', sub: bench.main ? 'A PROPER BENCH' : '', rows };
   }
 
   /**
@@ -1488,7 +1555,7 @@ export class ZaryaRuntime {
         if (!has(F.fuseFit)) todo.push(!has(F.fuseBox) ? ZARYA.fuseBox : Unlock.has(v.parts, PART.fuse) ? ZARYA.fuseBox : TOWN.parts[PART.fuse]!);
         const handle = has(F.handleFit) ? 'handle in' : Unlock.has(v.parts, PART.handle) ? 'take Zina her handle' : 'her handle: the tea room';
         const fuse = has(F.fuseFit) ? 'fuse in' : Unlock.has(v.parts, PART.fuse) ? "fit the fuse at the stop's box" : has(F.fuseBox) ? "a fuse: the tree's box" : "a line fuse: the stop's box";
-        gate('line', 'GET LINE ONE RUNNING', `${handle}; ${fuse}`, todo.length ? nearest(todo) : ZARYA.tramDoor, { progress: ((has(F.handleFit) ? 1 : 0) + (has(F.fuseFit) ? 1 : 0)) / 2, label: 'LINE ONE' });
+        gate('line', 'GET LINE ONE RUNNING', `${handle}; ${fuse}`, todo.length ? nearest(todo) : ZARYA.tramDoor, { progress: ((has(F.handleFit) ? 1 : 0) + (has(F.fuseFit) ? 1 : 0)) / 2, label: 'LINE ONE', icons: this.missingIcons(v, RECIPE.line, -1) });
       } else if (has(F.flare)) gate('line', 'TRAM No. 1', 'Standing at the stop with its lights on', ZARYA.cab);
     } else if (act2) {
       const uncut = TOWN.gates.map((_, i) => i).filter((i) => !Unlock.has(v.gates, i));
@@ -1500,7 +1567,7 @@ export class ZaryaRuntime {
           cuttersShown = true;
           const pr = Unlock.progress(TOWN, v, RECIPE.cutters);
           const mi = this.nextPart(v, RECIPE.cutters, dist);
-          if (mi >= 0) gate('cutters', 'BOLT CUTTERS', `For the chained gates. ${pr.have} of ${pr.need}: ${TOWN.parts[mi]!.name.toLowerCase()}, ${WHERE[mi]}`, TOWN.parts[mi]!, { progress: pr.have / pr.need, label: TOWN.parts[mi]!.name.toUpperCase() });
+          if (mi >= 0) gate('cutters', 'BOLT CUTTERS', `For the chained gates. ${pr.have} of ${pr.need}: ${TOWN.parts[mi]!.name.toLowerCase()}, ${WHERE[mi]}`, TOWN.parts[mi]!, { progress: pr.have / pr.need, label: TOWN.parts[mi]!.name.toUpperCase(), icons: this.missingIcons(v, RECIPE.cutters, mi) });
           else gate('cutters', 'BOLT CUTTERS', 'For the chained gates. Every part found: any workbench', nearest(BENCHES.map((q) => q.at)), { progress: 1, label: 'WORKBENCH' });
         }
       }
@@ -1542,7 +1609,8 @@ export class ZaryaRuntime {
       if (r === RECIPE.signalka ? has(F.flare) : pr.have === 0) return;
       const mi = this.nextPart(v, r, dist);
       const head = `BUILD THE ${SHORT[r]}`;
-      if (mi >= 0) builds.push({ id: `build-${r}`, title: head, detail: `${pr.have} of ${pr.need}: ${TOWN.parts[mi]!.name.toLowerCase()}, ${WHERE[mi]}`, at: TOWN.parts[mi]!, progress: pr.have / pr.need, label: TOWN.parts[mi]!.name.toUpperCase(), left: pr.need - pr.have });
+      // (items: the pictures of the parts still missing, the one the compass points at first)
+      if (mi >= 0) builds.push({ id: `build-${r}`, title: head, detail: `${pr.have} of ${pr.need}: ${TOWN.parts[mi]!.name.toLowerCase()}, ${WHERE[mi]}`, at: TOWN.parts[mi]!, progress: pr.have / pr.need, label: TOWN.parts[mi]!.name.toUpperCase(), left: pr.need - pr.have, icons: this.missingIcons(v, r, mi) });
       else {
         const strong = r >= RECIPE.gvozdomyot;
         const where = r === RECIPE.signalka ? "Both parts: the workbench in the store's maintenance room" : strong ? "Every part: Timur's bench in the garages, or the Institute's" : 'Every part: any workbench';
@@ -1612,6 +1680,8 @@ export class ZaryaRuntime {
     if (ZaryaStory.count((v.m >> 3) & 7) === 3) know.push('The heating plant is set to push steam the right way round. It needs someone at the other end.');
     if (did(G.asked)) know.push('In the story, the girl tells Morozko she is warm. Freezing, and she says yes. And he lets her live.');
     section('WHAT YOU KNOW', know.length ? know : ['Kostya, seven, red hat. Last seen in toys, second floor.']);
+    // the people met so far, and what is known about each (`people.ts`)
+    root.appendChild(this.people.page());
 
     // the keys: which are held, and where their order is written
     const keys = ZaryaStory.keys(v);
@@ -1624,22 +1694,29 @@ export class ZaryaRuntime {
       section(`THE KEYS  -  ${held} OF 4`, rows);
     }
 
-    // what is being built, and where its missing parts are
-    const building: string[] = [];
+    // what is being built, and where its missing parts are (items, round 3: each thing a row of its parts' pictures,
+    // found ones lit, missing ones dim with where they are in words)
+    const building: JournalBuild[] = [];
     TOWN.recipes.forEach((r, i) => {
       if (v.ch < CH.sealed || (i === RECIPE.line && !has(F.line))) return;
       const pr = Unlock.progress(TOWN, v, i);
       if (i > RECIPE.line && pr.have === 0 && !(i === RECIPE.cutters && v.ch >= CH.act2)) return;
       if (Unlock.has(v.built, i)) {
-        building.push(`${r.name}: ${i === RECIPE.line ? 'running' : 'built'}`);
+        building.push({ head: `${r.name}: ${i === RECIPE.line ? 'running' : 'built'}`, parts: [] });
         return;
       }
-      const parts = TOWN.parts.flatMap((part, k) => (part.recipe === r.id ? [`${part.name.toLowerCase()} (${Unlock.has(v.parts, k) ? 'found' : (WHERE[k] ?? '')})`] : []));
-      building.push(`${r.name}, ${pr.have} of ${pr.need}: ${parts.join('; ')}`);
+      const parts = TOWN.parts.flatMap((part, k) => (part.recipe === r.id ? [{ src: partIcon(k), name: part.name, found: Unlock.has(v.parts, k), where: WHERE[k] ?? '' }] : []));
+      building.push({ head: `${r.name}, ${pr.have} of ${pr.need}`, parts });
     });
-    if (building.length) section('WHAT YOU ARE BUILDING', building);
+    if (building.length) {
+      section('WHAT YOU ARE BUILDING', []);
+      root.appendChild(journalBuilds(building));
+    }
     if (v.ch >= CH.town) section(`SLEEPERS COVERED  -  ${ZaryaStory.count(v.covered)}`, []);
-    if (v.ch >= CH.act2) section(`ORNAMENTS  -  ${ZaryaStory.count(v.orn)} OF ${ORNAMENTS.length}${did(G.hung) ? ', BACK ON THE TREE' : ''}`, []);
+    if (v.ch >= CH.act2) {
+      section(`ORNAMENTS  -  ${ZaryaStory.count(v.orn)} OF ${ORNAMENTS.length}${did(G.hung) ? ', BACK ON THE TREE' : ''}`, []);
+      if (v.orn !== 0) root.appendChild(journalIcons(ORNAMENTS.map((_, k) => ({ src: ornamentIcon(k), dim: (v.orn & (1 << k)) === 0, label: 'Glass ornament' }))));
+    }
     // kiosks and mods: the squad's mod parts, and what the gun in hand wears
     const mods = this.kiosks.journalLine(v);
     if (mods) section('WEAPON MODS', [mods, 'Fitted at any workbench to the gun in your hands; the Charge mod wants a proper bench.']);
@@ -1653,6 +1730,7 @@ export class ZaryaRuntime {
     this.look.dispose();
     this.photos.dispose();
     this.question.dispose();
+    this.people.dispose();
     this.veil?.remove();
   }
 }

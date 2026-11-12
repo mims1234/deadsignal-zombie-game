@@ -14,6 +14,7 @@ import type { Zombie } from '../enemies/zombie';
 import type { Game } from '../game/game';
 import { PARRY, WEAK_SIDE } from './director';
 import { ARE_YOU_WARM } from './lines';
+import { faceOf } from './people';
 import { ZaryaStory, type StoryView } from './story';
 
 /** Where each weak point sits on his coat (rig space: he faces -z, his left is -x), in the order of `WEAK_SIDE`. */
@@ -124,7 +125,7 @@ export class MorozkoQuestion {
       this.asking = true;
       this.asked = false;
       // said at once, over whatever else is on the wire: it is the moment to parry
-      g.hud.event({ type: 'radio', speaker: 'ZIMIN', text: ARE_YOU_WARM[this.said++ % ARE_YOU_WARM.length]!, duration: 1.8, now: true });
+      g.hud.event({ type: 'radio', speaker: 'ZIMIN', text: ARE_YOU_WARM[this.said++ % ARE_YOU_WARM.length]!, duration: 1.8, now: true, face: faceOf('ZIMIN') ?? undefined }); // (his face: `people.ts`)
       g.audio.play('radio_chirp', { priority: 3, volume: 0.7 });
     } else if (!slam && this.asking) {
       this.asking = false;

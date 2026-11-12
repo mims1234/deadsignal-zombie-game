@@ -19,6 +19,16 @@ export const LINES = {
     ['MIRA', "You pulled Ded Moroz's beard."],
     ['TIMUR', 'I was five. It was science.'],
   ],
+  // ---- co-op: Mira, Timur and Vera, and the one or two volunteers who came out with them tonight (said after `arrive`
+  // when the room has more than one player; `runtime.ts` beats) ----
+  crewFour: [
+    ['VERA', "The rota said three. Four turned up. On New Year's Eve."],
+    ['TIMUR', 'Nobody wants to be at home for the speech.'],
+  ],
+  crewFive: [
+    ['VERA', "The rota said three. Five turned up. On New Year's Eve."],
+    ['TIMUR', 'Nobody wants to be at home for the speech.'],
+  ],
   door: [
     ['NINA', 'Search squad. You took your time.'],
     ['VERA', 'Nina Pavlovna. Where did his mother last see him?'],

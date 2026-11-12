@@ -1603,6 +1603,40 @@
   color: #f0f4e6;
   line-height: 1.25;
 }
+/* A line with a face (ZARYA's people, `zarya/people.ts`): the portrait, then the name in the speaker's colour over the
+   line. Lines without one look as they always have. */
+.ds-radio .face {
+  display: none;
+}
+.ds-radio.has-face {
+  grid-template-columns: auto 1fr;
+  gap: 0.15em 0.8em;
+  padding: 0.45em 1.6em 0.45em 0.5em;
+  background: linear-gradient(90deg, rgba(6, 9, 7, 0.8), rgba(6, 9, 7, 0.74) 85%, transparent);
+}
+.ds-radio.has-face .bars {
+  display: none;
+}
+.ds-radio.has-face .face {
+  display: block;
+  grid-row: span 2;
+  width: 3.5em;
+  height: 3.5em;
+  border-radius: 6px;
+  border: 2px solid var(--sc, var(--ds-cyan));
+  object-fit: cover;
+  background: #0b0f14;
+}
+.ds-radio.has-face .tag {
+  align-self: end;
+  font-size: max(11px, 0.86em);
+  letter-spacing: 0.16em;
+  font-weight: 800;
+  color: var(--sc, var(--ds-cyan));
+}
+.ds-radio.has-face .text {
+  align-self: start;
+}
 
 /* ---------------------------------------------------------------------------------------------
    tactical map overlay

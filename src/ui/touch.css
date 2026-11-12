@@ -617,6 +617,29 @@ html.ds-touch .ds-topline .text {
   font-weight: 500;
   color: #f0f4e6;
 }
+/* a line with a face (ZARYA's people): a small round portrait, the short name in the speaker's colour */
+html.ds-touch .ds-topline .face {
+  display: none;
+}
+html.ds-touch .ds-topline.has-face {
+  align-items: center;
+  padding-left: 0.9em;
+}
+html.ds-touch .ds-topline.has-face .face {
+  display: block;
+  flex: none;
+  width: 1.85em;
+  height: 1.85em;
+  margin-right: -0.2em;
+  border-radius: 50%;
+  border: 1.5px solid var(--tc);
+  object-fit: cover;
+  background: #0b0f14;
+}
+html.ds-touch .ds-topline.has-face .tag {
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
 html.ds-touch .ds-hud:has(.ds-topline:not([hidden])) .ds-compass {
   visibility: hidden;
 }

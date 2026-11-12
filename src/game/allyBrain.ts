@@ -448,7 +448,8 @@ export function survivorUnarmed(map: MapId, name: string): boolean {
 
 /**
  * The helpers who deploy with you on a map (none on the District). Where co-op players take their places (`fillsSeats`,
- * the Sakura District), only as many as leave the team at `COOP.maxPlayers` with `humans` players.
+ * the Sakura District), only as many as leave the team at `COOP.maxPlayers` with `humans` players. ZARYA's Timur and
+ * Vera never give up their places: they deploy beside every player count.
  */
 export function squadRoster(map: MapId, humans = 1): readonly string[] {
   const def = SQUADS[map];

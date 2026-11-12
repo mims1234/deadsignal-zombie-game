@@ -1129,7 +1129,8 @@ function yard(c: Ctx): void {
   for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) box(b, Z.woodDark, j % 2 ? 240.3 + i * 0.62 : 241.2, 0.13 + j * 0.26, j % 2 ? -121 : -120.1 - i * 0.62, j % 2 ? 0.26 : 2.5, 0.24, j % 2 ? 2.5 : 0.26);
   box(b, Z.snow, 241.2, 1.1, -121, 2.5, 0.12, 2.5, 0, false);
   solid(c, 241.2, -121, 2.6, 2.6, 1.1, 'zarya-sleepers', { shots: false, kind: 'none', surface: 'wood' });
-  heap(c, 241.4, -128.5, 1.8, 1, 1, 1.6);
+  // (north of the line: Line One now runs on east past the stop to its portal in this wall, `LINE_PORTALS` 'depot')
+  heap(c, 241.4, -136.6, 1.8, 1, 1, 1.6);
 
   // ---- the works yard, west of the booth ----
   lampPost(c, 156.5, -137.2, true);

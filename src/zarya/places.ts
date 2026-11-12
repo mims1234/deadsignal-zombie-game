@@ -73,7 +73,8 @@ export type GateKey = 'act2' | 'cutDepot' | 'cutNorth' | 'cutWest' | 'tickets' |
  */
 export const GATES: readonly { id: string; name: string; x: number; z: number; along: 'x' | 'z'; half: number; zones: readonly [ZaryaZone, ZaryaZone]; opens: GateKey; verb?: string }[] = [
   { id: 'archway', name: 'THE ARCHWAY', x: -23, z: 72, along: 'x', half: 3.5, zones: ['square', 'dvor'], opens: 'act2' },
-  { id: 'line', name: 'THE LINE GATE', x: 146, z: -51, along: 'z', half: 6.5, zones: ['store', 'rynok'], opens: 'act2' },
+  // (the line gate that let the track and its pavement through from the store to the Rynok is gone: Line One passes
+  // that wall under a covered way, `LINE_PORTALS` 'line', and the service lane is the way on foot)
   { id: 'lane', name: 'THE SERVICE LANE', x: 146, z: 32, along: 'z', half: 3.5, zones: ['store', 'rynok'], opens: 'act2' },
   { id: 'depot', name: 'THE DEPOT GATE', x: 196, z: -70, along: 'x', half: 3, zones: ['rynok', 'depot'], opens: 'cutDepot', verb: 'CUT THE CHAIN' },
   { id: 'garagesN', name: 'THE GARAGES, NORTH GATE', x: 196, z: 72, along: 'x', half: 3, zones: ['rynok', 'garages'], opens: 'cutNorth', verb: 'CUT THE CHAIN' },
@@ -100,6 +101,34 @@ export const STOPS: readonly { id: string; name: string; zone: ZaryaZone; x: num
   { id: 'pond', name: 'POND ROAD', zone: 'banya', x: 76, z: -82, door: { x: 78.7, z: -80 }, opens: 'pond' },
   { id: 'plant', name: 'INSTITUTE ROAD', zone: 'tets', x: -60, z: -82, door: { x: -57.3, z: -80 }, opens: 'pond' },
   { id: 'dvor', name: 'STROITELEY STREET', zone: 'dvor', x: -24, z: 165, door: { x: -21.3, z: 163 }, opens: 'act2' },
+];
+
+/**
+ * Where Line One leaves a zone: the tram's way between zones, never a walker's (the gates are the walkers' ways). Each
+ * is a concrete portal over the track, the rails and the wire running into its mouth, a lamp over it, a red signal
+ * beside it, and a steel grille shut across the mouth (Zina opens it from the cab; a walker finds bars). The track runs
+ * east-west through every one. The portal fills x0..x1 (a collider: nobody stands in its mouth) and z0..z1 across the
+ * track at `z`. `open` is the face the mouth is in: 'east' or 'west' for a tunnel mouth whose back stands against a
+ * wall or the dark (the line goes on under the town), 'both' for a short covered way that carries the line through the
+ * wall between two zones, grilled at each end (`zones` = the zone on its west, the zone on its east). Built by the frame
+ * (`world/layout/zarya.ts`), which runs each zone's rails up to its portals. The depot's line ends the other way, at a
+ * buffer stop west of the tram: the pond road's gate beside it is a road, not the line.
+ */
+export const LINE_PORTALS: readonly { id: string; x0: number; x1: number; z: number; z0: number; z1: number; open: 'east' | 'west' | 'both'; zones: readonly [ZaryaZone, ZaryaZone] }[] = [
+  // the square's line goes west under the Palace's north wing
+  { id: 'square', x0: -86, x1: -84, z: -54, z0: -60.6, z1: -48, open: 'east', zones: ['square', 'square'] },
+  // through the wall between the store's pavement and the Rynok's (the service lane is the way on foot)
+  { id: 'line', x0: 142, x1: 150, z: -54, z0: -60.6, z1: -46.6, open: 'both', zones: ['store', 'rynok'] },
+  // the depot's line comes in from outside the town through its east wall
+  { id: 'depot', x0: 242.2, x1: 244.2, z: -128, z0: -133, z1: -123, open: 'west', zones: ['depot', 'depot'] },
+  // the pond road's stop: east under the depot's street, west through the wall to the plant's street
+  { id: 'banya', x0: 144, x1: 146, z: -82, z0: -88, z1: -76, open: 'west', zones: ['banya', 'banya'] },
+  { id: 'plant', x0: 16, x1: 24, z: -82, z0: -88, z1: -76, open: 'both', zones: ['tets', 'banya'] },
+  // the Institute road's stop: west under the Institute's grounds
+  { id: 'institute', x0: -104, x1: -102, z: -82, z0: -88, z1: -76, open: 'east', zones: ['tets', 'tets'] },
+  // Stroiteley Street: the line runs the street's length, out under the town at both ends
+  { id: 'dvorW', x0: -104, x1: -102.4, z: 165, z0: 159.6, z1: 170.1, open: 'east', zones: ['dvor', 'dvor'] },
+  { id: 'dvorE', x0: 98.4, x1: 100, z: 165, z0: 159.6, z1: 170.1, open: 'west', zones: ['dvor', 'dvor'] },
 ];
 
 /** The square's paving. */

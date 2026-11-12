@@ -135,6 +135,8 @@ interface CarrierUnit {
 interface SimAlly extends AllyBody {
   /** The player who freed them / whom they follow. */
   leader: string | null;
+  /** ZARYA: the player they kept up with on the last step (a 'rg' from that player brings them along). */
+  with?: string | null;
 }
 
 /** The level builder wants materials; the simulation never draws, so one blank material stands in for all of them. */
@@ -316,7 +318,8 @@ export class SessionSim {
       followLeader: (x, z, out) => !!this.allyLeader && this.allyLeader.field.follow(x, z, out, 10),
       holdFire: (z, a) => {
         // ZARYA: the ones the story keeps asleep on their feet, and the ones nothing hurts (`zarya/director.ts`)
-        if (this.zaryaDir) return this.zaryaDir.spared(z);
+        // and nothing at all before Nina's rack: their hands are empty (`squad.setBare` on every screen)
+        if (this.zaryaDir) return !!this.zarya && !ZaryaStory.has(this.zarya.view, ZF.armed) ? true : this.zaryaDir.spared(z);
         if (!this.asylum || !this.story) return false;
         const keepers: { x: number; y: number; z: number }[] = [];
         for (const q of this.peers.values()) if (q.ref.alive) keepers.push({ x: q.ref.x, y: q.ref.y, z: q.ref.z });
@@ -872,6 +875,37 @@ export class SessionSim {
         allyHelpUp(a);
         return;
       }
+      case 'rg': {
+        // ZARYA: a player stepped off the tram, climbed out a hatch or went through a doorway to another room
+        // (`squad.regroupAt` on their screen): the squadmates who were keeping up with them come through beside them,
+        // as they do solo. Those with another player stay with that one.
+        if (!this.zarya || !this.story || !up) return;
+        const x = Number(d.x);
+        const z = Number(d.z);
+        if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+        const fl = this.level.floors;
+        const ar = Math.floor(Number(d.ar));
+        const nav = fl.navOf(ar >= 0 && ar < fl.areas.length ? ar : fl.areaAt(x, 0, z));
+        const yaw = Number(d.yaw) || 0;
+        // the player is there now: their next report says so too, and until it comes nobody walks back to where they were
+        p.ref.x = x;
+        p.ref.z = z;
+        p.ref.y = 0;
+        p.ref.eyeY = 1.6;
+        p.yaw = p.ref.yaw = yaw;
+        for (const a of this.allies) {
+          if (a.kind !== 'soldier' || !a.with || a.with !== from || !allyFighting(a)) continue;
+          const at = nav.randomFreeNear(x, z, 3, () => this.rng.f()) ?? { x, z };
+          a.ref.x = at.x;
+          a.ref.z = at.z;
+          a.ref.y = 0;
+          a.ref.eyeY = 1.6;
+          a.crossing = null;
+          a.stuckT = 0;
+          a.yaw = yaw;
+        }
+        return;
+      }
       case 'stoke': {
         // the Forge: stoke furnace i (its circle must then be held while it catches)
         if (!this.forge || !this.story || !up) return;
@@ -1371,6 +1405,7 @@ export class SessionSim {
         }
       }
       // the Asylum: off to a box for a gun when it is quiet (else with the leader)
+      a.with = leader?.id ?? null; // ZARYA: whose ride or doorway they come through ('rg')
       const errand = !!leader && allyErrand(a, this.level, this.zombies, this.allySupply, this.rng, dt, { x: leader.ref.x, z: leader.ref.z });
       if (leader && !errand) {
         this.allyLeader = leader;

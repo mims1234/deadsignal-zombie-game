@@ -303,6 +303,8 @@ export class CoopSession {
     g.mission.requestBoard = () => this.toHost({ k: 'board' });
     g.squad.requestRescue = (name) => this.toHost({ k: 'rescue', id: name });
     g.squad.requestHelp = (i) => this.toHost({ k: 'help', i });
+    // ZARYA: off the tram, out a hatch, through to another room - Timur and Vera come along (`squad.regroupAt`)
+    g.squad.requestRegroup = (x, z, yaw, ar) => this.toHost({ k: 'rg', x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, yaw: Math.round(yaw * 100) / 100, ar });
     // the mystery boxes and the drops are the squad's: opening, taking and picking up are requests
     g.entities.coop = this.started && this.story
       ? {

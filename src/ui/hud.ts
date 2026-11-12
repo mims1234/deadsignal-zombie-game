@@ -19,6 +19,7 @@ import {
 import { ObjectivesView, PlateRing, PromptView, StationView, VitalsView, WeaponView } from './hudPanels';
 import { BossView, CardReveal, ClockView, CompassView, HazardView, RegionView } from './hudTop';
 import type { HudApi, HudEvent, HudState, MapData, MapDynamic } from './hudTypes';
+import { ItemCardView } from './hudItems';
 import { Minimap, TacticalMap } from './mapView';
 import { setReducedMotionSetting } from './prefs';
 
@@ -44,6 +45,7 @@ class Hud implements HudApi {
   private vitals!: VitalsView;
   private weapon!: WeaponView;
   private objectives!: ObjectivesView;
+  private itemCard!: ItemCardView;
   private station!: StationView;
   private prompt!: PromptView;
   private plate!: PlateRing;
@@ -95,6 +97,8 @@ class Hud implements HudApi {
     this.fpsEl.hidden = true;
     this.fpsText = new TextCell(this.fpsEl);
     this.objectives = new ObjectivesView(right);
+    // (ZARYA's items: the workbench card, under the objectives; hidden unless a map hands one over)
+    this.itemCard = new ItemCardView(right);
     this.station = new StationView(right);
 
     // ---- centre: crosshair, hit marker, damage arcs, prompts ----
@@ -170,6 +174,7 @@ class Hud implements HudApi {
     this.boss.update(s.boss);
     this.compass.update(s.compassYaw, map);
     this.objectives.update(s.objectives);
+    this.itemCard.update(s.itemCard);
     this.station.update(s.panel);
     this.prompt.update(s.prompt);
     this.plate.update(s.plateProgress);
@@ -208,15 +213,17 @@ class Hud implements HudApi {
         }
         break;
       case 'banner':
-        if (onPhone()) this.topLine.banner(e.title, e.subtitle, e.tone, e.duration);
-        else this.banner.push(e.title, e.subtitle, e.tone, e.duration);
+        // (`icon`: ZARYA's items, a picture with the banner; without one, as on every map)
+        if (onPhone()) this.topLine.banner(e.title, e.subtitle, e.tone, e.duration, e.icon);
+        else this.banner.push(e.title, e.subtitle, e.tone, e.duration, e.icon);
         break;
       case 'feed':
-        this.feed.push(e.text, e.tone);
+        this.feed.push(e.text, e.tone, e.icon);
         break;
       case 'radio':
-        if (onPhone()) this.topLine.radio(e.speaker, e.text, e.now);
-        else this.radio.push(e.speaker, e.text, e.duration, e.now);
+        // (`face`: ZARYA's people, a name, a colour and a portrait with the line; without one, as on every map)
+        if (onPhone()) this.topLine.radio(e.speaker, e.text, e.now, e.face, e.duration);
+        else this.radio.push(e.speaker, e.text, e.duration, e.now, e.face);
         break;
       case 'flash':
         this.fx.flash(e.color, e.strength);

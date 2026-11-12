@@ -3,7 +3,7 @@
  * zones of street map and three interiors built beside it, each built by a file of its own out of the pieces in
  * `zaryaKit.ts`. This file is the frame that joins them: it puts each in its zone (`LevelBuilder.zone`: a zone is only
  * drawn near the player), builds the walls between zones and the gates in them, stands a tram at every stop of Line
- * One, joins the interiors to their doorways, stands the town's people where they were caught, and says where the
+ * One and builds the portals the line leaves each zone by (never a gate), joins the interiors to their doorways, stands the town's people where they were caught, and says where the
  * infected come from.
  */
 import { MYSTERY_BOX } from '../../config';
@@ -11,9 +11,9 @@ import type { BoxCollider } from '../collision';
 import type { FloorLink } from '../floors';
 import type { SpireHandle, TransmitterHandle } from '../landmarks';
 import type { Ctx } from './util';
-import { BANYA, BERLOGA, CANTEEN, CORE, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, STOPS, STORE, TETS, UPSTAIRS, ZARYA, ZARYA_BOUNDS, ZARYA_ZONES, people, type ZaryaZone } from '../../zarya/places';
+import { BANYA, BERLOGA, CANTEEN, CORE, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, LINE_PORTALS, RYNOK, STOPS, STORE, TETS, UPSTAIRS, ZARYA, ZARYA_BOUNDS, ZARYA_ZONES, people, type ZaryaZone } from '../../zarya/places';
 import type { Region } from '../../types';
-import { Z, box, cyl, solid } from './zaryaKit';
+import { Z, box, cyl, slab, solid } from './zaryaKit';
 import { buildBanya } from './zaryaBanya';
 import { buildBerloga } from './zaryaBerloga';
 import { buildCanteen } from './zaryaCanteen';
@@ -84,11 +84,99 @@ function border(c: Ctx, x0: number, z0: number, x1: number, z1: number, gaps: re
     solid(c, x, z, alongX ? len : 0.4, alongX ? 0.4 : len, WALL_H, 'zarya-border', { kind: 'wall' });
   };
   for (const g of cuts) {
-    run(cur, g.at - g.half);
-    cur = g.at + g.half;
+    // (a gap on the same line but beyond this stretch is another wall's: it used to stretch this one past its end)
+    if (g.at + g.half <= from || g.at - g.half >= to) continue;
+    run(cur, Math.min(to, g.at - g.half));
+    cur = Math.max(cur, g.at + g.half);
   }
   run(cur, to);
 }
+
+/** A portal on Line One (`LINE_PORTALS`): its mouth's half width and height, and the height of its headwall. */
+const PORTAL = { half: 2.6, mouth: 5.9, h: 7.6 };
+
+/**
+ * The stretch xa..xb of a portal on Line One (`LINE_PORTALS`), its mouth in the face at `face` (xa or xb) looking
+ * `dir` (+1 east, -1 west). `back`: the far end is shut by the dark (a tunnel mouth); otherwise the stretch goes on
+ * into the covered way's other half. Concrete piers either side of the mouth, the headwall over it with a cornice and
+ * Line One's plate (a red-edged square with a black 1), a lamp either side of the mouth and a red signal on the right
+ * as it is seen, the rails and wire running in over a dark floor, and a grille of bars shut across the mouth with a
+ * NO ENTRY plate where its leaves meet. The whole stretch is one collider: nobody stands in a mouth.
+ *
+ * Drawn for weak phones: three finishes the zones already batch (matt concrete and black, snow, the cream and white
+ * and dark red of painted things), nothing that casts a shadow, no lit material (the lamps' light is the glow field,
+ * which costs no draw call of its own).
+ */
+function portalPart(c: Ctx, p: (typeof LINE_PORTALS)[number], xa: number, xb: number, face: number, dir: 1 | -1, back: boolean): void {
+  const { b } = c;
+  const { half, mouth, h } = PORTAL;
+  const len = xb - xa;
+  const xm = (xa + xb) / 2;
+  const z = p.z;
+  const zc = (p.z0 + p.z1) / 2;
+  const put = (mat: Parameters<typeof box>[1], x: number, y: number, zz: number, sx: number, sy: number, sz: number): void => void box(b, mat, x, y, zz, sx, sy, sz, 0, false);
+  // the piers and the headwall over the mouth, under snow
+  for (const [z0, z1] of [[p.z0, z - half], [z + half, p.z1]] as const) put(Z.concrete, xm, h / 2, (z0 + z1) / 2, len, h, z1 - z0);
+  put(Z.concrete, xm, (mouth + h) / 2, z, len, h - mouth, half * 2);
+  put(Z.snow, xm, h + 0.07, zc, len + 0.12, 0.14, p.z1 - p.z0 + 0.12);
+  // the face: the cornice, a frame round the mouth, the plinth
+  const fx = (out: number): number => face + dir * out;
+  put(Z.cream, fx(0.08), h - 0.35, zc, 0.16, 0.3, p.z1 - p.z0 + 0.1);
+  for (const s of [-1, 1]) put(Z.cream, fx(0.05), mouth / 2, z + s * (half + 0.15), 0.1, mouth, 0.3);
+  put(Z.cream, fx(0.05), mouth + 0.15, z, 0.1, 0.3, half * 2 + 0.6);
+  for (const [z0, z1] of [[p.z0, z - half - 0.3], [z + half + 0.3, p.z1]] as const) put(Z.concreteDark, fx(0.06), 0.35, (z0 + z1) / 2, 0.12, 0.7, z1 - z0);
+  // Line One's plate over the mouth: a white square edged red, a black 1 on it (its flag to the left as it is seen)
+  const py = (mouth + 0.3 + h - 0.5) / 2;
+  put(Z.redDark, fx(0.04), py, z, 0.06, 0.92, 0.92);
+  put(Z.white, fx(0.08), py, z, 0.04, 0.76, 0.76);
+  put(Z.black, fx(0.11), py - 0.02, z, 0.03, 0.5, 0.09);
+  put(Z.black, fx(0.11), py - 0.25, z, 0.03, 0.06, 0.3);
+  slab(b, Z.black, fx(0.11), py + 0.15, z + dir * 0.08, 0.03, 0.08, 0.2, -dir * 0.75, 0, 0, false);
+  // a lamp either side of the mouth on an arm, the red signal on the right
+  for (const s of [-1, 1]) {
+    put(Z.black, fx(0.25), mouth - 0.3, z + s * (half + 0.75), 0.5, 0.06, 0.06);
+    put(Z.white, fx(0.48), mouth - 0.44, z + s * (half + 0.75), 0.26, 0.24, 0.26);
+    b.glow({ x: fx(0.6), y: mouth - 0.46, z: z + s * (half + 0.75), color: 0xffd9a0, size: 1.1, intensity: 2.2, mode: 'steady' });
+  }
+  b.glow({ x: fx(1.0), y: mouth - 0.8, z, color: 0xffc27a, size: 3.4, intensity: 1.2, mode: 'steady' });
+  const sz = z - dir * (half + 1.3);
+  put(Z.black, fx(0.14), 3.3, sz, 0.28, 0.9, 0.36);
+  put(Z.redDark, fx(0.3), 3.5, sz, 0.06, 0.2, 0.2);
+  b.glow({ x: fx(0.45), y: 3.5, z: sz, color: 0xff3020, size: 0.9, intensity: 2.2, mode: 'steady' });
+  // inside: dark walls and roof, a dark floor, the rails and the wire going on in; the dark at the back of a tunnel
+  for (const s of [-1, 1]) put(Z.concreteDark, xm, mouth / 2, z + s * (half - 0.03), len, mouth, 0.06);
+  put(Z.black, xm, mouth - 0.03, z, len, 0.06, half * 2);
+  put(Z.black, xm, 0.02, z, len, 0.02, half * 2);
+  for (const s of [-1, 1]) put(Z.concreteDark, xm, 0.05, z + s * 0.72, len, 0.09, 0.08);
+  put(Z.black, xm, 5.5, z, len, 0.03, 0.03);
+  if (back) put(Z.black, face - dir * (len - 0.04), mouth / 2, z, 0.06, mouth, half * 2);
+  // the grille across the mouth: a stile each side and in the middle where its two leaves meet, rails across, bars
+  const gx = face - dir * 0.18;
+  for (const dz of [-half + 0.06, 0, half - 0.06]) put(Z.black, gx, mouth / 2, z + dz, 0.1, mouth, dz === 0 ? 0.14 : 0.12);
+  for (const y of [0.25, 1.9, 3.6, mouth - 0.2]) put(Z.black, gx, y, z, 0.07, 0.08, half * 2);
+  for (let dz = -half + 0.2; dz < half - 0.1; dz += 0.2) if (Math.abs(dz) > 0.12) put(Z.black, gx, mouth / 2, z + dz, 0.04, mouth, 0.04);
+  // a NO ENTRY plate on the leaves where they meet
+  put(Z.redDark, gx + dir * 0.08, 1.6, z, 0.03, 0.56, 0.56);
+  put(Z.white, gx + dir * 0.1, 1.6, z, 0.02, 0.12, 0.4);
+  solid(c, xm, (p.z0 + p.z1) / 2, len, p.z1 - p.z0, h, 'zarya-line-portal', { kind: 'wall', surface: 'concrete' });
+}
+
+/** A portal on Line One, each half in its zone. */
+function linePortal(c: Ctx, p: (typeof LINE_PORTALS)[number], inZone: (id: ZaryaZone, fn: () => void) => void): void {
+  if (p.open === 'east') inZone(p.zones[1], () => portalPart(c, p, p.x0, p.x1, p.x1, 1, true));
+  else if (p.open === 'west') inZone(p.zones[0], () => portalPart(c, p, p.x0, p.x1, p.x0, -1, true));
+  else {
+    const xm = (p.x0 + p.x1) / 2;
+    inZone(p.zones[0], () => portalPart(c, p, p.x0, xm, p.x0, -1, false));
+    inZone(p.zones[1], () => portalPart(c, p, xm, p.x1, p.x1, 1, false));
+  }
+}
+
+/**
+ * The depot's line ends at a buffer stop this far west, just behind the tram (its west end used to run on into the
+ * pond road's gate, which is a road: walkers come that way, the tram never did).
+ */
+const DEPOT_BUFFER = 157;
 
 /** A gate's posts, and its collider (built open: the story shuts and opens it). */
 function gate(c: Ctx, g: (typeof GATES)[number]): BoxCollider {
@@ -121,7 +209,11 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
     b.zone = null;
     return out;
   };
-  const gapsOn = (along: 'x' | 'z', fixed: number): { at: number; half: number }[] => GATES.filter((g) => g.along === along && (along === 'x' ? g.z : g.x) === fixed).map((g) => ({ at: along === 'x' ? g.x : g.z, half: g.half }));
+  const gapsOn = (along: 'x' | 'z', fixed: number): { at: number; half: number }[] => [
+    ...GATES.filter((g) => g.along === along && (along === 'x' ? g.z : g.x) === fixed).map((g) => ({ at: along === 'x' ? g.x : g.z, half: g.half })),
+    // where Line One's covered way carries the line through the wall (the way is its own wall: no walker gets by)
+    ...(along === 'z' ? LINE_PORTALS.filter((p) => p.open === 'both' && p.x0 < fixed && p.x1 > fixed).map((p) => ({ at: (p.z0 + p.z1) / 2, half: (p.z1 - p.z0) / 2 })) : []),
+  ];
 
   // ---- the zones ----
   inZone('square', () => buildSquare(c));
@@ -172,11 +264,24 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   for (const g of GATES) gates[g.id] = inZone(g.zones[1], () => gate(c, g));
 
   // ---- Line One: a stop and a car at every stop but the square's (which the square builds itself, with Zina in the cab) ----
+  // where the line leaves a zone it goes into a portal (a tunnel mouth, or a covered way through a wall), never through
+  // a gate: the gates are the walkers' ways, the line is the tram's
+  for (const p of LINE_PORTALS) linePortal(c, p, inZone);
+  // each stop's track runs on to its zone's portals (the Dvor and the Rynok lay the rest of their own lines; the
+  // depot's ends at its buffer stop on the west)
+  const reach = (s: (typeof STOPS)[number]): { from?: number; to?: number; buffer?: boolean } => {
+    if (s.zone === 'dvor' || s.zone === 'rynok') return {};
+    const mine = LINE_PORTALS.filter((p) => p.z === s.z && (p.zones[0] === s.zone || p.zones[1] === s.zone));
+    const w = mine.filter((p) => p.x1 < s.x).map((p) => p.x1);
+    const e = mine.filter((p) => p.x0 > s.x).map((p) => p.x0);
+    if (s.zone === 'depot') return { from: DEPOT_BUFFER, to: e.length ? Math.min(...e) : undefined, buffer: true };
+    return { from: w.length ? Math.max(...w) : undefined, to: e.length ? Math.min(...e) : undefined };
+  };
   for (const s of STOPS) {
     if (s.id === 'square') continue;
     const side = s.door.z > s.z ? 1 : -1;
     inZone(s.zone, () => {
-      tramStop(c, s.x, s.z, side, GATES);
+      tramStop(c, s.x, s.z, side, GATES, reach(s));
       // the folding steps under each open door (the doors were gaps 0.9 m up a red flank, with nothing to climb by):
       // a car's near doors are 2.7 m either side of the coupling, its far doors 13.8 m (`STOPS[].door` is one of them)
       for (const dx of [-13.8, -2.7, 2.7, 13.8]) {
