@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Zombie } from '../src/enemies/zombie';
 import { createCarried } from '../src/logic/economy';
-import { MOD, MOD_TUNE, WeaponMods, benchOffer, boothRefusal, drumMag, modFits, modWord } from '../src/zarya/mods';
+import { MOD, MODS, MOD_TUNE, OFFERED, WeaponMods, benchOffer, boothRefusal, drumMag, fitPreview, modFits, modJournal, modWord } from '../src/zarya/mods';
 import { BENCHES, CH, G, KBIT, MOD_COST, MOD_PARTS, SHUTTERS, STORY, ZaryaStory, decodeStory, encodeStory, type StoryView } from '../src/zarya/story';
 
 /** A story in Act II with every zone open (the tickets, the pond road, the three chains). */
@@ -63,26 +63,36 @@ describe('ZARYA kiosk shutters', () => {
 });
 
 describe('ZARYA weapon mods', () => {
-  it('spends the squad parts at a bench, and the Charge only at a proper one', () => {
+  it('spends one of the squad parts at any bench for each mod', () => {
     const s = act2();
     const lesser = BENCHES.find((b) => !b.main && b.at.z > 100)!.at; // the Dvor's
-    const timur = BENCHES.find((b) => b.main)!.at;
     expect(ZaryaStory.can(s.view, 'mod', MOD.drum)).toBe(false);
     s.act('shutter', 1, before(SHUTTERS[1]!.at, SHUTTERS[1]!.yaw));
     s.act('modPart', 0, MOD_PARTS[0]!);
     expect(ZaryaStory.modParts(s.view)).toBe(2);
-    expect(s.act('mod', MOD.charge, { x: 0, z: 0 })).toBe(false);
-    expect(s.act('mod', MOD.charge, lesser)).toBe(false);
-    expect(s.act('mod', MOD.charge, timur)).toBe(true);
+    expect(s.act('mod', MOD.drum, { x: 0, z: 0 })).toBe(false);
+    expect(s.act('mod', MOD.drum, lesser)).toBe(true);
+    expect(s.act('mod', MOD.frost, lesser)).toBe(true);
     expect(ZaryaStory.modParts(s.view)).toBe(0);
-    expect(s.view.k >> KBIT.spent).toBe(MOD_COST[MOD.charge]);
+    expect(s.view.k >> KBIT.spent).toBe(MOD_COST[MOD.drum] + MOD_COST[MOD.frost]);
     expect(s.act('mod', MOD.drum, lesser)).toBe(false);
   });
 
+  it('keeps two mods whose names say what they do, and offers the cut Charge nowhere', () => {
+    expect(OFFERED).toEqual([MOD.drum, MOD.frost]);
+    expect(MODS[MOD.charge]!.cut).toBe(true);
+    expect(MODS[MOD.drum]!.name).toBe('A BIG MAGAZINE');
+    expect(MODS[MOD.frost]!.name).toBe('FROST ROUNDS');
+    for (const id of ['pistol', 'rifle', 'shotgun', 'arbalet', 'gvozdomyot', 'signalka', 'salyut'] as const) expect(modFits(MOD.charge, id)).toBe(false);
+    expect(MOD_COST[MOD.drum]).toBe(1);
+    expect(MOD_COST[MOD.frost]).toBe(1);
+  });
+
   it('fits what makes sense on each gun', () => {
-    expect(modFits(MOD.charge, 'pistol')).toBe(true);
     expect(modFits(MOD.drum, 'shotgun')).toBe(true);
+    expect(modFits(MOD.drum, 'gvozdomyot')).toBe(true);
     expect(modFits(MOD.frost, 'arbalet')).toBe(true);
+    expect(modFits(MOD.frost, 'gvozdomyot')).toBe(true);
     expect(modFits(MOD.frost, 'salyut')).toBe(false);
     expect(modFits(MOD.drum, 'rpg')).toBe(false);
     for (const i of [MOD.charge, MOD.drum, MOD.frost]) {
@@ -92,42 +102,39 @@ describe('ZARYA weapon mods', () => {
     }
   });
 
-  it('offers the Charge first at a proper bench, then the drum, then the frost coat', () => {
-    expect(benchOffer('pistol', 0, 7, true)).toEqual({ i: MOD.charge, short: null });
-    expect(benchOffer('pistol', 0, 7, false)).toEqual({ i: MOD.drum, short: null });
-    expect(benchOffer('pistol', 1 << MOD.drum, 1, false)).toEqual({ i: MOD.frost, short: null });
-    expect(benchOffer('pistol', 0, 1, true)).toEqual({ i: MOD.drum, short: null });
-    expect(benchOffer('pistol', (1 << MOD.drum) | (1 << MOD.frost), 7, false)).toEqual({ i: -1, short: 'bench' });
-    expect(benchOffer('pistol', (1 << MOD.drum) | (1 << MOD.frost), 1, true)).toEqual({ i: -1, short: 'parts' });
-    expect(benchOffer('ottepel', 0, 7, true).i).toBe(-1);
+  it('offers the big magazine first, then frost rounds, at any bench', () => {
+    expect(benchOffer('pistol', 0, 7)).toEqual({ i: MOD.drum, short: null });
+    expect(benchOffer('pistol', 1 << MOD.drum, 1)).toEqual({ i: MOD.frost, short: null });
+    expect(benchOffer('pistol', 0, 0)).toEqual({ i: -1, short: 'parts' });
+    expect(benchOffer('pistol', (1 << MOD.drum) | (1 << MOD.frost), 7)).toEqual({ i: -1, short: null });
+    expect(benchOffer('salyut', 0, 7)).toEqual({ i: -1, short: null }); // one round a load, and fireworks
+    expect(benchOffer('ottepel', 0, 7).i).toBe(-1);
   });
 
-  it('charges after two seconds of aim, strikes three times as hard once, and lets go when put away', () => {
+  it('says at the bench what fitting will do, in the gun\'s own rounds', () => {
+    expect(fitPreview(createCarried('gvozdomyot'), MOD.drum)).toBe('150 -> 225 nails a load');
+    expect(fitPreview(createCarried('pistol'), MOD.drum)).toMatch(/^13 -> 20 rounds a load$/);
+    expect(fitPreview(createCarried('arbalet'), MOD.frost)).toBe('Its bolts will slow what they hit for 2 seconds');
+  });
+
+  it('a big magazine goes on with the load topped up from its own rounds, so the count jumps', () => {
     const m = new WeaponMods();
-    const gun = createCarried('pistol');
-    const other = createCarried('rifle');
-    m.fit(gun, MOD.charge);
-    let ready = false;
-    for (let t = 0; t < MOD_TUNE.chargeHold - 0.1; t += 0.1) ready = m.update(0.1, [gun, other], gun, 1) || ready;
-    expect(ready).toBe(false);
-    expect(m.damageMul(gun)).toBe(1);
-    expect(m.update(0.3, [gun, other], gun, 1)).toBe(true);
-    expect(m.damageMul(gun)).toBe(MOD_TUNE.chargeMul);
-    expect(m.damageMul(other)).toBe(1);
-    m.shot(gun);
-    expect(m.damageMul(gun)).toBe(1);
-    // aim broken before it is ready: it starts again
-    m.update(1.5, [gun, other], gun, 1);
-    m.update(0.1, [gun, other], gun, 0);
-    m.update(1, [gun, other], gun, 1);
-    expect(m.isCharged(gun)).toBe(false);
-    m.update(1.1, [gun, other], gun, 1);
-    expect(m.isCharged(gun)).toBe(true);
-    m.update(0.1, [gun, other], other, 0);
-    expect(m.isCharged(gun)).toBe(false);
+    const gun = createCarried('gvozdomyot');
+    gun.ammo.mag = 100;
+    const all = gun.ammo.mag + gun.ammo.reserve;
+    m.fit(gun, MOD.drum);
+    expect(gun.ammo.magSize).toBe(225);
+    expect(gun.ammo.mag).toBe(225);
+    expect(gun.ammo.mag + gun.ammo.reserve).toBe(all);
+    // with too few rounds left it takes what there is
+    const low = createCarried('pistol');
+    low.ammo.mag = 2;
+    low.ammo.reserve = 3;
+    m.fit(low, MOD.drum);
+    expect([low.ammo.mag, low.ammo.reserve]).toEqual([5, 0]);
   });
 
-  it('a drum lengthens every load, and keeps it through an upgrade', () => {
+  it('a big magazine lengthens every load, and keeps it through an upgrade', () => {
     const m = new WeaponMods();
     const gun = createCarried('pistol');
     const base = gun.ammo.magSize;
@@ -136,48 +143,68 @@ describe('ZARYA weapon mods', () => {
     // an upgrade sets the load back to the tier's own: the next frame puts the drum's back
     gun.tier = 1;
     gun.ammo.magSize = 17;
-    m.update(0.016, [gun, null], gun, 0);
+    m.update(0.016, [gun, null]);
     expect(gun.ammo.magSize).toBe(drumMag(gun));
     expect(drumMag(gun)).toBeGreaterThan(17);
     // a gun without one is left alone
     const plain = createCarried('rifle');
-    m.update(0.016, [plain, null], plain, 0);
+    m.update(0.016, [plain, null]);
     expect(plain.ammo.magSize).toBe(createCarried('rifle').ammo.magSize);
   });
 
-  it('a frost coat slows what its rounds strike for two seconds (solo), then gives the pace back', () => {
+  it('frost rounds slow what they strike for two seconds (solo), glittering while it lasts, then give the pace back', () => {
     const m = new WeaponMods();
     const gun = createCarried('rifle');
     const z = fake({ speedScale: 1.1 });
     m.hit(z, gun);
     expect(z.speedScale).toBe(1.1);
     m.fit(gun, MOD.frost);
-    let glints = 0;
-    m.onFrost = () => glints++;
+    const glints: boolean[] = [];
+    m.onFrost = (_z, still) => glints.push(still);
     m.hit(z, gun);
     expect(z.speedScale).toBeCloseTo(1.1 * MOD_TUNE.frostPace);
-    m.update(1.5, [gun, null], gun, 0);
+    expect(m.frosted).toBe(1);
+    m.update(1.5, [gun, null]);
     m.hit(z, gun); // a second round keeps it slowed, no slower
     expect(z.speedScale).toBeCloseTo(1.1 * MOD_TUNE.frostPace);
-    m.update(1.5, [gun, null], gun, 0);
+    m.update(1.5, [gun, null]);
     expect(z.speedScale).toBeCloseTo(1.1 * MOD_TUNE.frostPace);
-    m.update(0.6, [gun, null], gun, 0);
+    m.update(0.6, [gun, null]);
     expect(z.speedScale).toBeCloseTo(1.1);
-    expect(glints).toBe(2);
-    // co-op: it glints, and slows nothing
+    expect(m.frosted).toBe(0);
+    // the landing's burst, then the frost glittering on it while it was slowed
+    expect(glints[0]).toBe(false);
+    expect(glints.filter((g) => g).length).toBeGreaterThanOrEqual(2);
+    // co-op: it slows nothing itself, but stops it stiff for a moment (once a slow), and glitters the same
     const c = new WeaponMods();
     c.slows = false;
+    const stiff: number[] = [];
+    c.onStiff = (_z, sec) => stiff.push(sec);
     c.fit(gun, MOD.frost);
     const q = fake();
     c.hit(q, gun);
+    c.hit(q, gun);
     expect(q.speedScale).toBe(1);
+    expect(stiff).toEqual([MOD_TUNE.frostStiff]);
+    expect(c.frosted).toBe(1);
   });
 
-  it('names the mods in a short word', () => {
-    expect(modWord(1 << MOD.drum, false)).toBe('DRUM');
-    expect(modWord((1 << MOD.drum) | (1 << MOD.frost), false)).toBe('DRUM + FROST');
-    expect(modWord(7, true)).toBe('CHARGED +2');
-    expect(modWord(0, false)).toBe('');
+  it('names the mods in a short word, and the journal says what each does, needs, and where the parts are', () => {
+    expect(modWord(1 << MOD.drum)).toBe('BIG MAG');
+    expect(modWord((1 << MOD.drum) | (1 << MOD.frost))).toBe('BIG MAG + FROST');
+    expect(modWord(1 << MOD.charge)).toBe('');
+    expect(modWord(0)).toBe('');
+    const s = act2();
+    s.act('shutter', 1, before(SHUTTERS[1]!.at, SHUTTERS[1]!.yaw));
+    const rows = modJournal(s.view, [{ name: 'GVOZDOMYOT', mask: 1 << MOD.drum }, { name: 'RIFLE', mask: 0 }]);
+    const all = rows.join(' ');
+    expect(rows[0]).toMatch(/1 to fit, 1 of 7 found/);
+    expect(all).toMatch(/BIG MAGAZINE: half as many rounds again/);
+    expect(all).toMatch(/On your GVOZDOMYOT\./);
+    expect(all).toMatch(/FROST ROUNDS: whatever its rounds hit is slowed for 2 seconds\. Fits .*On none of your guns yet\./);
+    expect(all).toMatch(/down the Rynok's west side \(open\)/);
+    expect(all).toMatch(/garage's back wall/);
+    expect(all).not.toMatch(/Charge/i);
   });
 });
 

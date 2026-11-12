@@ -63,8 +63,8 @@ export function preloadIcons(): void {
 const GROW = 1.45;
 const Y = new THREE.Vector3(0, 1, 0);
 
-/** Plain-coloured pieces gathered into one geometry (positions, normals, colours; no index). */
-class Kit {
+/** Plain-coloured pieces gathered into one geometry (positions, normals, colours; no index). (Exported for the side stories' things, `sideModels.ts`.) */
+export class Kit {
   readonly pos: number[] = [];
   readonly nor: number[] = [];
   readonly col: number[] = [];
@@ -392,7 +392,8 @@ export class ItemMarks {
   private readonly time = { value: 0 };
   private readonly mat: THREE.MeshStandardMaterial;
 
-  constructor(readonly spots: readonly ItemSpot[]) {
+  /** (`models`, `grow`: another set of things drawn the same way, at their own size: the side stories', `sideModels.ts`.) */
+  constructor(readonly spots: readonly ItemSpot[], models: Record<string, (k: Kit) => void> = MODEL, grow = GROW) {
     const n = Math.max(1, spots.length);
     this.on = new Float32Array(n);
     const pos: number[] = [];
@@ -407,8 +408,8 @@ export class ItemMarks {
     const c = new THREE.Color();
     spots.forEach((s, i) => {
       const k = new Kit();
-      (MODEL[s.model] ?? MODEL.modpart!)(k);
-      m.compose(v.set(s.x, s.y, s.z), new THREE.Quaternion().setFromAxisAngle(Y, s.yaw), new THREE.Vector3(GROW, GROW, GROW));
+      (models[s.model] ?? MODEL.modpart!)(k);
+      m.compose(v.set(s.x, s.y, s.z), new THREE.Quaternion().setFromAxisAngle(Y, s.yaw), new THREE.Vector3(grow, grow, grow));
       nm.getNormalMatrix(m);
       c.setHex(s.glint);
       for (let j = 0; j < k.pos.length; j += 3) {

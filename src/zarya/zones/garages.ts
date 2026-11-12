@@ -39,6 +39,11 @@ export const GARAGES = {
     plumber: { x0: 210.5, z0: 134, x1: 214, z1: 140, face: 1, mouth: [210.5, 214] } as GarageBay,
     /** The welder's (opens north, onto the southern lane). */
     welder: { x0: 136.9, z0: 150, x1: 144.3, z1: 156, face: -1, mouth: [136.9, 144.3] } as GarageBay,
+    /**
+     * (Round 3, the fire axe's job: `zarya/obstacles.ts` 'garage'.) A single garage on the middle lane in from the
+     * Dvor's gate, its doors off their hinges and its mouth boarded up from outside; a car under a cover, his strongbox.
+     */
+    boarded: { x0: 122.1, z0: 128, x1: 125.8, z1: 134, face: -1, mouth: [122.1, 125.8] } as GarageBay,
   },
   /** Timur's garage, open and lit, on the north side of the middle lane; the main workbench along its back wall (a player stands in front of it, to its south). */
   timur: TIMUR as Rect,
@@ -67,6 +72,10 @@ export const GARAGES = {
   /** A man at his garage door on the middle lane, east of Timur's. */
   cover: [{ x: 183, z: 118 }] as Spot[],
   spawns: [[104, 80], [241, 76], [241, 166], [104, 165], [180, 166]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): a parcel in newspaper on the neighbours' New Year table (its north-east corner, clear of the bottle and the mandarins). */
+  side: {
+    gift: { x: 176.3, z: 102.42 } as Spot,
+  },
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */

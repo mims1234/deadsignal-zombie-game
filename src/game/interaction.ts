@@ -213,7 +213,8 @@ export class Interaction {
         });
       } else if (c.phase === 'spin') {
         const other = this.entities.othersTurn(c);
-        targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: 'MYSTERY BOX', sub: other ? `${other}'s turn - wait for the box` : 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
+        // (ZARYA's sack has its own name, and its prize rises out of it rather than off a reel)
+        targets.push({ id: `crate-spin:${c.def.id}`, dist: d, text: this.boxName, sub: other ? `${other}'s turn - wait for ${c.sack ? 'the sack' : 'the box'}` : c.sack ? 'Something is coming up out of it...' : 'The reel is spinning...', tone: 'normal', hold: 0, enabled: false, onUse: () => {} });
       } else {
         const t = this.entities.offerText(c);
         targets.push({ id: `crate-take:${c.def.id}`, dist: d, text: t.text, sub: t.sub, tone: t.mine ? 'good' : 'normal', hold: 0, enabled: t.mine, onUse: () => this.entities.takeBoxPrize(c) });

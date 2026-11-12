@@ -113,9 +113,13 @@ if (process.env.LOOK !== '0') {
       if (id === 'raketa') {
         d.releaseAll();
         d.advance(2 / 60);
-      } else if (id === 'ottepel' || id === 'gvozdomyot') {
+      } else if (id === 'ottepel') {
         d.hold({ fire: true });
         d.advance(0.35);
+      } else if (id === 'gvozdomyot') {
+        // (its barrels up to full speed: half a second of spin-up, then a moment at 1700 a minute)
+        d.hold({ fire: true });
+        d.advance(0.8);
       } else {
         d.click();
         d.advance(2 / 60);
@@ -128,6 +132,8 @@ if (process.env.LOOK !== '0') {
       const def = d.weaponDefs[id];
       if (id === 'gvozdomyot') d.press('reload');
       if (id === 'ottepel' || id === 'zenit' || id === 'raketa') d.advance(0.5);
+      // (the nail gun's long reload: the drum caught as it drops)
+      else if (id === 'gvozdomyot') d.advance(def.reloadEmpty * 0.22);
       else d.advance(0.5 + def.reloadEmpty * 0.42);
     }, id);
     await snap(id === 'ottepel' || id === 'zenit' || id === 'raketa' ? 'after' : 'reload');
@@ -246,31 +252,102 @@ if (process.env.NUM !== '0') {
     }
 
     if (id === 'gvozdomyot') {
-      check('60 in the strip, 360 in reserve', def.mag === 60 && def.reserve === 360, `${def.mag} / ${def.reserve}`);
+      check('a 150-nail drum, 450 in reserve', def.mag === 150 && def.reserve === 450, `${def.mag} / ${def.reserve}`);
       const [a] = await spawnRow('shambler', [7]);
       await still();
       await aimAt(a);
-      const steps = await D((a) => {
+      // held from still: when the first nail leaves, how many leave in each half second after, what each does
+      const fire = await D((a) => {
         const d = window.__dead;
-        const z = d.game.zombies.zombies.find((q) => q.id === a);
+        const g = d.game;
+        const z = g.zombies.zombies.find((q) => q.id === a);
+        const c = g.weapons.carried;
         d.hold({ fire: true });
-        const out = [];
+        const halves = [];
+        const steps = [];
+        let first = -1;
+        let mag = c.ammo.mag;
         let hp = z.hp;
-        for (let i = 0; i < 120; i++) {
+        let n = 0;
+        let slow = 1;
+        for (let i = 0; i < 150; i++) {
           d.lookAt(z.x, z.z, z.y + 0.9);
           d.advance(1 / 60);
-          if (z.hp !== hp) out.push(+(hp - z.hp).toFixed(2));
+          const shot = mag - c.ammo.mag;
+          mag = c.ammo.mag;
+          if (shot > 0 && first < 0) first = (i + 1) / 60;
+          n += shot;
+          if ((i + 1) % 30 === 0) {
+            halves.push(n);
+            n = 0;
+          }
+          if (z.hp !== hp) steps.push(+(hp - z.hp).toFixed(2));
           hp = z.hp;
+          slow = Math.min(slow, g.weapons.moveMul);
+        }
+        const spin = g.weapons.barrelSpin;
+        d.releaseAll();
+        d.advance(0.2);
+        const after02 = g.weapons.barrelSpin;
+        d.advance(0.8);
+        return { halves, steps, first, spin, after02, after10: g.weapons.barrelSpin, slow, idle: g.weapons.moveMul, used: 150 - c.ammo.mag };
+      }, a);
+      check('a short spin-up: the first nail leaves after about a fifth of a second', fire.first > 0.08 && fire.first < 0.3, `${fire.first.toFixed(2)} s`);
+      check('the rate climbs over the first half second', fire.halves[0] < fire.halves[2] * 0.75, `nails per half second: ${fire.halves.join(', ')}`);
+      const full = (fire.halves[2] + fire.halves[3] + fire.halves[4]) / 1.5;
+      check('then about 1500-1800 a minute', full * 60 >= 1500 && full * 60 <= 1850, `${(full * 60).toFixed(0)} rpm`);
+      check('28 a nail (49 to the head)', fire.steps.length > 0 && fire.steps.every((v) => Math.abs(v - 28) < 0.5 || Math.abs(v - 49) < 0.5 || Math.abs(v - 56) < 0.5), `${fire.steps.length} hits of ${[...new Set(fire.steps)].join(' / ')}`);
+      check('the barrels at full speed while it fires, and winding down after', fire.spin > 0.99 && fire.after02 > 0.4 && fire.after02 < 0.95 && fire.after10 === 0, `spin ${fire.spin.toFixed(2)}, 0.2 s after ${fire.after02.toFixed(2)}, 1 s after ${fire.after10.toFixed(2)}`);
+      check('heavy, and slower still while it turns', fire.idle < 0.95 && fire.slow < fire.idle * 0.85, `walk x${fire.idle.toFixed(2)} held, x${fire.slow.toFixed(2)} firing`);
+      // the slow, walked: two seconds forward, firing against not
+      const walk = await D(() => {
+        const d = window.__dead;
+        const g = d.game;
+        d.clearZombies();
+        d.giveWeapon('gvozdomyot');
+        d.advance(1);
+        const p = g.player;
+        const leg = (fire) => {
+          d.look(-Math.PI / 2, 0);
+          const x0 = p.x;
+          const z0 = p.z;
+          d.hold({ forward: true, fire });
+          d.advance(0.8);
+          const x1 = p.x;
+          const z1 = p.z;
+          d.advance(1.5);
+          const v = Math.hypot(p.x - x1, p.z - z1) / 1.5;
+          d.releaseAll();
+          d.advance(1.2);
+          d.teleport(x0, z0, -Math.PI / 2);
+          d.advance(0.2);
+          void z0;
+          return v;
+        };
+        const plain = leg(false);
+        const firing = leg(true);
+        return { plain, firing };
+      });
+      check('a player firing it walks slower', walk.firing < walk.plain * 0.88, `${walk.plain.toFixed(2)} m/s walking, ${walk.firing.toFixed(2)} m/s firing`);
+      // a drum lasts about five seconds held down
+      const drum = await D(() => {
+        const d = window.__dead;
+        d.giveWeapon('gvozdomyot');
+        d.advance(1);
+        const c = d.game.weapons.carried;
+        c.ammo.mag = c.ammo.magSize;
+        d.look(-Math.PI / 2, 0.3);
+        d.hold({ fire: true });
+        let t = 0;
+        while (c.ammo.mag > 0 && t < 12) {
+          d.advance(1 / 60);
+          t += 1 / 60;
         }
         d.releaseAll();
-        return out;
-      }, a);
-      const mag = await D(() => window.__dead.game.weapons.carried.ammo.mag);
-      const [lost] = await hpLost([a]);
-      const shots = 60 - mag;
-      check('about 900 rounds a minute', shots >= 29 && shots <= 31, `${shots} nails in 2 s = ${shots * 30} rpm`);
-      check('42 a nail', steps.length >= shots - 2 && steps.every((v) => v === 42 || v === 84), `${steps.length} hits of ${[...new Set(steps)].join(' / ')}; ${lost} in 2 s = ${(lost / 2).toFixed(0)} a second`);
-      // a charging line is stopped: runners sent at the player from 16 m, how near do they get in 3 s under fire?
+        return t;
+      });
+      check('a full drum lasts about five seconds held down (spin-up and all)', drum > 4.8 && drum < 6.4, `${drum.toFixed(2)} s`);
+      // a charging line is stopped: an armoured one sent at the player from 12 m, how near does it get in 3 s under fire?
       await D(() => { window.__dead.clearZombies(); window.__dead.giveWeapon('gvozdomyot'); window.__dead.advance(1); });
       const run = await D(() => {
         const d = window.__dead;
@@ -290,9 +367,12 @@ if (process.env.NUM !== '0') {
         d.releaseAll();
         return { dist: Math.hypot(z.x - p.x, z.z - p.z), stag: stag / n };
       });
-      check('an armoured one charging from 12 m is held back by the nails', run.dist > 8 && run.stag > 0.6, `after 3 s it is ${run.dist.toFixed(1)} m away, staggered ${(run.stag * 100).toFixed(0)}% of the time`);
-      const t = await D(() => { const d = window.__dead; d.giveWeapon('gvozdomyot'); d.advance(1); const a = d.game.weapons.carried.ammo; a.mag = 0; d.press('reload'); let t = 0; while (a.mag === 0 && t < 5) { d.advance(1 / 60); t += 1 / 60; } while (a.reload && t < 5) { d.advance(1 / 60); t += 1 / 60; } return t; });
-      check('reloads in 2.2 s', Math.abs(t - 2.2) < 0.1, `${t.toFixed(2)} s`);
+      check('an armoured one charging from 12 m is held back by the nails', run.dist > 6 && run.stag > 0.4, `after 3 s it is ${run.dist.toFixed(1)} m away, staggered ${(run.stag * 100).toFixed(0)}% of the time`);
+      const t = await D(() => { const d = window.__dead; d.giveWeapon('gvozdomyot'); d.advance(1); const a = d.game.weapons.carried.ammo; a.mag = 0; d.press('reload'); let t = 0; while (a.mag === 0 && t < 8) { d.advance(1 / 60); t += 1 / 60; } while (a.reload && t < 8) { d.advance(1 / 60); t += 1 / 60; } return t; });
+      check('a long reload: 4.5 s', Math.abs(t - 4.5) < 0.1, `${t.toFixed(2)} s`);
+      // and nothing fires meanwhile, however the trigger is held
+      const busy = await D(() => { const d = window.__dead; const a = d.game.weapons.carried.ammo; a.mag = 0; d.press('reload'); d.advance(0.3); d.hold({ fire: true }); d.advance(2); const m = a.mag; const sp = d.game.weapons.barrelSpin; d.releaseAll(); return { m, sp }; });
+      check('nothing fires and the barrels stay still while the drum is changed', busy.m === 0 && busy.sp === 0, `mag ${busy.m}, spin ${busy.sp}`);
     }
 
     if (id === 'salyut') {

@@ -46,6 +46,16 @@ export const DEPOT = {
   cover: [{ x: 202, z: -116 }] as Spot[],
   /** Where the ones woken wrong come from: out of sight, in the corners of the yard and the street. */
   spawns: [[150, -184], [150, -160], [241, -75], [240, -114], [150, -76]] as [number, number][],
+  /**
+   * The side stories' places (`zarya/sidestories.ts`): the drivers' pigeonholes on the dispatcher booth's boarded north
+   * wall (east of the noticeboard); a rifle with its stock off on the west end of the Okhotnik's counter; a tin on the
+   * track gang's west shelves, three metres north of the nail strips.
+   */
+  side: {
+    pigeonhole: { x: 192.6, z: -144.3 } as Spot,
+    rifle: { x: 159.6, z: -104.3 } as Spot,
+    pin: { x: 197.3, z: -179.6 } as Spot,
+  },
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */

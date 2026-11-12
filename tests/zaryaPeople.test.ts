@@ -11,7 +11,7 @@ import { Acquaintance, PEOPLE, faceOf, namedSleepers } from '../src/zarya/people
 
 /** Every line the game can say, as [speaker, text]. */
 const ALL: (readonly [string, string])[] = [...Object.values(LINES).flat(), ...Object.values(SACK_MOVED), ...NINA_WIRE.map((t) => ['NINA', t] as const)];
-const SPEAKERS: Speaker[] = ['MIRA', 'TIMUR', 'VERA', 'NINA', 'KOSTYA', 'ZINA', 'ZIMIN'];
+const SPEAKERS: Speaker[] = ['MIRA', 'TIMUR', 'VERA', 'NINA', 'KOSTYA', 'ZINA', 'ZIMIN', 'YAGA'];
 
 describe('ZARYA people', () => {
   it('gives every speaker a name, a colour and a portrait that exists', () => {
@@ -42,7 +42,7 @@ describe('ZARYA people', () => {
     }
     expect(k.met.length).toBe(PEOPLE.length);
     expect(new Set(cards).size).toBe(cards.length);
-    expect(cards.sort()).toEqual(['kostya', 'mira', 'nina', 'timur', 'vera', 'zimin', 'zina']);
+    expect(cards.sort()).toEqual(['kostya', 'lyudmila', 'mira', 'nina', 'timur', 'vera', 'zimin', 'zina']);
     for (const p of PEOPLE) expect(k.facts(p.id).length).toBe(p.facts.length);
   });
 

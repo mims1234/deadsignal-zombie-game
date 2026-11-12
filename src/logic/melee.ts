@@ -49,6 +49,11 @@ export interface MeleeDef {
   combo: number;
   /** A flail's weight wraps their legs: each it strikes and does not kill trips, down this long (a heavy swing longer; never a boss). */
   trip?: number;
+  /**
+   * (ZARYA round 3: the Rogatina's job.) A wound-up thrust that lands on something charging, or on one of the big
+   * ones (a boss, the Morzh), stops it on the crossguard: it stands pinned this long, boss or not (`pinFor`).
+   */
+  pin?: number;
 }
 
 export const MELEE: Record<MeleeId, MeleeDef> = {
@@ -152,7 +157,7 @@ export const MELEE: Record<MeleeId, MeleeDef> = {
     damage: 120, heavyDamage: 300, reach: 3.3, arc: 0.4, heavyArc: 1.25,
     windup: 0.16, active: 0.13, recover: 0.3, chargeTime: 0.55, heavyRecover: 0.55,
     maxTargets: 2, heavyTargets: 6, impulse: 4, heavyImpulse: 7, push: 6, lift: 1,
-    headMul: 1.5, guard: 0.6, moveMul: 0.96, combo: 3,
+    headMul: 1.5, guard: 0.6, moveMul: 0.96, combo: 3, pin: 1.6,
   },
 };
 
@@ -177,7 +182,19 @@ export const MELEE_RULES = {
   /** Striking an infected while it winds up its own blow staggers it for this long, and hits this much harder. */
   parryStagger: 1.1,
   parryMul: 1.5,
+  /** (ZARYA round 3) One thing is not pinned again by the Rogatina for this long after it was let go. */
+  pinAgain: 4,
 } as const;
+
+/**
+ * (ZARYA round 3: the Rogatina's job.) How long a blow pins what it lands on: a heavy swing of a weapon with a `pin`,
+ * on something charging or one of the big ones, when it has been free for `pinAgain` since it was last pinned (`since`,
+ * seconds; Infinity if never). Zero otherwise.
+ */
+export function pinFor(d: MeleeDef, heavy: boolean, t: { charging: boolean; big: boolean }, since: number): number {
+  if (!heavy || !d.pin || !(t.charging || t.big)) return 0;
+  return since >= d.pin + MELEE_RULES.pinAgain ? d.pin : 0;
+}
 
 // ---------------------------------------------------------------------------------------------
 // the swing

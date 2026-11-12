@@ -27,6 +27,7 @@
  */
 import * as THREE from 'three';
 import { CARD_MODE, COOP, ECONOMY, FORGE_SQUAD, MISSION, REGIONS, SQUADMATE, SURVIVORS, TEAM_SKILLS, VULCAN, ZARYA_GUNS, ZOMBIE_DIFFICULTIES, ZOMBIE_DIFFICULTY, ZOMBIES, type TeamSkill, type ZombieDef, type ZombieDifficulty } from '../config';
+import { MELEE } from '../logic/melee'; // (ZARYA round 3: the Rogatina's pin)
 import { CARRIERS } from '../cards/roster';
 import type { PlayerRef, Zombie, ZombieEnv } from '../enemies/zombie';
 import { type DirectorContext, ZombieManager } from '../enemies/zombieManager';
@@ -385,6 +386,17 @@ export class SessionSim {
       if (e.kind === 'end' && !this.zaryaEnd) this.zaryaEnd = { at: this.elapsed, end: e.end };
     }
     for (const n of dir.step(dt, q.view, stand, this.rng)) q.note(n);
+    // ---- ZARYA, Baba Yaga's stage (`zarya/stage.ts`): the fight's state for every screen, and what her broom, her
+    // stamping and her pots did to whom (`i` is the player's place in `stand`) ----
+    {
+      const [st, pa, pb] = dir.stage;
+      q.stage(st, pa, pb);
+      const order = [...this.peers.values()];
+      for (const h of dir.drainHurts()) {
+        const p = order[h.i];
+        if (p?.ref.alive) p.env.hurtPlayer(h.amount, h.x, h.z, 'melee', h.knock);
+      }
+    }
     for (const k of dir.drainKills()) q.kill(k.x, k.z, stand);
     applyZaryaDoors(this.level, q.view);
     // the fourth key has turned: the ending's last lines, then the results
@@ -803,6 +815,8 @@ export class SessionSim {
         const z = this.zombies.zombies.find((q) => q.id === d.z);
         if (this.map !== 'zarya' || !z || !z.active || !up || Math.hypot(z.x - p.ref.x, z.z - p.ref.z) > 130) return;
         this.zombies.affect(z, p.env, Math.max(0, Math.min(ZARYA_GUNS.signalka.markTime, Number(d.mk) || 0)), Math.max(0, Math.min(ZARYA_GUNS.zenit.stagger, Number(d.sg) || 0)), ZARYA_GUNS.zenit.bossStagger);
+        // (round 3: the Rogatina's pin, at most its own; whoever asks stands within its reach)
+        if (Number(d.pn) > 0 && Math.hypot(z.x - p.ref.x, z.z - p.ref.z) < 8) this.zombies.pin(z, p.env, Math.min(MELEE.rogatina.pin ?? 0, Number(d.pn)));
         return;
       }
       case 'cure': {

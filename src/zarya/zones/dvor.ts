@@ -67,6 +67,16 @@ export const DVOR = {
   /** The hockey box in the south of the west yard (boards a metre high: shots pass over), and the way into it, in the middle of its north side (2.6 m wide). */
   rink: { x0: -48.5, z0: 133.5, x1: -29, z1: 146.5 } as Rect,
   rinkGate: { x: -38.75, z: 133.5 } as Spot,
+  /**
+   * The side stories' places (`zarya/sidestories.ts`): a salad bowl on an outside sill of the west block (its east face,
+   * the fourteenth window from the north, ground floor); the kennel's frozen bowl; the yard dog asleep against the
+   * transformer hut's warm south wall (its west wall has a bank of snow against it).
+   */
+  side: {
+    sill: { x: -91.38, z: 125.5 } as Spot,
+    kennel: { x: 69.5, z: 131.6 } as Spot,
+    dog: { x: 53, z: 136.5 } as Spot,
+  },
 } as const;
 
 type Stand = readonly [x: number, z: number, lookX: number, lookZ: number, role?: PersonRole];
@@ -133,7 +143,8 @@ const STOOD: readonly Stand[] = [
   [71.3, 132.4, 68.3, 130.5],
   [38.8, 142.9, 42, 144.2],
   [68.3, 141.3, 68.5, 143.5],
-  [96.2, 109.4, 96.3, 107.8],
+  // (round 3: the yard-keeper stands a step east of his shed's door, which a maul opens now: the doorway is left clear)
+  [97.7, 109.5, 96.3, 107.8],
   [78.2, 114.1, 79.6, 115.2],
   [80.1, 114.6, 78.2, 114.1],
 ];

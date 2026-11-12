@@ -655,47 +655,52 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     name: 'Gvozdomyot Nail Gun',
     short: 'GVOZDOMYOT',
     auto: true,
-    damage: 42, // 690 a second at 920 rpm: above every other gun's sustained damage (Hanafubuki 600)
+    // A rotary nailer, ZARYA's minigun: 28 a nail at 1700 a minute is about 790 a second flat out, about 420 a second
+    // over a whole drum and its long reload (spin-up included), still the best of any gun held (Hanafubuki 396).
+    damage: 28,
     pellets: 1,
-    headshotMul: 2,
-    /** About 900 a minute: a hair under four frames of a 60 Hz simulation, so that it is four and never five. */
-    fireInterval: 60 / 920,
-    magSize: 60,
-    reserveStart: 360,
-    reserveMax: 360,
+    headshotMul: 1.75,
+    /** Its full rate, once the barrels are up to speed (`ZARYA_GUNS.gvozdomyot`: the spin, and the rate climbing with it). */
+    fireInterval: 60 / 1700,
+    magSize: 150,
+    reserveStart: 450,
+    reserveMax: 600,
     reloadStyle: 'magazine',
-    reloadTactical: 2.2,
-    reloadEmpty: 2.2,
-    reloadTransferAt: 0.7,
+    /** The drum: off, a new one on, the feed threaded and the motor cranked. Long, and nothing else is done meanwhile. */
+    reloadTactical: 4.5,
+    reloadEmpty: 4.5,
+    reloadTransferAt: 0.62,
     shellStart: 0,
     shellEach: 0,
     shellEnd: 0,
     shellPump: 0,
-    spreadHip: 1.1,
-    spreadAds: 0.2,
-    spreadMove: 0.8,
-    spreadAir: 2.2,
-    spreadPerShot: 0.06,
-    spreadMax: 0.9,
-    spreadRecover: 7,
-    recoilPitch: 0.22,
-    recoilYaw: 0.12,
-    recoilRecover: 10,
-    falloffStart: 30,
-    falloffEnd: 80,
-    minMul: 0.65,
-    maxRange: 140,
-    adsFovMul: 0.72,
-    adsTime: 0.2,
-    moveMul: 0.96,
-    noise: 34,
-    drawTime: 0.5,
+    spreadHip: 1.0,
+    /** (Aiming does not steady it: it keeps the barrels turning, `ZARYA_GUNS.gvozdomyot`.) */
+    spreadAds: 0.7,
+    spreadMove: 0.7,
+    spreadAir: 2.4,
+    spreadPerShot: 0.05,
+    spreadMax: 0.8,
+    spreadRecover: 0.9,
+    recoilPitch: 0.11,
+    recoilYaw: 0.16,
+    recoilRecover: 12,
+    falloffStart: 22,
+    falloffEnd: 60,
+    minMul: 0.6,
+    maxRange: 120,
+    adsFovMul: 0.9,
+    adsTime: 0.3,
+    /** Heavy to carry; slower still while the barrels turn (`ZARYA_GUNS.gvozdomyot.slow`). */
+    moveMul: 0.9,
+    noise: 40,
+    drawTime: 0.85,
     tracerColors: [0xe8f0ff, 0xffd9a0, 0x9ff0ff],
     price: 0,
-    ammoPrice: 450,
+    ammoPrice: 500,
     tiers: [
-      zaryaTier('MK II', 'Framing nails: +20% damage, an 80-nail strip, quicker to load, ignores 30% of armour.', 2200, 1.2, 20, 120, 0.85, 0.3),
-      zaryaTier('MK III', 'Hardened nails: +45% damage, a 100-nail strip, quicker still, ignores 40% of armour.', 4400, 1.45, 40, 240, 0.7, 0.4),
+      zaryaTier('MK II', 'Framing nails: +20% damage, a 180-nail drum, a quicker reload, ignores 30% of armour.', 2200, 1.2, 30, 150, 0.88, 0.3),
+      zaryaTier('MK III', 'Hardened nails: +45% damage, a 210-nail drum, quicker still, ignores 40% of armour.', 4400, 1.45, 60, 300, 0.78, 0.4),
     ],
   },
   salyut: {
@@ -919,8 +924,21 @@ export const ZARYA_GUNS = {
   },
   /** The bolt goes through this many bodies and stops in the next. */
   arbalet: { pierce: 2 },
-  /** How hard a nail pushes at its target's poise (`Zombie.takeDamage`'s `impulse`): one nail stops a shambler. */
-  gvozdomyot: { impulse: 3 },
+  gvozdomyot: {
+    /** How hard a nail pushes at its target's poise (`Zombie.takeDamage`'s `impulse`): a burst holds most of them reeling. */
+    impulse: 1.5,
+    /** Seconds for the barrel cluster to come up to speed from still, and to wind down again let go. */
+    spinUp: 0.5,
+    spinDown: 0.7,
+    /** It fires once the barrels are this far up to speed, at this share of its full rate, climbing to all of it. */
+    spinFire: 0.2,
+    rateLow: 0.35,
+    /** How much slower its carrier walks with the barrels at full speed (on top of its weight, `moveMul`). */
+    slow: 0.18,
+    /** The motor's whine: its loop's playback rate from barely turning to full speed. */
+    whineLow: 1.6,
+    whineHigh: 5.2,
+  },
   salyut: {
     /** One pull: this many rockets, fanned this many degrees apart. */
     rockets: 5,
@@ -1439,11 +1457,12 @@ export const MYSTERY_BOX = {
   relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
   /**
    * What only one map's box holds, beside the stock guns, by weight among them (the stock guns' weights add up to 10):
-   * ZARYA's sack is the only place the Raketa vacuum cannon and the Kisten flail come from. A gun goes into a gun
-   * slot, a weapon to swing into the hand that swings (`logic/mysteryBox.ts`: `takePrize`).
+   * ZARYA's sack is the only place the Raketa vacuum cannon comes from. A gun goes into a gun slot, a weapon to swing
+   * into the hand that swings (`logic/mysteryBox.ts`: `takePrize`). (Round 3: the Kisten flail is out of the sack:
+   * ZARYA keeps only the weapons to swing that have a job, `zarya/obstacles.ts`. Its code stays for any map's box.)
    */
   mapPrizes: {
-    zarya: { guns: { raketa: 2 }, melee: { kisten: 2 } },
+    zarya: { guns: { raketa: 1.5 } }, // (round 3: a touch less, so the Raketa comes up as often as it did beside the Kisten)
   } as Partial<Record<MapId, { guns?: Partial<Record<WeaponId, number>>; melee?: Partial<Record<MeleeId, number>> }>>,
   /**
    * A box that moves (ZARYA's sack): after this many openings it is gone from where it stands and turns up at another of

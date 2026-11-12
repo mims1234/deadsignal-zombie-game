@@ -1,22 +1,74 @@
 /**
  * ZARYA's kiosk shutters, weapon mods and repair booth on screen (`mods.ts` has the rules): the prompts (BUY THE
- * SHUTTER, FIT A DRUM, the booth's refusal), the mod parts picked up in passing, what a shutter going up gives whoever
- * stands by it, the mod's word on the HUD's weapon panel, and this player's own mods plugged into the weapon system.
+ * SHUTTER, FIT A BIG MAGAZINE saying what it will do, the booth's refusal), the mod parts picked up in passing (Timur
+ * says what they are for the first time one is found), what a shutter going up gives whoever stands by it, the frost
+ * seen on what frost rounds hit, the mod's word on the HUD's weapon panel, the journal's mods section, and this
+ * player's own mods plugged into the weapon system.
  *
  * `runtime.ts` owns it and calls it in a few places (each marked "kiosks and mods"). Like the rest of the story, the
  * shutters and the parts change on whoever runs the story (the solo game, or the co-op host) and this reacts to the
  * state changing; a fitted mod is this player's alone, put on their gun once the story says the parts were spent.
  */
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import type { Zombie } from '../enemies/zombie';
 import type { Game } from '../game/game';
 import type { InteractionTarget } from '../game/interaction';
 import { spendCash } from '../logic/economy';
 import type { HudState } from '../ui/hudTypes';
-import { MODS, WeaponMods, benchOffer, boothRefusal, modNames, modWord } from './mods';
+import { WEAPONS } from '../config';
+import { MOD, MODS, WeaponMods, benchOffer, boothRefusal, fitPreview, modJournal, modWord } from './mods';
+import type { Beat } from './lines';
 import { BENCHES, CH, KBIT, MOD_COST, MOD_PARTS, SHUTTERS, STORY, ZaryaStory, type StoryAct, type StoryView } from './story';
 import { TOWN } from './unlock';
 // (items, round 3: the mod part's picture with its feed line)
 import { MOD_ICON } from './items';
 import type { Spot } from './places';
+
+/**
+ * Frost rounds, as seen: a crust of ice shards round a slowed infected's feet and shins, and two pale rings of rime
+ * up its legs (why it walks slow). One mesh a body, only while it is frosted, hung on its rig's root (a pooled rig takes
+ * it on switched off); one shape and one material shared by all of them.
+ */
+let frostParts: { geo: THREE.BufferGeometry; mat: THREE.Material } | null = null;
+function frostCrust(): { geo: THREE.BufferGeometry; mat: THREE.Material } {
+  if (frostParts) return frostParts;
+  // for a body 1 m tall (scaled to the body's height)
+  const bits: THREE.BufferGeometry[] = [];
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2 + (i % 2) * 0.2;
+    const h = 0.08 + (i % 3) * 0.035;
+    bits.push(new THREE.ConeGeometry(0.03, h, 4).rotateZ(-0.35).rotateY(-a).translate(Math.cos(a) * 0.13, h / 2, Math.sin(a) * 0.13).toNonIndexed());
+  }
+  bits.push(new THREE.TorusGeometry(0.13, 0.018, 4, 16).rotateX(Math.PI / 2).translate(0, 0.14, 0).toNonIndexed());
+  bits.push(new THREE.TorusGeometry(0.12, 0.012, 4, 16).rotateX(Math.PI / 2).translate(0, 0.3, 0).toNonIndexed());
+  const geo = mergeGeometries(bits)!;
+  for (const b of bits) b.dispose();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xcdeeff, transparent: true, opacity: 0.85, depthWrite: false });
+  frostParts = { geo, mat };
+  return frostParts;
+}
+
+/** Show or hide the frost crust on an infected (`on`), its shards turned a little each frame so they glint. */
+function showFrost(z: Zombie, on: boolean): void {
+  const root = z.rig?.root;
+  if (!root) return;
+  let m = root.userData.frostCrust as THREE.Mesh | undefined;
+  if (!on) {
+    if (m) m.visible = false;
+    return;
+  }
+  if (!m) {
+    const p = frostCrust();
+    m = new THREE.Mesh(p.geo, p.mat);
+    m.name = 'FrostCrust';
+    m.frustumCulled = false;
+    root.userData.frostCrust = m;
+    root.add(m);
+  }
+  m.visible = true;
+  m.scale.setScalar(z.def.height);
+}
 
 /** How near a lying mod part has to be to be picked up in passing; how near a kiosk a player must be to share in it. */
 const PICKUP = 2.4;
@@ -30,6 +82,8 @@ export class KiosksAndMods {
   private askT = 0;
   private t = 0;
   private pending: { c: NonNullable<Game['session']['inv']['slots'][0]>; i: number; until: number; spent: number } | null = null;
+  /** A line on the wire (`runtime.ts` sets it): Timur on the first mod part found. */
+  say: ((beat: Beat) => void) | null = null;
 
   constructor(
     private readonly g: Game,
@@ -38,7 +92,15 @@ export class KiosksAndMods {
     private readonly live: () => boolean,
   ) {
     g.weapons.mods = this.mods;
-    this.mods.onFrost = (z) => g.fx.sparkle({ x: z.x, y: z.y + 1.2, z: z.z }, 0x9fd8ff, 5);
+    // frost rounds: a burst of cold glitter where one lands, and a little more on it for as long as it is slowed
+    this.mods.onFrost = (z, still) => {
+      g.fx.sparkle({ x: z.x, y: z.y + (still ? 0.2 + Math.random() * 0.6 : 1.2), z: z.z }, still ? 0xcfeeff : 0x9fd8ff, still ? 4 : 10);
+      if (!still) g.fx.sparkle({ x: z.x, y: z.y + 0.15, z: z.z }, 0xe8f6ff, 8);
+    };
+    // ...and the ice on its legs for as long as it is slowed
+    this.mods.onChill = showFrost;
+    // (co-op: the host walks the infected, so a frosted one is stopped stiff for a moment instead, through it)
+    this.mods.onStiff = (z, seconds) => g.zombies.affect(z, g.zenv, 0, seconds);
     // the repair booth upgrades nothing until the sleeping repairman's three tools are back on his counter
     g.interaction.stationGate = (def) => (this.live() && def.kind === 'upgrade' && /repair/i.test(def.name) ? boothRefusal(this.view()) : null);
   }
@@ -59,8 +121,7 @@ export class KiosksAndMods {
     const inv = g.session.inv;
     this.t += dt;
     this.askT = Math.max(0, this.askT - dt);
-    const held = inv.slots[inv.activeSlot] ?? null;
-    if (this.mods.update(dt, inv.slots, g.weapons.holstered || g.weapons.hidden ? null : held, g.weapons.adsAmount)) g.audio.play('pistol_slide', { priority: 2, volume: 0.7, rate: 1.4 });
+    this.mods.update(dt, inv.slots);
 
     // a mod part lying about, picked up in passing
     if (alive && this.askT <= 0) {
@@ -83,9 +144,11 @@ export class KiosksAndMods {
       const spent = k >> KBIT.spent;
       if (spent >= pend.spent + MOD_COST[pend.i]!) {
         this.pending = null;
+        const before = pend.c.ammo.magSize;
         this.mods.fit(pend.c, pend.i);
         g.audio.play('upgrade_ok', { priority: 2 });
-        g.feed(`${MODS[pend.i]!.word} FITTED  -  ${MODS[pend.i]!.what.toUpperCase()}`, 'good');
+        const gun = WEAPONS[pend.c.id].short;
+        g.feed(pend.i === MOD.drum ? `BIG MAGAZINE ON THE ${gun}  -  ${before} -> ${pend.c.ammo.magSize} A LOAD` : `FROST ROUNDS IN THE ${gun}  -  WHAT THEY HIT IS SLOWED`, 'good');
       } else if (this.t > pend.until) this.pending = null;
     }
   }
@@ -112,6 +175,8 @@ export class KiosksAndMods {
     });
     const found = (n: number): number => ZaryaStory.count(n & ((1 << KBIT.spent) - 1));
     const parts = ZaryaStory.modParts(v);
+    // the first mod part the squad finds: Timur says what it is for (once a run, whoever found it)
+    if (found(k) > 0 && found(was) === 0) this.say?.('modPart');
     MOD_PARTS.forEach((_, i) => {
       const bit = 1 << (KBIT.part + i);
       if (!(k & bit) || was & bit) return;
@@ -164,15 +229,15 @@ export class KiosksAndMods {
       if (d > R) continue;
       // the story's own building comes first at a bench; a mod comes before taking what was built
       const first = TOWN.recipes.some((_, r) => ZaryaStory.can(v, 'build', r)) ? d + 0.05 : d - 0.05;
-      const offer = benchOffer(held.id, this.mods.mask(held), parts, bench.main);
+      const offer = benchOffer(held.id, this.mods.mask(held), parts);
       if (offer.i >= 0) {
         const m = MODS[offer.i]!;
         const busy = this.pending !== null;
         out.push({
           id: `zy-mod-${offer.i}`,
           dist: first,
-          text: `FIT ${m.name}`,
-          sub: busy ? 'Fitting...' : `${m.what}. ${MOD_COST[offer.i]} of the squad's ${parts} mod part${parts === 1 ? '' : 's'}`,
+          text: `FIT ${m.name.replace(/^A /, '')} TO THE ${WEAPONS[held.id].short}`,
+          sub: busy ? 'Fitting...' : `${fitPreview(held, offer.i)}. Uses ${MOD_COST[offer.i]} of the squad's ${parts} mod part${parts === 1 ? '' : 's'}`,
           tone: 'good',
           hold: 1.2,
           enabled: !busy,
@@ -183,8 +248,6 @@ export class KiosksAndMods {
             this.act('mod', offer.i);
           },
         });
-      } else if (offer.short === 'bench' && parts >= MOD_COST[0]) {
-        out.push({ id: 'zy-mod-bench', dist: first + 0.1, text: 'WORKBENCH', sub: "The Charge mod wants a proper bench: Timur's, in the garages", tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
       } else if (offer.short === 'parts' && found > 0 && d <= R * 0.7) {
         out.push({ id: 'zy-mod-parts', dist: first + 0.1, text: 'WORKBENCH', sub: parts ? `A mod wants more parts: the squad has ${parts}` : 'No mod parts left. The kiosks each hold one', tone: 'warn', hold: 0, enabled: false, onUse: () => {} });
       }
@@ -200,17 +263,19 @@ export class KiosksAndMods {
     const held = inv.slots[inv.activeSlot] ?? null;
     const mask = this.mods.mask(held);
     if (!mask) return;
-    const word = modWord(mask, this.mods.isCharged(held));
+    const word = modWord(mask);
     st.weapon = { ...w, tierLabel: w.tierLabel ? `${w.tierLabel} · ${word}` : word };
   }
 
-  /** The mods' line in the journal: what the squad holds, what is fitted to the gun in hand. */
-  journalLine(v: StoryView): string | null {
+  /**
+   * The journal's mods section (from the tram on, or once a part is found): the parts the squad holds, what each mod
+   * does and needs and which of this player's guns wear it, and where the parts are.
+   */
+  journalRows(v: StoryView): string[] | null {
     const found = ZaryaStory.count(v.k & ((1 << KBIT.spent) - 1));
-    if (!found) return null;
-    const inv = this.g.session.inv;
-    const names = modNames(this.mods.mask(inv.slots[inv.activeSlot] ?? null));
-    return `Mod parts: ${ZaryaStory.modParts(v)} to fit (${found} of ${SHUTTERS.length + MOD_PARTS.length} found).${names ? ` The gun in your hands wears: ${names}.` : ''}`;
+    if (!found && v.ch < CH.act2) return null;
+    const guns = this.g.session.inv.slots.flatMap((c) => (c ? [{ name: WEAPONS[c.id].short, mask: this.mods.mask(c) }] : []));
+    return modJournal(v, guns);
   }
 }
 

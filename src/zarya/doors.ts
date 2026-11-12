@@ -11,6 +11,7 @@ import type { Level } from '../world/level';
 import type { NavGrid } from '../world/nav';
 import { GATES } from './places';
 import { G, ZaryaStory, type StoryView } from './story';
+import { obstacleOpen } from './obstacles';
 
 function set(level: Level, nav: NavGrid, c: BoxCollider, shut: boolean, shots = shut): boolean {
   if (c.blocksMove === shut) return false;
@@ -35,6 +36,10 @@ export function applyDoors(level: Level, v: StoryView): void {
   }
   changed = set(level, level.nav, h.coldDoor, ZaryaStory.coldShut(v)) || changed;
   changed = set(level, fl.navOf(h.berlogaArea), h.keyDoor, ZaryaStory.keyDoorShut(v)) || changed;
+  // ---- obstacles (round 3): the shed door, the boards, the barricade, the ice stop walkers and shots until opened ----
+  h.obstacles.forEach((c, i) => {
+    if (c) changed = set(level, level.nav, c, !obstacleOpen(v, i)) || changed;
+  });
   const shutUp = !ZaryaStory.did(v, G.escalator);
   if (h.escalator.closed !== shutUp) {
     h.escalator.closed = shutUp;

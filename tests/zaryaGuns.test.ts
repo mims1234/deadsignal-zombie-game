@@ -5,7 +5,7 @@ import { createCarried } from '../src/logic/economy';
 import { reelFor, prizeKey } from '../src/logic/mysteryBox';
 import { decodePrize } from '../src/logic/sharedLoot';
 import { getWeaponStats } from '../src/logic/weaponStats';
-import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, stepGauge } from '../src/logic/zaryaGuns';
+import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, nailsDue, spinRate, stepGauge, stepSpin } from '../src/logic/zaryaGuns';
 import { Rng } from '../src/logic/rng';
 import { LIFE, SessionSim } from '../src/sim/serverHost';
 import type { MapId } from '../src/world/layout/data';
@@ -15,7 +15,7 @@ describe("ZARYA's guns: the table", () => {
     const got = Object.fromEntries(ZARYA_GUN_IDS.map((id) => [id, createCarried(id).ammo]));
     expect([got.signalka!.mag, got.signalka!.reserve]).toEqual([1, 12]);
     expect([got.arbalet!.mag, got.arbalet!.reserve]).toEqual([1, 30]);
-    expect([got.gvozdomyot!.mag, got.gvozdomyot!.reserve]).toEqual([60, 360]);
+    expect([got.gvozdomyot!.mag, got.gvozdomyot!.reserve]).toEqual([150, 450]);
     expect([got.salyut!.mag, got.salyut!.reserve]).toEqual([1, 6]);
     expect([got.ottepel!.mag, got.ottepel!.reserve]).toEqual([100, 0]);
     expect([got.zenit!.mag, got.zenit!.reserve]).toEqual([12, 0]);
@@ -27,12 +27,16 @@ describe("ZARYA's guns: the table", () => {
     expect([ZARYA_GUNS.signalka.markTime, ZARYA_GUNS.signalka.markMul]).toEqual([10, 2]);
     expect([W.arbalet.damage, W.arbalet.headshotMul, W.arbalet.reloadEmpty, W.arbalet.noise, ZARYA_GUNS.arbalet.pierce]).toEqual([320, 2.5, 1.5, 0, 2]);
     expect(W.gvozdomyot.auto).toBe(true);
-    // about 900 a minute (a hair faster on paper, so that a 60 Hz simulation makes it exactly four frames a nail)
-    expect(60 / W.gvozdomyot.fireInterval).toBeGreaterThanOrEqual(900);
-    expect(60 / W.gvozdomyot.fireInterval).toBeLessThan(930);
-    expect(Math.ceil(W.gvozdomyot.fireInterval * 60 - 1e-9)).toBe(4);
-    expect([W.gvozdomyot.damage, W.gvozdomyot.reloadEmpty]).toEqual([42, 2.2]);
+    // a minigun: 1500-1800 a minute flat out, a 150-nail drum, a long reload, half a second to spin up
+    expect(60 / W.gvozdomyot.fireInterval).toBeGreaterThanOrEqual(1500);
+    expect(60 / W.gvozdomyot.fireInterval).toBeLessThanOrEqual(1800);
+    expect([W.gvozdomyot.damage, W.gvozdomyot.magSize, W.gvozdomyot.reloadEmpty, W.gvozdomyot.reloadTactical]).toEqual([28, 150, 4.5, 4.5]);
+    expect(ZARYA_GUNS.gvozdomyot.spinUp).toBe(0.5);
     expect(ZARYA_GUNS.gvozdomyot.impulse).toBeGreaterThan(1);
+    // heavy to carry, and slower still while it turns
+    expect(W.gvozdomyot.moveMul).toBeLessThan(W.rifle.moveMul);
+    expect(ZARYA_GUNS.gvozdomyot.slow).toBeGreaterThan(0.1);
+    expect(ZARYA_GUNS.gvozdomyot.slow).toBeLessThan(0.3);
     expect([W.salyut.damage, W.salyut.reloadEmpty, ZARYA_GUNS.salyut.rockets, ZARYA_GUNS.salyut.blastRadius]).toEqual([420, 3, 5, 4]);
     expect([W.ottepel.damage, ZARYA_GUNS.ottepel.range, ZARYA_GUNS.ottepel.cone, ZARYA_GUNS.ottepel.drain, ZARYA_GUNS.ottepel.refill]).toEqual([900, 10, 50, 14, 6]);
     expect([W.zenit.damage, W.zenit.fireInterval, ZARYA_GUNS.zenit.range, ZARYA_GUNS.zenit.cone, ZARYA_GUNS.zenit.stagger, ZARYA_GUNS.zenit.bossStagger]).toEqual([0, 1.2, 18, 60, 3.5, 1]);
@@ -41,8 +45,6 @@ describe("ZARYA's guns: the table", () => {
   it('is the top tier: more a second than the rifle, a bigger volley than the HX-7, and gentler on whoever fires it', () => {
     const dps = (id: 'rifle' | 'gvozdomyot') => WEAPONS[id].damage / WEAPONS[id].fireInterval;
     expect(dps('gvozdomyot')).toBeGreaterThan(dps('rifle') * 1.5);
-    // a nail shoves at poise harder than a shambler or an armoured one can stand
-    expect(WEAPONS.gvozdomyot.damage * ZARYA_GUNS.gvozdomyot.impulse).toBeGreaterThan(95);
     expect(WEAPONS.salyut.damage * ZARYA_GUNS.salyut.rockets).toBeGreaterThan(WEAPONS.rpg.damage * 5);
     // the whole volley at your feet hurts less than half of one HX-7 rocket there
     expect(WEAPONS.salyut.damage * ZARYA_GUNS.salyut.selfMul * ZARYA_GUNS.salyut.rockets).toBeLessThan(WEAPONS.rpg.damage * ROCKET.selfMul * 0.5);
@@ -74,6 +76,86 @@ describe("ZARYA's guns: the table", () => {
     expect(isZaryaGun('ottepel')).toBe(true);
     expect(isZaryaGun('rifle')).toBe(false);
     expect(isZaryaGun('raijin')).toBe(false);
+  });
+});
+
+describe("the Gvozdomyot's barrels", () => {
+  /** Damage a second over a whole magazine and its reload (the nail gun's spin-up counted), for every gun held. */
+  const sustained = (id: keyof typeof WEAPONS): number => {
+    const d = WEAPONS[id];
+    const reload = d.reloadStyle === 'magazine' ? d.reloadEmpty : d.shellStart + d.magSize * d.shellEach + d.shellEnd;
+    let firing = d.magSize * d.fireInterval;
+    if (id === 'gvozdomyot') {
+      // the drum emptied from still: count the nails that leave while the barrels come up to speed
+      let spin = 0;
+      let owed = 0;
+      let left = d.magSize;
+      firing = 0;
+      while (left > 0) {
+        spin = stepSpin(spin, true, 1 / 60);
+        const due = nailsDue(owed, spin, 1 / 60, d.fireInterval);
+        owed = due.owed;
+        left -= due.n;
+        firing += 1 / 60;
+      }
+    }
+    return (d.damage * d.pellets * d.magSize) / (firing + reload);
+  };
+
+  it('spins up over half a second and down a little slower, never past still or full', () => {
+    let s = 0;
+    for (let i = 0; i < 30; i++) s = stepSpin(s, true, 1 / 60);
+    expect(s).toBeCloseTo(1, 5);
+    expect(stepSpin(1, true, 1)).toBe(1);
+    for (let i = 0; i < 30; i++) s = stepSpin(s, false, 1 / 60);
+    expect(s).toBeGreaterThan(0.2);
+    expect(stepSpin(0.1, false, 1)).toBe(0);
+  });
+
+  it('fires nothing at first, then faster and faster to its full rate', () => {
+    expect(spinRate(0)).toBe(0);
+    expect(spinRate(ZARYA_GUNS.gvozdomyot.spinFire - 0.01)).toBe(0);
+    expect(spinRate(ZARYA_GUNS.gvozdomyot.spinFire)).toBeCloseTo(ZARYA_GUNS.gvozdomyot.rateLow);
+    expect(spinRate(0.6)).toBeGreaterThan(spinRate(0.4));
+    expect(spinRate(1)).toBe(1);
+  });
+
+  it('keeps its full rate exactly at 60 and at 30 frames a second (a nail is about two frames)', () => {
+    const I = WEAPONS.gvozdomyot.fireInterval;
+    for (const fps of [60, 30, 144]) {
+      let owed = 0;
+      let n = 0;
+      for (let i = 0; i < fps * 10; i++) {
+        const d = nailsDue(owed, 1, 1 / fps, I);
+        owed = d.owed;
+        n += d.n;
+      }
+      expect(Math.abs(n - 10 / I)).toBeLessThanOrEqual(1);
+    }
+    // and the first nail leaves in about a fifth of a second from still
+    let spin = 0;
+    let owed = 0;
+    let t = 0;
+    for (; t < 1; t += 1 / 60) {
+      spin = stepSpin(spin, true, 1 / 60);
+      const d = nailsDue(owed, spin, 1 / 60, I);
+      owed = d.owed;
+      if (d.n) break;
+    }
+    expect(t).toBeGreaterThan(0.1);
+    expect(t).toBeLessThan(0.3);
+  });
+
+  it('a drum lasts about five seconds, its reload about as long, and over both it is still the best gun held', () => {
+    const G = WEAPONS.gvozdomyot;
+    expect(G.magSize * G.fireInterval).toBeGreaterThan(4.5);
+    expect(G.magSize * G.fireInterval).toBeLessThan(6.5);
+    const nail = sustained('gvozdomyot');
+    for (const id of ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'salyut', 'raketa'] as const) expect(nail).toBeGreaterThan(sustained(id));
+    // ...but not by a mile: within a quarter of the next best
+    expect(nail).toBeLessThan(sustained('hanafubuki') * 1.25);
+    // and each nail does less than the old one did (42)
+    expect(G.damage).toBeLessThan(42);
   });
 });
 

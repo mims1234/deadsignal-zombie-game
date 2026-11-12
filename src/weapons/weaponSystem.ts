@@ -13,7 +13,7 @@ import { canFire, cancelReload, consumeRound, reloadProgress, requestShellStop, 
 import { applyPlate, canApplyPlate, type Vitals, zombieHitDamage } from '../logic/damage';
 import { activeWeapon, type CarriedWeapon, type Inventory } from '../logic/economy';
 import { falloffMul, getWeaponStats, type WeaponStats } from '../logic/weaponStats';
-import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, pullToward, stepGauge, stepSuck } from '../logic/zaryaGuns';
+import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, nailsDue, pullToward, stepGauge, stepSpin, stepSuck } from '../logic/zaryaGuns';
 import type { Player } from '../player/player';
 import type { GameRenderer } from '../render/renderer';
 import type { HudEvent, HudWeaponInfo } from '../ui/hudTypes';
@@ -122,6 +122,15 @@ export class WeaponSystem {
   private vacFxT = 0;
   private vacLoop: LoopHandle | null = null;
   private readonly vacHeld = new Map<object, number>();
+  /**
+   * The Gvozdomyot (`nailer`): how far up to speed its barrel cluster is (0..1), the share of a nail owed from the last
+   * frame (at 1700 a minute a nail is about two frames, so the rate is kept exactly), its motor's whine, and where the
+   * cluster has turned to (the viewmodel shows it).
+   */
+  private spin = 0;
+  private nailOwed = 0;
+  private spinLoop: LoopHandle | null = null;
+  private spinAngle = 0;
   private readonly rayHit = makeRayHit();
   private readonly camPos = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
@@ -225,9 +234,21 @@ export class WeaponSystem {
     return this.utility?.kind === 'plate' ? this.utility.t / this.utility.duration : -1;
   }
 
-  /** Movement blockers: cannot sprint while firing, aiming or applying a plate. */
+  /** Movement blockers: cannot sprint while firing, aiming or applying a plate (or with the nail gun's barrels turning). */
   get blocksSprint(): boolean {
-    return this.adsT > 0.05 || this.utility?.kind === 'plate' || this.fireBuffer > 0.02;
+    return this.adsT > 0.05 || this.utility?.kind === 'plate' || this.fireBuffer > 0.02 || this.spin > 0.1;
+  }
+
+  /** How fast the gun in hand lets its carrier walk (its weight; the nail gun's slower still while its barrels turn). */
+  get moveMul(): number {
+    const d = this.def;
+    if (!d) return 1;
+    return d.id === 'gvozdomyot' ? d.moveMul * (1 - ZARYA_GUNS.gvozdomyot.slow * this.spin) : d.moveMul;
+  }
+
+  /** The nail gun's barrels: how far up to speed, 0..1 (0 with anything else in hand). */
+  get barrelSpin(): number {
+    return this.spin;
   }
 
   /** Current crosshair spread in degrees. */
@@ -302,6 +323,8 @@ export class WeaponSystem {
     this.vacOn = false;
     this.vacT = 0;
     this.stopVacuum();
+    this.spin = this.nailOwed = 0;
+    this.stopSpin();
     for (const r of this.allRigs()) r.reset();
     this.hideAll();
     this.host.renderer.zoom = 1;
@@ -331,6 +354,9 @@ export class WeaponSystem {
     // (the Raketa: a suck cut short fires nothing; what it swallowed stays in it)
     this.vacOn = false;
     this.stopVacuum();
+    // (the nail gun's barrels wind down by themselves; only the whine is cut)
+    this.nailOwed = 0;
+    this.stopSpin();
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -390,6 +416,10 @@ export class WeaponSystem {
       this.vacOn = false;
       this.stopVacuum();
     }
+    if (!carried || carried.id !== 'gvozdomyot') {
+      this.spin = this.nailOwed = 0;
+      this.stopSpin();
+    }
 
     // ---- weapon logic ----
     if (carried && s && d) {
@@ -421,6 +451,8 @@ export class WeaponSystem {
       if (d.id === 'ottepel') this.steam(dt, carried, s, wantsFire && ready);
       // (the Raketa sucks while the trigger is held and fires what it swallowed when it is let go)
       else if (d.id === 'raketa') this.vacuum(dt, carried, d, s, wantsFire && ready, !input.locked && ready);
+      // (the nail gun spins its barrels up while the trigger or the aim is held, and fires as fast as they turn)
+      else if (d.id === 'gvozdomyot') this.nailer(dt, carried, d, s, wantsFire && ready, adsWanted && ready, input);
       else if (wantsFire && ready && this.cooldown <= 0) {
         this.tryFire(carried, d, s, input);
       }
@@ -498,10 +530,15 @@ export class WeaponSystem {
     this.reloadSfx.length = 0;
     if (d.reloadStyle === 'magazine') {
       const dur = wasEmpty ? s.reloadEmpty : s.reloadTactical;
-      const pre = c.id === 'rifle' ? 'rifle' : 'pistol';
+      const pre = c.id === 'rifle' || c.id === 'gvozdomyot' ? 'rifle' : 'pistol';
       this.reloadSfx.push({ at: dur * 0.12, id: `${pre}_mag_out` as SoundId });
       this.reloadSfx.push({ at: dur * d.reloadTransferAt - 0.08, id: `${pre}_mag_in` as SoundId });
-      if (wasEmpty) this.reloadSfx.push({ at: dur * 0.9, id: (c.id === 'rifle' ? 'rifle_bolt' : 'pistol_slide') as SoundId });
+      if (c.id === 'gvozdomyot') {
+        // the nail gun's drum: unlatched, the empty one dropped, the new one on, the feed threaded, the motor cranked
+        this.reloadSfx.push({ at: dur * 0.3, id: 'impact_metal' as SoundId });
+        this.reloadSfx.push({ at: dur * 0.74, id: 'pistol_slide' as SoundId });
+        this.reloadSfx.push({ at: dur * 0.9, id: 'rifle_bolt' as SoundId });
+      } else if (wasEmpty) this.reloadSfx.push({ at: dur * 0.9, id: (c.id === 'rifle' ? 'rifle_bolt' : 'pistol_slide') as SoundId });
     }
   }
 
@@ -886,10 +923,11 @@ export class WeaponSystem {
         kill = res.kill;
         if (this.shotIndex % 2 === 0) host.fx.tracer(this.muzzleW, this.tmp2.set(res.x, res.y, res.z), color);
         if (res.surface && res.surface !== 'flesh' && this.shotIndex % 3 === 0) host.audio.play(res.surface === 'metal' ? 'impact_metal' : res.surface === 'wood' ? 'impact_wood' : 'impact_concrete', { pos: { x: res.x, y: res.y, z: res.z }, volume: 0.5, priority: 0, rate: 1.2 + Math.random() * 0.3 });
-        rate = 1.55;
-        volume = 0.5;
-        kick = 0.55;
-        smoke = this.shotIndex % 4 === 0 ? false : null;
+        // (at 1700 a minute, a bang every other nail is already a roar; the motor's whine is `nailer`'s)
+        rate = 1.75;
+        volume = this.shotIndex % 2 === 0 ? 0.45 : 0;
+        kick = 0.4;
+        smoke = this.shotIndex % 6 === 0 ? false : null;
         break;
       }
       case 'salyut': {
@@ -939,7 +977,7 @@ export class WeaponSystem {
     if (hit && c.id !== 'zenit') host.audio.play(kill ? 'kill_confirm' : head ? 'hit_head' : 'hit_body', { priority: 2, volume: kill ? 0.8 : 0.6 });
 
     // ---- feedback, as the stock guns give it: sound, recoil, flash, viewmodel, smoke, noise ----
-    host.audio.play(sound, { priority: 3, rate: rate * (0.97 + Math.random() * 0.06), volume });
+    if (volume > 0) host.audio.play(sound, { priority: 3, rate: rate * (0.97 + Math.random() * 0.06), volume });
     const adsMul = 1 - 0.3 * this.adsAmount;
     const kp = s.recoilPitch * DEG * adsMul * (0.85 + Math.random() * 0.3);
     const ky = s.recoilYaw * DEG * adsMul * (Math.random() * 2 - 1);
@@ -1222,6 +1260,42 @@ export class WeaponSystem {
     this.vacLoop = null;
   }
 
+  /**
+   * The Gvozdomyot, one frame: a rotary nailer. Held trigger (`want`) or aim (`rev`) spins the barrel cluster up over
+   * half a second (never while the drum is being changed); it fires once the barrels turn fast enough and faster as
+   * they come up to speed, to 1700 a minute; let go, they wind down by themselves. The motor whines higher as they do.
+   */
+  private nailer(dt: number, c: CarriedWeapon, d: WeaponDef, s: WeaponStats, want: boolean, rev: boolean, input: WeaponInput): void {
+    const G = ZARYA_GUNS.gvozdomyot;
+    const reloading = !!c.ammo.reload;
+    this.spin = stepSpin(this.spin, (want || rev) && !reloading, dt);
+    this.spinAngle = (this.spinAngle + dt * this.spin * 34) % (Math.PI * 2);
+    // the motor's whine climbs with the barrels
+    if (this.spin > 0.02) {
+      this.spinLoop ??= this.host.audio.startLoop('transmitter', { volume: 0, rate: G.whineLow, fadeIn: 0.05 });
+      this.spinLoop.setRate(G.whineLow + (G.whineHigh - G.whineLow) * this.spin);
+      this.spinLoop.setVolume(0.18 + 0.5 * this.spin, 0.05);
+    } else this.stopSpin();
+    if (!want || reloading) {
+      this.nailOwed = 0;
+      return;
+    }
+    // dry: one click, and the drum is changed if there is another
+    if (c.ammo.mag <= 0) {
+      if (this.cooldown <= 0) this.tryFire(c, d, s, input);
+      return;
+    }
+    const due = nailsDue(this.nailOwed, this.spin, dt, s.fireInterval);
+    this.nailOwed = due.owed;
+    for (let i = 0; i < Math.min(4, due.n) && c.ammo.mag > 0; i++) this.tryFire(c, d, s, input);
+  }
+
+  private stopSpin(): void {
+    if (!this.spinLoop) return;
+    this.spinLoop.stop(0.25);
+    this.spinLoop = null;
+  }
+
   // ---------------------------------------------------------------------------------------------
   // utility (grenade / armour plate)
   // ---------------------------------------------------------------------------------------------
@@ -1327,6 +1401,12 @@ export class WeaponSystem {
       pose.reloadPhase = 'none';
       pose.reloadT = 0;
       pose.reloadEmpty = false;
+    }
+    // (the nail gun's barrel cluster: how fast it turns, and where it has turned to)
+    if (carried.id === 'gvozdomyot' && 'spin' in rig) {
+      const r = rig as unknown as { spin: number; spinAngle: number };
+      r.spin = this.spin;
+      r.spinAngle = this.spinAngle;
     }
     rig.update(pose, dt);
   }

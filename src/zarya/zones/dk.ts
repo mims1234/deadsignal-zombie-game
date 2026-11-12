@@ -12,7 +12,9 @@
  *                    south of it, the box office north of the way in, the cloakroom along the south wall
  *   the museum       the long room north of the foyer (a doorway from the foyer, another from the hall's cross aisle)
  *   the auditorium   west of the foyer through three doorways: two blocks of seats either side of the middle aisle,
- *                    a cross aisle half way down, the stage across the west end with its wings either side
+ *                    a cross aisle half way down, the stage across the west end with its wings either side (Baba
+ *                    Yaga's stage, `zarya/stage.ts`: the fly gallery in the north wing, the revolve's winch in the
+ *                    south, the orchestra pit and its trap levers, the follow-spot at the back of the stalls)
  */
 import { yawTo, type PeopleFn, type PersonRole, type Rect, type Spot } from '../types';
 
@@ -36,7 +38,7 @@ export const DK = {
   /** A glass case in the middle of the museum's floor with a sickle and a hammer (a heavy blow breaks it), and against the north wall the museum guard's locked cabinet with the Cossack sabre behind its grille (the spot is its front). */
   sickleCase: { x: -144, z: -46 } as Spot,
   cabinet: { x: -154, z: -50.5 } as Spot,
-  /** The auditorium: the stage across its west end (boards 0.3 m up: walkers step onto it), the thrust in front of it, the hut on its revolve (6 m across), the lever on its stand in front of the south pier of the stage's arch (reached from the hall floor). */
+  /** The auditorium: the stage across its west end (boards 0.3 m up: walkers step onto it), the thrust in front of it, the hut on its revolve (6 m across). (`lever`: where the old single lever stood, kept for older scripts; nothing is there now.) */
   stage: { x0: -189.5, z0: -37, x1: -172, z1: -9 } as Rect,
   apron: { x0: -172, z0: -32, x1: -170.4, z1: -14 } as Rect,
   stageTop: 0.3,
@@ -55,6 +57,54 @@ export const DK = {
   cover: [{ x: -153.2, z: -14 }] as Spot[],
   /** Indoors: the infected come out of the wings (the front of each side aisle) and the cloakroom (behind its counter). */
   spawns: [[-168, -38.2], [-168, -7.8], [-112, 4], [-134.4, 6]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): the Hare's ears on the foyer cloakroom's counter; the gap in the class's line at the front of the stage (on its boards). */
+  side: {
+    ears: { x: -127, z: 2 } as Spot,
+    gap: { x: -173.4, z: -20.4 } as Spot,
+  },
+
+  // ---- Baba Yaga's stage (`zarya/stage.ts`): the machinery the squad works while she fights ----
+  /**
+   * The wings either side of the stage, at the boards' height (the walls at z = -40 and z = -6 are open across the
+   * stage's depth). The north one has the fly gallery along its back wall, the south one the revolve's winch.
+   */
+  northWing: { x0: -189.5, z0: -47, x1: -172.6, z1: -37 } as Rect,
+  southWing: { x0: -189.5, z0: -9, x1: -172.6, z1: 1 } as Rect,
+  /** The fly gallery: a deck 2.7 m up along the north wing's back wall, a steel stair up its east end (rising north). */
+  gallery: { x0: -189.5, z0: -47, x1: -172.6, z1: -42.6 } as Rect,
+  galleryTop: 2.7,
+  galleryStair: { x0: -174.6, z0: -42.6, x1: -172.6, z1: -38 } as Rect,
+  /** The orchestra pit: between the thrust and the front row, a low wall along the seats with a gap at the middle aisle. */
+  pit: { x0: -170.4, z0: -32, x1: -166, z1: -14 } as Rect,
+  /** The four machines, where each is worked from (the fly rail is up on the gallery: nobody reaches it from the floor). */
+  winch: { x: -174.4, z: -3.6 } as Spot,
+  trapLever: { x: -169.4, z: -29.4 } as Spot,
+  flyRail: { x: -181, z: -46.2 } as Spot,
+  spot: { x: -138.6, z: -30.6 } as Spot,
+  /** The traps in the boards: the revolve's own in its middle, and one at each corner round it (chalked squares, 1.6 m). */
+  traps: [{ x: -180, z: -23 }, { x: -185, z: -30.5 }, { x: -185, z: -15.5 }, { x: -175.5, z: -30.5 }, { x: -175.5, z: -15.5 }] as Spot[],
+  /** The fly bars over the stage, each a line across it at this x: a painted sky, the sandbags over the revolve, a painted moon. */
+  bars: [-185, -180, -175.5] as number[],
+  barTop: 6.3,
+  /** Where the carol-singers come out of the wings when she calls them. */
+  carols: [[-187.4, -40.2], [-183, -39.6], [-187.4, -4.4], [-181.5, -2.2]] as [number, number][],
+  /** The hut's ways about the theatre (the stage, the thrust, the pit, the middle aisle, the cross aisle) and how they join. */
+  walk: {
+    R: { x: -180, z: -23 },
+    W: { x: -185, z: -23 },
+    N1: { x: -185, z: -30.5 },
+    S1: { x: -185, z: -15.5 },
+    N2: { x: -175.5, z: -30.5 },
+    S2: { x: -175.5, z: -15.5 },
+    F: { x: -174.6, z: -23 },
+    A: { x: -171.2, z: -23 },
+    P: { x: -168.2, z: -23 },
+    M: { x: -160.6, z: -23 },
+    C: { x: -153.2, z: -23 },
+    CN: { x: -153.2, z: -33.5 },
+    CS: { x: -153.2, z: -18.4 },
+  } as Record<string, Spot>,
+  walkEdges: ['R-W', 'R-N1', 'R-S1', 'R-N2', 'R-S2', 'R-F', 'W-N1', 'W-S1', 'N1-N2', 'S1-S2', 'N2-F', 'S2-F', 'F-A', 'A-P', 'P-M', 'M-C', 'C-CN', 'C-CS'] as string[],
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */
@@ -71,7 +121,8 @@ export const dkPeople: PeopleFn = (add, r) => {
     const z0 = DK.axis + s * 10.4;
     for (const [x, dz] of [[-176.2, 0], [-177.6, 1], [-174.9, 1.3]] as const) face(x, z0 + s * dz, -150, DK.axis, 'masked', true, top);
     face(-171.3, DK.axis + s * 7.6, -150, DK.axis + s * 4, 'child', true, top);
-    face(-168.4, DK.axis + s * 5.2, hut.x, hut.z, 'child');
+    // (in the orchestra pit's walkway, clear of the band's chairs and the trap levers: Baba Yaga's stage)
+    face(-167.3, DK.axis + s * 6.4, hut.x, hut.z, 'child');
   }
 
   // ---- the auditorium: the audience, on its feet in the rows (the seats' own colliders keep walkers out: nobody here needs one) ----

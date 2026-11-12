@@ -291,7 +291,8 @@ export class CoopSession {
     // every hit goes to the simulation, which decides it and pays for it
     g.zombies.netDamage = this.started ? (z, a, h, y, pu, li, im, heavy) => this.toHost({ k: 'hit', z: z.netId, a: r1(a), h, y: r2(y), pu: r1(pu), li: r1(li), ...(im !== undefined && im !== 1 ? { im: r1(im) } : {}), ...(heavy ? { hv: 1 } : {}) }) : null;
     // ZARYA's guns: the Signalka's mark and the Zenit's flash are the simulation's to apply as well
-    g.zombies.netEffect = this.started ? (z, mk, sg) => this.toHost({ k: 'zfx', z: z.netId, mk: r1(mk), sg: r1(sg) }) : null;
+    // (ZARYA round 3: `pn`, the Rogatina's pin)
+    g.zombies.netEffect = this.started ? (z, mk, sg, pn) => this.toHost({ k: 'zfx', z: z.netId, mk: r1(mk), sg: r1(sg), ...(pn ? { pn: r1(pn) } : {}) }) : null;
     g.zombies.carrierRig = (i) => g.cards.rigFor(i);
     g.cards.coopMode = this.started ? 'remote' : 'off';
     g.cards.onCoopCure = (id) => this.toHost({ k: 'cure', id });

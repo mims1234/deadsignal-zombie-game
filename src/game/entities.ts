@@ -12,7 +12,9 @@ import type { CrateDef, StationDef } from '../world/layout/data';
 import type { MaterialLib } from '../world/materials';
 import { createLootCrate, createPickupModel, createStationModel, type CrateModel, type PickupKind, type StationModel } from '../world/models';
 import type { MapId } from '../world/layout/data';
-import { createBoxMark, createGunDisplay, createMeleeDisplay } from '../world/models/boxDisplay';
+import { createBoxMark, createGunDisplay, createMeleeDisplay, createSackMark } from '../world/models/boxDisplay';
+// (ZARYA: the paid box is Ded Moroz's gift sack, model and all)
+import { createGiftSack } from '../world/models/giftSack';
 import type { GameCtx } from './ctx';
 
 /** closed -> (opened) spin -> offer -> gone. A box opens once per run. */
@@ -46,6 +48,8 @@ export class CrateRuntime {
   opens = 0;
   /** How much higher than a crate's the prize and the "?" float (a map that draws its box taller: ZARYA's sack). */
   lift = 0;
+  /** ZARYA's paid box is Ded Moroz's sack: its own model, a gold snowflake for its "?", and its own words. */
+  readonly sack: boolean;
   constructor(
     readonly def: CrateDef,
     readonly model: CrateModel,
@@ -54,7 +58,10 @@ export class CrateRuntime {
   ) {
     this.reelFaces = reelFor(relics, map);
     this.cost = def.cost ?? 0;
-    this.mark = createBoxMark();
+    this.sack = isSack(map, def);
+    // (the sack: the prize starts down in its open mouth and rises out of it to spin over the top)
+    if (this.sack) this.lift = SACK_LIFT;
+    this.mark = this.sack ? createSackMark() : createBoxMark();
     this.mark.position.set(def.x, 1.55 + (def.y ?? 0), def.z);
   }
 
@@ -181,6 +188,19 @@ export class CrateRuntime {
   }
 }
 
+/** ZARYA: the paid mystery box is Ded Moroz's sack (every other map, and any free box, keeps its crate). */
+export function isSack(map: MapId | undefined, def: { cost?: number }): boolean {
+  return map === 'zarya' && (def.cost ?? 0) > 0;
+}
+
+/** How much higher than a crate's the sack's prize starts and floats (its mouth is about 1.2 m up). */
+export const SACK_LIFT = 0.32;
+
+/** What a box is called in the feed and its prompts. */
+export function boxWord(c: { sack: boolean }): string {
+  return c.sack ? "DED MOROZ'S SACK" : 'MYSTERY BOX';
+}
+
 export class StationRuntime {
   constructor(
     readonly def: StationDef,
@@ -244,7 +264,7 @@ export class Entities {
     this.root.name = 'Entities';
     ctx.worldRoot.add(this.root);
     for (const def of ctx.level.data.crates) {
-      const model = createLootCrate(def.region, ctx.mats);
+      const model = isSack(ctx.level.data.id, def) ? createGiftSack() : createLootCrate(def.region, ctx.mats);
       model.root.position.set(def.x, def.y ?? 0, def.z); // an upper floor's box stands on that floor
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);
@@ -343,7 +363,7 @@ export class Entities {
     if (c.cost) {
       if (!spendCash(ctx.session.inv, c.cost)) spendCash(ctx.session.inv, ctx.session.inv.cash);
       ctx.hudEvent({ type: 'cash', amount: -c.cost });
-      ctx.feed(`MYSTERY BOX  -$${c.cost}`, 'normal');
+      ctx.feed(`${boxWord(c)}  -$${c.cost}`, 'normal');
       return;
     }
     const cash = rollCrateReward(c.def.region, ctx.session.inv, ctx.rng).cash;
@@ -402,7 +422,7 @@ export class Entities {
       if (c.model.body) c.model.body.visible = c.phase !== 'closed' || d2 < this.bodyDistance * this.bodyDistance;
       if (d2 > 90 * 90 && c.phase !== 'spin' && c.phase !== 'offer' && !(c.cost && c.phase === 'gone')) continue;
       if (c.opened && c.openT < 1) {
-        c.openT = Math.min(1, c.openT + dt / 0.45);
+        c.openT = Math.min(1, c.openT + dt / (c.sack ? 0.8 : 0.45)); // (the sack's cord is untied, then its mouth opened)
         c.model.setOpen(c.openT);
       }
       c.model.update(dt, time);
@@ -414,7 +434,7 @@ export class Entities {
         ctx.fx.sparkle(at, 0xffc860, 18);
       } else if (ev === 'expire') {
         if (!c.cost) c.model.setLooted(true);
-        ctx.feed('THE MYSTERY BOX TOOK ITS PRIZE BACK', 'warn');
+        ctx.feed(c.sack ? 'BACK INTO THE SACK IT WENT' : 'THE MYSTERY BOX TOOK ITS PRIZE BACK', 'warn');
       } else if (ev === 'rearm' && !this.coop) {
         // co-op: the simulation closes it (and says so), and moves a box that moves
         c.reset();
@@ -555,7 +575,7 @@ export class Entities {
       c.spin(rollBox(c.def.region, inv, ctx.rng, c.relics, this.boxAt()), this.root, ctx.mats);
       ctx.audio.play('crate_open', { pos: { x: c.def.x, y: 0.6, z: c.def.z }, priority: 2 });
       ctx.hudEvent({ type: 'cash', amount: -c.cost });
-      ctx.feed(`MYSTERY BOX  -$${c.cost}`, 'normal');
+      ctx.feed(`${boxWord(c)}  -$${c.cost}`, 'normal');
       return true;
     }
     const cash = rollCrateReward(c.def.region, inv, ctx.rng).cash;
@@ -612,7 +632,7 @@ export class Entities {
   offerText(c: CrateRuntime): { text: string; sub: string; mine: boolean } {
     const p = c.prize!;
     if (this.coop && c.owner && c.owner !== this.coop.me()) {
-      return { text: `${prizeLabel(p)}`, sub: `${this.coop.nameOf(c.owner)} opened this box - their prize`, mine: false };
+      return { text: `${prizeLabel(p)}`, sub: `${this.coop.nameOf(c.owner)} opened ${c.sack ? 'the sack' : 'this box'} - their prize`, mine: false };
     }
     const inv = this.ctx.session.inv;
     const held = inv.slots[inv.activeSlot];
@@ -624,7 +644,7 @@ export class Entities {
         ? `Replaces your ${WEAPONS[held.id].short} - or leave it (${left}s)`
         : p.kind === 'melee' && swung && swung !== p.id && !inv.arsenal
           ? `Replaces what you swing - or leave it (${left}s)`
-          : `Leave it and it sinks back into the box (${left}s)`;
+          : `Leave it and it sinks back into the ${c.sack ? 'sack' : 'box'} (${left}s)`;
     return { text: `TAKE ${prizeLabel(p)}`, sub, mine: true };
   }
 

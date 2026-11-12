@@ -261,6 +261,8 @@ export const PEOPLE: readonly PersonDef[] = [
   },
   {
     id: 'lyudmila',
+    // (she says her part from the pageant in the fight: Baba Yaga's stage, `stage.ts`)
+    speaker: 'YAGA',
     name: 'LYUDMILA MARKOVNA',
     short: 'LYUDMILA',
     color: '#c7a0e8',

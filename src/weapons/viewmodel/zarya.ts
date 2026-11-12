@@ -71,6 +71,9 @@ class ZaryaRig implements ViewmodelRig {
   readonly ejectPort: THREE.Object3D;
   private fired = 0;
   private kick = 1;
+  /** The nail gun's barrel cluster: how fast it turns (0..1) and where it has turned to (set by the weapon system). */
+  spin = 0;
+  spinAngle = 0;
 
   constructor(
     readonly id: ZaryaGunId,
@@ -114,6 +117,7 @@ class ZaryaRig implements ViewmodelRig {
     this.inner.reset();
     this.fired = 0;
     this.kick = 1;
+    this.spin = 0;
   }
 
   dispose(): void {
@@ -341,65 +345,124 @@ export function createArbalet(tex: SharedTextures): ViewmodelRig {
 }
 
 // -------------------------------------------------------------------------------------------------
-// Gvozdomyot: a framing nailer made into a gun (an orange housing, a driver nose, the nail strip, gas and an air tank)
+// Gvozdomyot: a roofing nailer made into a rotary gun (a motor in an orange housing, six driver barrels turning in a
+// cluster, a bearing collar the other hand holds, a big nail drum under it, a cable from the battery to the motor)
 // -------------------------------------------------------------------------------------------------
 
 export function createGvozdomyot(tex: SharedTextures): ViewmodelRig {
   const inner = createRifle(tex);
-  const k = strip(inner, { housing: mat(0xcf5f16, 0.48, 0.1), tank: mat(0x5d6a70, 0.4, 0.6), nails: mat(0xb9bcc0, 0.3, 0.9) });
+  const k = strip(inner, { housing: mat(0xcf5f16, 0.48, 0.1), tank: mat(0x4f5a60, 0.42, 0.55), bore: mat(0x070707, 0.95), drum: mat(0x6b2a1e, 0.55, 0.25) });
+  const CF = 0.15; // where the barrel cluster starts (it turns about the bore)
+  const BL = 0.31; // its barrels' length
+  const DF = 0.035; // the drum's middle, on the gun's left side (where it is seen from behind the gun)
+  const DX = -0.085;
+  const DY = RB - 0.012;
+  const DR = 0.07;
   k.part((b) => {
     b.side('rubber', RIFLE_GRIP, 0.034, 0, 0.004, 0.9, 0);
-    b.side('rubber', RIFLE_FORE, 0.031, 0, 0.004, 0.9, 0);
-    // the housing, its vents and warning stripe
-    b.box('housing', 0.058, 0.086, 0.27, 0, RB - 0.004, F(0.075), 0.014);
-    for (let i = 0; i < 5; i++) b.box('blued', 0.06, 0.006, 0.012, 0, RB + 0.018, F(0.03 + i * 0.03), 0.001);
-    b.box('yellow', 0.0595, 0.016, 0.1, 0, RB - 0.03, F(0.12), 0.001);
-    // the nose: the driver's barrel in its guard rings, and the contact tip
-    b.cyl('steel', 0.012, 0.016, 0.25, 0, RB, F(0.335), 'z', 12);
-    for (const f of [0.26, 0.33, 0.4]) b.torus('blued', 0.022, 0.0034, 0, RB, F(f), undefined, 10);
-    b.box('blued', 0.006, 0.006, 0.15, 0, RB + 0.022, F(0.33), 0.001);
-    b.box('blued', 0.006, 0.006, 0.15, 0, RB - 0.022, F(0.33), 0.001);
-    b.box('steel', 0.026, 0.04, 0.024, 0, RB - 0.004, F(0.468), 0.003);
+    // the hand under the collar holds a short upright grip hung from it (not the rifle's fore-end: the barrels turn there)
+    b.side('rubber', RIFLE_FORE.filter(([, y]) => y < RB - 0.06), 0.031, 0, 0.004, 0.9, 0);
+    b.box('blued', 0.024, 0.04, 0.04, 0, RB - 0.06, F(0.222), 0.003);
+    // the motor: an orange housing with cooling fins along its top, a warning stripe, and its end cap at the back
+    b.box('housing', 0.074, 0.1, 0.23, 0, RB - 0.002, F(0.03), 0.016);
+    for (let i = 0; i < 7; i++) b.box('blued', 0.078, 0.008, 0.012, 0, RB + 0.03, F(-0.055 + i * 0.026), 0.001);
+    b.box('yellow', 0.0755, 0.018, 0.12, 0, RB - 0.034, F(0.06), 0.001);
+    b.cyl('tank', 0.03, 0.034, 0.024, 0, RB + 0.002, F(-0.092), 'z', 20);
+    b.cyl('steel', 0.012, 0.012, 0.01, 0, RB + 0.002, F(-0.108), 'z', 12);
+    // the gearbox ring the cluster turns out of
+    b.cyl('blued', 0.048, 0.05, 0.05, 0, RB, F(CF - 0.02), 'z', 22);
+    b.torus('steel', 0.047, 0.004, 0, RB, F(CF + 0.004), undefined, 22);
+    // the bearing collar the other hand holds the barrels by
+    b.add('blued', new THREE.CylinderGeometry(0.043, 0.043, 0.04, 22, 1, true).rotateX(-Math.PI / 2).translate(0, RB, F(0.222)));
+    b.torus('blued', 0.043, 0.004, 0, RB, F(0.202), undefined, 22);
+    b.torus('blued', 0.043, 0.004, 0, RB, F(0.242), undefined, 22);
     // trigger and guard
     b.box('steel', 0.006, 0.026, 0.006, 0, RB - 0.072, F(0.006), 0.001, { rx: 0.3 });
     b.box('blued', 0.018, 0.004, 0.064, 0, RB - 0.09, F(0.014), 0.0015);
-    // the gas canister on the right, the air tank behind as a stock, the line between them
-    b.cyl('red', 0.018, 0.018, 0.11, 0.044, RB - 0.012, F(0.06), 'z', 14);
-    b.cyl('steel', 0.009, 0.009, 0.014, 0.044, RB - 0.012, F(0.122), 'z', 10);
-    b.cyl('tank', 0.03, 0.03, 0.07, 0, RB - 0.012, F(-0.115), 'z', 18);
-    b.sphere('tank', 0.03, 0, RB - 0.012, F(-0.15), 1, 1, 0.5, 14);
-    b.cyl('steel', 0.032, 0.032, 0.008, 0, RB - 0.012, F(-0.084), 'z', 18);
-    rod(b, 'rubber', [0.028, RB + 0.02, F(-0.1)], [0.03, RB + 0.04, F(0.0)], 0.004);
+    // the feed chute from the drum into the motor's left side
+    b.box('metal', 0.03, 0.03, 0.05, DX + 0.04, RB + 0.004, F(DF + 0.012), 0.003);
+    // the battery on the right, its cable looping over to the motor
+    b.box('housing', 0.03, 0.07, 0.12, 0.054, RB - 0.016, F(-0.02), 0.006);
+    b.box('blued', 0.032, 0.012, 0.124, 0.054, RB + 0.02, F(-0.02), 0.002);
+    rod(b, 'rubber', [0.058, RB + 0.025, F(-0.07)], [0.05, RB + 0.05, F(-0.02)], 0.005);
+    rod(b, 'rubber', [0.05, RB + 0.05, F(-0.02)], [0.03, RB + 0.04, F(0.05)], 0.005);
     // a carrying rail along the top, with the open sights on it
-    b.box('blued', 0.016, 0.01, 0.22, 0, -0.016, F(0.1), 0.003);
-    b.box('blued', 0.014, 0.03, 0.016, 0, -0.034, F(0.0), 0.002);
-    b.box('blued', 0.014, 0.03, 0.016, 0, -0.034, F(0.2), 0.002);
+    b.box('blued', 0.016, 0.01, 0.24, 0, -0.016, F(0.09), 0.003);
+    b.box('blued', 0.014, 0.034, 0.016, 0, -0.036, F(-0.01), 0.002);
+    b.box('blued', 0.014, 0.034, 0.016, 0, -0.036, F(0.2), 0.002);
     b.box('blued', 0.004, 0.011, 0.006, 0.0065, -0.006, F(0.0), 0.0006);
     b.box('blued', 0.004, 0.011, 0.006, -0.0065, -0.006, F(0.0), 0.0006);
     b.box('blued', 0.0035, 0.011, 0.006, 0, -0.007, F(0.2), 0.0006);
     b.sphere('whiteDot', 0.0024, 0, -0.002, F(0.2), 1, 1, 1, 8);
   });
-  // the driver's cap at the back (it thumps back at every nail)
-  const cap = k.part((b) => {
-    b.cyl('blued', 0.031, 0.031, 0.04, 0, RB + 0.014, F(-0.075), 'z', 18);
-    b.cyl('housing', 0.034, 0.034, 0.01, 0, RB + 0.014, F(-0.06), 'z', 18);
-  });
-  // the nail strip in its rail, from under the nose back to the hand (out of the gun while the next goes in)
-  const strip0 = k.part((b) => {
-    b.box('metal', 0.02, 0.03, 0.36, 0, RB - 0.078, F(0.26), 0.002, { rx: 0.34 });
-    b.box('nails', 0.005, 0.02, 0.34, -0.0115, RB - 0.078, F(0.26), 0.0004, { rx: 0.34 });
-    b.box('nails', 0.005, 0.02, 0.34, 0.0115, RB - 0.078, F(0.26), 0.0004, { rx: 0.34 });
-    b.box('blued', 0.024, 0.036, 0.02, 0, RB - 0.134, F(0.096), 0.002, { rx: 0.34 });
-  });
-  inner.muzzle.position.set(0, RB, F(0.485));
-  return new ZaryaRig('gvozdomyot', inner, k.stock, k.own, {
+  // the barrel cluster: six drivers round a spindle, clamped three times, one of them banded yellow (so it is seen turning)
+  const cluster = new THREE.Group();
+  cluster.position.set(0, RB, F(CF));
+  inner.gun.add(cluster);
+  k.part((b) => {
+    b.cyl('blued', 0.011, 0.011, BL + 0.01, 0, 0, F(BL / 2), 'z', 10);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const x = Math.cos(a) * 0.025;
+      const y = Math.sin(a) * 0.025;
+      b.cyl('steel', 0.0072, 0.0076, BL, x, y, F(BL / 2), 'z', 8);
+      b.cyl('bore', 0.0045, 0.0045, 0.003, x, y, F(BL + 0.001), 'z', 8);
+      if (i === 0) b.cyl('yellow', 0.0083, 0.0083, 0.03, x, y, F(BL * 0.62), 'z', 8);
+    }
+    for (const f of [0.05, BL * 0.5, BL - 0.02]) b.cyl('blued', 0.036, 0.036, 0.012, 0, 0, F(f), 'z', 18);
+    // notches round the front clamp, so the turn shows end on too
+    for (let i = 0; i < 6; i++) {
+      const a = ((i + 0.5) / 6) * Math.PI * 2;
+      b.box('steel', 0.008, 0.012, 0.014, Math.cos(a) * 0.034, Math.sin(a) * 0.034, F(BL - 0.02), 0.001, { rz: a });
+    }
+  }, cluster);
+  // the drum: a fat round magazine of nails on the gun's left, a winding key on its face that turns as it empties
+  const drum = new THREE.Group();
+  drum.position.set(DX, DY, F(DF));
+  inner.gun.add(drum);
+  k.part((b) => {
+    b.cyl('drum', DR, DR, 0.072, 0, 0, 0, 'x', 28);
+    b.cyl('tank', DR + 0.004, DR + 0.004, 0.008, 0.036, 0, 0, 'x', 28);
+    b.cyl('tank', DR + 0.004, DR + 0.004, 0.008, -0.036, 0, 0, 'x', 28);
+    b.cyl('yellow', DR + 0.001, DR + 0.001, 0.014, 0, 0, 0, 'x', 28);
+    b.cyl('steel', 0.016, 0.016, 0.084, 0, 0, 0, 'x', 12);
+    // the latch the hand pulls to drop it
+    b.box('steel', 0.016, 0.03, 0.012, -0.03, -DR + 0.01, 0, 0.002);
+  }, drum);
+  // the winding key on its outer face
+  const key = k.part((b) => {
+    b.box('steel', 0.006, 0.012, 0.09, 0, 0, 0, 0.002);
+    b.cyl('steel', 0.009, 0.009, 0.012, 0, 0, F(0.042), 'x', 10);
+  }, drum);
+  key.position.x = -0.046;
+  inner.muzzle.position.set(0, RB, F(CF + BL + 0.01));
+  const root = inner.root;
+  let rig: ZaryaRig | null = null;
+  rig = new ZaryaRig('gvozdomyot', inner, k.stock, k.own, {
     flash: true,
+    // aimed, it is braced lower and to the right rather than sighted down (aiming keeps its barrels turning)
+    ads: [0.07, -0.05, 0.03],
     animate(pose, fired) {
+      const r = rig!;
+      cluster.rotation.z = r.spinAngle;
+      // the motor shakes the whole gun while the barrels turn, and harder as it fires
+      const shake = r.spin * 0.0011 + fired * 0.0016;
+      if (shake > 0 && !pose.reducedMotion) {
+        root.position.x += Math.sin(pose.time * 97) * shake;
+        root.position.y += Math.sin(pose.time * 131) * shake;
+      }
+      // the drum is changed: unlatched and dropped, gone, a new one up and on, the key turned to wind the feed
       const t = pose.reloadPhase === 'mag' ? clamp01(pose.reloadT) : 0;
-      strip0.visible = !(t > 0.22 && t < 0.5);
-      cap.position.z = 0.014 * fired;
+      const off = smooth(seg(t, 0.1, 0.3)) * (1 - smooth(seg(t, 0.46, 0.64)));
+      drum.position.set(DX - 0.08 * off, DY - 0.3 * off, F(DF) + 0.04 * off);
+      drum.rotation.z = -0.6 * off;
+      drum.visible = off < 0.98;
+      const wind = smooth(seg(t, 0.68, 0.86));
+      const left = pose.magSize > 0 ? 1 - pose.ammo / pose.magSize : 0;
+      key.rotation.x = t > 0 ? -wind * Math.PI * 3 : -left * Math.PI * 4;
     },
   });
+  return rig;
 }
 
 // -------------------------------------------------------------------------------------------------

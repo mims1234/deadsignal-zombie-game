@@ -15,8 +15,10 @@ import { PLAYER, WEAPONS } from '../config';
 import type { Zombie } from '../enemies/zombie';
 import type { Game } from '../game/game';
 import type { InteractionTarget } from '../game/interaction';
-import { addGun, createCarried, slotOf } from '../logic/economy';
-import { isFull } from '../logic/ammo';
+import { addCash, addGun, applyCrateReward, createCarried, slotOf } from '../logic/economy';
+import { addReserve, isFull } from '../logic/ammo';
+// ---- side stories (round 3, note 10): the places' own small stories (`sidestories.ts`) ----
+import { SIDE, sideChanges, sideJournal, sidePrompts, sideRewardWords, sideRow } from './sidestories';
 import { MELEE } from '../logic/melee';
 import type { HudState, MapDynamic } from '../ui/hudTypes';
 import { ZoneSwitch } from '../world/zones';
@@ -28,6 +30,8 @@ import { TownLook } from './look';
 import { SACK_EVERY, SACK_PLACES, nextSackPlace, sackPlaceOpen } from './sack';
 import { ZenitPhotos } from './photos';
 import { MorozkoQuestion } from './weakPoints';
+// ---- Baba Yaga's stage (`stage.ts`): the machines' prompts, the HUD's line for her, what changed on the stage ----
+import { MACHINE, MACHINES, machinePrompt, stageCues, yagaObjective, type Machine, type StageCue } from './stage';
 import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, GATES, INSTITUTE, RYNOK, STOPS, TETS, UPSTAIRS, ZARYA, ZARYA_ZONES, inInterior, inRect, inShelter, inStore, onSquare, type Spot, type ZaryaZone } from './places';
 import { AT, BENCHES, CH, CLUE, CLUES, COVERS, DOLLS, F, G, KEYS, ORNAMENTS, STORY, TOOLS, ZaryaStory, decodeStory, type StoryAct, type StoryView } from './story';
 // (kiosks and mods: the shutters, the weapon mods, the repair booth's tools)
@@ -39,6 +43,10 @@ import { CHAIN, OKHOTNIK, PART, POLICE, RECIPE, TOWN, Unlock, buyOffer, type Giv
 import { MOD_ICON, ornamentIcon, partIcon, toolIcon } from './items';
 import type { HudIcon, ItemCard } from '../ui/hudTypes';
 import { journalBuilds, journalIcons, type JournalBuild } from '../ui/hudItems';
+// ---- obstacles (round 3, notes 5 and 6): what only one weapon to swing gets through, and its look ----
+import { OBSTACLES, OBSTACLE_TOOL, OBSTACLE_WORDS, cacheReward, obstacleOpen, toolFor } from './obstacles';
+import { ObstacleLook } from './obstacleLook';
+import type { MeleeId } from '../logic/melee';
 
 /** How near a thing lying about has to be to be picked up in passing. */
 const PICKUP = 2.4;
@@ -115,6 +123,16 @@ const RIDE = { arrive: 1, clear: 1.7 };
 /** A free-roam town: asleep, every door open. */
 const ROAM: StoryView = { ...ZaryaStory.empty(), ch: CH.town, f: F.armed | F.released | F.gena | F.plug };
 
+/** ---- round 3 (notes 5 and 6): what each weapon to swing is for, said on the prompt that hands it over (by find, recipe or weapon id) ---- */
+const JOB: Record<string, string> = {
+  maul: 'It breaks padlocks',
+  fireAxe: 'It chops through boards and ice',
+  shashka: 'Its edge cuts frozen rope',
+  rogatina: 'Wind up a thrust: a charge stops on its crossguard',
+};
+/** The line said the first time each kind of obstacle is met (`lines.ts`). */
+const OBSTACLE_BEAT = { padlock: 'obsPadlock', boards: 'obsBoards', barricade: 'obsBarricade', ice: 'obsIce', lashing: 'obsLashing' } as const;
+
 /** The three rooms built beside the map, and the way into and out of each (the HUD points at these). */
 type Room = 'shelter' | 'upstairs' | 'canteen' | 'berloga';
 const ROOMS = ZARYA_ZONES.filter((q) => q.id === 'shelter' || q.id === 'upstairs' || q.id === 'canteen' || q.id === 'berloga');
@@ -171,6 +189,10 @@ export class ZaryaRuntime {
   request: ((a: StoryAct, i: number, heavy: boolean) => void) | null = null;
   private readonly director: ZaryaDirector;
   private readonly look = new TownLook();
+  /** Obstacles (round 3): the shed's padlock, the boards, the barricade, the ice, the lashings (`obstacleLook.ts`). */
+  private readonly obstacleLook = new ObstacleLook();
+  /** The caches behind them this player has taken their share of (personal: each player takes their own once). */
+  private readonly cached = new Set<number>();
   // ---- the Zenit's photographs and Morozko's question (`photos.ts`, `weakPoints.ts`) ----
   private readonly photos: ZenitPhotos;
   private readonly question: MorozkoQuestion;
@@ -214,14 +236,17 @@ export class ZaryaRuntime {
     this.zones = new ZoneSwitch(ZARYA_ZONES, g.level.zones);
     this.director = new ZaryaDirector(g.level, g.zombies);
     g.worldRoot.add(this.look.root);
+    g.worldRoot.add(this.obstacleLook.root); // (obstacles, round 3)
     // (the Zenit's photographs and Morozko's question)
     this.photos = new ZenitPhotos(g, this.look.root);
     this.question = new MorozkoQuestion(g);
     g.interaction.sources.push((t) => this.targets(t));
     g.menus.pauseTab = () => ({ label: 'JOURNAL', build: () => this.journal() });
     g.interaction.boxName = "DED MOROZ'S SACK";
+    g.menus.boxStat = "TURNS AT DED MOROZ'S SACK"; // (round 3: no box anywhere on ZARYA, the results too)
     // kiosks and mods (`modsRuntime.ts`): it plugs this player's mods into the weapons and gates the repair booth
     this.kiosks = new KiosksAndMods(g, (a, i) => this.act(a, i), () => this.view, () => this.active);
+    this.kiosks.say = (beat) => this.say(beat); // (round 3: Timur on the first mod part)
     // the people: every line on the wire goes through it (`Game.radioHook`), its name plates hang in the town
     this.people = new ZaryaPeople(g, this.look.root);
     // ---- Ded Moroz's sack moves: after a few openings it turns up somewhere the squad can reach (`zarya/sack.ts`;
@@ -238,13 +263,8 @@ export class ZaryaRuntime {
         this.queue.push(SACK_MOVED[p.zone]);
       },
     };
-    // the sack is drawn taller than a crate (`look.ts`): its prize and its "?" float over the top of it, not inside it;
-    // and the sack is the box, so the stock loot crate under it is not drawn (its lid flipped open out of the sack)
-    for (const c of g.entities.crates) {
-      c.lift = 1;
-      c.moved();
-      c.model.root.visible = false;
-    }
+    // (round 3: the sack is the box's own model now, `world/models/giftSack.ts` via `game/entities.ts`, with its own
+    // opening and its prize's height; nothing is hidden or lifted here any more)
     // ---- end of the sack's block ----
   }
 
@@ -290,8 +310,16 @@ export class ZaryaRuntime {
 
   private act(a: StoryAct, i = 0): void {
     const p = this.g.player;
-    if (this.remote) this.request?.(a, i, this.heavy);
-    else this.story.act(a, i, { x: p.x, z: p.z }, this.heavy);
+    // ---- obstacles (round 3): a lock wants the maul, an obstacle the one weapon of its kind; `heavy` is our word for it ----
+    const tool = a === 'obstacle' ? toolFor(i) : a === 'escalator' || a === 'fireBoard' ? 'maul' : null;
+    const ok = tool ? this.carries(tool) : this.heavy;
+    if (this.remote) this.request?.(a, i, ok);
+    else this.story.act(a, i, { x: p.x, z: p.z }, ok);
+  }
+
+  /** This player carries weapon `id` to swing (obstacles, round 3). */
+  private carries(id: MeleeId): boolean {
+    return this.g.melee?.pack.includes(id) ?? false;
   }
 
   /**
@@ -349,6 +377,8 @@ export class ZaryaRuntime {
     this.area = 0;
     applyDoors(g.level, this.view);
     this.look.reset();
+    this.cached.clear(); // (obstacles, round 3)
+    this.obstacleLook.reset();
     // (the Zenit's photographs and Morozko's question)
     this.photos.reset();
     this.question.reset();
@@ -385,6 +415,13 @@ export class ZaryaRuntime {
       if (sv.ch >= CH.town && !ZaryaStory.has(sv, F.bear) && g.entities.crates.some((c) => c.phase !== 'closed')) this.story.note('bearUp');
       for (const e of this.story.drain()) this.director.onEvent(e, this.story.view, stand, g.rng);
       for (const n of this.director.step(dt, this.story.view, stand, g.rng)) this.story.note(n);
+      // ---- Baba Yaga's stage (`stage.ts`): the fight's state into the story, and what her broom, her stamping and her
+      // pots did to the player (the only one in `stand`) ----
+      {
+        const [st, pa, pb] = this.director.stage;
+        this.story.stage(st, pa, pb);
+        for (const h of this.director.drainHurts()) if (h.i === 0) g.zenv.hurtPlayer(h.amount, h.x, h.z, 'melee', h.knock);
+      }
       for (const k of this.director.drainKills()) this.story.kill(k.x, k.z, stand);
     }
     const v = this.view;
@@ -429,7 +466,14 @@ export class ZaryaRuntime {
     const sackBox = g.entities.crates.find((c) => c.cost > 0);
     if (sackBox) this.look.placeSack(sackBox.def.x, sackBox.def.z);
     // ---- end of the sack's block ----
+    this.look.yaga(this.named('yaga'), this.remote ? [] : this.director.pots); // (Baba Yaga's stage: `stageLook.ts`)
     this.look.update(dt, v, g.renderer.camera.position, this.underRoof(dt), g.renderer.renderer.domElement.clientHeight || 720);
+    for (const q of this.look.freshPools) {
+      // (Baba Yaga's stage: a pot came down, and the floor burns cold)
+      g.zenv.fx.sparkle({ x: q.x, y: 0.5, z: q.z }, 0x9fdcff, 24);
+      g.audio.play('impact_wood', { pos: { x: q.x, y: 0.4, z: q.z }, volume: 1, priority: 2, rate: 0.7 });
+    }
+    this.obstacleLook.update(dt, v, g.renderer.camera.position, this.cached); // (obstacles, round 3)
     if (this.endT >= 0) {
       // the last lines are said over a town going dark (or light); then the run is won
       this.endT += dt;
@@ -444,6 +488,8 @@ export class ZaryaRuntime {
     this.zones.showAll();
     this.setVeil(0);
     this.look.update(dt, ROAM, g.renderer.camera.position, false, g.renderer.renderer.domElement.clientHeight || 720);
+    // (obstacles, round 3: free roam shuts nothing, so everything stands open)
+    this.obstacleLook.update(dt, { ...ROAM, m: -1 >>> 0 }, g.renderer.camera.position, this.cached);
   }
 
   /** No snow falls on the player: in one of the rooms beside the map, in the store, or under any roof the level has. */
@@ -578,6 +624,8 @@ export class ZaryaRuntime {
       click();
       if (i === RECIPE.signalka) g.banner('BUILT: THE SIGNALKA', 'A flare pistol. Fire it out on the square.', 'good', 5);
       else if (i === RECIPE.cutters) g.banner('BUILT: BOLT CUTTERS', 'For the chains on the depot gate and the garages.', 'good', 6);
+      // (round 3: the bear spear's banner says what it is for)
+      else if (i === RECIPE.rogatina) g.banner('BUILT: THE BEAR SPEAR', 'Wind up a thrust and whatever charges onto it stops there: Borya, the bear, the big ones off the pond.', 'good', 8);
       else g.banner(`BUILT: THE ${SHORT[i]}`, 'It is on the bench. Anyone may take one.', 'good', 6);
       if (rec.id in LINES) this.say(rec.id as Beat);
     });
@@ -609,12 +657,10 @@ export class ZaryaRuntime {
     }
     if (did(G.yaga)) {
       this.say('yaga');
-      g.banner('BABA YAGA', 'Nothing reaches her in the hut. The lever in the wings turns it to face the hall.', 'danger', 9);
+      g.banner('BABA YAGA', 'Her hut walks, and its door opens only to the stage: the revolve, the traps, the fly bars, the follow-spot.', 'danger', 9);
     }
-    if (did(G.exposed)) {
-      click();
-      g.feed('THE HUT TURNS', 'warn');
-    }
+    // ---- Baba Yaga's stage (`stage.ts`): what changed on it ----
+    if ((b.g & G.yaga) !== 0 && (b.g & G.yagaDown) === 0) for (const c of stageCues(a.st ?? 0, b.st ?? 0, a.pb ?? 0, b.pb ?? 0)) this.stageCue(c);
     if (did(G.yagaDown)) {
       this.say('yagaDown');
       key(2);
@@ -640,6 +686,13 @@ export class ZaryaRuntime {
       click();
       g.feed('THE GLASS BREAKS  -  A SICKLE AND A HAMMER', 'good');
     }
+    // ---- obstacles (round 3): broken, chopped or cut open, for the whole squad ----
+    OBSTACLES.forEach((o, i) => {
+      if (!obstacleOpen(b, i) || obstacleOpen(a, i)) return;
+      click();
+      g.audio.play(o.kind === 'lashing' ? 'grenade_throw' : 'impact_metal', { priority: 3, volume: 0.9 });
+      g.feed(`${OBSTACLE_WORDS[o.kind].done}  -  ${o.cache ? o.cache.name : (o.way ?? o.name).toUpperCase()}`, 'good');
+    });
     if (did(G.hung)) {
       this.say('hung');
       ping();
@@ -720,6 +773,25 @@ export class ZaryaRuntime {
       click();
       g.feed(`THE ${KEYS[(b.turned % 10) - 1]} KEY TURNS  -  ${String(b.turned).length} OF 4`, 'good');
     }
+    // ---- side stories (`sidestories.ts`): what was found, the lines, and the payoff, on every screen. The reward is
+    // each player's own (points, ammunition, armour) or the squad's (a mod part, counted by `ZaryaStory.modParts`) ----
+    for (const c of sideChanges(a.side, b.side)) {
+      const q = SIDE[c.s]!;
+      this.queue.push(...c.lines);
+      for (const piece of c.pieces) g.feed(piece, 'good');
+      if (c.found && !c.finished) g.feed(`${q.title}  -  IN THE JOURNAL`, 'normal');
+      if (!c.finished) {
+        g.audio.play('pickup_ammo', { priority: 2, volume: 0.6 });
+        continue;
+      }
+      const r = q.reward;
+      const inv = g.session.inv;
+      if (r.cash) addCash(inv, r.cash);
+      if (r.ammo) for (const w of inv.slots) if (w) addReserve(w.ammo, w.ammo.reserveMax);
+      if (r.armor) g.session.vitals.armor = Math.max(g.session.vitals.armor, PLAYER.plateArmor);
+      g.banner(q.title, `${q.done}  ${sideRewardWords(r)}`, 'good', 6);
+      g.audio.play(r.cash ? 'buy_ok' : 'upgrade_ok', { priority: 3 });
+    }
     if (b.end !== 0 && a.end === 0) {
       const e = ENDINGS[b.end] ?? ENDINGS[2]!;
       this.endT = 0;
@@ -737,6 +809,64 @@ export class ZaryaRuntime {
     if (this.said.has(beat)) return;
     this.said.add(beat);
     this.queue.push(...LINES[beat]);
+  }
+
+  /** Baba Yaga's stage (`stage.ts`): one thing that changed on it, said and played (every screen, from the shared state). */
+  private stageCue(c: StageCue): void {
+    const g = this.g;
+    const y = this.named('yaga');
+    const at = y ? { x: y.x, y: 2.5, z: y.z } : { x: DK.hut.x, y: 2.5, z: DK.hut.z };
+    const name = (m: number): string => ['THE REVOLVE', 'THE TRAP', 'THE BAR', 'THE SPOT'][m] ?? 'IT';
+    switch (c.kind) {
+      case 'phase':
+        g.audio.play('warden_roar', { pos: at, volume: 1.2, priority: 3 });
+        if (c.n === 2) {
+          this.say('yagaPhase2');
+          g.banner('THE HUT COMES DOWN', 'Into the stalls. On the boards every machine can catch her; down there only the spot.', 'danger', 7);
+        } else {
+          this.say('yagaPhase3');
+          g.banner('THE LEGS RUN', 'After whoever is nearest, faster, three pots at a throw. She still goes home to the revolve.', 'danger', 7);
+        }
+        break;
+      case 'caught':
+      case 'combo': {
+        const m = c.m ?? 0;
+        g.audio.play(['amb_creak', 'board_rip', 'amb_clang', 'lantern_light'][m] as 'amb_creak', { pos: at, volume: 1.2, priority: 3 });
+        g.audio.play('upgrade_ok', { priority: 3 });
+        const what = ['THE REVOLVE SPINS HER ROUND', 'A LEG THROUGH THE TRAP: SHE IS PINNED', 'THE BAR COMES DOWN ON HER ROOF', 'THE SPOT IN HER EYES: SHE IS BLIND'][m]!;
+        g.feed(c.kind === 'combo' ? `${what}  -  ${c.n} MACHINES ON HER` : `${what}  -  HER DOOR IS OPEN`, 'good');
+        this.say((['yagaRevolve', 'yagaTrap', 'yagaFly', 'yagaSpot'] as const)[m]!);
+        break;
+      }
+      case 'miss':
+        g.audio.play('amb_clang', { pos: at, volume: 0.6, priority: 1, rate: 0.8 });
+        g.feed(`${name(c.m ?? 0)} CAUGHT NOTHING`, 'warn');
+        break;
+      case 'shut':
+        g.audio.play('impact_wood', { pos: at, volume: 1.1, priority: 2 });
+        g.feed('HER DOOR BANGS SHUT', 'warn');
+        this.say('yagaWatch');
+        break;
+      case 'sight':
+        g.feed('SHE CAN SEE AGAIN', 'warn');
+        break;
+      case 'call':
+        this.say('yagaCall');
+        g.audio.play('idol_song', { pos: at, volume: 1, priority: 2, rate: 0.8 });
+        g.feed('THE CAROL-SINGERS COME OUT OF THE WINGS', 'warn');
+        break;
+      case 'pot':
+        g.audio.play('grenade_throw', { pos: at, volume: 1, priority: 2, rate: 0.8 });
+        break;
+      case 'sweep':
+        g.audio.play('kanabo_swing', { pos: at, volume: 1.1, priority: 2 });
+        break;
+      case 'stomp':
+        g.audio.play('warden_slam', { pos: at, volume: 1.1, priority: 2 });
+        break;
+      default:
+        break;
+    }
   }
 
   /** The lines that belong to a place rather than to something done. */
@@ -899,10 +1029,28 @@ export class ZaryaRuntime {
     else {
       this.inStoreAndSquare(q);
       if (q.v.ch >= CH.act2) this.inTown(q);
+      if (q.v.ch >= CH.act2) this.atObstacles(q); // (obstacles, round 3)
       this.kiosks.targets(out, q.v); // kiosks and mods: BUY THE SHUTTER, FIT A MOD at a bench
       this.atStops(q);
     }
     if (room !== 'shelter') this.seen(q);
+    // ---- side stories (`sidestories.ts`): a place in reach whose step has come; a quiet note at one whose step has not.
+    // A step behind the main story's own things at the same distance ----
+    if (room !== 'shelter') {
+      const world = this.g.level.world;
+      const eye = p.eyeY();
+      for (const s of sidePrompts(q.v.side ?? [], p.x, p.z, (i) => ZaryaStory.can(q.v, 'side', i), q.v.ch >= CH.act2 && q.v.ch < CH.ended)) {
+        // only what can be seen from here: never through a wall or the back of a rack
+        const dx = s.at.x - p.x;
+        const dy = s.y + 0.08 - eye;
+        const dz = s.at.z - p.z;
+        const L = Math.hypot(dx, dy, dz) || 1;
+        const hit = world.raycast(p.x, eye, p.z, dx / L, dy / L, dz / L, L, 'shots');
+        if (hit && hit.t < L - 0.45) continue;
+        if (s.i >= 0) q.use(s.id, s.d + 0.4, s.text, 'side', { sub: s.sub, hold: s.hold, i: s.i });
+        else q.note(s.id, s.d + 0.6, s.text, s.sub ?? '');
+      }
+    }
   }
 
   private inShelter({ v, dist, use, note }: Reach): void {
@@ -972,7 +1120,7 @@ export class ZaryaRuntime {
       TOWN.offers.forEach((o, i) => this.buy(out, Math.hypot(ZARYA.sports.x - 3 + i * 2 - p.x, ZARYA.sports.z + 0.4 - p.z), o, R * 0.6));
       for (const f of TOWN.finds) {
         const d = dist(f);
-        if (d <= R * 0.75) this.take(`find-${f.id}`, d, `TAKE ${f.name}`, f.gives);
+        if (d <= R * 0.75) this.take(`find-${f.id}`, d, `TAKE ${f.name}`, f.gives, JOB[f.id]); // (round 3: what it is for)
       }
     }
 
@@ -1039,7 +1187,7 @@ export class ZaryaRuntime {
       const made = TOWN.recipes.map((_, r) => r).filter((r) => Unlock.has(v.built, r) && !('tool' in TOWN.recipes[r]!.gives) && !this.holds(TOWN.recipes[r]!.gives));
       if (made.length) {
         const r = made.find((k) => k > this.taken) ?? made[0]!;
-        this.take(`made-${r}`, d, `TAKE THE ${SHORT[r]}`, TOWN.recipes[r]!.gives, undefined, () => (this.taken = r));
+        this.take(`made-${r}`, d, `TAKE THE ${SHORT[r]}`, TOWN.recipes[r]!.gives, JOB[TOWN.recipes[r]!.id], () => (this.taken = r)); // (round 3: what it is for)
         return;
       }
       // nothing to do here yet: how far along the nearest thing is
@@ -1067,8 +1215,6 @@ export class ZaryaRuntime {
     const p = g.player;
     const R = STORY.reach;
     const did = (flag: number): boolean => ZaryaStory.did(v, flag);
-    const heavy = this.heavy;
-    const WANTS = 'It wants something heavy to swing';
 
     // ---- the gates ----
     TOWN.gates.forEach((gate, i) => {
@@ -1108,7 +1254,7 @@ export class ZaryaRuntime {
     const pond = gateAt('pond');
     if (pond && !did(G.pond) && dist(pond) <= R + 3) {
       const open = DOLLS.filter((_, i) => ZaryaStory.shells(v, i) >= STORY.dollShells).length;
-      note('pond', dist(pond), 'FROZEN SHUT', v.dolls > 0 ? `It gives when the three painted dolls stand open: ${open} of 3` : 'Iced solid since November. No tool will shift it');
+      note('pond', dist(pond), 'FROZEN SHUT', v.dolls > 0 ? `It gives when the three painted dolls stand open: ${open} of 3` : 'Iced solid since November, a drift frozen into its bars: no axe will shift it');
     }
     const dc = dist(AT.code);
     if (dc <= R && did(G.pond) && !did(G.code)) {
@@ -1117,8 +1263,9 @@ export class ZaryaRuntime {
     }
     const de = dist(AT.escalator);
     if (de <= R && ZaryaStory.can(v, 'escalator')) {
-      if (heavy) use('escalator', de, 'BREAK THE PADLOCK', 'escalator', { sub: 'The escalator', hold: 1 });
-      else note('escalator', de, 'PADLOCKED', WANTS);
+      // (round 3: a padlock is the maul's job)
+      if (this.carries('maul')) use('escalator', de, 'BREAK THE PADLOCK', 'escalator', { sub: 'The escalator', hold: 1 });
+      else note('escalator', de, 'PADLOCKED', OBSTACLE_WORDS.padlock.wants);
     }
 
     // ---- the Rynok: Borya's cold store, the police post ----
@@ -1157,23 +1304,19 @@ export class ZaryaRuntime {
     // ---- things that want a heavy blow, and what is behind them ----
     const df = dist(AT.fireBoard);
     if (df <= R) {
-      if (did(G.fireBoard)) this.take('axe', df, 'TAKE THE FIRE AXE', { melee: 'fireAxe' });
+      // (round 3: the board's padlock is the maul's job; the axe chops boards and ice, `obstacles.ts`)
+      if (did(G.fireBoard)) this.take('axe', df, 'TAKE THE FIRE AXE', { melee: 'fireAxe' }, JOB.fireAxe);
       else if (ZaryaStory.can(v, 'fireBoard')) {
-        if (heavy) use('board-lock', df, 'BREAK THE LOCK', 'fireBoard', { sub: 'The fire board', hold: 1 });
-        else note('board-lock', df, 'THE FIRE BOARD', `Padlocked. ${WANTS}`);
+        if (this.carries('maul')) use('board-lock', df, 'BREAK THE LOCK', 'fireBoard', { sub: 'The fire board', hold: 1 });
+        else note('board-lock', df, 'THE FIRE BOARD', `Padlocked. ${OBSTACLE_WORDS.padlock.wants}`);
       }
     }
+    // (round 3: the museum's sickle and hammer stay behind their glass: an exhibit, not something to take on ZARYA)
     const dsc = dist(AT.sickleCase);
-    if (dsc <= R) {
-      if (did(G.sickleCase)) this.take('serp', dsc, 'TAKE THE SERP AND MOLOT', { melee: 'serpMolot' });
-      else if (ZaryaStory.can(v, 'sickleCase')) {
-        if (heavy) use('case', dsc, 'BREAK THE GLASS', 'sickleCase', { sub: 'A sickle and a hammer', hold: 1 });
-        else note('case', dsc, 'THE MUSEUM CASE', `Thick glass. ${WANTS}`);
-      }
-    }
+    if (dsc <= R && !did(G.sickleCase)) note('case', dsc, 'THE MUSEUM CASE', "A sickle and a hammer from the town's first harvest");
     const dcab = dist(AT.cabinet);
     if (dcab <= R && did(G.tickets)) {
-      if (did(G.hung)) this.take('shashka', dcab, 'TAKE THE SHASHKA', { melee: 'shashka' });
+      if (did(G.hung)) this.take('shashka', dcab, 'TAKE THE SHASHKA', { melee: 'shashka' }, JOB.shashka);
       else note('cabinet', dcab, "THE GUARD'S CABINET", "Locked. A card: 'Opened when the town tree is whole at midnight'");
     }
     const dhang = dist(AT.hang);
@@ -1183,8 +1326,18 @@ export class ZaryaRuntime {
     }
 
     // ---- the Palace's stage, the plant, the banya ----
-    const dl = dist(AT.lever);
-    if (dl <= R && ZaryaStory.can(v, 'lever')) use('lever', dl, 'PULL THE LEVER', 'lever', { sub: 'The revolve turns her hut', hold: 0.8 });
+    // ---- Baba Yaga's stage (`stage.ts`): each machine's prompt, from where the hut stands now ----
+    if (did(G.yaga) && !did(G.yagaDown)) {
+      const hut = this.named('yaga');
+      MACHINES.forEach((M, i) => {
+        const d = dist(M.at);
+        // (the fly rail is up on the gallery: worked from its deck)
+        if (d > R || (i === MACHINE.fly && p.y < DK.galleryTop - 0.6)) return;
+        const pr = machinePrompt(v.st ?? 0, i as Machine, hut);
+        if (pr.use && ZaryaStory.can(v, 'stage', i)) use(`stage-${i}`, d, pr.text, 'stage', { sub: pr.sub, hold: pr.hold, i });
+        else note(`stage-${i}`, d, pr.text, pr.sub);
+      });
+    }
     TETS.valves.forEach((at, i) => {
       const d = dist(at);
       if (d <= R && ZaryaStory.can(v, 'valve', i)) use(`valve-${i}`, d, 'TURN THE VALVE WHEEL', 'valve', { sub: `${ZaryaStory.count((v.m >> 3) & 7)} of 3 turned`, hold: 1.5, i });
@@ -1206,6 +1359,67 @@ export class ZaryaRuntime {
         },
       });
     }
+  }
+
+  /**
+   * ---- obstacles (round 3, notes 5 and 6): what only one weapon to swing gets through (`obstacles.ts`). Shut: with
+   * that weapon carried, the act (it comes into the hand as it is used); without it, what it is and what would get
+   * through it. The first of each kind seen gets its line. Open: the cache behind it, this player's share once. ----
+   */
+  private atObstacles({ out, v, dist, note }: Reach): void {
+    const g = this.g;
+    const R = STORY.reach;
+    OBSTACLES.forEach((o, i) => {
+      if (!o.zones.every((z) => ZaryaStory.zoneOpen(v, z))) return;
+      const d = dist(o.at);
+      const open = obstacleOpen(v, i);
+      if (!open && d <= 9) this.say(OBSTACLE_BEAT[o.kind]);
+      if (open) {
+        const c = o.cache;
+        if (!c || this.cached.has(i)) return;
+        const dc = dist(c.at);
+        if (dc > R) return;
+        out.push({
+          id: `zy-cache-${i}`,
+          dist: dc,
+          text: `TAKE ${c.name}`,
+          sub: o.name.charAt(0) + o.name.slice(1).toLowerCase(),
+          tone: 'good',
+          hold: 0.5,
+          enabled: true,
+          onUse: () => {
+            if (this.cached.has(i)) return;
+            this.cached.add(i);
+            const inv = g.session.inv;
+            const got = applyCrateReward(inv, cacheReward(inv, c.cash));
+            g.audio.play('pickup_ammo', { priority: 3 });
+            g.feed(`+$${got.cash}  ${got.plates ? '+PLATE  ' : ''}${got.grenades ? '+GRENADE  ' : ''}+AMMO`, 'good');
+          },
+        });
+        return;
+      }
+      if (d > R + (o.kind === 'barricade' ? 0.5 : 0)) return;
+      const tool = OBSTACLE_TOOL[o.kind];
+      const w = OBSTACLE_WORDS[o.kind];
+      if (!ZaryaStory.can(v, 'obstacle', i)) return;
+      if (this.carries(tool)) {
+        out.push({
+          id: `zy-obs-${i}`,
+          dist: d,
+          text: w.verb,
+          sub: `${MELEE[tool]?.name.charAt(0)}${MELEE[tool]?.name.slice(1).toLowerCase()}: ${o.cache ? o.name.toLowerCase() : (o.way ?? o.name).toLowerCase()}`,
+          tone: 'good',
+          hold: o.kind === 'lashing' ? 0.8 : 1.2,
+          enabled: true,
+          onUse: () => {
+            // the weapon it wants comes into the hand, and the blow is struck
+            g.melee?.select(tool);
+            g.melee?.setOut(true);
+            this.act('obstacle', i);
+          },
+        });
+      } else note(`obs-${i}`, d, w.shut, w.wants);
+    });
   }
 
   /** Line One: at every stop it calls at, on to the next from the car's door, back to the last from a few steps west. */
@@ -1250,6 +1464,7 @@ export class ZaryaRuntime {
     // ---- arsenal: everything taken is carried, not only what is in hand ----
     if ('melee' in what) return g.melee?.pack.includes(what.melee) ?? false;
     if ('gun' in what) return g.session.inv.slots.some((s) => s?.id === what.gun);
+    if ('plates' in what) return g.session.inv.plates >= PLAYER.maxPlates; // (round 3: the goalie's pads)
     return true;
   }
 
@@ -1313,7 +1528,7 @@ export class ZaryaRuntime {
       id: `zy-buy-${o.id}`,
       dist: d,
       text: `BUY ${o.name}`,
-      sub: full === false ? `$${o.price}, for its ammunition` : owned ? (full ? 'Carried, and its ammunition is full' : 'Carried already') : `$${o.price}`,
+      sub: full === false ? `$${o.price}, for its ammunition` : owned ? ('plates' in o.gives ? 'You carry all the plates you can' : full ? 'Carried, and its ammunition is full' : 'Carried already') : 'plates' in o.gives ? `$${o.price}: an armour plate` : `$${o.price}`,
       tone: can ? 'good' : 'warn',
       hold: 0,
       enabled: can,
@@ -1328,6 +1543,14 @@ export class ZaryaRuntime {
   /** Hand something over to the player who asked for it. */
   private give(what: Gives): void {
     const g = this.g;
+    // ---- round 3: the sports counter's goalie's pads are an armour plate ----
+    if ('plates' in what) {
+      const inv = g.session.inv;
+      inv.plates = Math.min(PLAYER.maxPlates, inv.plates + what.plates);
+      g.feed(`ARMOUR PLATE  ${inv.plates}/${PLAYER.maxPlates}`, 'good');
+      g.audio.play('pickup_ammo', { priority: 2 });
+      return;
+    }
     if ('melee' in what) {
       g.melee?.equip(what.melee);
       g.melee?.setOut(true);
@@ -1365,6 +1588,25 @@ export class ZaryaRuntime {
     return WAY[here!].out;
   }
 
+  // ---- Ded Moroz's sack on the map and the compass (round 3) ----
+  /**
+   * The sack's own marker (a sack, in red and gold) in place of the operation's crate marker, wherever the sack is now:
+   * on the map once it has been seen (or once it moved: it says so on the wire), and on the compass while this player
+   * could pay for a turn and is not standing at it.
+   */
+  private sackMarker(md: MapDynamic): void {
+    const c = this.g.entities.crates.find((q) => q.sack);
+    if (!c) return;
+    for (let i = md.markers.length - 1; i >= 0; i--) if (md.markers[i]!.id === c.def.id) md.markers.splice(i, 1);
+    const p = this.g.player;
+    const d = Math.hypot(c.def.x - p.x, c.def.z - p.z);
+    const seen = c.discovered || d < 30;
+    if (!seen || this.view.ch < CH.town) return;
+    const ready = c.phase === 'closed' && this.g.session.inv.cash >= c.cost;
+    md.markers.push({ id: c.def.id, kind: 'sack', x: c.def.x, z: c.def.z, label: "DED MOROZ'S SACK", visible: true, compass: ready && d > 8 && !roomOf(p.x), dim: !ready });
+  }
+  // ---- end of the sack's marker ----
+
   decorateHud(st: HudState, md: MapDynamic): void {
     // there is no clock to show, in a run or after it
     st.timer = { ...st.timer, hidden: true };
@@ -1372,6 +1614,7 @@ export class ZaryaRuntime {
     st.itemCard = null; // (items: no bench card unless one is standing at a bench)
     if (!this.active) return;
     this.kiosks.decorate(st); // kiosks and mods: the mod's word on the weapon panel
+    this.sackMarker(md); // (round 3) Ded Moroz's sack: its own marker, not a crate's
     const v = this.view;
     const p = this.g.player;
     const has = (flag: number): boolean => ZaryaStory.has(v, flag);
@@ -1392,8 +1635,21 @@ export class ZaryaRuntime {
     } else if (v.ch === CH.ground) {
       if (down) add('up', 'UP INTO THE STORE', 'The stairs', ZARYA.stairFoot);
       else add('gena', 'THE GROUND FLOOR', has(F.hall) ? 'The man by the escalator has no breath' : 'Out of the staff rooms, into the hall', has(F.hall) ? ZARYA.gena : ZARYA.staffDoor);
-    } else if (v.ch < CH.ended) this.townRows(v, add, dist);
-    else if (ENDINGS[v.end]) add('end', ENDINGS[v.end]![0], ENDINGS[v.end]![2], null, { done: true });
+    } else if (v.ch < CH.ended) {
+      this.townRows(v, add, dist);
+      // ---- side stories: one quiet line, last (never above the main story's), only for a story found and not
+      // finished, and not while someone is being fought ----
+      const side = rows.some((r) => r.fight) ? null : sideRow(v.side ?? [], p.x, p.z, (z) => ZaryaStory.zoneOpen(v, z));
+      if (side) {
+        // (the list is cut to five: the side line takes the place of the main story's last quiet line, never an open one)
+        if (rows.length >= 5) {
+          rows.length = 5;
+          const last = rows.map((r, i) => (r.quiet ? i : -1)).filter((i) => i >= 0).pop();
+          if (last !== undefined) rows.splice(last, 1);
+        }
+        if (rows.length < 5) add(side.id, side.title, side.detail, side.at, { quiet: true, progress: side.progress, label: side.title });
+      }
+    } else if (ENDINGS[v.end]) add('end', ENDINGS[v.end]![0], ENDINGS[v.end]![2], null, { done: true });
 
     // never more than five lines; the compass follows whoever is being fought, else the nearest open line (a line
     // that points out of the room the player is in counts as farther off than one in it)
@@ -1527,8 +1783,9 @@ export class ZaryaRuntime {
     } else if (did(G.barred) && !did(G.cosmoKey)) add('cosmo', 'HIS KEYS', 'On the hook by the cold store door', AT.cosmoKey);
     if (did(G.yaga) && !did(G.yagaDown)) {
       fought = true;
-      if (did(G.exposed)) add('yaga', 'BABA YAGA', 'The hut faces the hall. Now', DK.hut, { fight: true });
-      else add('yaga', 'BABA YAGA', 'Safe in her hut. The lever in the wings turns it', AT.lever, { fight: true });
+      // (Baba Yaga's stage: what works on her now, and where it is worked from: `stage.ts`)
+      const o = yagaObjective(v.st ?? 0, this.named('yaga'));
+      add('yaga', 'BABA YAGA', o.sub, o.at, { fight: true });
     }
     if (did(G.tamada) && !did(G.tamadaDown)) {
       fought = true;
@@ -1573,7 +1830,8 @@ export class ZaryaRuntime {
       }
       if (!did(G.tickets)) gate('tickets', 'THE PALACE OF CULTURE', `Tickets only: three for $${STORY.tickets}, at the box office by its doors`, AT.tickets, { label: 'BOX OFFICE' });
       else if (!did(G.yaga) && !did(G.yagaDown)) gate('pageant', 'THE PAGEANT', 'The Palace doors are open', DK.hallCentre);
-      if (!did(G.escalator)) gate('escalator', 'THE ESCALATOR', this.heavy ? 'Padlocked. What you carry will break it' : 'Padlocked. It wants something heavy to swing', AT.escalator);
+      // (round 3: the padlock is the maul's job)
+      if (!did(G.escalator)) gate('escalator', 'THE ESCALATOR', this.carries('maul') ? 'Padlocked. Your maul will break it' : 'Padlocked. The splitting maul breaks it (the woodpile in the Dvor)', AT.escalator);
       else if (!did(G.tamada) && !did(G.tamadaDown)) gate('party', 'THE STAFF PARTY', 'Up the escalators, on the third floor', CANTEEN.tamada);
       if (!did(G.pond)) {
         if (v.dolls > 0) {
@@ -1717,9 +1975,11 @@ export class ZaryaRuntime {
       section(`ORNAMENTS  -  ${ZaryaStory.count(v.orn)} OF ${ORNAMENTS.length}${did(G.hung) ? ', BACK ON THE TREE' : ''}`, []);
       if (v.orn !== 0) root.appendChild(journalIcons(ORNAMENTS.map((_, k) => ({ src: ornamentIcon(k), dim: (v.orn & (1 << k)) === 0, label: 'Glass ornament' }))));
     }
-    // kiosks and mods: the squad's mod parts, and what the gun in hand wears
-    const mods = this.kiosks.journalLine(v);
-    if (mods) section('WEAPON MODS', [mods, 'Fitted at any workbench to the gun in your hands; the Charge mod wants a proper bench.']);
+    // kiosks and mods (round 3): what each mod does and needs, which guns wear it, where the parts are
+    const mods = this.kiosks.journalRows(v);
+    if (mods) section('WEAPON MODS', mods);
+    // ---- side stories: a section of its own for each one found (`sidestories.ts`) ----
+    for (const s of sideJournal(v.side ?? [])) section(s.head, s.rows);
     // (the Zenit's photographs: their own page)
     const prints = this.photos.journal(v);
     if (prints) root.appendChild(prints);
@@ -1728,6 +1988,7 @@ export class ZaryaRuntime {
 
   dispose(): void {
     this.look.dispose();
+    this.obstacleLook.dispose(); // (obstacles, round 3)
     this.photos.dispose();
     this.question.dispose();
     this.people.dispose();

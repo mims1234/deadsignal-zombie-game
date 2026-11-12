@@ -52,6 +52,11 @@ export const UPSTAIRS = {
   ornament: { x: 620.3, z: -13.8 } as Spot,
   /** Where the infected come from, when the ordinary spawner wants one here: the far corners of the floor. */
   spawns: [[604, -5], [667, -12], [632, 12], [656, -15], [659.8, 12.4]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): the photo studio's appointment book on its stand inside the door; the prints pegged to dry along its west wall. */
+  side: {
+    book: { x: 654, z: -21.3 } as Spot,
+    prints: { x: 652.3, z: -27.4 } as Spot,
+  },
 } as const;
 
 /** The columns (the ground floor's, 530 m east). */

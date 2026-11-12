@@ -6,7 +6,7 @@
  * The rule for every line: it tells the player something they could not have worked out, or it is the character being
  * themselves. Nobody states the obvious.
  */
-export type Speaker = 'MIRA' | 'TIMUR' | 'VERA' | 'NINA' | 'KOSTYA' | 'ZINA' | 'ZIMIN';
+export type Speaker = 'MIRA' | 'TIMUR' | 'VERA' | 'NINA' | 'KOSTYA' | 'ZINA' | 'ZIMIN' | 'YAGA';
 export type Line = readonly [Speaker, string];
 
 export const LINES = {
@@ -104,6 +104,12 @@ export const LINES = {
     ['KOSTYA', 'What?'],
     ['TIMUR', '...Money. He takes money now. Times are hard.'],
   ],
+  // (round 3) the first weapon mod part the squad finds: what the parts are for, said once (`zarya/modsRuntime.ts`)
+  modPart: [
+    ['TIMUR', 'Springs and a feed. Gun parts, if you know how. At any bench I can make a gun hold half as much again.'],
+    ['VERA', 'Or?'],
+    ['TIMUR', "Or pack its rounds in frost. Whatever they hit goes slow. One part each. Bring me the gun."],
+  ],
   // the sack is gone from where it stood, the first time (`SACK_MOVED` then says where it went, every time)
   sackGone: [['NINA', 'Ded Moroz never leaves the sack in one place for long. Thirty years. Nobody has ever seen him move it.']],
   line: [
@@ -192,14 +198,51 @@ export const LINES = {
   ],
   gvozdomyot: [['TIMUR', "Gas-driven. It was for roofing. It isn't any more."]],
   salyut: [['TIMUR', 'Five tubes, one cord. Do not stand behind it. Do not stand in front of it.']],
-  rogatina: [['NINA', "A rogatina. My grandfather had one. For the bear that wakes in winter and can't sleep again. That is what a shatun is, child."]],
+  rogatina: [
+    ['NINA', "A rogatina. My grandfather had one. For the bear that wakes in winter and can't sleep again. That is what a shatun is, child."],
+    // (round 3: what it is for, where it is built)
+    ['TIMUR', "Set it low and let them come. Whatever charges, stops on the crossguard. Borya. The big ones off the pond. A bear, if it comes to that."],
+  ],
+  // ---- round 3 (notes 5 and 6): the first of each kind of obstacle a weapon to swing gets through (`obstacles.ts`) ----
+  obsPadlock: [
+    ['VERA', 'The yard-keeper locks his shed against the boys. Every winter they get in anyway.'],
+    ['TIMUR', "Not through that padlock they don't. That wants the maul off his woodpile."],
+  ],
+  obsBoards: [
+    ['TIMUR', "He boarded his garage up from outside and went to the square. Whatever's in there, he didn't want the neighbours at it."],
+    ['MIRA', 'The neighbours are asleep.'],
+  ],
+  obsBarricade: [['TIMUR', "That's how the garage men got to the market, till the chairman made them use the gate. Old doors and nails. An axe would have it down."]],
+  obsIce: [['TIMUR', "A pipe burst over the side door and froze where it fell. Ice like that, you don't climb. You chop."]],
+  obsLashing: [['NINA', "Frozen rope. A knife will skate off it. In my grandfather's day they cut it with a sabre, and the museum has one."]],
   tickets: [['NINA', 'Three tickets. Thirty years and I never once saw the pageant. Somebody had to mind the store.']],
   dk: [['KOSTYA', "That's my class. That's Anya, she's the Snowflake. I was supposed to be the Hare."]],
   yaga: [
     ['NINA', 'Lyudmila Markovna. Baba Yaga since before you were born. She never comes out of that hut until it turns.'],
-    ['TIMUR', "There's a lever in the wings. I fixed that revolve in October."],
+    ['TIMUR', "That hut runs on the stage: the revolve, the traps, the fly bars, the follow-spot. I fixed that revolve in October."],
   ],
-  yagaDown: [['MIRA', 'Wheat.']],
+  // ---- Baba Yaga's fight (`stage.ts`): she says her part from the pageant, the only lines she has left; Nina knew her ----
+  yagaCall: [
+    ['YAGA', 'Come out, my little goats! Sing for your supper!'],
+    ['NINA', 'The carol-singers were her idea. The same goat mask forty years running, and every year a child cried at it.'],
+  ],
+  yagaRevolve: [['KOSTYA', "Little hut, little hut, turn your back to the forest and your front to me! That's Ivan's line. I know all of it."]],
+  yagaTrap: [['TIMUR', 'I told the director those traps would have somebody one day.']],
+  yagaFly: [['YAGA', 'Who drops the sky on an old woman?']],
+  yagaSpot: [['YAGA', 'Who lit the lamp? The lamp is for the end!']],
+  yagaWatch: [['NINA', 'She learns. Forty winters on that stage, she always knew where the stagehands were.']],
+  yagaPhase2: [
+    ['YAGA', 'Fu, fu! It smells of a living soul! Let me come down and see the audience.'],
+    ['NINA', 'She taught half this town to be afraid of a kitchen broom.'],
+  ],
+  yagaPhase3: [
+    ['YAGA', "I'll roll about, I'll lie about, once I've eaten my fill!"],
+    ['NINA', 'After, she gave the frightened ones a sweet from her apron. Every one of them.'],
+  ],
+  yagaDown: [
+    ['MIRA', 'Wheat.'],
+    ['NINA', 'Take your bow, Lyudmila. The curtain is down.'],
+  ],
   plaque: [
     ['MIRA', "'Zarya-12. Founded 1962, for the Institute of Chronobiology.'"],
     ['TIMUR', 'A whole town for one institute.'],

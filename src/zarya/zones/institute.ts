@@ -32,6 +32,11 @@ export const INSTITUTE = {
   /** In the lobby, by the benches under the south windows. */
   cover: [{ x: -146.4, z: -120.6 }] as Spot[],
   spawns: [[-226, -186], [-108, -186], [-226, -76], [-108, -76], [-120, -160]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): the one empty cage in the animal lab's rack (second row up); the reception desk's top, by the sugar bowl. */
+  side: {
+    cage: { x: -169.75, z: -144.1 } as Spot,
+    desk: { x: -152.5, z: -138.4 } as Spot,
+  },
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */

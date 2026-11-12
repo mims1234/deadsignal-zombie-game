@@ -443,6 +443,8 @@ class Menus implements MenusApi {
 
   /** A map's own page in the pause menu (the Sakura District's journal), asked for each time the menu opens. */
   pauseTab: (() => PauseTab | null) | null = null;
+  /** What the results call the boxes opened (ZARYA: Ded Moroz's sack). */
+  boxStat = 'MYSTERY BOXES';
 
   // -------------------------------------------------------------------------------------------
   // title
@@ -1263,7 +1265,7 @@ class Menus implements MenusApi {
     cell('ACCURACY', `${accuracy}   ${fmtInt(stats.shotsHit)} / ${fmtInt(stats.shotsFired)}`);
     cell('CONTRACTS', `${stats.contractsCompleted} / ${stats.contractsTotal}`, stats.contractsCompleted >= stats.contractsTotal ? 'good' : '');
     if (stats.cardsTotal > 0) cell('CARDS RECOVERED', `${stats.cardsRecovered} / ${stats.cardsTotal}`, stats.cardsRecovered >= stats.cardsTotal ? 'good' : '');
-    cell('MYSTERY BOXES', fmtInt(stats.cratesOpened));
+    cell(this.boxStat, fmtInt(stats.cratesOpened));
     cell('CASH EARNED', fmtMoney(stats.cashEarned));
     cell('CASH SPENT', fmtMoney(stats.cashSpent));
     cell('AMMO COLLECTED', fmtInt(stats.ammoCollected));

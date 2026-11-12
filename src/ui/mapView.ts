@@ -27,6 +27,7 @@ export const MARKER_COLOR: Record<MapMarkerKind, string> = {
   transmitter: '#6ec6d6',
   gate: '#b7c0a8',
   landmark: '#d9ddcf',
+  sack: '#ff5a48',
 };
 
 export const MARKER_LABEL: Record<MapMarkerKind, string> = {
@@ -41,6 +42,7 @@ export const MARKER_LABEL: Record<MapMarkerKind, string> = {
   transmitter: 'RELAY',
   gate: 'GATE',
   landmark: 'LANDMARK',
+  sack: "DED MOROZ'S SACK",
 };
 
 const REGION_COLOR: Record<Region, string> = {
@@ -245,6 +247,27 @@ export function drawMarkerIcon(
   g.shadowColor = 'rgba(0,0,0,0.85)';
   g.shadowBlur = 3;
   switch (kind) {
+    case 'sack': {
+      // ZARYA: a gift sack, a round body and a tied neck with a gold cord
+      g.beginPath();
+      g.ellipse(0, r * 0.28, r * 0.78, r * 0.68, 0, 0, TAU);
+      g.fill();
+      g.beginPath();
+      g.moveTo(-r * 0.26, -r * 0.38);
+      g.lineTo(-r * 0.46, -r * 0.92);
+      g.lineTo(r * 0.46, -r * 0.92);
+      g.lineTo(r * 0.26, -r * 0.38);
+      g.closePath();
+      g.fill();
+      g.shadowBlur = 0;
+      g.strokeStyle = '#ffd36a';
+      g.lineWidth = Math.max(1.2, r * 0.2);
+      g.beginPath();
+      g.moveTo(-r * 0.34, -r * 0.42);
+      g.lineTo(r * 0.34, -r * 0.42);
+      g.stroke();
+      break;
+    }
     case 'objective': {
       g.beginPath();
       g.moveTo(0, -r);
@@ -437,6 +460,7 @@ const MARKER_PRIORITY: Record<MapMarkerKind, number> = {
   start: 3,
   gate: 4,
   landmark: 4,
+  sack: 3,
   crate: 9,
 };
 
@@ -700,6 +724,7 @@ const LEGEND_KIND_ORDER: MapMarkerKind[] = [
   'buy',
   'upgrade',
   'crate',
+  'sack',
   'start',
   'gate',
   'landmark',

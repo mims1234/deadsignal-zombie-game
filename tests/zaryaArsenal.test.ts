@@ -197,7 +197,8 @@ describe('ZARYA arsenal: stations, crates, the sack', () => {
       const p = rollBox('high', inv, new Rng(seed), false, { map: 'zarya', melee: 'knife', owned: ['knife', 'kisten'] });
       expect(p.kind === 'melee' && p.id === 'kisten').toBe(false);
     }
-    expect(MYSTERY_BOX.mapPrizes.zarya?.melee?.kisten).toBeGreaterThan(0);
+    // (round 3: ZARYA's sack holds no weapon to swing at all now)
+    expect(MYSTERY_BOX.mapPrizes.zarya?.melee).toBeUndefined();
   });
 });
 

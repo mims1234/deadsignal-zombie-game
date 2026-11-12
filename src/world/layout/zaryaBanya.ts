@@ -753,7 +753,7 @@ function grounds(c: Ctx): void {
 // ---------------------------------------------------------------------------------------------------------------------
 
 /** A fisherman's tent: a canvas pyramid under snow, its flap toward (dx, dz). */
-function tent(c: Ctx, x: number, z: number, dx: number, dz: number, mat: THREE.Material, lit: boolean): void {
+function tent(c: Ctx, x: number, z: number, dx: number, dz: number, mat: THREE.Material, lit: boolean, lashed = false): void {
   const { b } = c;
   const yaw = Math.atan2(dx, dz);
   const r = 1.55;
@@ -765,12 +765,15 @@ function tent(c: Ctx, x: number, z: number, dx: number, dz: number, mat: THREE.M
   const lean = Math.atan2(ap, h);
   const dy = 0.62;
   const out = ap * (1 - dy / h) + 0.025;
-  slab(b, lit ? Z.warm : Z.black, x + dx * out, y0 + dy, z + dz * out, 0.62, 1.15, 0.03, -lean, yaw, 0, false);
-  // the flap thrown back, and a skirt of snow heaped round the foot
-  slab(b, mat, x + dx * (out + 0.02) - dz * 0.5, y0 + dy, z + dz * (out + 0.02) + dx * 0.5, 0.4, 1.1, 0.03, -lean, yaw, 0.12, false);
+  // (round 3: a lashed tent's doorway and flap are the story's, `zarya/obstacleLook.ts`)
+  if (!lashed) {
+    slab(b, lit ? Z.warm : Z.black, x + dx * out, y0 + dy, z + dz * out, 0.62, 1.15, 0.03, -lean, yaw, 0, false);
+    // the flap thrown back, and a skirt of snow heaped round the foot
+    slab(b, mat, x + dx * (out + 0.02) - dz * 0.5, y0 + dy, z + dz * (out + 0.02) + dx * 0.5, 0.4, 1.1, 0.03, -lean, yaw, 0.12, false);
+  }
   cone(b, Z.snow, x, 0.04, z, r + 0.22, r - 0.1, 0.2, 4, yaw - Math.PI / 4, false);
   solid(c, x, z, 2.2, 2.2, h, 'zarya-tent', { rot: yaw, kind: 'prop', surface: 'wood' });
-  if (lit) b.glow({ x: x + dx * (out + 0.2), y: 0.8, z: z + dz * (out + 0.2), color: 0xffb060, size: 1.3, intensity: 1.4, mode: 'steady' });
+  if (lit && !lashed) b.glow({ x: x + dx * (out + 0.2), y: 0.8, z: z + dz * (out + 0.2), color: 0xffb060, size: 1.3, intensity: 1.4, mode: 'steady' });
 }
 
 /** A hole in the ice and what a fisherman has by it: his stool and box, the rod on its rest, an auger, the catch. */
@@ -820,7 +823,7 @@ function fishing(c: Ctx, h: FishHole, i: number): void {
     const qz = bz + pz * 0.5 + ((k * 0.53 + i * 0.3) % 0.6) - 0.3;
     box(b, STEEL, qx, 0.085, qz, 0.24, 0.03, 0.07, k * 1.1 + i, false);
   }
-  if (h.tent >= 0) tent(c, h.x + ux * 3, h.z + uz * 3, -ux, -uz, TENTS[h.tent % TENTS.length]!, h.tent % 2 === 1);
+  if (h.tent >= 0) tent(c, h.x + ux * 3, h.z + uz * 3, -ux, -uz, TENTS[h.tent % TENTS.length]!, h.tent % 2 === 1, h.lashed);
 }
 
 /** The cross-shaped ice-hole: black water inside a rim of ice blocks, wooden steps down into its south arm, the ice cross behind. */

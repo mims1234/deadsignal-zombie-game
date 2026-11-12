@@ -461,6 +461,12 @@
   transform: none;
   border-radius: 1px;
 }
+/* ZARYA: Ded Moroz's sack, a round sack tied at the neck */
+.ds-compass .wp[data-kind='sack'] .dia {
+  transform: none;
+  border-radius: 50% 50% 46% 46% / 38% 38% 62% 62%;
+  border-top: 2px solid #ffd36a;
+}
 .ds-compass .wp.dim {
   opacity: 0.5;
 }

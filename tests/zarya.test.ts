@@ -5,6 +5,8 @@
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
 import { MELEE } from '../src/logic/melee';
+import { MYSTERY_BOX } from '../src/config';
+import { OBSTACLES, OBSTACLE_TOOL } from '../src/zarya/obstacles'; // (round 3)
 import { LINES, NINA_WIRE, lineSeconds } from '../src/zarya/lines';
 import { KIOSKS, SHELTER, SQUARE, STORE, ZARYA, ZARYA_BOUNDS, ZARYA_SPACE, ZARYA_ZONES, inRect, inShelter, onSquare, people } from '../src/zarya/places';
 import { AT, CH, F, ZaryaStory, decodeStory, encodeStory } from '../src/zarya/story';
@@ -43,7 +45,18 @@ describe('the catalogue', () => {
     const inv = { cash: 400 } as Parameters<typeof buyOffer>[0];
     expect(buyOffer(inv, TOWN.offers[0]!)).toBe(true);
     expect(inv.cash).toBe(400 - TOWN.offers[0]!.price);
-    expect(buyOffer(inv, TOWN.offers[2]!)).toBe(false);
+    expect(buyOffer(inv, TOWN.offers[0]!)).toBe(false);
+  });
+
+  // ---- round 3 (notes 5 and 6): a few weapons to swing, each with a job ----
+  it('hands out only the weapons to swing that have a job: the maul lying about, the bear spear built', () => {
+    const swung = [...TOWN.offers, ...TOWN.finds, ...TOWN.recipes].flatMap((o) => ('melee' in o.gives ? [o.gives.melee] : []));
+    expect(swung.sort()).toEqual(['maul', 'rogatina']);
+    expect(TOWN.offers.map((o) => o.gives)).toEqual([{ plates: 1 }]);
+    expect(MYSTERY_BOX.mapPrizes.zarya?.melee).toBeUndefined();
+    // each obstacle wants one kept weapon, and every kept weapon but the knife and the spear opens something
+    expect(new Set(OBSTACLES.map((o) => OBSTACLE_TOOL[o.kind]))).toEqual(new Set(['maul', 'fireAxe', 'shashka']));
+    expect(MELEE.rogatina.pin).toBeGreaterThan(0);
   });
 });
 

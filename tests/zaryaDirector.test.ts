@@ -12,6 +12,7 @@ import type { ZaryaDirector } from '../src/zarya/director';
 import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type ZaryaZone } from '../src/zarya/places';
 import { AT, CH, DOLLS, G, STORY, ZaryaStory } from '../src/zarya/story';
 import { yawTo } from '../src/zarya/types';
+import { MACHINE, MSTATE, Stage, YAGA, catches, onRevolve, trapUnder } from '../src/zarya/stage';
 
 type Spot = { x: number; z: number };
 /** The story's own state, set outright: a test's way past the hours of play that lead to a moment. */
@@ -19,7 +20,9 @@ type Jump = Partial<Record<'ch' | 'f' | 'g' | 'm' | 'clues' | 'covered' | 'end',
 
 // the town takes a few seconds to build: every test is a fresh run of the one simulation
 vi.setConfig({ testTimeout: 120_000 });
-const sim = new SessionSim({ seed: 7, kind: 'mission', map: 'zarya', send: () => {} });
+/** What the simulation sent each player (Baba Yaga's blows arrive as 'hurt'). */
+const sent: { id: string; k: string; a?: number }[] = [];
+const sim = new SessionSim({ seed: 7, kind: 'mission', map: 'zarya', send: (id: string, m: { k: string; a?: number }) => void sent.push({ id, k: m.k, a: m.a }) });
 
 function town() {
   sim.players([{ id: 'p1', name: 'Mira' }]);
@@ -196,7 +199,7 @@ describe('Borya the Butcher', () => {
 });
 
 describe('Baba Yaga', () => {
-  it('takes damage only while the hut faces the hall, never leaves it, and the hut goes back', () => {
+  it('walks her stage, and only its machines open her door: each a window, two together a bigger one, never the one she watches', () => {
     const t = town();
     t.jump({ ch: CH.act2 });
     t.run();
@@ -204,51 +207,150 @@ describe('Baba Yaga', () => {
     expect(t.story.act('tickets', 0, AT.tickets)).toBe(true);
     t.run();
     const y = t.dir.where('yaga')!;
+    const st = (): number => t.story.view.st;
     expect(y.tag).toBe('BABA YAGA');
     expect(near(y, DK.hut)).toBeLessThan(0.5);
     expect(facing(y, -1)).toBeGreaterThan(0.99);
+    // the hut's size: shots at its cabin find her
+    expect(y.def.radius).toBeGreaterThan(1.2);
     expect(t.did(G.yaga)).toBe(false);
+    expect(Stage.phase(st())).toBe(0);
+    for (let m = 0; m < 4; m++) expect(ZaryaStory.can(t.story.view, 'stage', m)).toBe(false);
     expect(ZaryaStory.can(t.story.view, 'lever')).toBe(false);
 
-    // someone in the hall: she has noticed, and the lever means something
+    // someone in the hall: she has noticed, the fight is on, and nothing reaches her through the shut door
     t.go(DK.hallCentre);
     t.run();
     expect(t.did(G.yaga)).toBe(true);
+    expect(Stage.phase(st())).toBe(1);
+    const full = y.maxHp;
+    expect(full).toBeGreaterThan(2400 * 3);
     t.hit(y);
-    expect(y.hp).toBe(y.maxHp);
+    expect(y.hp).toBe(full);
+    expect(t.dir.spared(y)).toBe(true);
 
-    // the lever: the hut turns, and for a while a blow lands
-    expect(t.story.act('lever', 0, DK.lever)).toBe(true);
-    t.run(2.5);
-    expect(facing(y, 1)).toBeGreaterThan(0.99);
+    // the winch in the south wing turns the revolve she roosts on: her door flies open, and a blow lands
+    expect(onRevolve(y)).toBe(true);
+    t.go(DK.winch);
+    expect(t.story.act('stage', MACHINE.revolve, DK.winch)).toBe(true);
+    t.run(0.2);
+    expect(Stage.level(st())).toBe(1);
+    expect(t.did(G.exposed)).toBe(true);
+    expect(Stage.state(st(), MACHINE.revolve)).toBe(MSTATE.running);
+    t.run(1.6);
+    expect(facing(y, 1)).toBeGreaterThan(0.95); // round to the hall
     expect(t.dir.spared(y)).toBe(false); // the squad's guns are on her too
     t.hit(y);
-    expect(y.hp).toBeLessThan(y.maxHp);
-    expect(y.alive).toBe(true);
+    const one = full - y.hp;
+    expect(one).toBeGreaterThan(0);
 
-    // the hut goes back: the story's flag falls, and nothing lands again (Timur and Vera had their turn at her too)
-    t.run(STORY.exposed);
-    expect(t.did(G.exposed)).toBe(false);
-    expect(ZaryaStory.can(t.story.view, 'lever')).toBe(true);
-    const hurt = y.hp;
-    expect(y.alive).toBe(true);
-    t.run(2.5);
-    expect(facing(y, -1)).toBeGreaterThan(0.99);
+    // a second machine in the open window: the revolve's own trap under her, from the orchestra pit: a bigger window
+    expect(trapUnder(y)).toBe(0);
+    t.go(DK.trapLever);
+    expect(t.story.act('stage', MACHINE.trap, DK.trapLever)).toBe(true);
+    t.run(0.1);
+    expect(Stage.level(st())).toBe(2);
+    expect(Stage.pinned(st())).toBe(true);
+    expect(Stage.openTrap(st())).toBe(0);
+    const before = y.hp;
     t.hit(y);
-    expect(y.hp).toBe(hurt);
-    expect(t.dir.spared(y)).toBe(true);
-    expect(near(y, DK.hut)).toBeLessThan(0.5);
+    expect(before - y.hp).toBeGreaterThan(one * 1.4); // every blow worth more
 
-    // pulled again, and this time she is finished: the Wheat key
-    expect(t.story.act('lever', 0, DK.lever)).toBe(true);
+    // the window shuts by itself; she watches the trap that caught her last
+    t.run(14);
+    expect(Stage.level(st())).toBe(0);
+    expect(t.did(G.exposed)).toBe(false);
+    expect(Stage.watched(st())).toBe(MACHINE.trap);
+    const shut = y.hp;
+    t.hit(y);
+    expect(y.hp).toBe(shut);
+    t.run(14);
+    expect(Stage.state(st(), MACHINE.trap)).toBe(MSTATE.ready);
+    expect(ZaryaStory.can(t.story.view, 'stage', MACHINE.trap)).toBe(false); // watched
+    // the follow-spot blinds her: she watches nothing, and is dazzled open for a moment
+    expect(ZaryaStory.can(t.story.view, 'stage', MACHINE.spot)).toBe(true);
+    t.go(DK.spot);
+    expect(t.story.act('stage', MACHINE.spot, DK.spot)).toBe(true);
+    t.run(0.1);
+    expect(Stage.blind(st())).toBe(true);
+    expect(Stage.level(st())).toBe(1);
+    expect(ZaryaStory.can(t.story.view, 'stage', MACHINE.trap)).toBe(true);
+    expect(y.alive).toBe(true);
+  });
+
+  it('has three phases, each ending at its floor and taking a few windows, comes down into the stalls, hurts who is near, and goes down for the Wheat key', () => {
+    const t = town();
+    t.jump({ ch: CH.act2 });
     t.run();
+    expect(t.story.act('tickets', 0, AT.tickets)).toBe(true);
+    t.run();
+    const y = t.dir.where('yaga')!;
+    const st = (): number => t.story.view.st;
+    t.go(DK.hallCentre);
+    t.run();
+    expect(Stage.phase(st())).toBe(1);
+    const full = y.maxHp;
+    const spots = [DK.winch, DK.trapLever, DK.flyRail, DK.spot];
+    /** Work whichever machine would catch her where she stands now (waiting for one if none would); true when her door opened. */
+    const open = (): boolean => {
+      for (let i = 0; i < 240; i++) {
+        for (const m of [MACHINE.revolve, MACHINE.trap, MACHINE.spot, MACHINE.fly] as const) {
+          if (!ZaryaStory.can(t.story.view, 'stage', m) || !catches(m, y)) continue;
+          t.go(spots[m]!);
+          if (!t.story.act('stage', m, spots[m]!)) continue;
+          t.run(m === MACHINE.fly ? 1.2 : 0.1);
+          if (Stage.level(st()) > 0) return true;
+        }
+        t.run(0.25);
+      }
+      return false;
+    };
+
+    // a window, and far more than it may take: she slams her door at half a phase, and it is still phase 1
+    expect(open()).toBe(true);
     t.kill(y);
+    expect(y.hp).toBeCloseTo(full * (1 - YAGA.windowCap[Stage.level(st())]!), 0);
+    t.run(0.1);
+    expect(Stage.level(st())).toBe(0);
+    expect(Stage.phase(st())).toBe(1);
+    expect(t.dir.spared(y)).toBe(true);
+    // another window, and she stops at the floor of phase 1: phase 2 begins
+    expect(open()).toBe(true);
+    t.kill(y);
+    expect(y.hp).toBeCloseTo(full * YAGA.floors[1], 0);
+    t.run(0.2);
+    expect(Stage.phase(st())).toBe(2);
+    expect(Stage.level(st())).toBe(0);
+
+    // phase 2: in a while the hut walks down off the stage into the stalls
+    t.go({ x: -145, z: -12 });
+    let stalls = false;
+    for (let i = 0; i < 90 && !stalls; i++) {
+      t.run(1);
+      stalls = y.x > DK.apron.x1 + 2;
+    }
+    expect(stalls).toBe(true);
+
+    // standing at her legs: the broom and the stamping hurt
+    sent.length = 0;
+    t.go({ x: y.x + 2, z: y.z });
+    t.run(6);
+    expect(sent.some((m) => m.id === 'p1' && m.k === 'hurt')).toBe(true);
+    // her carol-singers came out of the wings, in their masks
+    expect(t.sim.zombies.zombies.some((z) => z.alive && z.variant === 'ryazhenye')).toBe(true);
+
+    // window after window to phase 3, and through it: the Wheat key
+    for (let i = 0; i < 12 && y.alive; i++) {
+      expect(open()).toBe(true);
+      t.kill(y);
+      t.run(0.3);
+      if (Stage.phase(st()) === 3 && i < 12) expect(y.hp).toBeLessThanOrEqual(full * YAGA.floors[2] + 1);
+    }
     t.run();
+    expect(y.alive).toBe(false);
     expect(t.did(G.yagaDown)).toBe(true);
     expect(t.did(G.exposed)).toBe(false);
     expect(t.dir.where('yaga')).toBeNull();
-    // one turn of the hut is not enough against a squad's built weapons: her health is about three turns' worth
-    expect(y.maxHp).toBeGreaterThan(600 * 6);
   });
 });
 

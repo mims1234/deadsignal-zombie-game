@@ -173,6 +173,45 @@ export function createMeleeDisplay(id: MeleeId): THREE.Group {
   return g;
 }
 
+/** ZARYA: the gold snowflake that hangs over Ded Moroz's sack (its "?"), drawn once. */
+let sackMark: THREE.SpriteMaterial | null = null;
+
+export function createSackMark(): THREE.Sprite {
+  if (!sackMark) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d')!;
+    const grad = g.createRadialGradient(64, 64, 6, 64, 64, 62);
+    grad.addColorStop(0, 'rgba(255,214,120,0.5)');
+    grad.addColorStop(1, 'rgba(255,170,60,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 128, 128);
+    g.translate(64, 64);
+    g.strokeStyle = '#ffe6a8';
+    g.shadowColor = '#ffb040';
+    g.shadowBlur = 12;
+    g.lineCap = 'round';
+    g.lineWidth = 7;
+    for (let i = 0; i < 6; i++) {
+      g.rotate(Math.PI / 3);
+      g.beginPath();
+      g.moveTo(0, 0);
+      g.lineTo(0, -42);
+      g.moveTo(0, -26);
+      g.lineTo(-11, -36);
+      g.moveTo(0, -26);
+      g.lineTo(11, -36);
+      g.stroke();
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    sackMark = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, fog: true });
+  }
+  const s = new THREE.Sprite(sackMark);
+  s.scale.set(0.5, 0.5, 1);
+  return s;
+}
+
 /** The "?" over an unopened box. */
 export function createBoxMark(): THREE.Sprite {
   const s = new THREE.Sprite(getShared().mark);

@@ -1253,6 +1253,32 @@ export interface GaragesHandles {
   none?: undefined;
 }
 
+/**
+ * (Round 3, the fire axe's job: `zarya/obstacles.ts` 'garage'.) A garage whose doors came off their hinges, so its
+ * owner boarded its mouth up from outside (the boards are the story's: `zarya/obstacleLook.ts`). Inside, dark: his
+ * Moskvich under a canvas cover, his doors leaned against the west wall, shelves of jars and tins on the back wall, a
+ * tyre; the strongbox on the floor at the back east corner is the story's too.
+ */
+function boarded(c: Ctx): void {
+  const { b } = c;
+  const q = G.bays.boarded;
+  bayShell(c, q, Z.concreteDark, Z.concreteDark);
+  const xm = (q.x0 + q.x1) / 2;
+  const zb = q.z1;
+  // the car under its cover: a body, a cabin, the cover's skirt, wheels peeping out
+  const cx = q.x0 + 1.2;
+  box(b, OCHRE, cx, 0.62, 131.2, 1.5, 0.7, 3.9);
+  box(b, OCHRE, cx, 1.18, 131.4, 1.3, 0.48, 2.0);
+  for (const dz of [-1.3, 1.3]) for (const s of [-1, 1]) tube(b, Z.black, cx + s * 0.66, 0.28, 131.2 + dz, cx + s * 0.8, 0.28, 131.2 + dz, 0.28, 10);
+  solid(c, cx, 131.2, 1.55, 4, 1.4, 'zarya-car', { kind: 'prop', surface: 'metal' });
+  // his two doors, off their hinges, leaned on the west wall
+  for (const dz of [0, 0.12]) slab(b, DOORS[2]!, q.x0 + 0.18 + dz, 1.15, 129.6 + dz * 4, 0.05, 2.3, 1.7, 0, 0, -0.08, false);
+  // the back wall: a shelf of jars and tins, a tyre leaned under it
+  box(b, Z.wood, xm, 1.4, zb - 0.22, q.x1 - q.x0 - 0.3, 0.04, 0.32, 0, false);
+  for (let i = 0; i < 9; i++) cyl(b, i % 3 ? Z.cream : Z.red, q.x0 + 0.4 + i * 0.34, 1.52, zb - 0.22, 0.06, 0.06, 0.2, 6, false);
+  tube(b, Z.black, q.x0 + 0.6, 0.32, zb - 0.38, q.x0 + 0.62, 0.32, zb - 0.2, 0.32, 10);
+}
+
 export function buildGarages(c: Ctx): GaragesHandles {
   ground(c);
   fences(c);
@@ -1262,6 +1288,7 @@ export function buildGarages(c: Ctx): GaragesHandles {
   builder(c);
   plumber(c);
   welder(c);
+  boarded(c); // (round 3: the fire axe's boarded garage)
   pipes(c);
   yard(c);
   lanes(c);

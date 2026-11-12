@@ -2,6 +2,19 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.390",
+      "date": "2026-11-12",
+      "title": "ZARYA: weapons with a job, a real witch, side stories",
+      "notes": [
+        "Fewer weapons to swing, each with its own job: the maul breaks locks, the fire axe chops through boarded doors and ice to places worth finding, the Rogatina bear spear stops a big one's charge, and the shashka is the reward for the tree's ornaments.",
+        "The nail gun is now a rotary minigun: it spins up, empties a big drum fast, and takes a long time to reload.",
+        "Mods are down to two, each saying what it does and showing it when it happens; the journal explains them.",
+        "Ded Moroz's sack is a real gift sack all the way: no box anywhere, and it opens like a sack.",
+        "Baba Yaga is a real boss: her hut walks the stage and into the stalls, she fights in three phases, and the theatre's machinery (the revolve, the trapdoors, the fly bars, the spotlights) is how the squad opens her up.",
+        "Twelve small side stories in the town's places, each with its own ending and reward."
+      ]
+    },
+    {
       "version": "0.4.389",
       "date": "2026-11-12",
       "title": "ZARYA: faces, the squad in co-op, real parts, a closed line",

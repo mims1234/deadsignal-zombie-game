@@ -276,7 +276,9 @@ export type MapMarkerKind =
   | 'helicopter'
   | 'transmitter'
   | 'gate'
-  | 'landmark';
+  | 'landmark'
+  /** ZARYA: Ded Moroz's sack, the map's paid mystery box (it moves). */
+  | 'sack';
 
 export interface MapMarker {
   id: string;
@@ -395,6 +397,8 @@ export interface PauseTab {
 export interface MenusApi {
   /** A map's own page in the pause menu, asked for each time the menu opens. */
   pauseTab: (() => PauseTab | null) | null;
+  /** What the results call the boxes opened (ZARYA: Ded Moroz's sack). */
+  boxStat?: string;
   mount(root: HTMLElement): void;
   /** Title screen over the live 3D scene (transparent background with gradient framing). */
   showTitle(best: BestRun | null): void;

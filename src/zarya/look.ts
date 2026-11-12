@@ -27,8 +27,15 @@ import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, LA
 import { CH, CLUES, COVERS, DOLLS, F, G, MOD_PARTS, ORNAMENTS, SHUTTERS, STORY, TOOLS, ZaryaStory, type StoryView } from './story';
 import { yawTo } from './types';
 import { PART, TOWN, Unlock } from './unlock';
+// ---- Baba Yaga's stage (`stage.ts`, `stageLook.ts`): the walking hut and the machines are drawn there ----
+import { ZOMBIES } from '../config';
+import { HUT_DEF_PATCH } from './stage';
+import { StageLook, showBody } from './stageLook';
 // (items, round 3: every collectable as a small model of itself, all in one draw call)
 import { ItemMarks, townItems } from './items';
+// ---- side stories (round 3, note 10) ----
+import { SIDE_PLACES, sideShown } from './sidestories';
+import { sideMarks } from './sideModels';
 
 export type Named = 'mishka' | 'borya' | 'yaga' | 'tamada' | 'morozko';
 
@@ -56,7 +63,7 @@ const Y = new THREE.Vector3(0, 1, 0);
  * Pieces of plain colour gathered into one mesh: every box, tube and ball keeps its colour in its vertices, so a
  * thing of forty pieces is one draw call and shares its material with everything else made this way.
  */
-class Paint {
+export class Paint {
   private readonly parts: THREE.BufferGeometry[] = [];
   private readonly m = new THREE.Matrix4();
   private readonly q = new THREE.Quaternion();
@@ -233,6 +240,9 @@ export class TownLook {
   /** Items (round 3): every part, find, tool, mod part and rolled ornament as a model of itself (`items.ts`), one mesh. */
   private readonly items: ItemMarks;
   private readonly itemAt: ReturnType<typeof townItems>['at'];
+  /** Side stories: the things in their places (`sideModels.ts`), and where their specks start in `sparks`. */
+  private readonly side: ReturnType<typeof sideMarks>;
+  private readonly sideAt: number;
 
   // ---- the town ----
   private readonly gates: GateLook[] = [];
@@ -245,7 +255,12 @@ export class TownLook {
 
   // ---- the zones ----
   private readonly cold: { site: Site; leaf: THREE.Mesh; bar: THREE.Mesh; a: number };
-  private readonly hut: { site: Site; body: THREE.Group; door: THREE.Mesh; lever: THREE.Mesh; a: number; doorA: number; leverA: number };
+  /** Baba Yaga's stage (`stageLook.ts`): the hut, the machines, the pools; her body and pots as last handed over (`yaga`). */
+  private readonly hut: { site: Site; stage: StageLook };
+  private yagaBody: Zombie | null = null;
+  private yagaPots: readonly { x0: number; z0: number; x1: number; z1: number; k: number }[] = [];
+  /** Frost pools that came down this frame (the runtime plays their splash). */
+  freshPools: { x: number; z: number }[] = [];
   private readonly cabinet: { site: Site; leaf: THREE.Mesh; a: number };
   private readonly plugs: { site: Site; in: THREE.Mesh[]; out: THREE.Mesh[] };
   private readonly valves: { site: Site; wheel: THREE.Mesh[]; a: number[] };
@@ -370,7 +385,8 @@ export class TownLook {
       this.sackSite = this.site(S.x, S.z, 110);
       this.sack = this.mesh(p, this.sackSite.g);
       this.sack.position.set(S.x, 0, S.z);
-      this.prize = this.mesh(new Paint().box(RED, 0, 0, 0, 0.34, 0.3, 0.34).box(GOLD, 0, 0, 0, 0.36, 0.06, 0.36).box(GOLD, 0, 0, 0, 0.06, 0.32, 0.36), this.fair.g);
+      this.sack.visible = false; // (round 3: the sack is the box's own model now, `world/models/giftSack.ts`)
+      this.prize =this.mesh(new Paint().box(RED, 0, 0, 0, 0.34, 0.3, 0.34).box(GOLD, 0, 0, 0, 0.36, 0.06, 0.36).box(GOLD, 0, 0, 0, 0.06, 0.32, 0.36), this.fair.g);
       this.prize.position.set(ZARYA.hook.x, 2.1, ZARYA.hook.z + 1.25);
     }
 
@@ -400,6 +416,11 @@ export class TownLook {
     // things worth a look: a speck that catches the eye from close by, nothing more
     this.clueAt = this.sparks.length;
     for (const c of CLUES) spark(this.sparks, c.at.x, CLUE_Y[c.id] ?? 1.3, c.at.z, hex(0xfff0c8, 0.9), 0.3, { spin: 0.6 });
+    // ---- side stories (`sidestories.ts`, `sideModels.ts`): their things, one more mesh; a speck like a clue's over each place ----
+    this.side = sideMarks();
+    this.root.add(this.side.marks.mesh);
+    this.sideAt = this.sparks.length;
+    for (const q of SIDE_PLACES) spark(this.sparks, q.p.at.x, q.p.y + 0.5, q.p.at.z, hex(0xffe6b0, 0.9), 0.28, { spin: 0.8 });
     this.gems = this.instanced(new THREE.OctahedronGeometry(0.15), this.glow, this.sparks.length);
 
     // the tree's glass ornaments where they rolled, and back on its lower branches
@@ -602,65 +623,10 @@ export class TownLook {
     // =====================================================================================================
     {
       const site = this.site(DK.hut.x, DK.hut.z, 80);
-      const LOG = 0x6a4a2c;
-      const LOG2 = 0x7b5a3a;
-      const END = 0xa98a5f;
-      const LEG = 0xc9982e;
-      const p = new Paint();
-      const y0 = 1.5;
-      // the frame: dark inside, seven rounds of logs with their ends crossing at the corners
-      p.box(0x33241a, 0, y0 + 1.0, 0, 2.85, 2.0, 2.45);
-      for (let r = 0; r < 7; r++) {
-        const y = y0 + 0.15 + r * 0.285;
-        for (const s of [-1, 1]) {
-          p.cyl(r % 2 ? LOG : LOG2, 0, y, s * 1.26, 0.15, 0.15, 3.4, 6, 0, 0, Math.PI / 2);
-          p.cyl(r % 2 ? LOG2 : LOG, s * 1.46, y + 0.14, 0, 0.15, 0.15, 3.0, 6, Math.PI / 2);
-          for (const e of [-1, 1]) p.cyl(END, e * 1.71, y, s * 1.26, 0.11, 0.11, 0.02, 6, 0, 0, Math.PI / 2);
-        }
-      }
-      // the gables and the roof: old boards, a ridge pole, moss
-      const gable = new THREE.CylinderGeometry(1, 1, 2.5, 3).rotateX(Math.PI / 2).rotateZ(Math.PI);
-      p.put(gable, LOG, 0, y0 + 2.0 + 0.5 * 0.9, 0, 0, 0, 0, 1.72, 0.9, 1);
-      const rise = 1.5;
-      const run = 1.85;
-      const slope = Math.hypot(rise, run);
-      const tilt = Math.atan2(rise, run);
-      for (const s of [-1, 1]) {
-        p.box(0x3d3226, s * (run / 2), y0 + 1.92 + rise / 2 + 0.06, 0, slope + 0.25, 0.1, 3.3, 0, 0, -s * tilt);
-        for (let i = 0; i < 4; i++) p.box(i % 2 ? 0x4a5a34 : 0x54452f, s * (run * (0.2 + i * 0.2)), y0 + 1.92 + rise * (0.8 - i * 0.2) + 0.13, ((i * 7) % 5) * 0.3 - 0.6, 0.42, 0.05, 1.3, 0, 0, -s * tilt);
-      }
-      p.cyl(LOG2, 0, y0 + 1.92 + rise + 0.1, 0, 0.09, 0.09, 3.6, 6, Math.PI / 2);
-      // a crooked chimney
-      p.box(0x7a3b2e, 0.62, y0 + 3.5, 0.45, 0.36, 1.1, 0.36, 0.2, 0.1, -0.28).box(0x33241a, 0.78, y0 + 4.05, 0.5, 0.46, 0.1, 0.46, 0.2, 0.1, -0.28);
-      // the door's frame and the little window's, on the front (the front is -z)
-      const fz = -1.42;
-      p.box(END, -0.45, y0 + 1.62, fz, 1.06, 0.1, 0.06).box(END, -0.95, y0 + 0.85, fz, 0.1, 1.6, 0.06).box(END, 0.05, y0 + 0.85, fz, 0.1, 1.6, 0.06).box(0x1a120c, -0.45, y0 + 0.84, fz + 0.04, 0.9, 1.5, 0.04);
-      p.torus(END, 0.85, y0 + 1.15, fz, 0.25, 0.05, 0, 0, 0).box(END, 0.85, y0 + 1.15, fz, 0.5, 0.04, 0.04).box(END, 0.85, y0 + 1.15, fz, 0.04, 0.5, 0.04);
-      // a step under the door, a skull on a stake by it
-      p.box(LOG2, -0.45, y0 - 0.06, fz - 0.2, 1.1, 0.1, 0.45);
-      p.rod(0x54452f, 1.5, y0 + 0.4, fz - 0.1, 1.62, y0 + 2.0, fz - 0.2, 0.03).ball(0xe6e0cc, 1.63, y0 + 2.1, fz - 0.2, 0.13, 1, 1.1, 1.1, 6);
-      // two chicken legs: a feathered thigh, the shank bent back, three toes forward and a spur
-      for (const s of [-1, 1]) {
-        const x = s * 0.8;
-        p.ball(0x8a6a3a, x, y0 - 0.1, 0.25, 0.3, 1, 1.3, 1, 7);
-        p.rod(LEG, x, y0 - 0.3, 0.25, x, 0.78, -0.42, 0.16, 0.11).rod(LEG, x, 0.78, -0.42, x, 0.08, 0.12, 0.115, 0.095).ball(LEG, x, 0.78, -0.42, 0.15, 1, 1, 1, 6);
-        for (const a of [-0.55, 0, 0.55]) p.rod(LEG, x, 0.08, 0.1, x + Math.sin(a) * 0.72, 0.04, 0.1 - Math.cos(a) * 0.72, 0.085, 0.03, 5);
-        p.rod(LEG, x, 0.07, 0.1, x, 0.03, 0.48, 0.05, 0.02, 5);
-      }
-      const body = new THREE.Group();
-      body.position.set(DK.hut.x, DK.stageTop, DK.hut.z);
-      site.g.add(body);
-      this.mesh(p, body);
-      // its one door: planks, two iron straps
-      const d = new Paint().box(0x8a2f22, 0.44, 0.74, 0, 0.88, 1.48, 0.06).box(0x2b2f36, 0.44, 0.35, -0.035, 0.88, 0.07, 0.02).box(0x2b2f36, 0.44, 1.15, -0.035, 0.88, 0.07, 0.02).torus(0xb08a3a, 0.74, 0.74, -0.05, 0.05, 0.014);
-      const doorM = this.mesh(d, body);
-      doorM.position.set(-0.89, y0 + 0.1, fz - 0.03);
-      // the stage's lever: a long handle in a slotted box
-      const L = DK.lever;
-      // (the layout draws its stand; the handle is drawn only here, east at rest and west once thrown)
-      const lever = this.mesh(new Paint().cyl(0x2b2f36, 0, 0, 0, 0.1, 0.1, 0.24, 8, Math.PI / 2).box(0x59626e, 0, 0.62, 0, 0.085, 1.3, 0.085).box(0x101216, 0, 1.12, 0, 0.115, 0.34, 0.115).ball(0xb3261e, 0, 1.32, 0, 0.11), site.g);
-      lever.position.set(L.x, 1.1, L.z);
-      this.hut = { site, body, door: doorM, lever, a: Math.PI / 2, doorA: 0, leverA: -0.5 };
+      // ---- Baba Yaga's stage: the hut that walks, the machines that move (`stageLook.ts`) ----
+      const stage = new StageLook({ mesh: (p, parent, mat) => this.mesh(p, parent, mat), mat: (m) => this.mat(m), geo: (g) => this.geo(g) });
+      site.g.add(stage.root);
+      this.hut = { site, stage };
 
       // the cabinet's grille (the layout draws only the frame, the sabre and the velvet: the grille is this one),
       // hinged on its west edge, opening into the room
@@ -1073,6 +1039,9 @@ export class TownLook {
   reset(): void {
     this.t = 0;
     this.asleep = 0;
+    this.hut.stage.reset(); // (Baba Yaga's stage)
+    this.yagaBody = null;
+    this.yagaPots = [];
     this.doorA = 1.9;
     this.flareT = -1;
     this.flare.visible = false;
@@ -1187,6 +1156,16 @@ export class TownLook {
     this.kiosks.forEach((k, i) => (k.open.visible = ZaryaStory.shutterUp(v, i)));
     this.booth.tools.forEach((t, i) => (t.visible = (v.m & (1 << (6 + i))) !== 0));
     CLUES.forEach((_, i) => (S[this.clueAt + i]!.on = ZaryaStory.can(v, 'clue', i)));
+    // ---- side stories (`sidestories.ts`): what stands in each place, and a speck over what can be done now ----
+    {
+      const shown = sideShown(v.side ?? [], v.ch >= CH.act2);
+      SIDE_PLACES.forEach((q, j) => {
+        S[this.sideAt + j]!.on = ZaryaStory.can(v, 'side', q.i);
+        this.side.marks.set(this.side.model[j]!, shown[j]!.model);
+        this.side.marks.set(this.side.after[j]!, shown[j]!.after);
+      });
+      this.side.marks.update(this.t);
+    }
     this.fill(this.gems, S, cam, 70);
 
     // ---- what glows ----
@@ -1268,33 +1247,12 @@ export class TownLook {
       }
     }
 
-    // ---- Baba Yaga's hut: its door to the wall until the lever is thrown, then round to the hall, then back ----
+    // ---- Baba Yaga's stage (`stageLook.ts`): the hut walking, her door, the machines, the frost pools ----
     {
       const h = this.hut;
-      const down = did(G.yagaDown);
-      const exposed = did(G.exposed) || down;
-      const to = exposed ? -Math.PI / 2 : Math.PI / 2;
-      const turning = Math.abs(to - h.a) > 0.001;
-      h.a = ease(h.a, to, 1.5, h.site);
-      h.doorA = ease(h.doorA, down ? 1.9 : 0, 2.2, h.site);
-      h.leverA = ease(h.leverA, did(G.exposed) ? 0.5 : -0.5, 4, h.site);
-      const B = h.body;
-      if (h.site.g.visible) {
-        B.rotation.y = h.a;
-        // it steps round on its legs; with her gone it has sat down a little to one side
-        B.position.y = DK.stageTop + (turning ? Math.abs(Math.sin(this.t * 7)) * 0.09 : 0) - (down ? 0.22 : 0);
-        B.rotation.z = turning ? Math.sin(this.t * 7) * 0.025 : down ? 0.07 : 0;
-        h.door.rotation.y = h.doorA;
-        h.lever.rotation.z = h.leverA;
-        // the little window, lit from inside while she is in it
-        this.p.set(0.85, 2.65, -1.44).applyAxisAngle(Y, h.a);
-        windowOrb.x = B.position.x + this.p.x;
-        windowOrb.y = B.position.y + this.p.y;
-        windowOrb.z = B.position.z + this.p.z;
-        windowOrb.c.setHex(0xffb866).multiplyScalar(down ? 0.06 : 1.5 + Math.sin(this.t * 9) * 0.25);
-        windowOrb.yaw = h.a;
-      }
-      windowOrb.on = h.site.g.visible;
+      this.freshPools = h.site.g.visible ? h.stage.update(dt, v.st ?? 0, v.pa ?? 0, v.pb ?? 0, this.yagaBody, did(G.yagaDown), this.yagaPots) : [];
+      // (the little window's light is the stage's own now)
+      windowOrb.on = false;
       const c = this.cabinet;
       c.a = ease(c.a, did(G.hung) ? 1 : 0, 1.4, c.site);
       c.leaf.rotation.y = -c.a * 1.9;
@@ -1448,6 +1406,14 @@ export class TownLook {
    * body this costs one lookup).
    */
   dress(who: Named, z: Zombie): void {
+    // ---- Baba Yaga's stage: her body is the size of her hut (shots at the hut find her) and drawn as the hut; a body
+    // that was hers and is now another's is the Warden's again ----
+    if (who === 'yaga') {
+      if (z.def.radius !== HUT_DEF_PATCH.radius) z.def = { ...ZOMBIES.warden, ...HUT_DEF_PATCH };
+    } else if (z.def.radius === HUT_DEF_PATCH.radius) {
+      z.def = ZOMBIES.warden;
+      showBody(z);
+    }
     const rig = z.rig;
     const c = this.costumes[who];
     if (this.dressed.get(rig) === who && (!c.head || c.head.parent)) return;
@@ -1489,6 +1455,12 @@ export class TownLook {
     return false;
   }
 
+  /** Baba Yaga's body while she stands (null once down) and her pots in the air on this screen (`stageLook.ts`). */
+  yaga(z: Zombie | null, pots: readonly { x0: number; z0: number; x1: number; z1: number; k: number }[]): void {
+    this.yagaBody = z;
+    this.yagaPots = pots;
+  }
+
   /** Mishka's suit (the runtime's older name for `dress('mishka', z)`). */
   dressBear(z: Zombie): void {
     this.dress('mishka', z);
@@ -1505,6 +1477,7 @@ export class TownLook {
     this.snow.dispose();
     this.rings.dispose();
     this.items.dispose();
+    this.side.marks.dispose(); // (side stories)
     for (const c of Object.values(this.costumes)) for (const o of [c.head, c.hips, c.hand]) o?.removeFromParent();
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();

@@ -912,20 +912,52 @@ function leanTo(c: Ctx): void {
   fsolid(c, f, a + 2.9, 0.5, 0.6, 0.6, 0.5, 'zarya-crate', { shots: false, kind: 'none', surface: 'wood' });
 }
 
-/** The yard-keeper's shed by the east wall: boards and battens, a padlocked door, and against its yard side his shovels, a steel bar and a broom (the spot). */
+/**
+ * The yard-keeper's shed by the east wall: boards and battens, a padlocked door, and against its yard side his shovels,
+ * a steel bar and a broom (the spot). (Round 3, the maul's job: `zarya/obstacles.ts` 'shed'. It is hollow now: its door
+ * and padlock are the story's, `zarya/obstacleLook.ts`; inside, his shelf of salt and sand, brooms, a bucket, and the
+ * cash tin the story draws.)
+ */
 function shed(c: Ctx): void {
   const { b } = c;
   const x = 96.7;
   const z = 106;
   const xw = x - 1.6;
-  box(b, S.wood, x, 1.15, z, 3.2, 2.3, 3.6);
+  // the door's gap in the south wall: 1 m wide, its middle at x - 0.4
+  const d0 = x - 0.9;
+  const d1 = x + 0.1;
+  const T = 0.1;
+  box(b, S.wood, xw + T / 2, 1.15, z, T, 2.3, 3.6);
+  box(b, S.wood, x + 1.6 - T / 2, 1.15, z, T, 2.3, 3.6);
+  box(b, S.wood, x, 1.15, z - 1.8 + T / 2, 3.2, 2.3, T);
+  box(b, S.wood, (xw + d0) / 2, 1.15, z + 1.8 - T / 2, d0 - xw, 2.3, T);
+  box(b, S.wood, (d1 + x + 1.6) / 2, 1.15, z + 1.8 - T / 2, x + 1.6 - d1, 2.3, T);
+  box(b, S.wood, (d0 + d1) / 2, 2.12, z + 1.8 - T / 2, d1 - d0, 0.36, T);
   for (let i = 0; i < 9; i++) box(b, S.woodDark, xw - 0.02, 1.15, z - 1.6 + i * 0.4, 0.03, 2.3, 0.06);
-  for (let i = 0; i < 8; i++) box(b, S.woodDark, xw + 0.2 + i * 0.4, 1.15, z + 1.82, 0.06, 2.3, 0.03);
+  for (let i = 0; i < 8; i++) {
+    const bx = xw + 0.2 + i * 0.4;
+    if (bx > d0 - 0.05 && bx < d1 + 0.05) continue;
+    box(b, S.woodDark, bx, 1.15, z + 1.82, 0.06, 2.3, 0.03);
+  }
   slab(b, S.woodDark, x, 2.6, z, 3.7, 0.07, 4.0, 0, 0, 0.14);
   slab(b, Z.snow, x, 2.74, z, 3.8, 0.22, 4.1, 0, 0, 0.14);
-  box(b, S.woodDark, x - 0.4, 1.0, z + 1.83, 0.9, 1.9, 0.05);
-  box(b, S.iron, x + 0.02, 1.05, z + 1.87, 0.08, 0.1, 0.04);
-  solid(c, x + 0.75, z, 4.7, 3.6, 2.6, 'zarya-shed', { kind: 'building', surface: 'wood' });
+  // inside: a boarded ceiling under the roof, a plank floor, the shelf on the north wall (sacks of salt and sand under it), brooms in the corner, a bucket
+  box(b, S.woodDark, x, 0.03, z, 3.0, 0.06, 3.4, 0);
+  box(b, S.woodDark, x, 2.32, z, 3.2, 0.05, 3.6, 0);
+  box(b, S.wood, x + 0.2, 1.3, z - 1.55, 2.6, 0.05, 0.4, 0);
+  for (let i = 0; i < 5; i++) box(b, i % 2 ? S.tin : S.woodPale, x - 0.8 + i * 0.5, 1.45, z - 1.55, 0.3, 0.26, 0.24, 0);
+  for (let i = 0; i < 3; i++) box(b, Z.white, x - 0.6 + i * 0.6, 0.25, z - 1.4, 0.5, 0.45, 0.4, i * 0.2);
+  for (const dz of [0.4, 0.6]) slab(b, S.woodPale, xw + 0.2, 0.8, z + dz, 0.04, 1.6, 0.04, 0, 0, -0.12);
+  cyl(b, S.tin, xw + 0.4, 0.2, z + 1.2, 0.17, 0.14, 0.38, 8);
+  // the walls (the space between it and the east wall is solid, as it was), and the room's ceiling
+  for (const [cx, cz, w, dd] of [
+    [xw + T / 2, z, T, 3.6],
+    [x + 1.6 + 0.75 - T / 2, z, 1.5 + T, 3.6],
+    [x, z - 1.8 + T / 2, 3.2, T],
+    [(xw + d0) / 2, z + 1.8 - T / 2, d0 - xw, T],
+    [(d1 + x + 1.6) / 2, z + 1.8 - T / 2, x + 1.6 - d1, T],
+  ] as const) solid(c, cx, cz, w, dd, 2.6, 'zarya-shed', { kind: 'building', surface: 'wood' });
+  c.b.collide({ x, z, hx: 1.6, hz: 1.8, y0: 2.3, y1: 2.8, mapKind: 'none', tag: 'roof' });
   // what leans on its yard side: two snow shovels, a spade, the steel bar, a birch broom
   const P = DVOR.shaft;
   const lean = (zz: number, len: number, t: number, mat: THREE.Material, w = 0.035): number => {

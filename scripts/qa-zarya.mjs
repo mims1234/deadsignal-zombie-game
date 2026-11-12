@@ -14,6 +14,9 @@
 //          the ornaments and the tree, the escalator and the Tamada, the tickets and Baba Yaga.
 // ACT III  the matryoshkas and the pond road, the banya, the plant, the keypad, the Institute, the four keys, Morozko,
 //          the console.
+// ROUND 3  the few weapons to swing and their jobs (`src/zarya/obstacles.ts`): the maul's padlocks (the escalator, the
+//          fire board, the yard-keeper's shed), the fire axe's boards, barricade and ice, the shashka's lashings, the
+//          bear spear's pin; nothing else to swing is handed out.
 // Every place is taken by its NAME from the game's own modules (the dev server serves them), so a zone that moves a
 // spot moves the script with it. It checks that nothing runs a clock and that nothing ends the run but the ending.
 import { mkdirSync } from 'node:fs';
@@ -55,7 +58,9 @@ const N = await D(async () => {
   const pl = await import('/src/zarya/places.ts');
   const st = await import('/src/zarya/story.ts');
   const un = await import('/src/zarya/unlock.ts');
+  const ob = await import('/src/zarya/obstacles.ts'); // (round 3)
   return JSON.parse(JSON.stringify({
+    OBSTACLES: ob.OBSTACLES, OBIT: ob.OBIT, OBSTACLE_WORDS: ob.OBSTACLE_WORDS, offers: un.TOWN.offers, finds: un.TOWN.finds,
     ZARYA: pl.ZARYA, RYNOK: pl.RYNOK, DVOR: pl.DVOR, GARAGES: pl.GARAGES, DEPOT: pl.DEPOT, DK: pl.DK, BANYA: pl.BANYA, TETS: pl.TETS, INSTITUTE: pl.INSTITUTE, CANTEEN: pl.CANTEEN, BERLOGA: pl.BERLOGA, UPSTAIRS: pl.UPSTAIRS,
     STOPS: pl.STOPS, GATES: pl.GATES, CH: st.CH, F: st.F, G: st.G, CLUES: st.CLUES, CLUE: st.CLUE, COVERS: st.COVERS, ORNAMENTS: st.ORNAMENTS, DOLLS: st.DOLLS, TOOLS: st.TOOLS, BENCHES: st.BENCHES, AT: st.AT, STORY: st.STORY, KEYS: st.KEYS,
     parts: un.TOWN.parts, PART: un.PART, RECIPE: un.RECIPE, CHAIN: un.CHAIN,
@@ -63,6 +68,7 @@ const N = await D(async () => {
 });
 const { ZARYA, RYNOK, DVOR, GARAGES, DEPOT, DK, BANYA, TETS, INSTITUTE, CANTEEN, BERLOGA, UPSTAIRS, STOPS, GATES, CH, F, G, CLUES, CLUE, COVERS, ORNAMENTS, DOLLS, TOOLS, AT, STORY, KEYS, PART, RECIPE, CHAIN } = N;
 const PARTS = N.parts;
+const { OBSTACLES, OBIT, OBSTACLE_WORDS } = N; // (round 3)
 
 const state = () => D(() => {
   const g = window.__dead.game;
@@ -75,6 +81,7 @@ const state = () => D(() => {
     map: g.mapId, ch: v.ch, f: v.f, g: v.g, m: v.m, parts: v.parts, built: v.built, gates: v.gates, clues: v.clues, covered: v.covered, orn: v.orn, dolls: v.dolls, turned: v.turned, end: v.end,
     unarmed: g.zarya.unarmed, hidden: g.weapons.hidden,
     melee: m ? { carried: m.carried, out: m.out, pack: [...m.pack] } : null, slots: g.session.inv.slots.map((s) => s?.id ?? null), cash: g.session.inv.cash,
+    plates: g.session.inv.plates, obst: lv.obstacles.map((c) => (c ? c.blocksMove : null)), // (round 3)
     hp: g.session.vitals.health, zone: g.zarya.zones.current, drawn: g.zarya.zones.count,
     door: lv.blastDoor.blocksMove, coldDoor: lv.coldDoor.blocksMove, keyDoor: lv.keyDoor.blocksMove, escalator: lv.escalator.closed,
     shut: Object.fromEntries(Object.entries(lv.gates).map(([id, c]) => [id, c.blocksMove])),
@@ -140,6 +147,37 @@ const hush = async (max = 900) => {
   }
 };
 const say = (s) => `${s.prompt ?? 'no prompt'}${s.sub ? ` / ${s.sub}` : ''}`;
+/**
+ * (Round 3) An obstacle only one weapon gets through: from `back` metres out in front of it, the prompt names the act
+ * (and the weapon in its line); held, it opens for the squad, its collider with it; a cache behind it pays this player
+ * once. Shots before and after.
+ */
+const obstacle = async (id, back = 1.6) => {
+  const i = OBSTACLES.findIndex((o) => o.id === id);
+  const o = OBSTACLES[i];
+  const w = OBSTACLE_WORDS[o.kind];
+  const fx = o.at.x + Math.sin(o.yaw) * back;
+  const fz = o.at.z + Math.cos(o.yaw) * back;
+  await sweep();
+  await go(fx, fz, o.at.x, o.at.z, 0.4);
+  let s = await state();
+  const offered = s.prompt === w.verb && s.can;
+  const said = say(s);
+  await shot(`obs-${id}-before`);
+  await use(1.6);
+  s = await state();
+  check(`${o.name.toLowerCase()}: ${w.verb.toLowerCase()}`, offered && bit(s.m, OBIT + i) && s.obst[i] !== true, `${said}; m ${s.m}; collider ${s.obst[i]}`);
+  await advance(0.8);
+  await shot(`obs-${id}-after`);
+  if (!o.cache) return;
+  await go(o.cache.at.x + Math.sin(o.yaw) * 1.1, o.cache.at.z + Math.cos(o.yaw) * 1.1, o.cache.at.x, o.cache.at.z, 0.3);
+  s = await state();
+  const takeOffered = s.prompt === `TAKE ${o.cache.name}` && s.can;
+  const before = s.cash;
+  await use(0.6);
+  s = await state();
+  check(`and behind it, ${o.cache.name.toLowerCase()}: taken once`, takeOffered && s.cash >= before + o.cache.cash, `${say(s)}; $${before} -> $${s.cash}`);
+};
 /** Walk over a part (it is picked up in passing) and say whether the squad has it. */
 const part = async (name) => {
   const i = PART[name];
@@ -283,11 +321,11 @@ await go(ZARYA.sports.x - 3, ZARYA.sports.z + 1.4, ZARYA.sports.x - 3, ZARYA.spo
 await shot('11-sports-counter');
 await use();
 s = await state();
-check('the sports counter sells for points', s.cash < 3000 && ['bat', 'gloves', 'hockey'].includes(s.melee?.carried), `cash ${s.cash}, ${s.melee?.carried}`);
+// (round 3: the sports counter sells a goalie's pads, an armour plate; nothing to swing is bought or found in the store)
+check("the sports counter sells a goalie's pads for points: an armour plate", s.cash < 3000 && s.plates === 3 && s.melee?.pack.length === 1, `cash ${s.cash}, plates ${s.plates}, ${JSON.stringify(s.melee?.pack)}`);
 await go(80, -22.4, 80, -25, 0.3);
-await use();
 s = await state();
-check('a skillet is taken from housewares', s.melee?.carried === 'skillet', s.melee?.carried);
+check('round 3: no skillet in housewares, and nothing else to swing in the store or at the fair', !/SKILLET/.test(s.prompt ?? '') && N.finds.length === 1 && N.finds[0].id === 'maul' && N.offers.every((o) => !o.gives.melee), say(s));
 
 // ---- the Signalka ----
 await go(PARTS[PART.cartridges].x + 1.2, PARTS[PART.cartridges].z - 0.2, 20, -10, 0.4);
@@ -488,7 +526,7 @@ s = await state();
 check('the girl Gena had by the hood is covered', girlOffered && bit(s.covered, 0), say(s));
 await go(AT.escalator.x, AT.escalator.z + 0.4, AT.escalator.x, AT.escalator.z - 3, 0.3);
 s = await state();
-check('the escalator is padlocked, and a skillet will not do', s.escalator === true && !s.can && /PADLOCKED/.test(s.prompt ?? '') && /heavy/i.test(s.sub), `${say(s)}; ${s.melee?.carried}`);
+check('the escalator is padlocked, and says the maul breaks it', s.escalator === true && !s.can && /PADLOCKED/.test(s.prompt ?? '') && /maul/i.test(s.sub), `${say(s)}; ${s.melee?.carried}`);
 
 // ---- the Dvor: by tram to Stroiteley Street ----
 await ride('rynok', 'dvor');
@@ -515,6 +553,8 @@ const maulOffered = /^TAKE SPLITTING MAUL$/.test(s.prompt ?? '');
 await use();
 s = await state();
 check('the splitting maul from the woodpile: something heavy', maulOffered && s.melee?.carried === 'maul', `${say(s)}; ${s.melee?.carried}`);
+// (round 3: the maul's one more shut thing)
+await obstacle('shed');
 await at(DVOR.bench);
 s = await state();
 const cutOffered = /^BUILD THE BOLT CUTTERS$/.test(s.prompt ?? '');
@@ -569,6 +609,15 @@ check('and the axe is there to be taken', /^TAKE THE FIRE AXE$/.test(s.prompt ??
 await use();
 s = await state();
 check('the fire axe in hand', s.melee?.carried === 'fireAxe', s.melee?.carried);
+// (round 3: the fire axe's boards and barricade; its ice is at the plant)
+await obstacle('garage');
+await obstacle('gap', -1.6);
+await go(152, 69, 152, 80, 0.3);
+await D(() => window.__dead.hold({ forward: true }));
+await advance(1.6);
+await D(() => window.__dead.releaseAll());
+s = await state();
+check('and the old way through goes from the market into the garages', s.zone === 'garages' && s.z > 73, `${s.zone}; z ${s.z.toFixed(1)}`);
 await cash(5000);
 await go(DEPOT.shop.x - 1.1, DEPOT.shop.z, DEPOT.shop.x - 1.1, DEPOT.shop.z - 2, 0.3);
 s = await state();
@@ -613,6 +662,30 @@ s = await state();
 // (the arsenal: every gun taken is kept, so both guns are carried; the spear joins the knife)
 check('and each lies on the bench to be taken', took.length === 3 && s.slots.includes('gvozdomyot') && s.slots.includes('salyut') && s.melee?.carried === 'rogatina' && s.melee.pack.includes('knife'), `${took.join(', ')}; ${JSON.stringify(s.slots)}; ${JSON.stringify(s.melee)}`);
 await shot('25-timur-bench');
+// (round 3: the bear spear's job) its take prompt said what it is for; a wound-up thrust pins the Morzh where he stands
+{
+  check('the bear spear was handed over with its job', took.some((t) => /SPEAR|ROGATINA/.test(t)), took.join(', '));
+  await sweep();
+  await go(GARAGES.bench.x, GARAGES.bench.z + 5, GARAGES.bench.x, GARAGES.bench.z + 9, 0.2);
+  const id = await D(() => {
+    const d = window.__dead;
+    const g = d.game;
+    g.melee.select('rogatina');
+    g.melee.setOut(true);
+    const p = g.player;
+    return d.spawnZombie('armored', p.x - Math.sin(p.yaw) * 2.3, p.z - Math.cos(p.yaw) * 2.3, false, 'morzh', p.yaw);
+  });
+  await advance(0.5);
+  // (a press starts the swing, holding winds it up)
+  await D(() => { window.__dead.click(); window.__dead.hold({ fire: true }); });
+  await advance(0.95);
+  await D(() => window.__dead.releaseAll());
+  await advance(0.25);
+  const k = await D((id) => window.__dead.kindInfo(id), id);
+  check('a wound-up thrust of the bear spear pins the Morzh where he stands', k?.variant === 'morzh' && k.state === 'stagger', JSON.stringify(k && { v: k.variant, state: k.state, hp: k.hp }));
+  await D(() => window.__dead.game.melee.select('knife'));
+  await kill();
+}
 
 // ---- the escalator, the second floor, the canteen, the Tamada ----
 await at(DVOR.woodpile);
@@ -710,34 +783,44 @@ await sweep();
 await notice('photo', /^LOOK AT THE PHOTOGRAPH$/);
 await at(DK.sickleCase, 1);
 s = await state();
-const caseOffered = /^BREAK THE GLASS$/.test(s.prompt ?? '');
+// (round 3: the sickle and hammer are an exhibit on ZARYA, nothing to take)
+const caseNote = /^THE MUSEUM CASE$/.test(s.prompt ?? '') && !s.can;
 await use(1.4);
 s = await state();
-check("a heavy blow breaks the museum's case", caseOffered && did(s, G.sickleCase), `${say(s)}; g ${s.g}`);
-await use();
-s = await state();
-check('the serp and molot in hand', s.melee?.carried === 'serpMolot', s.melee?.carried);
+check("the museum's case is an exhibit: nothing to break or take", caseNote && !did(s, G.sickleCase) && !s.melee?.pack.includes('serpMolot'), `${say(s)}; g ${s.g}`);
 await at(DK.cabinet, 1);
 s = await state();
 const sabreOffered = /^TAKE THE SHASHKA$/.test(s.prompt ?? '');
 await use();
 s = await state();
 check("the guard's cabinet stands open: the shashka", sabreOffered && s.melee?.carried === 'shashka', `${say(s)}; ${s.melee?.carried}`);
+// (round 3: the shashka's lashings, the first at the market; the second is at the pond)
+await obstacle('stall');
 await at(DK.hallCentre, 0, 'z', 0.6);
 s = await state();
 check('Baba Yaga has noticed the squad', did(s, G.yaga), `g ${s.g}`);
 await shot('29-hut');
 b = await named('BABA YAGA', 500);
-check("nothing hurts her while the hut's back is to the hall", !!b && b.hurt === 0, JSON.stringify(b));
-await at(DK.lever);
+check("nothing hurts her while her hut's door is shut", !!b && b.hurt === 0, JSON.stringify(b));
+// ---- Baba Yaga's stage (`src/zarya/stage.ts`; the whole fight is `scripts/qa-zarya-yaga.mjs`): she roosts on the
+// revolve when the fight begins, and its winch in the south wing spins her door to the hall ----
+await at(DK.winch);
 s = await state();
-const leverOffered = /^PULL THE LEVER$/.test(s.prompt ?? '');
-await use(1.2);
+const winchOffered = /^TURN THE REVOLVE$/.test(s.prompt ?? '');
+await use(1.6);
 s = await state();
-check('the lever turns the hut', leverOffered && did(s, G.exposed), `${say(s)}; g ${s.g}`);
+check("the revolve's winch spins her round: her door is open", winchOffered && did(s, G.exposed), `${say(s)}; g ${s.g}`);
 await advance(0.4);
 b = await named('BABA YAGA', 50);
 check('and now a blow lands', !!b && b.hurt > 0, JSON.stringify(b));
+// (her three phases each end at their own floor and each window takes only so much: the story's run jumps to the end of
+// the last phase and finishes her in this window; the whole fight is played by `scripts/qa-zarya-yaga.mjs`)
+await D(() => {
+  const g = window.__dead.game;
+  g.zarya.director.yagaFight.phase = 3;
+  const y = g.zombies.zombies.find((z) => z.alive && z.tag === 'BABA YAGA');
+  if (y) y.hp = Math.min(y.hp, 300);
+});
 await kill('BABA YAGA');
 await advance(0.6);
 s = await state();
@@ -772,6 +855,7 @@ await shot('31-pond-stop');
 await sweep();
 await part('coil');
 await notice('faces', /^LOOK AT THE BATHERS$/);
+await obstacle('tent'); // (round 3)
 await at(BANYA.steam);
 await D(() => window.__dead.setHealth(35, 0));
 await advance(0.2);
@@ -786,6 +870,7 @@ await ride('pond', 'plant');
 await sweep();
 await part('valve');
 await notice('pipe', /^LOOK AT THE NEW PIPE$/);
+await obstacle('sideDoor', 2); // (round 3)
 for (let i = 0; i < 3; i++) {
   await at(TETS.valves[i], 1);
   s = await state();

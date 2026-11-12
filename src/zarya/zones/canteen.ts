@@ -55,6 +55,11 @@ export const CANTEEN = {
     { x0: 437.4, z: 7.4, north: '.S....s..S..', south: '..s..S.._.s.' },
     { x0: 452, z: 7.4, north: '.s.._..S..S.', south: 'S...s....S..' },
   ] as CanteenTable[],
+  /** The side stories' places (`zarya/sidestories.ts`): the complaints book on its shelf on the south wall, west of the serving hatch; the management's notice pinned up east of it. */
+  side: {
+    complaints: { x: 451.6, z: 13.72 } as Spot,
+    reply: { x: 459.8, z: 13.75 } as Spot,
+  },
 } as const;
 
 /** A run of tables: how long, how wide, how far apart its places are. */

@@ -6,7 +6,8 @@
  *
  *   ACT I    Gena by the escalator, the guard under his shutter, the bear behind the ice town.
  *   ACT II   BORYA in the market hall: nothing puts him down, he is led into his own cold store and shut in.
- *            BABA YAGA in her hut on the Palace's stage: she can be hurt only while the hut faces the hall.
+ *            BABA YAGA in her hut on the Palace's stage: it walks the stage and the stalls; she can be hurt only while
+ *            the stage's machinery holds her door open (`stage.ts`, the fight's own brain).
  *            THE TAMADA on the canteen's stage: he can be hurt only once his three loudspeakers are unplugged.
  *   ACT III  MOROZKO in the Berloga hall: he fights unless he believed the squad's answer.
  *
@@ -24,9 +25,12 @@ import type { ZombieManager } from '../enemies/zombieManager';
 import type { Rng } from '../logic/rng';
 import type { ZombieType } from '../types';
 import type { Level } from '../world/level';
-import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type Spot, type ZaryaZone } from './places';
+import { BERLOGA, CANTEEN, DK, RYNOK, ZARYA, inRect, type Rect, type Spot } from './places';
 import { CH, DOLLS, F, G, LOOKED, STORY, ZaryaStory, type Stand, type StoryEvent, type StoryView } from './story';
 import { yawTo } from './types';
+// ---- Baba Yaga's stage (`stage.ts`): the fight, its machines, the hut's size ----
+import { ZOMBIES } from '../config';
+import { HUT_DEF_PATCH, YAGA, YagaFight, type Hurt, type Machine } from './stage';
 
 /** What the director saw this frame, for the story to note. */
 export type DirectorNote = Parameters<ZaryaStory['note']>[0];
@@ -41,8 +45,8 @@ export const BEAR_PADDING = 0.88;
 export const BOSS = {
   /** Borya sees a standing player this near. Nothing puts him down: his health is never used. */
   borya: { see: 22, hp: 6 },
-  /** Baba Yaga notices this near her hut; her health lasts about three turns of the hut against built weapons. */
-  yaga: { see: 26, hp: 3.2, mul: 2, cap: 2 },
+  /** Baba Yaga notices this near her hut; her health (more for every player past the first: `stage.ts` YAGA). */
+  yaga: { see: YAGA.see, hp: YAGA.hp },
   /**
    * The Tamada toasts every `every` seconds while a loudspeaker is plugged in. A toast lasts `len` seconds: by how
    * many loudspeakers still play (index), one more guest every so many seconds, up to so many on their feet at once.
@@ -94,7 +98,6 @@ export function weakAt(mask: number, side: number): number {
 }
 
 const WEST = yawTo(0, 0, -1, 0);
-const EAST = yawTo(0, 0, 1, 0);
 
 const wrap = (a: number): number => {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -151,9 +154,23 @@ export class ZaryaDirector {
   private boryaIn = false;
   private baffled = false;
   private shut = false;
-  /** Baba Yaga: seconds the hut still faces the hall, and the story's flag as last seen (a pull is its rise). */
-  private exposeT = 0;
-  private wasExposed = false;
+  /** Baba Yaga: her fight (`stage.ts`), and whether her door was open last frame (the story's `G.exposed` follows it). */
+  private readonly yagaFight = new YagaFight({
+    spawn: (x, z, rng) => {
+      // a carol-singer in a goat or bear mask, out of the wings and straight at the nearest of the squad
+      const q = this.put('runner', x, z, rng, null, true, 'ryazhenye');
+      const p = nearest(this.stands, q.x, q.z);
+      if (p) q.aggro(p.x, p.z);
+    },
+    count: (r) => {
+      let n = 0;
+      for (const z of this.zombies.zombies) if (z.alive && !z.isBoss && inRect(r, z.x, z.z)) n++;
+      return n;
+    },
+  });
+  private wasOpen = false;
+  /** Everyone as last reported (the fight's carol-singers go for the nearest). */
+  private stands: readonly Stand[] = [];
   /** The Tamada: seconds to his next toast; he has come down off the stage. */
   private toastT = 0;
   private tamadaDown = false;
@@ -192,6 +209,8 @@ export class ZaryaDirector {
       const v = this.view;
       if (this.over || v.end !== 0 || v.ch >= CH.ended || !ZaryaStory.asleep(v)) return false;
       const zone = ZaryaStory.zoneOf(x, z);
+      // (while Baba Yaga fights, the theatre's people are hers: she calls her carol-singers out of the wings, `stage.ts`)
+      if (zone === 'dk' && this.yagaFight.phase > 0) return false;
       return zone !== null && zone !== 'canteen' && zone !== 'berloga' && ZaryaStory.zoneOpen(v, zone);
     };
   }
@@ -208,8 +227,9 @@ export class ZaryaDirector {
     this.placed = this.woke = 0;
     this.prizeT = 0;
     this.boryaIn = this.baffled = this.shut = false;
-    this.exposeT = 0;
-    this.wasExposed = false;
+    this.yagaFight.reset();
+    this.wasOpen = false;
+    this.stands = [];
     this.toastT = 0;
     this.tamadaDown = false;
     this.morozkoBase = 0;
@@ -278,7 +298,9 @@ export class ZaryaDirector {
   private stand(who: Exclude<Named, 'mishka'>, tag: string, at: Spot, yaw: number, hp: number, rng: Rng): Zombie {
     const y = this.level.world.floorHeight(at.x, at.z, 0.3);
     // not `spawnWarden`: that one is the bear's, and the manager walks its boss back to a lair
-    const q = this.zombies.spawn('warden', at.x, at.z, rng, { boss: true, hpScale: hp, yaw, y, area: this.level.floors.areaAt(at.x, y, at.z), variant: '' });
+    // (Baba Yaga's body is the size of her hut, `stage.ts`; the others the Warden's own, whatever body the pool hands out)
+    const def = who === 'yaga' ? { ...ZOMBIES.warden, ...HUT_DEF_PATCH } : ZOMBIES.warden;
+    const q = this.zombies.spawn('warden', at.x, at.z, rng, { boss: true, hpScale: hp, yaw, y, area: this.level.floors.areaAt(at.x, y, at.z), variant: '', def });
     q.isAmbient = false;
     q.invulnerable = true;
     this.zombies.tagZombie(q, tag, false, 'NO BREATH');
@@ -328,6 +350,11 @@ export class ZaryaDirector {
       // someone blocked or swung into Morozko's question: it counts if he was asking (or just had) and they were near him
       const m = this.where('morozko');
       if (m && this.fight && this.reelT <= 0 && (this.asking || this.askT <= PARRY.grace) && Math.hypot(e.x - m.x, e.z - m.z) <= PARRY.reach) this.parry(m, v);
+      return;
+    }
+    if (e.kind === 'stage') {
+      // a machine of Baba Yaga's stage worked (the story checked it was ready and the player at it): what it caught
+      this.yagaFight.use(e.i as Machine, this.where('yaga'));
       return;
     }
     if (e.kind === 'chapter') {
@@ -411,7 +438,6 @@ export class ZaryaDirector {
     const zm = this.zombies;
     const up = stand.filter((p) => p.up);
     const has = (flag: number): boolean => (v.f & flag) !== 0;
-    const here = (zone: ZaryaZone): boolean => up.some((p) => ZaryaStory.zoneOf(p.x, p.z) === zone);
 
     // where each one fell (the corpses lie a while: every one is seen here once)
     for (const z of zm.zombies) {
@@ -449,7 +475,7 @@ export class ZaryaDirector {
     this.cast(v, rng);
 
     // the lure: full strength, then fading out over its last third. Some noises never stop while their cause lasts:
-    // the shutter's banging until its plug is pulled, the carol round Baba Yaga's hut while its back is to the hall
+    // the shutter's banging until its plug is pulled (Baba Yaga calls her carol-singers herself: `stage.ts`)
     const l = this.lure;
     let mul = 1;
     let cap = 0;
@@ -460,10 +486,6 @@ export class ZaryaDirector {
       cap = Math.round(l.cap * k);
     }
     if (has(F.guard) && !has(F.plug)) mul = Math.max(mul, 1.5);
-    if ((this.woke & BIT.yaga) !== 0 && this.where('yaga') && this.exposeT <= 0 && here('dk')) {
-      mul = Math.max(mul, BOSS.yaga.mul);
-      cap = Math.max(cap, BOSS.yaga.cap);
-    }
     zm.rateMul = mul;
     zm.capBonus = cap;
 
@@ -501,7 +523,8 @@ export class ZaryaDirector {
     }
 
     this.stepBorya(v, up);
-    this.stepYaga(dt, v, up);
+    this.stands = stand;
+    this.stepYaga(dt, v, stand, rng);
     this.stepTamada(dt, v, up);
     this.stepMorozko(dt, v, up);
     this.room(this.canteen, dt, up, rng);
@@ -522,7 +545,7 @@ export class ZaryaDirector {
       q.territory = { ...RYNOK.rect };
     }
     if (due('yaga') && did(G.tickets) && !did(G.yagaDown)) {
-      // in her hut on the revolve: its door faces the back of the stage (she is held there for good: `stepYaga`)
+      // in her hut on the revolve, its door to the back of the stage, asleep on its legs until the squad comes in
       this.stand('yaga', 'BABA YAGA', DK.hut, WEST, BOSS.yaga.hp, rng);
     }
     if (due('tamada') && did(G.escalator) && !did(G.tamadaDown)) {
@@ -585,38 +608,52 @@ export class ZaryaDirector {
   }
 
   /**
-   * BABA YAGA. She never leaves her hut, and nothing hurts her while its back is to the hall (the carol-singers keep
-   * coming for as long: the standing lure in `step`). A pull of the stage's lever turns the hut: for `STORY.exposed`
-   * seconds she faces the hall and can be hurt. Then the hut goes back.
+   * BABA YAGA. Asleep on her hut's legs on the revolve until a standing player comes within `BOSS.yaga.see` m; then the
+   * fight (`stage.ts`): the hut walks, she attacks from it, and only the stage's machinery opens her door. Her door's
+   * being open is the story's `G.exposed` (each opening and shutting is noted).
    */
-  private stepYaga(dt: number, v: StoryView, up: readonly Stand[]): void {
+  private stepYaga(dt: number, v: StoryView, stand: readonly Stand[], rng: Rng): void {
     const y = this.named.yaga;
     if (!y) return;
+    const up = stand.filter((p) => p.up);
     if (!y.alive) {
       this.named.yaga = null;
-      this.exposeT = 0;
+      if (this.wasOpen) this.notes.push('hutBack');
+      this.wasOpen = false;
+      this.yagaFight.phase = 0;
       this.notes.push('yagaDown');
       return;
     }
-    if ((this.woke & BIT.yaga) === 0 && up.some((p) => Math.hypot(p.x - DK.hut.x, p.z - DK.hut.z) <= BOSS.yaga.see)) {
+    if ((this.woke & BIT.yaga) === 0 && up.some((p) => Math.hypot(p.x - y.x, p.z - y.z) <= BOSS.yaga.see)) {
       this.woke |= BIT.yaga;
       this.notes.push('yagaUp');
+      this.yagaFight.begin(y, Math.max(1, stand.length));
     }
-    const exposed = (v.g & G.exposed) !== 0;
-    if (exposed && !this.wasExposed) {
-      this.exposeT = STORY.exposed;
-      y.invulnerable = false;
-      this.hold(y, EAST);
-    } else if (this.exposeT > 0) {
-      this.exposeT -= dt;
-      if (this.exposeT <= 0) {
-        this.exposeT = 0;
-        y.invulnerable = true;
-        this.hold(y, WEST);
-        this.notes.push('hutBack');
-      }
+    if ((this.woke & BIT.yaga) === 0) return;
+    // (a director that comes in after she noticed the squad: the fight is begun where the story says it was)
+    if (this.yagaFight.phase === 0 && (v.g & G.yaga) !== 0) this.yagaFight.begin(y, Math.max(1, stand.length));
+    this.yagaFight.step(dt, y, stand, rng);
+    const open = this.yagaFight.level > 0;
+    if (open !== this.wasOpen) {
+      this.wasOpen = open;
+      this.notes.push(open ? 'hutTurned' : 'hutBack');
     }
-    this.wasExposed = exposed;
+  }
+
+  /** Baba Yaga's stage as every screen should draw it (`stage.ts` `Stage`): the word and the pools' two numbers. */
+  get stage(): [number, number, number] {
+    const [pa, pb] = this.yagaFight.poolWords;
+    return [this.yagaFight.word, pa, pb];
+  }
+
+  /** Her pots in the air (the solo screen draws them; a guest sees only where they came down). */
+  get pots(): YagaFight['flying'] {
+    return this.yagaFight.flying.slice();
+  }
+
+  /** What her broom, her stamping and her pots did to the players since the last call (`i`: their index in the last `stand`). */
+  drainHurts(): Hurt[] {
+    return this.yagaFight.drainHurts();
   }
 
   /**

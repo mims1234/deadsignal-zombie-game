@@ -1793,7 +1793,7 @@ export class Game implements GameCtx {
       jumpPressed: edges.jump,
       crouchPressed: edges.crouch,
       ads: this.weapons.adsAmount,
-      weaponMoveMul: (this.melee?.out ? this.melee.moveMul : (this.weapons.def?.moveMul ?? 1)) * (this.sakura?.moveMul ?? 1), // the Sakura District: an idol's song drags at you
+      weaponMoveMul: (this.melee?.out ? this.melee.moveMul : this.weapons.moveMul) * (this.sakura?.moveMul ?? 1), // the Sakura District: an idol's song drags at you (ZARYA's nail gun: its turning barrels too)
       noSprint: this.melee?.out ? this.melee.blocksSprint : this.weapons.blocksSprint,
       frozen: !alive,
     };

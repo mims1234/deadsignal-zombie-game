@@ -17,8 +17,8 @@ import type { WeaponId } from '../types';
 import { BANYA, DEPOT, DVOR, GARAGES, INSTITUTE, RYNOK, TETS } from './places';
 import type { ZaryaZone } from './types';
 
-/** What a recipe, an offer or a find hands over: a gun, a weapon to swing, or a tool that opens a gate. */
-export type Gives = { gun: WeaponId } | { melee: MeleeId } | { tool: string };
+/** What a recipe, an offer or a find hands over: a gun, a weapon to swing, a tool that opens a gate, or armour plates. */
+export type Gives = { gun: WeaponId } | { melee: MeleeId } | { tool: string } | { plates: number };
 
 export interface PartDef {
   id: string;
@@ -78,7 +78,12 @@ export interface Catalog {
  *           Salyut and the bear spear are the strong ones, built only at Timur's bench in the garages. The Ottepel is
  *           the wonder weapon, its last part inside the Institute.
  *   bought  at the Univermag's sports counter and the Okhotnik hunting shop by the depot, with points.
- *   found   where they would be: a skillet in housewares, ski poles at the rental kiosk, a maul at the woodpile.
+ *   found   where they would be: a maul at the woodpile.
+ *
+ * Round 3 (notes 5 and 6): ZARYA hands out only a few weapons to swing, each with a job (`obstacles.ts`): the knife,
+ * the maul (found), the fire axe (the fire board), the bear spear (built), the shashka (the museum guard's cabinet).
+ * The skillet, the ski pole, the dog chain, the bat, the boxing gloves and the hockey stick are other maps' now (their
+ * code is kept); the sports counter sells goalie's pads instead (an armour plate), not something to swing.
  */
 export const TOWN: Catalog = {
   recipes: [
@@ -118,17 +123,10 @@ export const TOWN: Catalog = {
     { id: 'garagesN', name: 'THE GARAGES, NORTH GATE', tool: 'cutters', verb: 'CUT THE CHAIN', hold: 1.5 },
     { id: 'garagesW', name: 'THE GARAGES, WEST GATE', tool: 'cutters', verb: 'CUT THE CHAIN', hold: 1.5 },
   ],
-  offers: [
-    { id: 'bat', name: 'BASEBALL BAT', price: 350, gives: { melee: 'bat' } },
-    { id: 'gloves', name: 'BOXING GLOVES', price: 400, gives: { melee: 'gloves' } },
-    { id: 'hockey', name: 'HOCKEY STICK', price: 500, gives: { melee: 'hockey' } },
-  ],
-  finds: [
-    { id: 'skillet', name: 'CAST-IRON SKILLET', gives: { melee: 'skillet' }, x: 80, z: -23 },
-    { id: 'skiPole', name: 'SKI POLE', gives: { melee: 'skiPole' }, x: 31.4, z: -19.6 },
-    { id: 'chain', name: 'DOG CHAIN', gives: { melee: 'chain' }, ...DVOR.kennel },
-    { id: 'maul', name: 'SPLITTING MAUL', gives: { melee: 'maul' }, ...DVOR.woodpile },
-  ],
+  // ---- round 3: the sports counter sells a goalie's pads (one armour plate), nothing to swing ----
+  offers: [{ id: 'pads', name: "GOALIE'S PADS", price: 300, gives: { plates: 1 } }],
+  // ---- round 3: the maul is the one weapon to swing lying about (it breaks padlocks: `obstacles.ts`) ----
+  finds: [{ id: 'maul', name: 'SPLITTING MAUL', gives: { melee: 'maul' }, ...DVOR.woodpile }],
 };
 /** The Okhotnik's shelf (the hunting shop by the depot): long guns, for points. */
 export const OKHOTNIK: readonly OfferDef[] = [

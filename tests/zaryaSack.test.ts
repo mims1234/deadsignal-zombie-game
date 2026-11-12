@@ -1,6 +1,7 @@
 /**
- * ZARYA: Ded Moroz's sack. Its two prizes (the Raketa vacuum cannon and the Kisten flail), which only ZARYA's box holds,
- * where each goes when taken, and the sack moving after a few openings (solo rules, co-op host).
+ * ZARYA: Ded Moroz's sack. Its own prize (the Raketa vacuum cannon), which only ZARYA's box holds, where it goes when
+ * taken, and the sack moving after a few openings (solo rules, co-op host). (Round 3: the Kisten flail is out of the
+ * sack: ZARYA keeps only the weapons to swing that have a job. Its rules are kept and still tested here.)
  */
 import '../src/sim/stubs';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +22,9 @@ import { BANYA, DEPOT, DVOR, RYNOK } from '../src/zarya/places';
 import { SACK_EVERY, SACK_PLACES, nextSackPlace, sackPlaceOpen } from '../src/zarya/sack';
 import { CH, G, ZaryaStory } from '../src/zarya/story';
 import { CHAIN } from '../src/zarya/unlock';
+import { SACK_LIFT, boxWord, isSack } from '../src/game/entities';
+import { createGiftSack } from '../src/world/models/giftSack';
+import * as THREE from 'three';
 
 const roll = (map: MapId | undefined, n: number, seed = 3, melee: 'kisten' | null = null, guns: [WeaponId, WeaponId] = ['rifle', 'pistol']): BoxPrize[] => {
   const rng = new Rng(seed);
@@ -33,7 +37,7 @@ describe("the sack's prizes", () => {
   it('only ZARYA rolls them; every other map rolls exactly as it did', () => {
     const zarya = roll('zarya', 4000).map(prizeKey);
     expect(zarya).toContain('raketa');
-    expect(zarya).toContain('m:kisten');
+    expect(zarya).not.toContain('m:kisten'); // (round 3: nothing to swing comes out of the sack)
     for (const map of ['district', 'sakura', 'mujin', 'asylum', 'hirasaka'] as MapId[]) {
       const keys = roll(map, 4000).map(prizeKey);
       expect(keys).not.toContain('raketa');
@@ -42,7 +46,8 @@ describe("the sack's prizes", () => {
       expect(keys).toEqual(roll(undefined, 4000).map(prizeKey));
     }
     expect(reelFor(false).map(prizeKey)).not.toContain('raketa');
-    expect(reelFor(false, 'zarya').map(prizeKey)).toEqual(expect.arrayContaining(['raketa', 'm:kisten']));
+    expect(reelFor(false, 'zarya').map(prizeKey)).toEqual(expect.arrayContaining(['raketa']));
+    expect(reelFor(false, 'zarya').map(prizeKey)).not.toContain('m:kisten');
   });
 
   it('comes up at sensible odds: each a few openings in a hundred, rarer than any stock gun', () => {
@@ -50,7 +55,7 @@ describe("the sack's prizes", () => {
     for (const guns of [['signalka', 'gvozdomyot'], ['rifle', 'pistol']] as [WeaponId, WeaponId][]) {
       const keys = roll('zarya', 20000, 9, null, guns).map(prizeKey);
       const share = (k: string): number => keys.filter((x) => x === k).length / keys.length;
-      for (const k of ['raketa', 'm:kisten']) {
+      for (const k of ['raketa']) {
         expect(share(k)).toBeGreaterThan(0.04);
         expect(share(k)).toBeLessThan(0.1);
         expect(share(k)).toBeLessThan(share('shotgun'));
@@ -91,7 +96,8 @@ describe("the sack's prizes", () => {
   });
 
   it('survive the trip to the host as text (and nothing else does)', () => {
-    for (const p of [{ kind: 'weapon', id: 'raketa' }, { kind: 'melee', id: 'kisten' }] as BoxPrize[]) expect(decodePrize(encodePrize(p))).toEqual(p);
+    for (const p of [{ kind: 'weapon', id: 'raketa' }] as BoxPrize[]) expect(decodePrize(encodePrize(p))).toEqual(p);
+    expect(decodePrize('m:kisten')).toBeNull(); // (round 3: no box holds it now)
     expect(decodePrize('m:knife')).toBeNull();
     expect(decodePrize('m:shashka')).toBeNull();
     expect(decodePrize('w:ottepel')).toBeNull();
@@ -235,7 +241,7 @@ describe("the sack in a co-op session (ZARYA's host)", () => {
       };
       run(0.3);
       for (let n = 0; n < SACK_EVERY; n++) {
-        sim.message('p1', { k: 'box', i: 0, pz: n === 0 ? 'w:raketa' : 'm:kisten' }, false);
+        sim.message('p1', { k: 'box', i: 0, pz: n % 2 === 0 ? 'w:raketa' : 'ammo' }, false);
         run(MYSTERY_BOX.spin + 0.2);
         sim.message('p1', { k: 'boxTake', i: 0 }, false);
         run(MYSTERY_BOX.paidRearm + 0.3);
@@ -250,4 +256,74 @@ describe("the sack in a co-op session (ZARYA's host)", () => {
     },
     240000,
   );
+});
+
+// ---- round 3: the sack all the way (its own model, its own words, its own height) ----
+describe("Ded Moroz's sack, drawn as a sack", () => {
+  it('is the sack only on ZARYA, and only the paid box; every other map keeps its crate', () => {
+    expect(isSack('zarya', { cost: 950 })).toBe(true);
+    expect(isSack('zarya', { cost: 0 })).toBe(false);
+    for (const map of ['district', 'sakura', 'asylum', 'hirasaka', 'mujin'] as MapId[]) expect(isSack(map, { cost: 950 })).toBe(false);
+    expect(boxWord({ sack: true })).toBe("DED MOROZ'S SACK");
+    expect(boxWord({ sack: false })).toBe('MYSTERY BOX');
+    // its prize starts down in the mouth and rises out over the top
+    expect(SACK_LIFT).toBeGreaterThan(0.2);
+    expect(SACK_LIFT).toBeLessThan(0.6);
+  });
+
+  it('has no lid and no beacon: a cloth body, a gathered mouth, a gold cord', () => {
+    const m = createGiftSack();
+    const names: string[] = [];
+    let meshes = 0;
+    m.root.traverse((o) => {
+      names.push(o.name.toLowerCase());
+      if ((o as THREE.Mesh).isMesh) meshes++;
+    });
+    expect(names.some((n) => /lid|beacon|crate/.test(n))).toBe(false);
+    expect(m.body).toBeUndefined(); // (never drawn as a beacon alone from afar)
+    expect(meshes).toBeLessThanOrEqual(6);
+    const box = new THREE.Box3().setFromObject(m.root);
+    expect(box.max.y).toBeGreaterThan(1.1);
+    expect(box.max.y).toBeLessThan(1.45);
+    expect(box.min.y).toBeGreaterThanOrEqual(-0.01);
+  });
+
+  it('opens: the cord loosens and slips down, the mouth opens wide, the inside shows; shut, it draws tight again', () => {
+    const m = createGiftSack();
+    const find = (pred: (o: THREE.Object3D) => boolean): THREE.Object3D => {
+      let hit: THREE.Object3D | null = null;
+      m.root.traverse((o) => {
+        if (!hit && pred(o)) hit = o;
+      });
+      return hit!;
+    };
+    const torus = find((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.type === 'TorusGeometry');
+    const inside = find((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.type === 'CircleGeometry');
+    const neck = inside.parent!;
+    const ring0 = torus.scale.x;
+    const cordY0 = torus.parent!.position.y;
+    expect(inside.visible).toBe(false);
+    m.update(1 / 60, 0); // (it is being looked after: near enough to be seen)
+    m.setOpen(1);
+    m.update(0.25, 0.25);
+    // a quarter of a second in: the cord has loosened, the mouth has barely begun
+    expect(torus.scale.x).toBeGreaterThan(ring0 + 0.2);
+    expect(neck.scale.x).toBeLessThan(1.3);
+    for (let i = 0; i < 60; i++) m.update(1 / 60, i / 60);
+    expect(torus.scale.x).toBeGreaterThan(1.6);
+    expect(torus.parent!.position.y).toBeLessThan(cordY0 - 0.05);
+    expect(neck.scale.x).toBeGreaterThan(1.8);
+    expect(inside.visible).toBe(true);
+    m.setOpen(0);
+    for (let i = 0; i < 90; i++) m.update(1 / 60, i / 60);
+    expect(torus.scale.x).toBeCloseTo(ring0, 5);
+    expect(neck.scale.x).toBeCloseTo(1, 5);
+    expect(inside.visible).toBe(false);
+    // left alone a while (too far off to be drawn) and told it is shut: it is found shut, not seen shutting
+    m.setOpen(1);
+    for (let i = 0; i < 90; i++) m.update(1 / 60, 10 + i / 60);
+    m.setOpen(0);
+    m.update(1 / 60, 30);
+    expect(neck.scale.x).toBeCloseTo(1, 5);
+  });
 });

@@ -241,6 +241,21 @@ export const ZARYA = {
   kostya: { x: 381.5, z: -2.6 },
   rack: { x: 395.4, z: -3 },
   kit: { x: 393, z: 4.6 },
+  /**
+   * The side stories' places on the square and in the store (`sidestories.ts`): the teacher's bag on the ground before
+   * the stage; three lost mittens (on the tree's fence, on the mitten stall's counter, in the ice town); one coat's
+   * letter on the store's cloakroom counter; Lida by the tea kiosk and the Sorokins by the slide (`people.ts` names
+   * them by these same places).
+   */
+  side: {
+    bag: { x: -11, z: 18.4 },
+    mittenFence: { x: -14.6, z: -1.2 },
+    mittenKiosk: { x: 32.3, z: 1.4 },
+    mittenIce: { x: -47.5, z: 33.5 },
+    letter: { x: 89.5, z: 14 },
+    lida: { x: 22.5, z: -21 },
+    sorokins: { x: -40, z: 33 },
+  },
 } as const;
 
 /** The speakers on the wire: every lamp post on the square, and the boxes in the store and the shelter. */

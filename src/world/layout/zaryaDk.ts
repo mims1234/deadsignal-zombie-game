@@ -4,8 +4,10 @@
  * under one roof: the FOYER at the east end (marble, columns, the chandelier, the New Year fir, the box office, the
  * cloakroom), the town MUSEUM along the north side (the plaque, the photographs, the sickle and hammer in their case,
  * the sabre in its cabinet, the town in miniature) and the AUDITORIUM across the west (two blocks of red seats, the
- * stage with its painted forest, the revolve the hut stands on, the lever in front of the arch). Behind it all, the
- * park: firs, a fountain under snow, shut off (nobody needs it).
+ * stage with its painted forest and the revolve the hut stands on). Baba Yaga's stage house (`stageHouse`) opens the
+ * stage into its wings: the fly gallery and its stair in the north wing, the revolve's winch in the south, the orchestra
+ * pit with the trap levers in front of the thrust, the follow-spot at the back of the stalls. Behind it all, the park:
+ * firs, a fountain under snow, shut off (nobody needs it).
  *
  * Everything indoors is a plain colour, so the whole building is a handful of draw calls; nothing in here casts a
  * shadow (the roof does it for them).
@@ -43,6 +45,8 @@ const T = 0.5;
 const DADO = 1.3;
 /** The east wall's outer face: just inside the frame's wall on x = -104. */
 const XE = B.x1 - 0.3;
+/** Where the hall's side walls open into the wings, across the stage's whole depth (Baba Yaga's stage). */
+const WING_OPENING: Door = { at: (DK.northWing.x0 + DK.northWing.x1) / 2, w: DK.northWing.x1 - DK.northWing.x0, h: 5.8 };
 
 /** A box that casts no shadow (everything indoors). */
 const q = (b: LevelBuilder, mat: THREE.Material, x: number, y: number, z: number, sx: number, sy: number, sz: number, rot = 0): THREE.Mesh => box(b, mat, x, y, z, sx, sy, sz, rot, false);
@@ -218,16 +222,21 @@ function shell(c: Ctx): void {
   wallRun(c, false, XE - T / 2, -40, B.z1 - T, { t: T, lo: Z.white, cast: true, doors: [{ at: AX, w: 4.4, h: 4.4 }] });
   // ---- the walls between the rooms ----
   // museum | hall and foyer: a doorway from the hall's cross aisle, a wider one from the foyer
-  wallRun(c, true, -40, B.x0 + T, -136, { lo: Z.woodDark, hi: M.velvet, doors: [{ at: DK.cover[0]!.x, w: 3, h: 3.2 }] });
+  // (Baba Yaga's stage: open across the stage's depth into the north wing, `stageHouse`)
+  wallRun(c, true, -40, B.x0 + T, -136, { lo: Z.woodDark, hi: M.velvet, doors: [{ at: DK.cover[0]!.x, w: 3, h: 3.2 }, WING_OPENING] });
   wallRun(c, true, -40, -136, F.x1, { lo: Z.woodDark, hi: Z.white, doors: [{ at: -116, w: 4, h: 3.6 }] });
   // hall | foyer: the middle doors on the carpet, a door to each side aisle
   wallRun(c, false, -136, F.z0, -6, { lo: M.velvet, hi: Z.white, doors: [{ at: -38.2, w: 2.4, h: 3 }, { at: AX, w: 4.4, h: 3.8 }, { at: -7.8, w: 2.4, h: 3 }] });
   wallRun(c, false, -136, -6, F.z1, { hi: Z.white });
-  wallRun(c, true, -6, B.x0 + T, -136, { lo: M.velvet });
+  wallRun(c, true, -6, B.x0 + T, -136, { lo: M.velvet, doors: [WING_OPENING] });
   wallRun(c, false, -160, MU.z0, -40, { hi: Z.woodDark });
-  // behind the stage's north wing and south of the hall there are only workshops: shut
-  solid(c, (B.x0 + T - 160.2) / 2, (MU.z0 - 40.2) / 2, -160.2 - (B.x0 + T), -40.2 - MU.z0, H, 'zarya-beyond', { kind: 'none' });
-  solid(c, (B.x0 + T - 136.2) / 2, (-5.8 + F.z1) / 2, -136.2 - (B.x0 + T), F.z1 + 5.8, H, 'zarya-beyond', { kind: 'none' });
+  // behind the stage's wings and south of the hall there are only workshops: shut (the wings themselves are the stage's: `stageHouse`)
+  const NW = DK.northWing;
+  const SW = DK.southWing;
+  solid(c, (B.x0 + T - 160.2) / 2, (MU.z0 + NW.z0 - 0.2) / 2, -160.2 - (B.x0 + T), NW.z0 - 0.2 - MU.z0, H, 'zarya-beyond', { kind: 'none' });
+  solid(c, (NW.x1 + 0.2 - 160.2) / 2, (NW.z0 - 0.2 - 40.2) / 2, -160.2 - NW.x1 - 0.2, -40.2 - NW.z0 + 0.2, H, 'zarya-beyond', { kind: 'none' });
+  solid(c, (SW.x1 + 0.2 - 136.2) / 2, (-5.8 + F.z1) / 2, -136.2 - SW.x1 - 0.2, F.z1 + 5.8, H, 'zarya-beyond', { kind: 'none' });
+  solid(c, (B.x0 + T + SW.x1 + 0.2) / 2, (SW.z1 + 0.2 + F.z1) / 2, SW.x1 + 0.2 - (B.x0 + T), F.z1 - SW.z1 - 0.2, H, 'zarya-beyond', { kind: 'none' });
 
   // ---- what shows from the square, over the wall: lit windows in the corner south of the Palace's front ----
   for (const z of [4.2, 7.4]) {
@@ -689,12 +698,9 @@ function stage(c: Ctx): void {
   for (const z of [A.z0 - 0.02, A.z1 + 0.02]) q(b, Z.woodDark, (A.x0 + A.x1) / 2, top / 2 - 0.01, z, A.x1 - A.x0, top - 0.02, 0.04);
   b.collide({ x: xc, z: AX, hx: w / 2, hz: d / 2, y0: 0, y1: top, floor: true, surface: 'wood', mapKind: 'none', tag: 'zarya-stage' });
   b.collide({ x: (A.x0 + A.x1) / 2, z: AX, hx: (A.x1 - A.x0) / 2, hz: (A.z1 - A.z0) / 2, y0: 0, y1: top, floor: true, surface: 'wood', mapKind: 'none', tag: 'zarya-stage' });
-  // the revolve: a disc of darker boards 6 m across, flat in the floor (the hut is the story's)
+  // the revolve: its iron rim, flat in the floor (the disc of darker boards that turns, and the hut, are the stage's own: `zarya/stageLook.ts`)
   const hut = DK.hut;
   cyl(b, Z.iron, hut.x, top, hut.z, 3.1, 3.1, 0.012, 40, false);
-  cyl(b, Z.woodDark, hut.x, top, hut.z, 3, 3, 0.02, 40, false);
-  for (let i = 0; i < 6; i++) q(b, Z.wood, hut.x, top + 0.022, hut.z, 5.96, 0.006, 0.03, (i * Math.PI) / 6);
-  cyl(b, Z.brass, hut.x, top, hut.z, 0.16, 0.16, 0.03, 12, false);
 
   // ---- the back: a night sky, a moon, a painted forest in two rows of flats, drifts of cotton snow ----
   const xb = S.x0 + 0.25;
@@ -715,10 +721,9 @@ function stage(c: Ctx): void {
   for (let i = 0; i < 9; i++) orb(b, Z.snow, S.x0 + 1 + (i % 2) * 0.3, top, S.z0 + 1.5 + i * 3.1, 0.9 + (i % 3) * 0.15, 0.4, 9);
   solid(c, S.x0 + 1, AX, 2, d, 6, 'zarya-scenery', { kind: 'none', surface: 'wood' });
 
-  // ---- paper snowflakes on threads, in a row behind the arch and a row before the forest (none over the revolve) ----
+  // ---- paper snowflakes on threads, in a row before the forest (the hut walks the rest of the boards: none over it) ----
   for (let i = 0; i < 19; i++) {
-    const front = i % 2 === 0;
-    const x = front ? S.x1 - 1.6 - ((i * 7) % 5) * 0.3 : S.x0 + 3.2 + ((i * 5) % 4) * 0.3;
+    const x = S.x0 + 1.9 + ((i * 5) % 3) * 0.12;
     const z = S.z0 + 2 + i * 1.33;
     const y = 4.0 + ((i * 53) % 11) * 0.2;
     const sz = 0.55 + ((i * 17) % 5) * 0.14;
@@ -745,26 +750,13 @@ function stage(c: Ctx): void {
   q(b, Z.cream, S.x1, 6.35, AX, 1.0, 1.3, d - 1);
   q(b, Z.gold, S.x1 + 0.52, 6.35, AX, 0.04, 0.5, 6);
   for (let i = 0; i < 13; i++) {
-    const drop = 0.7 + Math.abs(Math.sin((i / 12) * Math.PI * 3)) * 0.5;
+    const drop = (0.7 + Math.abs(Math.sin((i / 12) * Math.PI * 3)) * 0.5) * (Math.abs(i - 6) <= 1 ? 0.55 : 1);
     q(b, i % 2 ? Z.redDark : M.velvet, S.x1 + 0.1 + (i % 2) * 0.06, 5.72 - drop / 2, S.z0 + 1.1 + i * 2.15, 0.3, drop, 2.16);
   }
   q(b, Z.gold, S.x1 + 0.34, 5.05, AX, 0.03, 0.06, d - 2);
   // footlights along the thrust and the boards' front edge
   bulbString(b, A.x1 - 0.12, top + 0.06, A.z0 + 0.3, A.x1 - 0.12, top + 0.06, A.z1 - 0.3, 28, 0);
   for (const s of [-1, 1]) bulbString(b, S.x1 - 0.12, top + 0.06, AX + s * 9.4, S.x1 - 0.12, top + 0.06, AX + s * 13, 3, 0);
-
-  // ---- the lever that turns the revolve, on its stand in front of the south pier; a red lamp over it ----
-  const Lv = DK.lever;
-  q(b, Z.iron, Lv.x, 0.06, Lv.z, 0.8, 0.12, 0.66);
-  q(b, Z.grey, Lv.x, 0.6, Lv.z, 0.5, 1.0, 0.4);
-  q(b, Z.brass, Lv.x, 1.13, Lv.z, 0.6, 0.06, 0.46);
-  q(b, Z.black, Lv.x + 0.05, 1.165, Lv.z, 0.44, 0.01, 0.08);
-  // (the handle itself is the story's: `zarya/look.ts` throws it from east to west)
-  for (const dz of [-0.14, 0.14]) q(b, Z.iron, Lv.x, 1.3, Lv.z + dz, 0.5, 0.34, 0.03);
-  solid(c, Lv.x, Lv.z, 0.8, 0.66, 1.2, 'zarya-lever', { shots: false, kind: 'prop', surface: 'metal' });
-  q(b, Z.iron, S.x1 + 0.56, 4.1, Lv.z, 0.12, 0.3, 0.3);
-  orb(b, Z.redLamp, S.x1 + 0.66, 4.1, Lv.z, 0.12);
-  b.light({ x: Lv.x + 0.6, y: 3, z: Lv.z + 0.8, color: 0xff7a50, intensity: 9, distance: 9, mode: 'steady', pool: 3, weight: 0.7 });
 
   // the stage's own light: warm from the front, blue on the forest
   b.light({ x: S.x1 - 3, y: 5.4, z: AX, color: 0xffd9a8, intensity: 36, distance: 26, mode: 'steady', pool: 8, weight: 1.3 });
@@ -775,6 +767,7 @@ function hall(c: Ctx): void {
   const { b } = c;
   seats(c);
   stage(c);
+  stageHouse(c);
   // runners down the side aisles, and across the hall between the two sections of seats
   for (const z of [HL.z0 + 1.6, HL.z1 - 1.6]) q(b, M.carpet, (-136.2 + -167) / 2, 0.045, z, 30.8, 0.03, 2.2);
   q(b, M.carpet, DK.cover[0]!.x, 0.04, (HL.z0 + HL.z1) / 2, 2.4, 0.016, HL.z1 - HL.z0 - 0.3);
@@ -799,6 +792,202 @@ function hall(c: Ctx): void {
   for (const x of [-144, -152, -160]) for (const z of [AX - 8, AX + 8]) pendant(b, x, z, 5.6, 0.26);
   for (const x of [-145, -159]) b.light({ x, y: 5.2, z: AX, color: 0xffcf96, intensity: 24, distance: 24, mode: 'steady', pool: 8, weight: 1 });
   for (const z of [AX - 11.5, AX + 11.5]) garland(b, -138, z, -168, z, 5.6, 44);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Baba Yaga's stage house (`zarya/stage.ts`): the wings, the fly gallery and its stair, the orchestra pit, and the fixed
+// parts of the four machines (what moves - the revolve's disc, the open trap, the bars, the winch's wheel, the pit's
+// lever, the follow-spot's head - is drawn by `zarya/stageLook.ts`)
+// ---------------------------------------------------------------------------------------------------------------------
+
+function stageHouse(c: Ctx): void {
+  const { b } = c;
+  const top = DK.stageTop;
+  const NW = DK.northWing;
+  const SW = DK.southWing;
+  const S = DK.stage;
+  const board = (x0: number, z0: number, x1: number, z1: number): void => {
+    q(b, Z.woodDark, (x0 + x1) / 2, top / 2, (z0 + z1) / 2, x1 - x0, top, z1 - z0);
+    for (let x = x0 + 1; x < x1; x += 1) q(b, Z.black, x, top + 0.003, (z0 + z1) / 2, 0.03, 0.006, z1 - z0);
+    b.collide({ x: (x0 + x1) / 2, z: (z0 + z1) / 2, hx: (x1 - x0) / 2, hz: (z1 - z0) / 2, y0: 0, y1: top, floor: true, surface: 'wood', mapKind: 'none', tag: 'zarya-stage' });
+  };
+
+  // ---- the wings: boards at the stage's height (out to the hall's side wall, and the strip beside the stage inside it) ----
+  board(NW.x0, NW.z0, NW.x1, -40.2);
+  board(NW.x0, -40.2, S.x1, S.z0);
+  board(SW.x0, -5.8, SW.x1, SW.z1);
+  board(SW.x0, S.z1, S.x1, -5.8);
+  // their walls, painted black backstage
+  wallRun(c, true, NW.z0 - 0.2, B.x0 + T, NW.x1 + 0.4, { t: 0.4 });
+  wallRun(c, false, NW.x1 + 0.2, NW.z0 - 0.4, -40.2, { t: 0.4 });
+  wallRun(c, true, SW.z1 + 0.2, B.x0 + T, SW.x1 + 0.4, { t: 0.4 });
+  wallRun(c, false, SW.x1 + 0.2, -5.8, SW.z1 + 0.4, { t: 0.4 });
+  q(b, Z.black, (NW.x0 + NW.x1) / 2, H / 2, NW.z0 + 0.01, NW.x1 - NW.x0, H, 0.02);
+  q(b, Z.black, NW.x1 - 0.01, H / 2, (NW.z0 - 40) / 2, 0.02, H, -40 - NW.z0);
+  q(b, Z.black, (SW.x0 + SW.x1) / 2, H / 2, SW.z1 - 0.01, SW.x1 - SW.x0, H, 0.02);
+  q(b, Z.black, SW.x1 - 0.01, H / 2, (SW.z1 - 6) / 2, 0.02, H, SW.z1 + 6);
+  q(b, Z.black, B.x0 + T + 0.03, H / 2, (NW.z0 - 40) / 2, 0.02, H, -40 - NW.z0);
+  q(b, Z.black, B.x0 + T + 0.03, H / 2, (SW.z1 - 6) / 2, 0.02, H, SW.z1 + 6);
+  // black masking legs hanging at the wing's edge either side (they hide the wings from the stalls; the hut walks between them)
+  for (const z of [S.z0 - 0.6, S.z1 + 0.6]) {
+    for (const x of [-185.5, -178.5]) {
+      for (let k = 0; k < 4; k++) q(b, Z.black, x - 0.54 + k * 0.36, (top + H) / 2, z + (k % 2) * 0.06, 0.38, H - top, 0.05);
+      solid(c, x, z, 1.44, 0.16, H, 'zarya-masking', { shots: false, kind: 'none', surface: 'wood' });
+    }
+  }
+
+  // ---- the fly gallery: a deck 2.7 m up along the north wing's back wall (stacked scenery under it), a steel stair ----
+  const G = DK.gallery;
+  const gt = DK.galleryTop;
+  const gx = (G.x0 + G.x1) / 2;
+  const gz = (G.z0 + G.z1) / 2;
+  q(b, Z.wood, gx, gt - 0.06, gz, G.x1 - G.x0, 0.12, G.z1 - G.z0);
+  for (let x = G.x0 + 0.5; x < G.x1; x += 0.5) q(b, Z.woodDark, x, gt + 0.002, gz, 0.02, 0.004, G.z1 - G.z0);
+  q(b, Z.black, gx, (gt - 0.12) / 2, G.z1 - 0.02, G.x1 - G.x0, gt - 0.12, 0.04);
+  b.collide({ x: gx, z: gz, hx: (G.x1 - G.x0) / 2, hz: (G.z1 - G.z0) / 2, y0: 0, y1: gt, floor: true, surface: 'wood', mapKind: 'none', tag: 'zarya-gallery' });
+  // steel beams under its edge, and painted flats stacked against the face below it (a sky, a hut's wall, a birch wood)
+  q(b, Z.iron, gx, gt - 0.22, G.z1 + 0.05, G.x1 - G.x0, 0.2, 0.12);
+  for (let x = G.x0 + 2; x < G.x1 - 0.5; x += 3.4) q(b, Z.iron, x, (gt - 0.3) / 2, G.z1 + 0.05, 0.14, gt - 0.3, 0.14);
+  const flats = [M.dusk, Z.fir, M.night, Z.cream, Z.woodPale, M.dusk, Z.greenDark];
+  flats.forEach((mat, i) => slab(b, mat, G.x0 + 1.4 + i * 1.9, 1.1 + top, G.z1 + 0.16 + (i % 2) * 0.06, 1.7, 2.1, 0.05, -0.08, 0, 0, false));
+  for (let i = 0; i < 4; i++) q(b, i % 2 ? Z.woodDark : Z.wood, G.x0 + 2.5 + i * 3.3, top + 0.3, G.z1 + 0.35, 0.8, 0.6, 0.5);
+  // its rail along the open edge (the stair comes up at the east end)
+  const st = DK.galleryStair;
+  for (const y of [gt + 0.5, gt + 1.0]) q(b, Z.iron, (G.x0 + st.x0) / 2, y, G.z1 - 0.06, st.x0 - G.x0, 0.05, 0.05);
+  for (let x = G.x0 + 0.3; x <= st.x0; x += 1.2) q(b, Z.iron, x, gt + 0.52, G.z1 - 0.06, 0.05, 1.04, 0.05);
+  b.collide({ x: (G.x0 + st.x0) / 2, z: G.z1 - 0.06, hx: (st.x0 - G.x0) / 2, hz: 0.06, y0: gt, y1: gt + 1.05, mapKind: 'none', surface: 'metal', tag: 'zarya-gallery-rail' });
+  // the stair: eight treads from the wing's boards up to the deck, rising north
+  const steps = 8;
+  const run = (st.z1 - st.z0) / steps;
+  for (let k = 1; k <= steps; k++) {
+    const t = top + (gt - top) * (k / steps);
+    const z1 = st.z1 - (k - 1) * run;
+    const z0 = z1 - run;
+    q(b, Z.steel, (st.x0 + st.x1) / 2, t - 0.03, (z0 + z1) / 2, st.x1 - st.x0, 0.06, run);
+    q(b, Z.black, (st.x0 + st.x1) / 2, (t - 0.06) / 2, z1 - 0.02, st.x1 - st.x0 - 0.1, t - 0.06, 0.03);
+    b.collide({ x: (st.x0 + st.x1) / 2, z: (z0 + z1) / 2, hx: (st.x1 - st.x0) / 2, hz: run / 2, y0: 0, y1: t, floor: true, surface: 'metal', mapKind: 'none', tag: 'zarya-gallery-stair' });
+  }
+  // a stringer and a handrail up its open side
+  const sl = Math.hypot(st.z1 - st.z0, gt - top);
+  slab(b, Z.iron, st.x0 + 0.04, (top + gt) / 2 + 0.05, (st.z0 + st.z1) / 2, 0.06, 0.24, sl, Math.atan2(gt - top, st.z1 - st.z0), 0, 0, false);
+  slab(b, Z.iron, st.x0 + 0.04, (top + gt) / 2 + 0.95, (st.z0 + st.z1) / 2, 0.05, 0.05, sl, Math.atan2(gt - top, st.z1 - st.z0), 0, 0, false);
+  for (let k = 0; k <= 4; k++) {
+    const f = k / 4;
+    q(b, Z.iron, st.x0 + 0.04, top + (gt - top) * f + 0.5, st.z1 - (st.z1 - st.z0) * f, 0.04, 0.9, 0.04);
+  }
+  // the pin rail along the back wall: a timber rail of belaying pins, ropes going up into the dark to the bars, sandbags
+  const R = DK.flyRail;
+  q(b, Z.woodDark, (G.x0 + G.x1) / 2 - 1, gt + 0.95, NW.z0 + 0.25, G.x1 - G.x0 - 4, 0.16, 0.22);
+  for (const y of [gt + 0.5, gt + 1.6]) q(b, Z.iron, (G.x0 + G.x1) / 2 - 1, y, NW.z0 + 0.12, G.x1 - G.x0 - 4, 0.08, 0.08);
+  for (let i = 0; i < 18; i++) {
+    const x = G.x0 + 1.6 + i * 0.66;
+    q(b, Z.wood, x, gt + 0.95, NW.z0 + 0.3, 0.05, 0.42, 0.05);
+    q(b, Z.cream, x, (gt + 1.2 + H) / 2, NW.z0 + 0.36, 0.025, H - gt - 1.2, 0.025);
+    if (i % 3 === 1) q(b, Z.packed, x, gt + 2 + ((i * 7) % 5) * 0.55, NW.z0 + 0.42, 0.34, 0.5, 0.3);
+  }
+  // the three lines that work the bars, painted at the rail in red, white and blue, and a lamp over the place to stand
+  [Z.red, Z.white, Z.blue].forEach((mat, i) => q(b, mat, R.x - 0.4 + i * 0.4, gt + 1.18, NW.z0 + 0.32, 0.12, 0.08, 0.06));
+  q(b, Z.brass, R.x, gt + 2.3, NW.z0 + 0.14, 0.5, 0.06, 0.2);
+  orb(b, Z.bulb, R.x, gt + 2.2, NW.z0 + 0.3, 0.12);
+  b.light({ x: R.x, y: 5.2, z: NW.z0 + 2, color: 0x9ab8ff, intensity: 9, distance: 13, mode: 'steady', pool: 3, weight: 0.6 });
+
+  // ---- the fly bars' blocks at the grid, over each bar's ends (the bars themselves move: `stageLook.ts`) ----
+  for (const x of DK.bars) for (const z of [S.z0 + 2, S.z1 - 2]) q(b, Z.iron, x, H - 0.16, z, 0.3, 0.3, 0.2);
+
+  // ---- the traps: chalked squares in the boards, numbered in dots (the revolve's own is on its disc: `stageLook.ts`) ----
+  DK.traps.forEach((t, i) => {
+    if (i === 0) return;
+    for (const s of [-1, 1]) {
+      q(b, Z.white, t.x + s * 0.8, top + 0.004, t.z, 0.05, 0.004, 1.65);
+      q(b, Z.white, t.x, top + 0.004, t.z + s * 0.8, 1.65, 0.004, 0.05);
+    }
+    for (let k = 0; k <= i; k++) q(b, Z.white, t.x + 1.05, top + 0.004, t.z - 0.5 + k * 0.25, 0.1, 0.004, 0.1);
+  });
+
+  // ---- the winch that turns the revolve, against the south wing's wall: cast-iron frames, the cable in its channel ----
+  const W = DK.winch;
+  const wx = SW.x1 - 0.65;
+  for (const dz of [-0.75, 0.75]) {
+    slab(b, Z.iron, wx, top + 0.75, W.z + dz, 0.1, 1.6, 0.12, 0, 0, 0.22, false);
+    slab(b, Z.iron, wx, top + 0.75, W.z + dz, 0.1, 1.6, 0.12, 0, 0, -0.22, false);
+  }
+  q(b, Z.iron, wx, top + 0.06, W.z, 1.1, 0.12, 1.8);
+  q(b, Z.grey, wx + 0.2, top + 0.5, W.z, 0.5, 0.6, 1.0);
+  solid(c, wx, W.z, 1.1, 1.8, 1.7, 'zarya-winch', { kind: 'prop', surface: 'metal' });
+  // the cable: along the floor to the revolve
+  q(b, Z.black, (wx + DK.hut.x) / 2, top + 0.004, W.z, wx - DK.hut.x, 0.004, 0.16);
+  q(b, Z.black, DK.hut.x, top + 0.004, (W.z + DK.hut.z + 3.1) / 2, 0.16, 0.004, W.z - DK.hut.z - 3.1);
+  q(b, Z.iron, SW.x1 - 0.06, 4.1, W.z, 0.12, 0.3, 0.3);
+  orb(b, Z.redLamp, SW.x1 - 0.16, 4.1, W.z, 0.12);
+  b.light({ x: W.x - 0.6, y: 3, z: W.z + 0.8, color: 0xff7a50, intensity: 9, distance: 9, mode: 'steady', pool: 3, weight: 0.7 });
+  // the south wing's things: the carol-singers' rail of coats and masks, a prop table, a stack of flats
+  q(b, Z.iron, -184, 1.9, SW.z1 - 0.7, 4.4, 0.05, 0.05);
+  for (let i = 0; i < 9; i++) q(b, [M.velvet, Z.redDark, Z.cream, Z.woodDark, Z.green][i % 5]!, -186 + i * 0.48, 1.25, SW.z1 - 0.7, 0.36, 1.2, 0.5);
+  for (let i = 0; i < 5; i++) {
+    const x = -186.2 + i * 1.1;
+    q(b, i % 2 ? Z.woodPale : Z.white, x, 2.6, SW.z1 - 0.12, 0.42, 0.5, 0.18);
+    q(b, Z.black, x - 0.1, 2.68, SW.z1 - 0.2, 0.08, 0.08, 0.04);
+    q(b, Z.black, x + 0.1, 2.68, SW.z1 - 0.2, 0.08, 0.08, 0.04);
+  }
+  q(b, Z.woodDark, -179.5, top + 0.8, SW.z1 - 0.7, 2.2, 0.08, 0.8);
+  for (const [dx, dz] of [[-1, -0.3], [1, -0.3], [-1, 0.3], [1, 0.3]] as const) q(b, Z.woodDark, -179.5 + dx, top + 0.4, SW.z1 - 0.7 + dz, 0.06, 0.8, 0.06);
+  q(b, Z.ice, -180, top + 0.95, SW.z1 - 0.7, 0.3, 0.22, 0.3);
+  q(b, Z.brass, -179, top + 0.92, SW.z1 - 0.6, 0.24, 0.16, 0.24);
+  solid(c, -179.5, SW.z1 - 0.7, 2.2, 0.8, 0.9, 'zarya-props', { kind: 'prop', surface: 'wood' });
+  for (let i = 0; i < 5; i++) slab(b, [M.dusk, Z.fir, Z.cream, M.night, Z.greenDark][i]!, SW.x0 + 0.25 + i * 0.07, top + 1.3, -2 - i * 0.2, 0.05, 2.5, 2.2, 0, 0, 0.06, false);
+  solid(c, SW.x0 + 0.5, -2.4, 0.9, 2.6, 2.6, 'zarya-flats', { kind: 'none', surface: 'wood' });
+
+  // ---- the orchestra pit: a dark floor, a low panelled wall along the front row with a gap at the middle aisle ----
+  const P = DK.pit;
+  groundRect(b, Z.black, P.x0, P.z0, P.x1, P.z1, 0.036);
+  for (const [z0, z1] of [[P.z0, -24.7], [-21.3, P.z1]] as const) {
+    const zc = (z0 + z1) / 2;
+    q(b, M.velvet, P.x1 - 0.06, 0.47, zc, 0.12, 0.94, z1 - z0);
+    q(b, Z.brass, P.x1 - 0.06, 0.97, zc, 0.1, 0.05, z1 - z0);
+    solid(c, P.x1 - 0.06, zc, 0.14, z1 - z0, 0.95, 'zarya-pit', { kind: 'prop', surface: 'wood' });
+  }
+  // the band's chairs and stands against the stage's front (the walkway along the wall stays clear), the timpani, the piano
+  for (const [z0, z1] of [[-27.6, -25.2], [-20.6, -17]] as const) {
+    for (let z = z0; z <= z1; z += 0.8) {
+      for (const x of [-169.9, -169.05]) {
+        q(b, Z.black, x, 0.45, z, 0.42, 0.04, 0.42);
+        q(b, Z.black, x + 0.19, 0.7, z, 0.04, 0.5, 0.42);
+        q(b, Z.iron, x - 0.45, 0.6, z, 0.02, 1.2, 0.02);
+        slab(b, Z.black, x - 0.45, 1.15, z, 0.02, 0.32, 0.46, 0, 0, -0.35, false);
+        q(b, Z.white, x - 0.43, 1.17, z, 0.01, 0.22, 0.32);
+      }
+    }
+  }
+  for (const [x, z] of [[-169.6, -31.3], [-168.5, -31.5]] as const) {
+    cyl(b, Z.brass, x, 0, z, 0.32, 0.4, 0.7, 12, false);
+    cyl(b, Z.cream, x, 0.7, z, 0.4, 0.4, 0.02, 12, false);
+  }
+  solid(c, -169.05, -31.4, 1.8, 0.9, 0.8, 'zarya-timpani', { kind: 'prop', surface: 'metal' });
+  q(b, Z.woodDark, -169.2, 0.62, -15, 0.62, 1.24, 1.5);
+  q(b, Z.white, -168.87, 0.82, -15, 0.04, 0.05, 1.3);
+  q(b, Z.black, -168.85, 0.85, -15, 0.03, 0.02, 1.3);
+  solid(c, -169.2, -15, 0.7, 1.55, 1.25, 'zarya-piano', { kind: 'prop', surface: 'wood' });
+  // the trap room's levers against the thrust's front: an iron frame, the slate with the five traps chalked on it, a hatch
+  const L = DK.trapLever;
+  const lx = P.x0 + 0.16;
+  q(b, Z.iron, lx, 0.06, L.z, 0.5, 0.12, 1.4);
+  for (const dz of [-0.6, 0.6]) q(b, Z.iron, lx, 0.75, L.z + dz, 0.12, 1.4, 0.12);
+  q(b, Z.iron, lx, 1.42, L.z, 0.14, 0.1, 1.32);
+  q(b, Z.black, lx + 0.02, 1.98, L.z, 0.04, 0.8, 1.2);
+  q(b, Z.woodDark, lx + 0.02, 1.98, L.z, 0.05, 0.86, 1.26);
+  q(b, Z.black, lx + 0.05, 1.98, L.z, 0.02, 0.76, 1.16);
+  DK.traps.forEach((t) => q(b, Z.white, lx + 0.07, 1.98 + (t.x + 180) * -0.06, L.z + (t.z + 23) * 0.06, 0.01, 0.08, 0.08));
+  q(b, Z.woodDark, lx - 0.02, 0.62, L.z + 1.6, 0.06, 1.1, 0.9);
+  q(b, Z.brass, lx + 0.03, 0.62, L.z + 1.92, 0.03, 0.08, 0.08);
+  solid(c, lx, L.z, 0.5, 1.4, 1.5, 'zarya-trap-levers', { kind: 'prop', surface: 'metal' });
+
+  // ---- the follow-spot at the back of the stalls: a tripod on a crate (its lamp turns to her: `stageLook.ts`) ----
+  const Sp = DK.spot;
+  const sx = Sp.x + 1.2;
+  q(b, Z.woodDark, sx, 0.25, Sp.z, 0.9, 0.5, 0.9);
+  for (const a of [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3]) slab(b, Z.iron, sx + Math.cos(a) * 0.22, 0.95, Sp.z + Math.sin(a) * 0.22, 0.04, 0.95, 0.04, Math.sin(a) * 0.25, 0, -Math.cos(a) * 0.25, false);
+  q(b, Z.iron, sx, 1.45, Sp.z, 0.08, 0.2, 0.08);
+  solid(c, sx, Sp.z, 0.9, 0.9, 1.6, 'zarya-spot', { kind: 'prop', surface: 'metal' });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

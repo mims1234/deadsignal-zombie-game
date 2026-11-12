@@ -14,7 +14,7 @@ import type { Zombie, ZombieEnv } from '../enemies/zombie';
 import type { ZombieManager } from '../enemies/zombieManager';
 import type { FxApi } from '../fx/fxTypes';
 import { zombieHitDamage } from '../logic/damage';
-import { MELEE, MELEE_RULES, createSwing, guardedDamage, resetSwing, stepSwing, swingDamage, swingProgress, swingReach, type MeleeDef, type MeleeId, type SwingEvent, type SwingHit } from '../logic/melee';
+import { MELEE, MELEE_RULES, createSwing, guardedDamage, pinFor, resetSwing, stepSwing, swingDamage, swingProgress, swingReach, type MeleeDef, type MeleeId, type SwingEvent, type SwingHit } from '../logic/melee';
 import type { Player } from '../player/player';
 import type { GameRenderer } from '../render/renderer';
 import type { HudEvent, HudWeaponInfo } from '../ui/hudTypes';
@@ -69,6 +69,8 @@ export class MeleeSystem {
   private readonly events: SwingEvent[] = [];
   private readonly reach: SwingHit<Zombie>[] = [];
   private readonly near: Zombie[] = [];
+  /** (ZARYA round 3) When the Rogatina last pinned each one (it is not pinned again for a while: `pinFor`). */
+  private readonly pinned = new WeakMap<Zombie, number>();
   private raise = 0;
   private guardT = 0;
   private sprintT = 0;
@@ -241,10 +243,21 @@ export class MeleeSystem {
       if (parry) z.stagger(MELEE_RULES.parryStagger, env);
       const yaw = Math.atan2(-(z.x - p.x), -(z.z - p.z));
       const k = heavy ? 1.5 : 1;
+      const charging = z.charging; // (ZARYA round 3: before the blow can stop it)
       // (the last argument: a heavy kind of weapon, which is what breaks the crate ZARYA's loader carries in front of him)
       const killed = host.zombies.damage(z, dmg, isHead, env, yaw, d.push * k, d.lift * k, heavy ? d.heavyImpulse : d.impulse, d.type === 'heavy');
       // (a flail with a weight on it, the Kisten: what it does not kill trips)
       if (d.trip && !killed && z.active && !z.isBoss && !parry) host.zombies.affect(z, env, 0, d.trip * (heavy ? 1.4 : 1), 0);
+      // (ZARYA round 3: the Rogatina's job) a wound-up thrust stops a charge, and the big ones, on its crossguard
+      if (d.pin && !killed && z.active) {
+        const sec = pinFor(d, heavy, { charging, big: z.isBoss || z.variant === 'morzh' }, this.time - (this.pinned.get(z) ?? -Infinity));
+        if (sec > 0) {
+          this.pinned.set(z, this.time);
+          host.zombies.pin(z, env, sec);
+          host.audio.play('impact_metal', { priority: 3, volume: 1 });
+          host.hudEvent({ type: 'feed', text: charging ? 'PINNED ON THE CROSSGUARD' : 'PINNED', tone: 'good' });
+        }
+      }
       this.at.set(z.x, z.y + (isHead ? z.def.height * 0.9 : z.def.height * 0.62), z.z);
       this.dir.set(z.x - p.x, 0, z.z - p.z).normalize();
       host.fx.blood(this.at, this.dir, { amount: heavy ? 1.4 : 0.8, head: isHead, kill: killed });

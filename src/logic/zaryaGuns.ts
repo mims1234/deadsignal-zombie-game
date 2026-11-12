@@ -58,6 +58,39 @@ export function fanYaws(n: number, stepDeg: number): number[] {
 }
 
 /**
+ * The Gvozdomyot's barrel cluster after `dt` seconds: it spins up while the trigger (or the aim) is held (`on`), to
+ * full in `ZARYA_GUNS.gvozdomyot.spinUp` seconds, and winds down by itself in `spinDown` when it is not. 0..1.
+ */
+export function stepSpin(spin: number, on: boolean, dt: number): number {
+  const G = ZARYA_GUNS.gvozdomyot;
+  return Math.max(0, Math.min(1, spin + (on ? dt / G.spinUp : -dt / G.spinDown)));
+}
+
+/**
+ * How fast the Gvozdomyot fires at barrel speed `spin` (0..1), as a share of its full rate: nothing below
+ * `ZARYA_GUNS.gvozdomyot.spinFire`, then climbing from `rateLow` to all of it as the cluster comes up to speed.
+ */
+export function spinRate(spin: number): number {
+  const G = ZARYA_GUNS.gvozdomyot;
+  if (spin < G.spinFire) return 0;
+  const k = Math.min(1, (spin - G.spinFire) / (1 - G.spinFire));
+  return G.rateLow + (1 - G.rateLow) * k * (2 - k);
+}
+
+/**
+ * How many nails leave in `dt` seconds at barrel speed `spin`, given `owed` (a fraction of a nail carried over from
+ * the last frame) and the full-speed `interval`; returns the nails and what is owed after. Nothing is owed while it
+ * is not firing fast enough to fire at all.
+ */
+export function nailsDue(owed: number, spin: number, dt: number, interval: number): { n: number; owed: number } {
+  const rate = spinRate(spin);
+  if (rate <= 0) return { n: 0, owed: 0 };
+  owed += (dt * rate) / interval;
+  const n = Math.floor(owed);
+  return { n, owed: owed - n };
+}
+
+/**
  * The Raketa sucking for `dt` more seconds: `t` is the time it has sucked toward the next round. Every
  * `ZARYA_GUNS.raketa.fill` seconds it swallows one more, never past `max`; full, it stops counting.
  */

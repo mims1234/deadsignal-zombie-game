@@ -25,6 +25,8 @@ export interface FishHole {
   tent: number;
   /** His fisherman is the `cover` sleeper (stood by the `cover` list, not with the rest). */
   cover?: boolean;
+  /** (Round 3, the shashka's job: `zarya/obstacles.ts` 'tent'.) His tent is lashed shut with frozen rope: the story draws its flap and the ropes. */
+  lashed?: boolean;
 }
 /** How far from his hole a fisherman stands. */
 export const FISH_STAND = 0.8;
@@ -54,7 +56,7 @@ export const BANYA = {
   /** The fishermen's holes: six with tents, six without. */
   holes: [
     { x: 48, z: -164, a: -2.21, tent: 0 },
-    { x: 64, z: -168, a: -1.571, tent: 1 },
+    { x: 64, z: -168, a: -1.571, tent: 1, lashed: true },
     { x: 80, z: -160, a: -0.795, tent: 2 },
     { x: 38, z: -146, a: 3.142, tent: 3 },
     { x: 66, z: -108, a: 1.571, tent: 4 },
@@ -75,6 +77,12 @@ export const BANYA = {
   shutter: { x: 124, z: -88.68 } as Spot,
   shutterYaw: Math.PI,
   spawns: [[24, -176], [142, -174], [24, -100], [102, -177], [50, -177.5]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): a chalk board hung on the jetty's north rail at its land end; the catch on the ice by the fourth and the fifth tented holes. */
+  side: {
+    board: { x: 100.6, z: -150.6 } as Spot,
+    kolya: { x: 65.2, z: -109.3 } as Spot,
+    tolya: { x: 80.9, z: -118.1 } as Spot,
+  },
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */
@@ -85,7 +93,8 @@ export const banyaPeople: PeopleFn = (add, r) => {
   const coverHole = BANYA.holes.find((h) => h.cover)!;
   for (const c of BANYA.cover) add(c.x, c.z, yawTo(c.x, c.z, coverHole.x, coverHole.z));
   for (const h of BANYA.holes) {
-    if (h.cover) continue;
+    // (round 3: the lashed tent's fisherman went in to warm up and lashed it behind him: his stool is empty)
+    if (h.cover || h.lashed) continue;
     const f = fisher(h);
     face(f.x, f.z, h.x, h.z);
   }

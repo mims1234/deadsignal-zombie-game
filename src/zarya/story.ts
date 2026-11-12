@@ -15,8 +15,8 @@
  *   BUILD    bolt cutters (shears, pipe handles, friction tape) cut the chains on the depot and the garages. At Timur's
  *            bench in the garages: the nail gun, the Salyut, the bear spear.
  *   LURE     Borya the Butcher is led into his own cold store and the door barred behind him (the COSMONAUT key).
- *   BUY      three pageant tickets open the Dom Kultury. Baba Yaga sits in her hut with its back to the hall: the
- *            stage's lever turns it (the WHEAT key). The museum's plaque has the year the town was founded.
+ *   BUY      three pageant tickets open the Dom Kultury. Baba Yaga's hut walks the stage on its chicken legs; the
+ *            squad works the stage's machinery to open its door (`stage.ts`) and puts her down (the WHEAT key). The museum's plaque has the year the town was founded.
  *   FIGHT    a heavy blow breaks the padlock on the Univermag's escalator: upstairs, the staff party and its
  *            toastmaster, whose three loudspeakers must be unplugged (the DOVE key).
  * ACT III  "The Thaw"
@@ -28,9 +28,17 @@
  *            Enough sleepers covered against the cold, and the right answer, and he turns the keys himself.
  *
  * Nothing is timed. Nothing can be failed or missed: what has happened stays happened.
+ *
+ * Apart from it, the places' own small stories (twelve, from the tram's first run): `sidestories.ts`, kept in `side`.
  */
 import { BANYA, BERLOGA, CANTEEN, DEPOT, DK, DVOR, GARAGES, GATES, INSTITUTE, RYNOK, SHELTER, STOPS, TETS, UPSTAIRS, ZARYA, ZARYA_ZONES, inRect, inShelter, onSquare, type GateKey, type Spot, type StopKey, type ZaryaZone } from './places';
 import { CHAIN, PART, RECIPE, TOWN, Unlock, type UnlockEvent, type UnlockView } from './unlock';
+// ---- obstacles (round 3, notes 5 and 6): what only one weapon to swing gets through (`obstacles.ts`) ----
+import { OBIT, OBSTACLES, obstacleOpen } from './obstacles';
+// ---- side stories (round 3, note 10): small stories of the places themselves, apart from this one (`sidestories.ts`) ----
+// ---- Baba Yaga's stage (`stage.ts`): the machinery the squad works while she fights ----
+import { MACHINES, Stage } from './stage';
+import { sideCan, sideEmpty, sideFrom, sideMods, sideNext, sideOf, sidePlace, SIDE_REACH } from './sidestories';
 
 export const CH = { arrive: 0, sealed: 1, ground: 2, town: 3, act2: 4, finale: 5, ended: 6 } as const;
 
@@ -198,7 +206,7 @@ export interface StoryView extends UnlockView {
   f: number;
   /** `G`. */
   g: number;
-  /** Bits: the canteen's three plugs pulled (0-2), the plant's three valves turned (3-5), the repairman's tools found (6-8). */
+  /** Bits: the canteen's three plugs pulled (0-2), the plant's three valves turned (3-5), the repairman's tools found (6-8), the obstacles opened (from `OBIT`, `obstacles.ts`). */
   m: number;
   clues: number;
   covered: number;
@@ -211,6 +219,12 @@ export interface StoryView extends UnlockView {
   end: number;
   /** The kiosk shutters bought open and the mod parts found and spent (`KBIT`, `mods.ts`). */
   k: number;
+  // ---- side stories (round 3, note 10): one number per story, `stage * 16 + bits` (`sidestories.ts`) ----
+  side: number[];
+  // ---- Baba Yaga's stage (`stage.ts`): the fight's word (`Stage`), and the frost pools on the floor (two to a number) ----
+  st: number;
+  pa: number;
+  pb: number;
 }
 
 export type StoryEvent =
@@ -232,7 +246,13 @@ export type StoryEvent =
   /** A kiosk's shutter rolled up; a lying mod part taken (`n` parts in hand now); parts spent on mod `i` (`mods.ts`). */
   | { kind: 'shutter'; i: number }
   | { kind: 'modPart'; i: number; n: number }
-  | { kind: 'mod'; i: number; n: number };
+  | { kind: 'mod'; i: number; n: number }
+  /** An obstacle broken, chopped or cut open (`obstacles.ts`). */
+  | { kind: 'obstacle'; i: number }
+  /** A side story's place done: story `s` stands at `n` now (`sidestories.ts`). */
+  | { kind: 'side'; s: number; n: number }
+  /** A player worked machine `i` of Baba Yaga's stage, standing at (x, z) (`stage.ts`: the director decides what it caught). */
+  | { kind: 'stage'; i: number; x: number; z: number };
 
 /** What a player can ask for (each is checked against where they stand). */
 export type StoryAct =
@@ -242,7 +262,13 @@ export type StoryAct =
   // the Zenit flashed at a marked spot (`photos.ts`); a block or a swing into Morozko's question (`director.ts`)
   | 'photo' | 'parry'
   // a kiosk's shutter paid for; a mod part picked up in passing; a weapon mod fitted at a bench (`mods.ts`)
-  | 'shutter' | 'modPart' | 'mod';
+  | 'shutter' | 'modPart' | 'mod'
+  // an obstacle opened with the one weapon that gets through it (`obstacles.ts`)
+  | 'obstacle'
+  // a side story's place (`sidestories.ts`: the index is `sideIndex(story, stage, place)`)
+  | 'side'
+  // one of Baba Yaga's stage machines (`stage.ts` MACHINES: the revolve, the traps, the fly bars, the follow-spot)
+  | 'stage';
 
 /** Someone standing somewhere (the players). */
 export interface Stand {
@@ -300,15 +326,21 @@ export class ZaryaStory {
   private end = 0;
   /** `StoryView.k` (`mods.ts`). */
   private k = 0;
+  /** `StoryView.side` (`sidestories.ts`). */
+  private side: number[] = sideEmpty();
+  /** `StoryView.st`, `pa`, `pb` (`stage.ts`): set by whoever runs the infected, every frame (`stage`). */
+  private st = 0;
+  private pa = 0;
+  private pb = 0;
   private events: StoryEvent[] = [];
 
   static empty(): StoryView {
-    return { ch: CH.arrive, f: 0, g: 0, m: 0, clues: 0, covered: 0, orn: 0, dolls: 0, turned: 0, end: 0, k: 0, parts: 0, built: 0, gates: 0 };
+    return { ch: CH.arrive, f: 0, g: 0, m: 0, clues: 0, covered: 0, orn: 0, dolls: 0, turned: 0, end: 0, k: 0, side: sideEmpty(), st: 0, pa: 0, pb: 0, parts: 0, built: 0, gates: 0 };
   }
 
   get view(): StoryView {
     const u = this.unlock.view;
-    return { ch: this.ch, f: this.f, g: this.g, m: this.m, clues: this.clues, covered: this.covered, orn: this.orn, dolls: this.dolls, turned: this.turned, end: this.end, k: this.k, parts: u.parts, built: u.built, gates: u.gates };
+    return { ch: this.ch, f: this.f, g: this.g, m: this.m, clues: this.clues, covered: this.covered, orn: this.orn, dolls: this.dolls, turned: this.turned, end: this.end, k: this.k, side: [...this.side], st: this.st, pa: this.pa, pb: this.pb, parts: u.parts, built: u.built, gates: u.gates };
   }
 
   static has(v: { f: number }, flag: number): boolean {
@@ -324,8 +356,9 @@ export class ZaryaStory {
     return Math.min(STORY.dollShells, Math.floor(((v.dolls >> (i * 6)) & 63) / STORY.dollKills));
   }
   /** Mod parts the squad has found and not yet spent (`mods.ts`). */
-  static modParts(v: { k: number }): number {
-    return count(v.k & ((1 << KBIT.spent) - 1)) - (v.k >> KBIT.spent);
+  static modParts(v: { k: number; side?: readonly number[] }): number {
+    // (side stories: a finished one may give the squad a mod part, `sidestories.ts`)
+    return count(v.k & ((1 << KBIT.spent) - 1)) - (v.k >> KBIT.spent) + sideMods(v.side);
   }
   /** Kiosk `i`'s shutter is up. */
   static shutterUp(v: { k: number }, i: number): boolean {
@@ -340,6 +373,8 @@ export class ZaryaStory {
     this.unlock.reset();
     this.ch = CH.arrive;
     this.f = this.g = this.m = this.clues = this.covered = this.orn = this.dolls = this.turned = this.end = this.k = 0;
+    this.side = sideEmpty(); // (side stories)
+    this.st = this.pa = this.pb = 0; // (Baba Yaga's stage)
     this.events = [];
   }
 
@@ -474,6 +509,9 @@ export class ZaryaStory {
         return CLUES[i]?.at ?? null;
       case 'parry':
         return BERLOGA.morozko;
+      // one of Baba Yaga's stage machines (`stage.ts`)
+      case 'stage':
+        return MACHINES[i]?.at ?? null;
       case 'cover':
         return COVERS[i] ?? null;
       case 'ornament':
@@ -487,6 +525,12 @@ export class ZaryaStory {
         return MOD_PARTS[i] ?? null;
       case 'mod':
         return null;
+      // ---- obstacles (`obstacles.ts`) ----
+      case 'obstacle':
+        return OBSTACLES[i]?.at ?? null;
+      // ---- side stories (`sidestories.ts`) ----
+      case 'side':
+        return sidePlace(i)?.at ?? null;
       case 'unplug':
         return CANTEEN.plugs[i] ?? null;
       case 'valve':
@@ -568,12 +612,23 @@ export class ZaryaStory {
         return act2 && i >= 0 && i < MOD_PARTS.length && (v.k & bit(KBIT.part + i)) === 0;
       case 'mod':
         return v.ch >= CH.ground && v.ch < CH.ended && i >= 0 && i < MOD_COST.length && ZaryaStory.modParts(v) >= MOD_COST[i]!;
+      // ---- obstacles (`obstacles.ts`): after the tram first runs, once every zone it joins is open ----
+      case 'obstacle': {
+        const o = OBSTACLES[i];
+        return act2 && !!o && !obstacleOpen(v, i) && o.zones.every((z) => ZaryaStory.zoneOpen(v, z));
+      }
+      // ---- side stories (`sidestories.ts`): from the tram's first run to the end, in any zone that can be reached ----
+      case 'side':
+        return act2 && sideCan(v.side ?? [], i, (z) => z === 'square' || z === 'store' || ZaryaStory.zoneOpen(v, z));
       case 'bar':
         return did(G.boryaIn) && !did(G.barred);
       case 'cosmoKey':
         return did(G.barred) && !did(G.cosmoKey);
+      // (the stage's single lever is gone: Baba Yaga's stage has four machines, `stage.ts`)
       case 'lever':
-        return did(G.yaga) && !did(G.yagaDown) && !did(G.exposed);
+        return false;
+      case 'stage':
+        return did(G.yaga) && !did(G.yagaDown) && v.ch < CH.ended && Stage.ready(v.st ?? 0, i);
       case 'escalator':
         return act2 && !did(G.escalator);
       case 'unplug':
@@ -623,6 +678,21 @@ export class ZaryaStory {
     }
     if (act === 'parry') {
       this.events.push({ kind: 'parry', x: p.x, z: p.z });
+      return true;
+    }
+    if (act === 'stage') {
+      // a machine of Baba Yaga's stage, worked by whoever stands at it (the director decides what it caught: `stage.ts`)
+      const at = MACHINES[i]?.at;
+      if (!at || !near(p, at, STORY.reach)) return false;
+      this.events.push({ kind: 'stage', i, x: p.x, z: p.z });
+      return true;
+    }
+    if (act === 'side') {
+      // ---- side stories (`sidestories.ts`): one place done, by whoever stands in reach of it ----
+      if (!near(p, sidePlace(i)!.at, SIDE_REACH)) return false;
+      const s = sideOf(i).s;
+      this.side[s] = sideNext(this.side, i);
+      this.events.push({ kind: 'side', s, n: this.side[s]! });
       return true;
     }
     if (act === 'photo') {
@@ -695,12 +765,18 @@ export class ZaryaStory {
         this.k |= bit(KBIT.part + i);
         this.events.push({ kind: 'modPart', i, n: ZaryaStory.modParts(this.view) });
         return true;
+      // ---- obstacles: `heavy` is the asker's word that they carry the one weapon it wants (`obstacles.ts`) ----
+      case 'obstacle':
+        if (!heavy) return false;
+        this.m |= bit(OBIT + i);
+        this.events.push({ kind: 'obstacle', i });
+        return true;
       case 'bar':
         return this.does(G.barred);
       case 'cosmoKey':
         return this.does(G.cosmoKey);
       case 'lever':
-        return this.does(G.exposed);
+        return false;
       case 'escalator':
         return heavy && this.does(G.escalator);
       case 'fireBoard':
@@ -750,7 +826,7 @@ export class ZaryaStory {
   }
 
   /** What the infected report (`director.ts`). */
-  note(what: 'gena' | 'guardDown' | 'bearUp' | 'bearDown' | 'prizeDone' | 'boryaUp' | 'boryaIn' | 'boryaOut' | 'yagaUp' | 'yagaDown' | 'hutBack' | 'tamadaUp' | 'tamadaDown' | 'morozkoDown'): void {
+  note(what: 'gena' | 'guardDown' | 'bearUp' | 'bearDown' | 'prizeDone' | 'boryaUp' | 'boryaIn' | 'boryaOut' | 'yagaUp' | 'yagaDown' | 'hutTurned' | 'hutBack' | 'tamadaUp' | 'tamadaDown' | 'morozkoDown'): void {
     switch (what) {
       case 'gena':
         if (this.raise(F.gena)) this.chapter(CH.town);
@@ -787,6 +863,10 @@ export class ZaryaStory {
       case 'hutBack':
         this.g &= ~G.exposed;
         break;
+      // her door has opened (a machine of the stage caught her: `stage.ts`)
+      case 'hutTurned':
+        this.g |= G.exposed;
+        break;
       case 'tamadaUp':
         this.does(G.tamada);
         break;
@@ -797,6 +877,13 @@ export class ZaryaStory {
         this.does(G.morozkoDown);
         break;
     }
+  }
+
+  /** Baba Yaga's stage as whoever runs the infected has it now (`stage.ts`): its word and the frost pools. */
+  stage(st: number, pa: number, pb: number): void {
+    this.st = st;
+    this.pa = pa;
+    this.pb = pb;
   }
 
   /** A kill made at (x, z): counted at any matryoshka in reach, until its last shell is open. */
@@ -834,13 +921,20 @@ export class ZaryaStory {
 /** The shared state as a co-op report's row, and back (null when the row is not one). */
 export function encodeStory(v: StoryView): number[] {
   // (`k`, the kiosks and the mods, last: a row from before it had one decodes with none)
-  return [v.ch, v.f, v.parts, v.built, v.gates, v.g, v.m, v.clues, v.covered, v.orn, v.dolls, v.turned, v.end, v.k];
+  // (side stories after `k`, one number each: a row from before them decodes with none found)
+  // (Baba Yaga's stage after the side stories: `st`, `pa`, `pb`, at 14 + the number of side stories)
+  return [v.ch, v.f, v.parts, v.built, v.gates, v.g, v.m, v.clues, v.covered, v.orn, v.dolls, v.turned, v.end, v.k, ...(v.side ?? []), v.st ?? 0, v.pa ?? 0, v.pb ?? 0];
 }
 
 export function decodeStory(row: unknown): StoryView | null {
   if (!Array.isArray(row) || row.length < 13 || !row.every((n) => Number.isInteger(n) && n >= 0)) return null;
   const r = row as number[];
-  return { ch: r[0]!, f: r[1]!, parts: r[2]!, built: r[3]!, gates: r[4]!, g: r[5]!, m: r[6]!, clues: r[7]!, covered: r[8]!, orn: r[9]!, dolls: r[10]!, turned: r[11]!, end: r[12]!, k: r[13] ?? 0 };
+  return { ch: r[0]!, f: r[1]!, parts: r[2]!, built: r[3]!, gates: r[4]!, g: r[5]!, m: r[6]!, clues: r[7]!, covered: r[8]!, orn: r[9]!, dolls: r[10]!, turned: r[11]!, end: r[12]!, k: r[13] ?? 0, side: sideFrom(r.slice(14)), ...stageFrom(r, 14 + sideEmpty().length) };
+}
+
+/** Baba Yaga's stage from a report's row, at `o` (a row from before it had one: nothing on the stage). */
+function stageFrom(r: readonly number[], o: number): { st: number; pa: number; pb: number } {
+  return { st: r[o] ?? 0, pa: r[o + 1] ?? 0, pb: r[o + 2] ?? 0 };
 }
 
 void SHELTER;

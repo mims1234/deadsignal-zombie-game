@@ -49,6 +49,11 @@ export const TETS = {
   /** The coal truck's driver, standing by his cab in the yard. */
   cover: [{ x: -30, z: -100 }] as Spot[],
   spawns: [[-70, -186], [-10, -186], [-44, -186], [17, -119], [-100, -91]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): the shift board on the boiler hall's south wall, inside, east of the shift desk and its panel of pressure gauges; the delivery docket in the coal truck's cab window. */
+  side: {
+    board: { x: -32.3, z: -137.62 } as Spot,
+    docket: { x: -27.7, z: -101.3 } as Spot,
+  },
 } as const;
 
 /** Everyone caught in this zone, standing where the snow found them (never inside anything solid, never on top of another). */

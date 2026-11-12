@@ -119,7 +119,7 @@ export class ZombieManager {
   /** Co-op guest: damage is not applied here but reported to the host through this. */
   netDamage: ((z: Zombie, amount: number, head: boolean, shotYaw: number, push: number, lift: number, impulse?: number, heavy?: boolean) => void) | null = null;
   /** Co-op guest: a mark or a stop (`affect`) is not applied here either, but reported to the host through this. */
-  netEffect: ((z: Zombie, mark: number, stagger: number) => void) | null = null;
+  netEffect: ((z: Zombie, mark: number, stagger: number, pin?: number) => void) | null = null;
   private readonly byNet = new Map<number, Zombie>();
   /** Multi-player simulation: let infected far from every player doze (see `update`). */
   sleepFar = false;
@@ -943,6 +943,19 @@ export class ZombieManager {
     }
     if (mark > 0) z.mark(mark);
     if (stagger > 0 && !z.invulnerable) z.stagger(z.isBoss ? Math.min(stagger, bossStagger) : stagger, env);
+  }
+
+  /**
+   * (ZARYA round 3: the Rogatina's job.) Stop `z` where it stands for `seconds`, its charge with it: a boss too, and one
+   * nothing hurts (a pin is not a wound). In co-op the host does it.
+   */
+  pin(z: Zombie, env: ZombieEnv, seconds: number): void {
+    if (!z.active || seconds <= 0) return;
+    if (this.netEffect) {
+      this.netEffect(z, 0, 0, seconds);
+      return;
+    }
+    z.stagger(seconds, env);
   }
 
   // ---------------------------------------------------------------------------------------------

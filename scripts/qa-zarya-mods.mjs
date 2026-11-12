@@ -148,71 +148,86 @@ await D(([x, z]) => { const d = window.__dead; d.teleport(x + 2.1, z - 0.2, Math
 await advance(0.4);
 await shot('booth-close');
 
-// ---- the mods: the Charge at Timur's bench, the Drum and the Frost coat at the Dvor's ----
+// ---- the mods (round 3): a big magazine and frost rounds, at any bench, saying what they will do ----
+const said = await D(() => [...window.__dead.game.zarya.said].includes('modPart'));
+check(said, 'the first mod part found: Timur says what the parts are for');
 const benchFront = async (b) => {
   await D(([x, z]) => { const d = window.__dead; d.clearZombies(); d.teleport(x, z + 1.1, 0); }, [b.at.x, b.at.z]);
   await advance(0.5);
 };
 const timur = BENCHES.find((b) => b.main && Math.abs(b.at.x - GARAGES.bench.x) < 1);
 const dvor = BENCHES.find((b) => Math.abs(b.at.x - DVOR.bench.x) < 1);
-await benchFront(timur);
-st = await state();
-check(st.prompt === 'FIT THE CHARGE MOD' && st.can, "Timur's bench offers the Charge mod", `${st.prompt} / ${st.sub}`);
-await shot('bench-charge');
-await holdUse(1.4);
 const mask = () => D(() => { const g = window.__dead.game; const inv = g.session.inv; return g.zarya.kiosks.mods.mask(inv.slots[inv.activeSlot]); });
-check(((await mask()) & (1 << MOD.charge)) !== 0, 'the Charge mod is on the pistol');
-// aiming two seconds charges it: the next shot strikes three times as hard
-const dmg0 = await D(() => window.__dead.game.weapons.stats.damage);
-await D(() => window.__dead.hold({ ads: true }));
-await advance(2.4);
-const dmg1 = await D(() => window.__dead.game.weapons.stats.damage);
-st = await state();
-check(Math.abs(dmg1 - dmg0 * 3) < 0.01, 'two seconds of aim: triple damage', `${dmg0} -> ${dmg1}`);
-await shot('hud-charged');
-check(/CHARGED/.test(st.label ?? ''), 'the weapon panel says CHARGED', st.label);
-const mag0 = (await state()).gun?.mag;
-await D(() => window.__dead.click());
-await advance(0.2);
-await D(() => window.__dead.releaseAll());
-await advance(0.3);
-check((await state()).gun?.mag === mag0 - 1, 'a charged shot fired', `${mag0} -> ${(await state()).gun?.mag}`);
-const dmg2 = await D(() => window.__dead.game.weapons.stats.damage);
-check(Math.abs(dmg2 - dmg0) < 0.01, 'the shot spends the charge', `${dmg2}`);
-
+await D(() => { const c = window.__dead.game.session.inv.slots[0]; c.ammo.mag = 5; c.ammo.reserve = 40; });
 await benchFront(dvor);
 st = await state();
-check(st.prompt === 'FIT A DRUM' && st.can, "the Dvor's bench offers a drum", `${st.prompt} / ${st.sub}`);
+check(st.prompt === 'FIT BIG MAGAZINE TO THE VX-9' && st.can, "the Dvor's bench offers a big magazine for the pistol", `${st.prompt} / ${st.sub}`);
+check(/^13 -> 20 rounds a load\. Uses 1 of the squad's 7 mod parts$/.test(st.sub), 'and says what fitting it will do', st.sub);
+await shot('bench-bigmag');
 await holdUse(1.4);
 st = await state();
-check(st.gun?.magSize === 20, 'a drum: 13 rounds a load become 20', `${st.gun?.magSize}`);
+check(st.gun?.magSize === 20 && st.gun?.mag === 20, 'a big magazine: 13 a load become 20, and the load in it is topped up at once', `${st.gun?.mag} / ${st.gun?.magSize}`);
+check(st.label === 'BIG MAG', 'the weapon panel says BIG MAG', st.label);
+await shot('hud-bigmag');
 await advance(0.3);
 st = await state();
-check(st.prompt === 'FIT A FROST COAT' && st.can, 'then a frost coat', `${st.prompt} / ${st.sub}`);
+check(st.prompt === 'FIT FROST ROUNDS TO THE VX-9' && st.can, 'then frost rounds', `${st.prompt} / ${st.sub}`);
+check(/^Its rounds will slow what they hit for 2 seconds\./.test(st.sub), 'saying what they will do', st.sub);
 await holdUse(1.4);
-check(((await mask()) & 7) === 7, 'all three mods on the pistol');
+check(((await mask()) & 6) === 6, 'both mods on the pistol');
 st = await state();
-check(st.label === 'CHARGED +2' || st.label === 'CHARGE +2', 'the weapon panel names them, short', st.label);
+check(st.label === 'BIG MAG + FROST', 'the weapon panel names them, short', st.label);
+check(!/CHARGE/.test(JSON.stringify(st)), 'nothing offers or names the Charge');
 await shot('hud-mods');
-// a frosted round slows what it strikes for two seconds
+// the nail gun at Timur's bench: a bigger drum, said in nails
+await D(() => { const d = window.__dead; d.giveGun('gvozdomyot'); d.advance(1.2); });
+await benchFront(timur);
+st = await state();
+check(st.prompt === 'FIT BIG MAGAZINE TO THE GVOZDOMYOT' && /^150 -> 225 nails a load/.test(st.sub), "Timur's bench: the nail gun's drum, in nails", `${st.prompt} / ${st.sub}`);
+await shot('bench-nailer');
+await holdUse(1.4);
+st = await state();
+check(st.gun?.magSize === 225, 'the nail gun holds 225 a load', `${st.gun?.magSize}`);
+// a frosted round, fired: it slows what it strikes, and the frost is seen on it
+await D(() => { const d = window.__dead; const g = d.game; const inv = g.session.inv; const i = inv.slots.findIndex((c) => c?.id === 'pistol'); inv.activeSlot = i; g.weapons.cancelActions(); d.advance(1.2); });
 const slow = await D(() => {
   const d = window.__dead;
   const g = d.game;
-  const id = d.spawnZombie('shambler', g.player.x, g.player.z - 8, false);
+  const p = g.player;
+  d.clearZombies();
+  d.teleport(-44, 0, -Math.PI / 2); // (out on the open square, nothing between)
+  d.advance(0.2);
+  const id = d.spawnZombie('shambler', p.x - Math.sin(p.yaw) * 6, p.z - Math.cos(p.yaw) * 6, false);
   const z = g.zombies.zombies.find((q) => q.id === id);
-  const inv = g.session.inv;
+  z.maxHp = z.hp = 100000;
+  z.dormant = false;
+  d.advance(0.3);
   const before = z.speedScale;
-  g.zarya.kiosks.mods.hit(z, inv.slots[inv.activeSlot]);
-  return { before, after: z.speedScale, id };
+  d.lookAt(z.x, z.z, z.y + 1.0);
+  const m0 = g.weapons.carried.ammo.mag;
+  d.click();
+  d.advance(0.1);
+  return { before, after: z.speedScale, id, frosted: g.zarya.kiosks.mods.frosted, gun: g.weapons.carried.id, shot: m0 - g.weapons.carried.ammo.mag, hit: 100000 - z.hp, mask: g.zarya.kiosks.mods.mask(g.weapons.carried) };
 });
-check(slow.after < slow.before * 0.6, 'a frosted round slows it', `${slow.before.toFixed(2)} -> ${slow.after.toFixed(2)}`);
+check(slow.gun === 'pistol' && slow.after < slow.before * 0.6, 'a frosted round, fired, slows what it hits', `${slow.gun}: ${slow.before.toFixed(2)} -> ${slow.after.toFixed(2)}; shot ${slow.shot}, hit ${slow.hit}, mask ${slow.mask}`);
+check(slow.frosted === 1, 'and it is counted frosted (its glitter goes on while it is slowed)', String(slow.frosted));
+await advance(0.25);
+await shot('frost-on-it');
 await advance(2.4);
 const back = await D((id) => window.__dead.game.zombies.zombies.find((q) => q.id === id)?.speedScale ?? -1, slow.id);
 check(Math.abs(back - slow.before) < 1e-6, 'and gives its pace back after two seconds', back.toFixed(2));
 
-// what is left: 7 parts found, 4 spent
+// what is left: 7 parts found, 3 spent
 const left = await D(async () => (await import('/src/zarya/story.ts')).ZaryaStory.modParts(window.__dead.game.zarya.view));
-check(left === 3, 'three parts left for the squad', String(left));
+check(left === 4, 'four parts left for the squad', String(left));
+// the journal's mods section: what each does, what it needs, where the parts are, which gun has it
+const journal = await D(() => window.__dead.game.menus.pauseTab().build().textContent);
+check(/WEAPON MODS/.test(journal) && /4 to fit, 7 of 7 found/.test(journal), 'the journal has a mods section with the parts', journal.match(/Mod parts:[^.]*\./)?.[0] ?? '');
+check(/BIG MAGAZINE: half as many rounds again in every load\. Fits any gun that loads more than one round\. On your VX-9, GVOZDOMYOT\./.test(journal), 'it says what the big magazine does, fits and is on', journal.match(/BIG MAGAZINE:[^]*?\.(?= FROST)/)?.[0] ?? '');
+check(/FROST ROUNDS: whatever its rounds hit is slowed for 2 seconds\. Fits .*On your VX-9\./.test(journal), 'and frost rounds', '');
+check(/shut kiosks/.test(journal) && /garage's back wall \(taken\)/.test(journal), 'and where the parts are, found or not', '');
+const modsPart = journal.slice(journal.indexOf('WEAPON MODS'));
+check(!/charge/i.test(modsPart), 'the journal names no Charge', modsPart.slice(0, 600));
 
 const errs = logs.filter((l) => l.type === 'pageerror');
 for (const e of errs) console.log('page error:', e.text.slice(0, 300));

@@ -61,6 +61,10 @@ export const RYNOK = {
   cover: [{ x: 186, z: -12 }, { x: 204, z: 30 }] as Spot[],
   /** Where the ones woken wrong come from: out of sight, behind the wall along the tram line and in the yard's far corners. */
   spawns: [[152, -66], [240, -65.5], [241, 66], [153, 67], [238, 30]] as [number, number][],
+  /** The side stories' places (`zarya/sidestories.ts`): a parcel on the honey stall's north counter (the hall's second row, west block). */
+  side: {
+    parcel: { x: 177.5, z: -16.95 } as Spot,
+  },
 } as const;
 
 export type StallKind = 'iron' | 'veg' | 'milk' | 'fish' | 'honey' | 'sweets' | 'meat' | 'butcher' | 'bread' | 'hats' | 'pickles' | 'tea' | 'pharmacy' | 'plumber' | 'felt';

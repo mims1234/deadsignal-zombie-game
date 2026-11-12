@@ -27,6 +27,9 @@ import { buildSquare, tramStop } from './zaryaSquare';
 import { buildShelter, buildStore } from './zaryaStore';
 import { buildTets } from './zaryaTets';
 import { buildUpstairs } from './zaryaUpstairs';
+// ---- obstacles (round 3): what only one weapon to swing gets through (`zarya/obstacles.ts`) ----
+import { OBSTACLES } from '../../zarya/obstacles';
+import { buildObstacles } from './zaryaObstacles';
 
 export interface ZaryaHandles {
   /** The doorway under the store's jammed shutter (built open; a run shuts it until the plug is pulled). */
@@ -55,6 +58,8 @@ export interface ZaryaHandles {
   berlogaArea: number;
   lift: FloorLink;
   keyDoor: BoxCollider;
+  /** The obstacles' colliders, by `OBSTACLES` index (null: nothing walks through it; each built open, a run shuts the ones not opened). */
+  obstacles: (BoxCollider | null)[];
 }
 
 const B = ZARYA_BOUNDS;
@@ -213,6 +218,8 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
     ...GATES.filter((g) => g.along === along && (along === 'x' ? g.z : g.x) === fixed).map((g) => ({ at: along === 'x' ? g.x : g.z, half: g.half })),
     // where Line One's covered way carries the line through the wall (the way is its own wall: no walker gets by)
     ...(along === 'z' ? LINE_PORTALS.filter((p) => p.open === 'both' && p.x0 < fixed && p.x1 > fixed).map((p) => ({ at: (p.z0 + p.z1) / 2, half: (p.z1 - p.z0) / 2 })) : []),
+    // (obstacles, round 3: a barricaded gap, the fire axe's short cut)
+    ...OBSTACLES.filter((o) => o.wall?.along === along && o.wall.fixed === fixed).map((o) => ({ at: o.wall!.at, half: o.wall!.half })),
   ];
 
   // ---- the zones ----
@@ -262,6 +269,8 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
   });
   const gates: Record<string, BoxCollider> = {};
   for (const g of GATES) gates[g.id] = inZone(g.zones[1], () => gate(c, g));
+  // ---- obstacles (round 3): their frames and colliders, each in its zone ----
+  const obstacles = OBSTACLES.map((o) => inZone(o.zone, () => buildObstacles(c, o)));
 
   // ---- Line One: a stop and a car at every stop but the square's (which the square builds itself, with Zina in the cab) ----
   // where the line leaves a zone it goes into a portal (a tunnel mouth, or a covered way through a wall), never through
@@ -404,6 +413,7 @@ export function buildZarya(c: Ctx): { transmitter: TransmitterHandle; spire: Spi
       berlogaArea: berloga.area,
       lift: berloga.link,
       keyDoor: berloga.keyDoor,
+      obstacles,
     },
   };
 }

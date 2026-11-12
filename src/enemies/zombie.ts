@@ -281,6 +281,10 @@ export class Zombie {
   private stuckTimer = 0;
   // ---- combat ----
   attackKind: AttackKind = 'melee';
+  /** (ZARYA round 3: the Rogatina pins a charge) It is winding up or running a charge. */
+  get charging(): boolean {
+    return this.state === 'attack' && this.attackKind === 'charge';
+  }
   private attackTime = 0;
   private attackDidHit = false;
   private attackDir = 0;
