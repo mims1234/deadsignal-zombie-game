@@ -117,7 +117,7 @@ export class HirasakaBosses {
       p.y = V.y;
       p.pitch = V.pitch;
       g.flow.cancel();
-      g.squad.regroupAt(V.x + 2, V.z + 2.5, V.yaw, g.level.floors.areaAt(V.x, V.y, V.z));
+      g.squad.regroupAt(V.x + 2, V.z + 2.5, V.yaw, g.level.floors.areaAt(V.x, V.y, V.z), V.y);
       el.style.transition = 'opacity 1.6s';
       el.style.opacity = '0';
     }

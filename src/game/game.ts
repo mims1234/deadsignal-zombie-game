@@ -2095,7 +2095,10 @@ export class Game implements GameCtx {
     this.stairwellCd = 1.5;
     this.fadeThroughBlack(0.45);
     p.teleport(out.x, out.z, out.yaw);
-    this.squad.regroupAt(out.x, out.z, out.yaw, out.area);
+    // out on the far end's own floor: `teleport` stands the player on the ground (y 0), and a stairwell may join floors at
+    // any height (HIRASAKA's school stair, 7.2 m to 21.6 m: at y 0 the player was inside the hill, the island not drawn)
+    p.y = this.level.world.groundHeight(out.x, out.z, PLAYER.radius * 0.92, out.y + PLAYER.stepHeight);
+    this.squad.regroupAt(out.x, out.z, out.yaw, out.area, p.y);
     this.audio.play('step_concrete', { priority: 1, volume: 0.7 });
   }
 

@@ -629,8 +629,11 @@ export class SquadRuntime {
     return this.allies.map((a) => a.avatar);
   }
 
-  /** The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. */
-  regroupAt(x: number, z: number, yaw: number, area: number): void {
+  /**
+   * The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. `y`: the floor
+   * the leader came out on (left out: the ground, as before), each squadmate stood on the floor there.
+   */
+  regroupAt(x: number, z: number, yaw: number, area: number, y?: number): void {
     if (!this.active) return;
     // ZARYA, HIRASAKA in co-op: the simulation moves the squadmates who were keeping up with this player (`requestRegroup`)
     if (this.follow) {
@@ -643,12 +646,12 @@ export class SquadRuntime {
       const at = nav.randomFreeNear(x, z, 3, () => this.g.rng.f()) ?? { x, z };
       a.ref.x = at.x;
       a.ref.z = at.z;
-      a.ref.y = 0;
-      a.ref.eyeY = 1.6;
+      a.ref.y = y === undefined ? 0 : this.g.level.world.floorBelow(at.x, at.z, 0.2, y + 0.3);
+      a.ref.eyeY = a.ref.y + 1.6;
       a.crossing = null;
       a.stuckT = 0;
       a.yaw = yaw;
-      a.avatar.set(at.x, 0, at.z, yaw, true);
+      a.avatar.set(at.x, a.ref.y, at.z, yaw, true);
     }
   }
 

@@ -2,6 +2,14 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.392",
+      "date": "2026-11-23",
+      "title": "HIRASAKA: the school stair fixed",
+      "notes": [
+        "HIRASAKA: going up or down the school stair (the way to Genzō's cage key) no longer drops you and your squad inside the hill, where the island vanished round you. You now come out on the floor at the other end."
+      ]
+    },
+    {
       "version": "0.4.391",
       "date": "2026-11-23",
       "title": "HIRASAKA reborn, open to everyone; volume sliders",

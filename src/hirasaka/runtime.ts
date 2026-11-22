@@ -925,7 +925,7 @@ export class HirasakaRuntime {
     p.teleport(x, z, p.yaw);
     p.y = y;
     g.flow.cancel();
-    g.squad.regroupAt(x, z, p.yaw, g.level.floors.areaAt(x, y, z));
+    g.squad.regroupAt(x, z, p.yaw, g.level.floors.areaAt(x, y, z), y);
   }
 
   // ---------------------------------------------------------------------------------------------
