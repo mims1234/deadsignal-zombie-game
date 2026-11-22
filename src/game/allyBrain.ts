@@ -153,9 +153,9 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
       tz = end.z;
       field = fl.fieldTo(myArea, end.x, end.z);
     }
-  } else if (fl && myArea !== 0) {
-    field = fl.liveField(myArea, tx, tz);
   }
+  // up a storey or underground, a field toward their place there: built only when they cannot see it (`los` below)
+  const live = !!fl && myArea !== 0 && myArea === leaderArea;
   const dx = tx - a.ref.x;
   const dz = tz - a.ref.z;
   const d = Math.hypot(dx, dz);
@@ -168,7 +168,7 @@ export function allyMove(a: AllyBody, w: AllyWorld, dt: number, px: number, pz: 
   let gx = tx;
   let gz = tz;
   const nav = fl ? fl.navOf(myArea) : w.level.nav;
-  if (!nav.los(a.ref.x, a.ref.z, tx, tz) && (field ? field.follow(a.ref.x, a.ref.z, steer, 10) : w.followLeader(a.ref.x, a.ref.z, steer))) {
+  if (!nav.los(a.ref.x, a.ref.z, tx, tz) && ((field ??= live ? fl!.liveField(myArea, tx, tz) : null) ? field.follow(a.ref.x, a.ref.z, steer, 10) : w.followLeader(a.ref.x, a.ref.z, steer))) {
     gx = steer.x;
     gz = steer.z;
   }

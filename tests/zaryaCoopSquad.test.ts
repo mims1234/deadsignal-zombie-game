@@ -74,7 +74,7 @@ describe('ZARYA co-op: Timur and Vera play beside every player count', () => {
     for (const n of [1, 2, 3]) expect(squadRoster('zarya', n)).toEqual(['Timur', 'Vera']);
     expect(SQUADS.zarya!.fillsSeats).toBeFalsy();
     expect([1, 2, 3].map((n) => squadRoster('sakura', n).length)).toEqual([2, 1, 0]);
-    expect([1, 2, 3].map((n) => squadRoster('hirasaka', n).length)).toEqual([1, 1, 0]);
+    expect([1, 2, 3].map((n) => squadRoster('hirasaka', n).length)).toEqual([2, 1, 0]); // Natsuki and Daigo (HIRASAKA reborn)
     expect(squadRoster('asylum', 3)).toEqual(['Vance', 'Okafor']);
   });
 

@@ -67,7 +67,8 @@ describe("ZARYA's guns: the table", () => {
     for (const id of ZARYA_GUN_IDS) {
       expect(MYSTERY_BOX.guns[id]).toBe(0);
       expect(reelFor(true).map(prizeKey)).not.toContain(id);
-      if (id !== 'raketa') expect(decodePrize(`w:${id}`)).toBeNull();
+      // (the Raketa comes out of ZARYA's sack; HIRASAKA's offering box holds the crossbow, its own table: arms wave)
+      if (id !== 'raketa' && id !== 'arbalet') expect(decodePrize(`w:${id}`)).toBeNull();
     }
   });
 

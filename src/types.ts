@@ -14,7 +14,10 @@
  */
 export type ZaryaGunId = 'signalka' | 'arbalet' | 'gvozdomyot' | 'salyut' | 'ottepel' | 'zenit' | 'raketa';
 
-export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin' | ZaryaGunId;
+/** HIRASAKA's built guns (`logic/hirasakaGuns.ts`): built at its workbenches from parts, never sold or boxed. */
+export type HirasakaGunId = 'happa' | 'sakuganki' | 'mori' | 'kushibi' | 'okamuzumi';
+
+export type WeaponId = 'rifle' | 'pistol' | 'shotgun' | 'rpg' | 'hanafubuki' | 'raijin' | ZaryaGunId | HirasakaGunId;
 
 export type ZombieType = 'shambler' | 'runner' | 'armored' | 'warden';
 
@@ -51,6 +54,12 @@ export interface Settings {
   fov: number;
   /** Master volume 0..1. */
   masterVolume: number;
+  /** Music (the score) 0..1, under the master. */
+  musicVolume: number;
+  /** Voice-overs (story lines, tapes, radio, calls) 0..1, under the master. */
+  voiceVolume: number;
+  /** Effects (weapons, the infected, the world, the UI) 0..1, under the master. */
+  effectsVolume: number;
   quality: QualityLevel;
   /** The game picks the quality for this device and adjusts it while playing. Picking a quality by hand turns it off. */
   qualityAuto: boolean;

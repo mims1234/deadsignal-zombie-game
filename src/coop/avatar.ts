@@ -6,10 +6,12 @@
  * Frames: the figure faces -Z with +X on its right. The chest group is the frame the arms and the weapon live in.
  */
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { SoundId } from '../audio/ids';
 import { AnimeBody, type AnimeTemplate, type AnimeTint, type PoseSource } from '../anime/vrm';
 import type { AvatarLook } from '../config';
 import { ZARYA_BASE, isZaryaGun } from '../logic/zaryaGuns';
+import { HIRASAKA_BASE, isHirasakaGun } from '../logic/hirasakaGuns';
 import type { WeaponId } from '../types';
 import { addFace, addFigure, addHair, addOutfit, getFemaleParts, isFemalePart } from './avatarLook';
 import { addHeroFace, addHeroHair, addHeroOutfit, addHeroTorso, heroBuild, heroMat, heroParts, isHeroPart, mergeStatic } from './heroLook';
@@ -25,6 +27,8 @@ export function avatarWeaponOf(id: WeaponId | 'none'): AvatarWeapon {
   // ZARYA's guns: the stock gun each is held like (the flare pistol and the camera a pistol, the crossbow and the nail
   // gun a rifle, the firework battery and the steam lance a launcher)
   if (id !== 'none' && isZaryaGun(id)) return ZARYA_BASE[id];
+  // HIRASAKA's built guns, the same way (the lance and the harpoon a rifle, the comb a pistol, the launchers a launcher)
+  if (id !== 'none' && isHirasakaGun(id)) return HIRASAKA_BASE[id];
   return id === 'hanafubuki' ? 'rifle' : id === 'raijin' ? 'rpg' : id;
 }
 
@@ -129,7 +133,44 @@ interface GunRig {
   kick: number;
 }
 
+/**
+ * (HIRASAKA final polish) A gun's parts that share a material drawn as one mesh: the same boxes and tubes in the same
+ * places, two or three draw calls a gun instead of six or seven (every figure on every map carries one).
+ */
 function gunRig(kind: AvatarWeapon): GunRig {
+  const r = gunParts(kind);
+  if (kind === 'bass') return r;
+  const by = new Map<THREE.Material, THREE.Mesh[]>();
+  for (const o of r.model.children) {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh || Array.isArray(m.material)) continue;
+    const list = by.get(m.material) ?? [];
+    list.push(m);
+    by.set(m.material, list);
+  }
+  for (const [mat, list] of by) {
+    if (list.length < 2) continue;
+    const geos = list.map((m) => {
+      m.updateMatrix();
+      const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrix);
+      for (const k of Object.keys(g.attributes)) if (k !== 'position' && k !== 'normal') g.deleteAttribute(k);
+      return g;
+    });
+    const merged = mergeGeometries(geos, false);
+    if (!merged) continue;
+    for (const m of list) {
+      m.removeFromParent();
+      m.geometry.dispose();
+    }
+    geos.forEach((g) => g.dispose());
+    const one = new THREE.Mesh(merged, mat);
+    one.castShadow = true;
+    r.model.add(one);
+  }
+  return r;
+}
+
+function gunParts(kind: AvatarWeapon): GunRig {
   const P = parts!;
   const m = new THREE.Group();
   const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0): void => {

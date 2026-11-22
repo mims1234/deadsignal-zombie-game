@@ -40,6 +40,7 @@ import { type ContractStatus, activateDefense, allContractsComplete, completeHun
 import { killReward } from '../logic/economy';
 import { type ExtractionPhase, atLzOrRadio, callExtraction, createExtraction, extractionInProgress, unlockExtraction, updateExtraction } from '../logic/extraction';
 import { escalationPhase, missionClock, type MissionClock } from '../logic/mission';
+import { mapFeatures } from '../logic/mapFeatures';
 import { POWERUPS } from '../logic/powerupConfig';
 import { type PowerupDrop, POWERUP_KINDS, applyPowerup, cashMultiplier, createPowerups, filterDamage, nukeTargets, resetPowerups, rollDrop, tickPowerups } from '../logic/powerups';
 import { createRecords, pickUpRecord } from '../logic/records';
@@ -67,8 +68,10 @@ import { questSpots } from '../sakura/spots';
 import { MujinDirector, mujinSpawnAllowed, mujinVariantPicker } from '../mujin/director';
 import { encodeJobs, MujinJobs } from '../mujin/jobs';
 import { HirasakaDirector, hirasakaVariantPicker } from '../hirasaka/director';
+import { applyHirasakaDoors } from '../hirasaka/doors';
 import { encodeStory, HirasakaStory } from '../hirasaka/story';
-import { boxHome, boxPlace, dueToMove, placeBox } from '../logic/boxMove';
+import { boxHome, boxPlace, dueToMove, nextPlace, placeBox } from '../logic/boxMove';
+import { BOX_EVERY, BOX_PLACES, shrineOpen } from '../hirasaka/armsPlaces'; // (HIRASAKA arms: the offering box's shrines)
 import { SACK_EVERY, SACK_PLACES, nextSackPlace } from '../zarya/sack';
 import { ZaryaDirector } from '../zarya/director';
 import { applyDoors as applyZaryaDoors } from '../zarya/doors';
@@ -415,6 +418,21 @@ export class SessionSim {
     const stand = [...this.peers.values()].map((p) => ({ x: p.ref.x, y: p.ref.y, z: p.ref.z, up: p.ref.alive }));
     const st = dir.step(dt, q.view, stand, this.rng);
     q.tick(dt, stand, st.mioAtStone);
+    // what the director saw this frame: Kurogane's phase by his health, the dead fallen at the rock (the finale's count)
+    if (st.kuPhase > q.view.kuPhase) q.act('kuPhase', st.kuPhase, stand[0] ?? { x: 0, y: 0, z: 0 });
+    if (st.fallen) q.fallen(st.fallen);
+    // (hs-bosses) Kurogane's thunders broken, the fights' state for every screen, what the waves and his gas did to whom
+    for (let i = 0; i < 8; i++) if (st.thunders & (1 << i)) q.act('thunder', i, stand[0] ?? { x: 0, y: 0, z: 0 });
+    q.bossWords(...st.words);
+    {
+      const order = [...this.peers.values()];
+      for (const h of st.hurts) {
+        const p = order[h.i];
+        if (p?.ref.alive) p.env.hurtPlayer(h.amount, h.x, h.z, 'melee', h.knock);
+      }
+    }
+    // the obstacles' colliders, the funayūrei's line, the adit: shut or open as the story stands
+    applyHirasakaDoors(this.level, q.view);
     if (q.view.hairpin && !q.view.bossDown && this.hunt.status === 'complete') q.overseerDown();
     if (!q.view.hairpin && this.hunt.status !== 'complete') {
       this.hunt.status = 'available';
@@ -423,7 +441,6 @@ export class SessionSim {
     for (const e of q.drain()) {
       dir.onEvent(e, q.view, this.rng);
       if (e.kind === 'ready') this.defense.status = 'complete';
-      else if (e.kind === 'cable' && this.level.hirasaka) this.level.hirasaka.aditLink.closed = false;
       else if (e.kind === 'sealed' || e.kind === 'home') {
         this.sealedAt = this.elapsed;
         // the dead fall where they stand (she goes behind the stone, or home)
@@ -890,10 +907,10 @@ export class SessionSim {
         return;
       }
       case 'rg': {
-        // ZARYA: a player stepped off the tram, climbed out a hatch or went through a doorway to another room
-        // (`squad.regroupAt` on their screen): the squadmates who were keeping up with them come through beside them,
-        // as they do solo. Those with another player stay with that one.
-        if (!this.zarya || !this.story || !up) return;
+        // ZARYA (any map with `squadRegroup`, `logic/mapFeatures.ts`): a player stepped off the tram, climbed out a hatch
+        // or went through a doorway to another room (`squad.regroupAt` on their screen): the squadmates who were keeping
+        // up with them come through beside them, as they do solo. Those with another player stay with that one.
+        if (!mapFeatures(this.map).squadRegroup || !this.story || !up) return;
         const x = Number(d.x);
         const z = Number(d.z);
         if (!Number.isFinite(x) || !Number.isFinite(z)) return;
@@ -976,30 +993,22 @@ export class SessionSim {
         return;
       }
       case 'hs': {
-        // HIRASAKA: a job's step, the cage, the deep, a look back, a peach's ward, the stone (the story checks reach)
+        // HIRASAKA: everything a player does goes through the story (`hirasaka/story.ts` `act`, which checks the reach
+        // from where the host has them); a gift thrown (a peach's ward, grapes for the hags, the comb's bamboo) lands
+        // where they say, no farther from them than a throw (`hirasaka/runtime.ts` `act` does the same solo)
         const q = this.hirasaka;
         if (!q || !this.story || !up) return;
         const seat = [...this.peers.keys()].indexOf(from);
+        const a = String(d.a ?? '');
         const i = Math.floor(Number(d.i)) || 0;
         const { x, y, z } = p.ref;
-        if (d.a === 'key') q.takeKey(x, y, z);
-        else if (d.a === 'gen') q.startGenerator(x, y, z);
-        else if (d.a === 'valve') q.openValve(i, x, y, z);
-        else if (d.a === 'cage') q.rideCage(x, z);
-        else if (d.a === 'peaches') q.takePeaches(x, z);
-        else if (d.a === 'hairpin') q.takeHairpin(x, z);
-        else if (d.a === 'surface') q.surface(x, z);
-        else if (d.a === 'tape') q.takeTape(i, x, y, z);
-        else if (d.a === 'photo') q.takePhoto(i, x, y, z);
-        else if (d.a === 'phone') q.answer(x, z);
-        else if (d.a === 'look') q.look(seat);
-        else if (d.a === 'home') q.turnAround(x, y, z);
-        else if (d.a === 'peach') {
-          // a ward where their peach landed (no farther from them than a throw)
-          const wx = Number(d.x);
-          const wz = Number(d.z);
-          if (Number.isFinite(wx) && Number.isFinite(wz) && Math.hypot(wx - x, wz - z) < 40) this.hirasakaDir?.peach(wx, wz);
+        const wx = Number(d.x);
+        const wz = Number(d.z);
+        if ((a === 'peach' || a === 'grapes' || a === 'comb') && Number.isFinite(wx) && Number.isFinite(wz)) {
+          if (Math.hypot(wx - x, wz - z) < 40) this.hirasakaDir?.thrown(a, wx, wz);
+          return;
         }
+        q.act(a, i, { x, y, z }, Math.max(0, seat));
         return;
       }
       case 'ledger': {
@@ -1237,9 +1246,25 @@ export class SessionSim {
     return to;
   };
 
+  /**
+   * (HIRASAKA arms) The offering box has closed for the next turn: opened often enough, it goes to another of the four
+   * shrines the squad can reach (`hirasaka/armsPlaces.ts`); its def, collider and floor go with it, and the story learns
+   * which shrine.
+   */
+  private readonly moveOffering = (i: number, b: { paid: boolean; opens: number; spot: number }): number | null => {
+    const def = this.level.data.crates[i];
+    const q = this.hirasaka;
+    if (!q || !def || !b.paid || !dueToMove(b.opens, BOX_EVERY)) return null;
+    const to = nextPlace(BOX_PLACES.length, b.spot, (k) => shrineOpen(k, q.view.cageDown), this.rng.f());
+    if (to === null) return null;
+    placeBox(this.level.world, def, boxPlace(def, BOX_PLACES, to));
+    q.act('box', to, { x: def.x, y: def.y ?? 0, z: def.z });
+    return to;
+  };
+
   private tickStory(dt: number, envs: ZombieEnv[], up: number, reported: number): void {
     this.elapsed += dt;
-    tickLoot(this.loot, dt, this.zarya ? this.moveSack : undefined);
+    tickLoot(this.loot, dt, this.zarya ? this.moveSack : this.hirasaka ? this.moveOffering : undefined);
     const peers = this.upPeers();
     // the squad: allies who are fighting are targets too
     const allyEnvs: ZombieEnv[] = [];
@@ -1271,7 +1296,7 @@ export class SessionSim {
         phase: escalationPhase(this.elapsed, this.clock),
         quality: 'medium',
         // MUJIN: the crossing powering up and the announcement on air draw them like a relay does
-        defenseActive: this.defense.status === 'active' || (!!this.hirasaka && this.hirasaka.view.generating && this.hirasaka.view.charge < 1) || (!!this.mujin && ((this.mujin.view.breakers === 0b111 && this.mujin.view.charge < 1) || (this.mujin.view.announcing && this.mujin.view.played < 1))),
+        defenseActive: this.defense.status === 'active' || (!!this.mujin && ((this.mujin.view.breakers === 0b111 && this.mujin.view.charge < 1) || (this.mujin.view.announcing && this.mujin.view.played < 1))),
         // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
         extractionElapsed: extractionInProgress(ex) && ex.calledAt !== null && !this.forge ? this.elapsed - ex.calledAt : null,
         // the Forge after the burnout: the virus is over, nothing more comes

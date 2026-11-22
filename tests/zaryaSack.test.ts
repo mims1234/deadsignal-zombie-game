@@ -38,7 +38,12 @@ describe("the sack's prizes", () => {
     const zarya = roll('zarya', 4000).map(prizeKey);
     expect(zarya).toContain('raketa');
     expect(zarya).not.toContain('m:kisten'); // (round 3: nothing to swing comes out of the sack)
-    for (const map of ['district', 'sakura', 'mujin', 'asylum', 'hirasaka'] as MapId[]) {
+    // (HIRASAKA's offering box has a table of its own since the arms wave: the crossbow beside the stock guns)
+    const hs = roll('hirasaka', 4000).map(prizeKey);
+    expect(hs).toContain('arbalet');
+    expect(hs).not.toContain('raketa');
+    expect(hs).not.toContain('m:kisten');
+    for (const map of ['district', 'sakura', 'mujin', 'asylum'] as MapId[]) {
       const keys = roll(map, 4000).map(prizeKey);
       expect(keys).not.toContain('raketa');
       expect(keys).not.toContain('m:kisten');

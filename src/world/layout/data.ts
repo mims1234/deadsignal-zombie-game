@@ -51,7 +51,7 @@ export const MAP_IDS: readonly MapId[] = ['district', 'sakura', 'forge', 'asylum
  * Maps the admins open to everyone from the dashboard (the server's `GATED_MAPS`). Until then only admins see and play
  * them (a local dev build shows them too); everyone else does not see them at all.
  */
-export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia', 'mujin', 'hirasaka'];
+export const GATED_MAPS: readonly MapId[] = ['sakura', 'aurelia', 'mujin'];
 
 /** A valid map id from anything (storage, a URL, a message); unknown means the District. */
 export function asMapId(v: unknown): MapId {

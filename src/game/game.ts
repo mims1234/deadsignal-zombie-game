@@ -9,7 +9,7 @@ import { MAP_IDS, MAP_TEXT, type MapId } from '../world/layout/data';
 import * as THREE from 'three';
 import { AsylumLoopRuntime } from '../asylum/loopRuntime';
 import { FOG as ASYLUM_FOG } from '../asylum/nightConfig';
-import { createAudioEngine } from '../audio/engine';
+import { applyVolumes, createAudioEngine } from '../audio/engine';
 import type { AudioEngineApi, LoopHandle } from '../audio/ids';
 import { CardRuntime } from '../cards/cardRuntime';
 import { CoopSession } from '../coop/coop';
@@ -21,7 +21,8 @@ import { createZombieFactory, type ZombieFactoryExt } from '../enemies/zombieRig
 import { createFx } from '../fx/fx';
 import type { FxApi } from '../fx/fxTypes';
 import { applyDamageToPlayer, regenHealth } from '../logic/damage';
-import { addCash, killReward } from '../logic/economy';
+import { addCash, createCarried, killReward } from '../logic/economy';
+import { mapFeatures } from '../logic/mapFeatures';
 import { armEntries, armIndex, armRows, armStep } from '../logic/arsenal';
 import { escalationPhase, missionClock } from '../logic/mission';
 import { extractionInProgress } from '../logic/extraction';
@@ -41,7 +42,7 @@ import { setSkyColors } from '../render/stage';
 import { hasStoredMap, hasStoredSettings, isBetterRun, loadBest, loadDifficulty, loadMap, loadMode, loadRoamBase, loadSettings, loadTier, saveBest, saveDifficulty, saveMap, saveMode, saveRoamBase, saveSettings, saveTier } from '../storage';
 import type { BestRun, GameMode, MissionStats, QualityLevel, Region, Settings } from '../types';
 import { createHud } from '../ui/hud';
-import type { HudApi, HudEvent, MapMarker } from '../ui/hudTypes';
+import type { HudApi, HudEvent, MapMarker, RadioFace } from '../ui/hudTypes';
 import { createMenus } from '../ui/menus';
 import { createTouchControls, type TouchControlsApi } from '../ui/touchControls';
 import type { MenusApi, ModeInfo, TourStep } from '../ui/hudTypes';
@@ -179,7 +180,7 @@ export class Game implements GameCtx {
   mujin: MujinRuntime | null = null;
   /** HIRASAKA, the island that sealed its mine (`hirasaka/runtime.ts`). */
   hirasaka: HirasakaRuntime | null = null;
-  /** ZARYA (`zarya/runtime.ts`), and what the player swings there beside the two guns (`weapons/meleeSystem.ts`; null on maps without melee). */
+  /** ZARYA (`zarya/runtime.ts`), and what the player swings beside the guns (`weapons/meleeSystem.ts`; built where `mapFeatures(map).melee`, else null). */
   zarya: ZaryaRuntime | null = null;
   melee: MeleeSystem | null = null;
   /** The Sakura District: the story mission picked on the title screen for solo runs (null: the operation). */
@@ -532,7 +533,7 @@ export class Game implements GameCtx {
     this.fx = createFx();
     this.worldRoot.add(this.fx.root);
     this.audio = createAudioEngine();
-    this.audio.setMasterVolume(this.settings.masterVolume);
+    applyVolumes(this.audio, this.settings);
 
     if (this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka') {
       // the cast's VRoid models, all up front (any that are missing fall back to the stock figures)
@@ -554,7 +555,8 @@ export class Game implements GameCtx {
     this.zombieFactory = createZombieFactory();
     // ZARYA's looks are baked by its ZombieManager (theme 'zarya'); the standard ones would be built for nothing
     if (this.mapId !== 'zarya') this.zombieFactory.prewarm(this.mapId === 'asylum' ? 'asylum' : this.mapId === 'forge' ? 'forge' : this.mapId === 'sakura' || this.mapId === 'mujin' || this.mapId === 'hirasaka' ? 'sakura' : undefined); // the Asylum's and the Forge's infected have their own looks
-    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId), zarya: this.mapId === 'zarya' });
+    // (HIRASAKA arms: its built guns, and the two of ZARYA's its boards and box hand out)
+    this.viewmodels = createViewmodels({ relics: this.mapId === 'sakura' || MYSTERY_BOX.relicMaps.includes(this.mapId), zarya: this.mapId === 'zarya' ? true : this.mapId === 'hirasaka' ? ['signalka', 'arbalet'] : false, hirasaka: this.mapId === 'hirasaka' });
 
     this.menus.showLoading(0.85, 'ARMING SYSTEMS');
     await nextFrame();
@@ -710,8 +712,8 @@ export class Game implements GameCtx {
       this.hirasaka = new HirasakaRuntime(this);
       await this.hirasaka.preload((n, of) => this.menus.showLoading(0.88 + 0.1 * (n / of), `WINDING GENZŌ'S TAPES ${n} / ${of}`));
     }
-    if (this.mapId === 'zarya') {
-      // ZARYA: something to swing beside the two guns, and the yard's own rules
+    if (mapFeatures(this.mapId).melee) {
+      // ZARYA, HIRASAKA (`logic/mapFeatures.ts`): something to swing beside the guns
       this.melee = new MeleeSystem(
         {
           renderer: this.renderer,
@@ -728,8 +730,9 @@ export class Game implements GameCtx {
         },
         new MeleeRig(acquireTextures()),
       );
-      this.zarya = new ZaryaRuntime(this);
     }
+    // ZARYA: the yard's own rules
+    if (this.mapId === 'zarya') this.zarya = new ZaryaRuntime(this);
     this.interaction.sources.push((t) => this.stairwellPrompt(t));
     this.coopUi = new CoopUi(uiRoot, this.coop, {
       userId: () => this.account.user?.id ?? null,
@@ -786,23 +789,24 @@ export class Game implements GameCtx {
     }
     this.hud.setMapData(this.level.data.map);
     this.hud.setVisible(false);
+    const features = mapFeatures(this.mapId);
     if (this.touchMode) {
       this.touch = createTouchControls({
         root: uiRoot,
         input: this.input,
         onPause: () => this.pause('menu'),
         onInterrupt: () => this.pause('lost'),
-        // ZARYA: a move stick, one fire button and a menu dot; everything used rarely is in the dot's mini menu
-        layout: this.mapId === 'zarya' ? 'compact' : 'classic',
-        menuExtra: this.mapId === 'zarya' ? { label: 'JOURNAL', onTap: () => this.pause('menu') } : undefined,
-        // ZARYA's arsenal: the mini menu's WEAPONS tile lists everything carried, and a tap on a row brings it to hand
-        weapons: this.mapId === 'zarya' ? { rows: () => this.arsenalRows(), pick: (i) => (this.arsenalPick = i) } : undefined,
+        // `compactPhone` (ZARYA, HIRASAKA): a move stick, one fire button and a menu dot; everything used rarely is in the dot's mini menu
+        layout: features.compactPhone ? 'compact' : 'classic',
+        menuExtra: features.compactPhone ? { label: 'JOURNAL', onTap: () => this.pause('menu') } : undefined,
+        // the arsenal: the mini menu's WEAPONS tile lists everything carried, and a tap on a row brings it to hand
+        weapons: features.compactPhone && features.arsenal ? { rows: () => this.arsenalRows(), pick: (i) => (this.arsenalPick = i) } : undefined,
       });
     }
 
     this.roamHint = document.createElement('div');
     this.roamHint.className = 'ds-roam-hint';
-    this.roamKeys = this.touchMode ? `  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  ${this.mapId === 'zarya' ? 'THE DOT > PAUSE' : 'II'} = MENU` : '  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
+    this.roamKeys = this.touchMode ? `  //  LOOK WHERE YOU WANT TO GO AND PUSH THE STICK  //  RUN = FAST  //  ${features.compactPhone ? 'THE DOT > PAUSE' : 'II'} = MENU` : '  //  WASD FLY  //  SPACE UP  //  C DOWN  //  SHIFT FAST  //  ESC MENU';
     this.roamHint.hidden = true;
     uiRoot.appendChild(this.roamHint);
 
@@ -1024,7 +1028,7 @@ export class Game implements GameCtx {
     if (persist) this.qualityHint = false; // they found Settings: no need to point at it
     this.renderer.hFov = s.fov;
     this.renderer.updateFov();
-    this.audio.setMasterVolume(s.masterVolume);
+    applyVolumes(this.audio, s);
     if (qualityChanged || !persist) {
       this.applyQuality(s.quality, persist);
       if (persist && !this.halveTexturesTo(s.quality)) this.menus.flash('Full texture detail comes back after a page reload.');
@@ -1227,9 +1231,22 @@ export class Game implements GameCtx {
   /** A map that voices its radio (the Sakura District) takes every line here instead; true: taken. */
   radioHook: ((speaker: string, text: string, duration?: number) => boolean) | null = null;
 
+  /**
+   * People (map runtime API): a face for a line on the wire - name, colour, portrait (`RadioFace`), or null for a
+   * speaker with none. Asked for every line `radioHook` did not take (ZARYA's `ZaryaPeople` takes them all itself).
+   */
+  radioFace: ((speaker: string, text: string) => RadioFace | null) | null = null;
+
+  /**
+   * Escalation (map runtime API, solo): the director's phase 0..3 now, for a map with no clock that scales the infected
+   * with its story's progress (`MapFeatures.noClock`). Null: by the mission clock (none at all under `NO_CLOCK`).
+   */
+  escalation: (() => number) | null = null;
+
   radio(speaker: string, text: string, duration?: number): void {
     if (this.radioHook?.(speaker, text, duration)) return;
-    this.hud.event({ type: 'radio', speaker, text, duration });
+    const face = this.radioFace?.(speaker, text) ?? undefined;
+    this.hud.event({ type: 'radio', speaker, text, duration, face });
     this.audio.play('radio_chirp', { priority: 1, volume: 0.5 });
   }
 
@@ -1542,6 +1559,7 @@ export class Game implements GameCtx {
     this.weapons.reset();
     this.weapons.holstered = false;
     this.melee?.reset();
+    this.applyStartLoadout();
     this.zombies.tuning = ZOMBIE_DIFFICULTY[this.runDifficulty.zombies];
     // the Forge: who is holed up where (drawn before the residents, so none of them carries a living person's name)
     const forgeSquad = this.forge?.reset(this.mode === 'coop') ?? null;
@@ -2172,7 +2190,7 @@ export class Game implements GameCtx {
           playerYaw: p.yaw,
           playerEyeY: p.eyeY(),
           region: this.playerRegion(),
-          phase: escalationPhase(s.elapsed, this.mission.clock), // the Asylum's clock runs longer
+          phase: this.escalation?.() ?? escalationPhase(s.elapsed, this.mission.clock), // the Asylum's clock runs longer; a map with no clock may scale by progress
           quality: this.settings.quality,
           defenseActive: s.defense.status === 'active',
           // the Forge's last stand brings its own waves to the Hearth (`forge/assault.ts`)
@@ -2707,6 +2725,27 @@ export class Game implements GameCtx {
     this.audio.update(dt);
   }
 
+  /**
+   * A new run's loadout from the map's switches (`logic/mapFeatures.ts`), before the map's runtime resets (which may
+   * change it again, as ZARYA's does): the `start` guns in slot order and the weapon to swing taken but not drawn, and
+   * the arsenal on for the run. A map with neither keeps the stock loadout.
+   */
+  private applyStartLoadout(): void {
+    if (this.flying) return;
+    const f = mapFeatures(this.mapId);
+    const inv = this.session.inv;
+    if (f.arsenal) inv.arsenal = true;
+    if (!f.start) return;
+    const guns = f.start.guns.map((id) => createCarried(id));
+    inv.slots = [guns[0] ?? null, guns[1] ?? null, ...guns.slice(2)];
+    inv.activeSlot = 0;
+    this.weapons.cancelActions();
+    if (f.start.melee && this.melee) {
+      this.melee.equip(f.start.melee);
+      this.melee.setOut(false);
+    }
+  }
+
   /** ZARYA's arsenal: a pick from the phone's weapon list, taken on the next frame (index into `armEntries`). */
   private arsenalPick = -1;
 
@@ -2769,6 +2808,11 @@ export class Game implements GameCtx {
     else {
       this.squad.objectives(st.objectives);
       this.squad.markers(md.markers);
+    }
+    if (mapFeatures(this.mapId).noClock) {
+      // no clock to show, in a run or after it (a map may still put up a timer of its own below)
+      st.timer = { ...st.timer, hidden: true };
+      st.subTimer = null;
     }
     this.forge?.decorateHud(st, md);
     this.asylum?.decorateHud(st, md); // Asylum loop: max health with perks, doors and machines on the maps

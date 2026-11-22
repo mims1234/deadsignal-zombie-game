@@ -33,6 +33,12 @@ const SPECS: Record<WeaponId, Spec> = {
   ottepel: { len: 0.045, rad: 0.0058, shell: false },
   zenit: { len: 0.029, rad: 0.0049, shell: false },
   raketa: { len: 0.045, rad: 0.0058, shell: false },
+  // HIRASAKA's built guns: none ejects anything either
+  happa: { len: 0.07, rad: 0.0105, shell: true },
+  sakuganki: { len: 0.045, rad: 0.0058, shell: false },
+  mori: { len: 0.045, rad: 0.0058, shell: false },
+  kushibi: { len: 0.029, rad: 0.0049, shell: false },
+  okamuzumi: { len: 0.07, rad: 0.0105, shell: true },
 };
 
 function brassGeometry(): THREE.BufferGeometry {

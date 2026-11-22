@@ -126,6 +126,12 @@ function getShared(): NonNullable<typeof shared> {
       [box(0.05, 0.11, 0.03), 'dark', 0.06, -0.05, 0, -0.2],
       [box(0.07, 0.05, 0.2), 'dark', 0.47, 0.02, 0],
     ],
+    // HIRASAKA's built guns are never boxed (here for completeness: a plain tube each)
+    happa: [[tube(0.04, 0.6), 'olive', 0, 0, 0]],
+    sakuganki: [[tube(0.02, 0.7), 'steel', 0, 0, 0]],
+    mori: [[tube(0.02, 0.7), 'steel', 0, 0, 0]],
+    kushibi: [[box(0.3, 0.06, 0.02), 'wood', 0, 0, 0]],
+    okamuzumi: [[tube(0.05, 0.6), 'steel', 0, 0, 0]],
   };
   // what a box holds to swing (ZARYA's sack): the Kisten's handle, its chain and the iron weight
   const link = box(0.035, 0.012, 0.02);

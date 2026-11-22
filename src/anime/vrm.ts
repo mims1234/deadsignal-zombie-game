@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { type VRM, VRMAimConstraint, VRMLoaderPlugin, type VRMHumanBoneName, VRMNodeConstraintManager, VRMRollConstraint, VRMRotationConstraint, VRMUtils } from '@pixiv/three-vrm';
 
 /**
@@ -156,6 +157,7 @@ function makeTemplate(file: string, vrm: VRM): AnimeTemplate {
   vrm.humanoid.normalizedHumanBonesRoot.removeFromParent();
   const scene = vrm.scene as THREE.Group;
   scene.updateMatrixWorld(true);
+  mergeLikeMeshes(scene);
   const boneNames = new Map<string, string>();
   const at = (name: VRMHumanBoneName): THREE.Vector3 | null => {
     const n = vrm.humanoid.getRawBoneNode(name);
@@ -236,6 +238,48 @@ function makeTemplate(file: string, vrm: VRM): AnimeTemplate {
     tints: new Map(),
     male: [...mats].some((m) => /^M00_\d+_\d+_Body/.test(m.name)),
   };
+}
+
+/**
+ * A VRoid export splits its hair (and sometimes more) into dozens of skinned meshes that share one material: each is a
+ * draw call on every body (a squadmate was ~120 draws in view, 114 of them hair strands). Once all the meshes share one
+ * skeleton (`combineSkeletons`), those with the same parent, material, skeleton, bind matrix and local transform, and
+ * no blend shapes, become one mesh: their geometries merged into the first, the rest removed. Every clone, tint, baked
+ * body and far crowd made from the template draws the merged mesh (blend shapes are found by index after this).
+ */
+function mergeLikeMeshes(scene: THREE.Object3D): void {
+  const groups = new Map<string, THREE.SkinnedMesh[]>();
+  const ids = new Map<object, number>();
+  const id = (o: object): number => {
+    let n = ids.get(o);
+    if (n === undefined) ids.set(o, (n = ids.size));
+    return n;
+  };
+  const f = (e: readonly number[]): string => e.map((v) => v.toFixed(5)).join(',');
+  scene.traverse((o) => {
+    const m = o as THREE.SkinnedMesh;
+    if (!m.isSkinnedMesh || Array.isArray(m.material) || !m.parent) return;
+    const g = m.geometry;
+    if (Object.keys(g.morphAttributes).length || g.groups.length > 1 || !g.index) return;
+    const key = [id(m.parent), id(m.material), id(m.skeleton), f(m.bindMatrix.elements), f(m.matrix.elements), Object.keys(g.attributes).sort().join(',')].join('|');
+    const list = groups.get(key);
+    if (list) list.push(m);
+    else groups.set(key, [m]);
+  });
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    const merged = mergeGeometries(list.map((m) => m.geometry), false);
+    if (!merged) continue;
+    const first = list[0]!;
+    first.geometry.dispose();
+    first.geometry = merged;
+    merged.computeBoundingBox();
+    merged.computeBoundingSphere();
+    for (const m of list.slice(1)) {
+      m.geometry.dispose();
+      m.removeFromParent();
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

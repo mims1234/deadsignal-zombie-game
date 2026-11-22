@@ -17,9 +17,10 @@ const mate = (skill: Parameters<typeof makeAllyBody>[9] = 'regular'): AllyBody =
 const soldier = (): AllyBody => makeAllyBody(forge.level, 'Athy', 'soldier', 0, 0, 0, { x: -2.2, z: 2.6 }, false, 0);
 
 describe('squadmates: who they are', () => {
-  it('only ZARYA has them', () => {
+  it('only ZARYA and HIRASAKA have them', () => {
     expect(squadEquals('zarya')).toBe(true);
-    expect(Object.entries(SQUADS).filter(([, d]) => d.equals).map(([m]) => m)).toEqual(['zarya']);
+    expect(squadEquals('hirasaka')).toBe(true);
+    expect(Object.entries(SQUADS).filter(([, d]) => d.equals).map(([m]) => m).sort()).toEqual(['hirasaka', 'zarya']);
     expect(mate().equal).toBe(true);
     expect(soldier().equal).toBe(false);
     // someone freed from a cage is never one, whatever the map

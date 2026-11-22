@@ -8,7 +8,9 @@
  */
 
 export type MeleeType = 'blade' | 'blunt' | 'pole' | 'heavy' | 'paired' | 'flail';
-export type MeleeId = 'knife' | 'skillet' | 'skiPole' | 'maul' | 'gloves' | 'chain' | 'bat' | 'hockey' | 'rogatina' | 'fireAxe' | 'serpMolot' | 'shashka' | 'kisten';
+export type MeleeId = 'knife' | 'skillet' | 'skiPole' | 'maul' | 'gloves' | 'chain' | 'bat' | 'hockey' | 'rogatina' | 'fireAxe' | 'serpMolot' | 'shashka' | 'kisten'
+  // HIRASAKA's tools to swing (arms wave: `hirasaka/armsPlaces.ts`), each of which opens only its own obstacles
+  | 'tsuruhashi' | 'timberAxe' | 'coalShovel' | 'tachi';
 
 export interface MeleeDef {
   id: MeleeId;
@@ -54,6 +56,8 @@ export interface MeleeDef {
    * ones (a boss, the Morzh), stops it on the crossguard: it stands pinned this long, boss or not (`pinFor`).
    */
   pin?: number;
+  /** (HIRASAKA: the shrine tachi.) A heavy swing also strikes what is behind the player, in the same arc turned round. */
+  behind?: boolean;
 }
 
 export const MELEE: Record<MeleeId, MeleeDef> = {
@@ -158,6 +162,40 @@ export const MELEE: Record<MeleeId, MeleeDef> = {
     windup: 0.16, active: 0.13, recover: 0.3, chargeTime: 0.55, heavyRecover: 0.55,
     maxTargets: 2, heavyTargets: 6, impulse: 4, heavyImpulse: 7, push: 6, lift: 1,
     headMul: 1.5, guard: 0.6, moveMul: 0.96, combo: 3, pin: 1.6,
+  },
+  // ---- HIRASAKA's tools (arms wave). Each opens only its own obstacles (`hirasaka/armsPlaces.ts`), and each is a
+  // weapon worth carrying: a step up from the knife, each with a job in a fight as well ----
+  // the miner's tsuruhashi: a crane's-bill pick, both points steel; slow, and the point goes in deep (the head)
+  tsuruhashi: {
+    id: 'tsuruhashi', name: 'TSURUHASHI PICK', short: 'PICK', type: 'heavy',
+    damage: 105, heavyDamage: 250, reach: 2.3, arc: 0.6, heavyArc: 0.8,
+    windup: 0.3, active: 0.15, recover: 0.46, chargeTime: 0.66, heavyRecover: 0.66,
+    maxTargets: 2, heavyTargets: 3, impulse: 3, heavyImpulse: 6, push: 6, lift: 2,
+    headMul: 1.8, guard: 0.3, moveMul: 0.9, combo: 2,
+  },
+  // the timber axe the props were dressed with: the fire axe's cleave, a hair lighter
+  timberAxe: {
+    id: 'timberAxe', name: 'TIMBER AXE', short: 'TIMBER', type: 'heavy',
+    damage: 100, heavyDamage: 240, reach: 2.4, arc: 0.9, heavyArc: 1.0,
+    windup: 0.27, active: 0.16, recover: 0.44, chargeTime: 0.62, heavyRecover: 0.62,
+    maxTargets: 3, heavyTargets: 4, impulse: 3, heavyImpulse: 6, push: 7, lift: 2,
+    headMul: 1.4, guard: 0.4, moveMul: 0.92, combo: 2,
+  },
+  // the coal shovel: broad and flat, it sweeps a crowd back and guards like a door
+  coalShovel: {
+    id: 'coalShovel', name: 'COAL SHOVEL', short: 'SHOVEL', type: 'blunt',
+    damage: 70, heavyDamage: 165, reach: 2.4, arc: 0.95, heavyArc: 1.3,
+    windup: 0.17, active: 0.15, recover: 0.32, chargeTime: 0.55, heavyRecover: 0.52,
+    maxTargets: 3, heavyTargets: 5, impulse: 2.4, heavyImpulse: 4.6, push: 6, lift: 1.4,
+    headMul: 1.3, guard: 0.75, moveMul: 0.96, combo: 2,
+  },
+  // the summit shrine's tachi: the best edge on the island; the wound-up cut turns right round and takes what is behind
+  tachi: {
+    id: 'tachi', name: 'SHRINE TACHI', short: 'TACHI', type: 'blade',
+    damage: 140, heavyDamage: 300, reach: 2.4, arc: 0.6, heavyArc: 1.1,
+    windup: 0.11, active: 0.12, recover: 0.25, chargeTime: 0.5, heavyRecover: 0.48,
+    maxTargets: 1, heavyTargets: 3, impulse: 1.3, heavyImpulse: 2.8, push: 2.5, lift: 0.7,
+    headMul: 1.6, guard: 0.35, moveMul: 1, combo: 3, behind: true,
   },
 };
 

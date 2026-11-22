@@ -11,7 +11,7 @@ import type { CollisionWorld } from '../world/collision';
 import type { FloorLink, Floors } from '../world/floors';
 import type { FlowField, NavGrid } from '../world/nav';
 import type { ZombieAnimState, ZombieMode, ZombieRig } from './zombieRigTypes';
-import { ZARYA_HABITS, type ZombieVariant } from './variants';
+import { HIRASAKA_HABITS, ZARYA_HABITS, type ZombieVariant } from './variants';
 import { MUJIN } from '../mujin/places';
 import { showMark } from './markGlow';
 
@@ -218,6 +218,11 @@ export class Zombie {
   /** Seconds until it may throw or cast again, and (the fisherman) of the reel left. */
   private actCd = 0;
   private reelT = 0;
+  /** (hs-bosses) HIRASAKA: a funayūrei's hold on someone (seconds left, then seconds before it can take hold again, its health when it took hold); a lamp-eater lit by a lamp. */
+  private dragT = 0;
+  private dragRest = 0;
+  private dragHp = 0;
+  private lampLit = false;
   /** Where a throw is aimed: set partway through the wind-up (move after that and it misses). */
   private readonly aim = { x: 0, y: 0, z: 0 };
   /** A thrown weight in flight. `real`: it hurts (a co-op guest's is only drawn; the host's is the one that counts). */
@@ -371,7 +376,9 @@ export class Zombie {
     this.parrySlam = false;
     this.slamGap = null;
     this.hurtMul = null;
-    this.buried = (this.variant === 'rooted' || this.variant === 'drowned') && (opts.state ?? 'idle') === 'idle';
+    this.buried = (this.variant === 'rooted' || this.variant === 'drowned' || this.variant === 'funayurei') && (opts.state ?? 'idle') === 'idle';
+    this.dragT = this.dragRest = this.dragHp = 0;
+    this.lampLit = false;
     this.ceiling = false;
     this.varT = this.variant === 'empress' || this.variant === 'overseer' ? 12 : 0;
     this.shotPrevT = 0;
@@ -605,6 +612,77 @@ export class Zombie {
   // the Sakura District's kinds (`variants.ts`)
   // ---------------------------------------------------------------------------------------------
 
+  /** (hs-bosses) HIRASAKA: this env's player has their lamp turned on this one (in its reach and cone, nothing between). */
+  private lampOn(env: ZombieEnv, dist: number, reach: number): boolean {
+    const p = env.player;
+    if (!p.alive || HIRASAKA_HABITS.lampOut || p.yaw === undefined || dist > reach || dist < 1e-3 || Math.abs(p.y - this.y) > 3) return false;
+    const fx = -Math.sin(p.yaw);
+    const fz = -Math.cos(p.yaw);
+    if (((this.x - p.x) * fx + (this.z - p.z) * fz) / dist < HIRASAKA_HABITS.lamp.cone) return false;
+    return !env.world.segmentBlocked(p.x, p.eyeY - 0.1, p.z, this.x, this.y + 1.3, this.z, 'shots');
+  }
+
+  /**
+   * (hs-bosses) HIRASAKA's funayūrei: up out of the gallery's water at whoever comes close; with the bottomless ladles
+   * handed round they only hold out their hands and let you by; without, one takes hold and drags you back toward the
+   * water it came out of until it is shot off you or lets go.
+   */
+  private funaStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
+    const p = env.player;
+    const H = HIRASAKA_HABITS.drag;
+    if (this.buried) {
+      this.vx = this.vz = 0;
+      if ((p.alive && dist < 6 && Math.abs(p.y - this.y) < 2) || this.hp < this.maxHp) {
+        this.buried = false;
+        this.lastKnownX = p.x;
+        this.lastKnownZ = p.z;
+        this.enterState(HIRASAKA_HABITS.ladles ? 'idle' : 'chase');
+        this.say(env, 'zombie_alert', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 0.9, priority: 2, rate: 0.7 });
+        env.fx.sparkle({ x: this.x, y: this.y + 0.4, z: this.z }, 0x9ad0e0, 26);
+      }
+      return 0;
+    }
+    if (HIRASAKA_HABITS.ladles) {
+      // a ladle with no bottom: it bails, and lets you by
+      this.dragT = 0;
+      this.vx = this.vz = 0;
+      if (this.state !== 'idle' && this.state !== 'stagger') this.enterState('idle');
+      if (p.alive && dist < 12) this.turnToward(Math.atan2(-dx, -dz), 3, dt);
+      return 0;
+    }
+    this.dragRest = Math.max(0, this.dragRest - dt);
+    if (this.dragT > 0) {
+      this.dragT -= dt;
+      // shot off them, or they got free, or it has them back at the water
+      const home = Math.hypot(this.homeX - this.x, this.homeZ - this.z);
+      if (!p.alive || this.state === 'stagger' || this.hp < this.dragHp - this.maxHp * 0.2 || dist > H.reach + 1.2 || home < 0.8) this.dragT = 0;
+      if (this.dragT <= 0) {
+        this.dragRest = H.rest;
+        return -1;
+      }
+      const ux = (this.homeX - this.x) / home;
+      const uz = (this.homeZ - this.z) / home;
+      this.vx = ux * H.speed;
+      this.vz = uz * H.speed;
+      env.pull?.(this, ux * H.speed, uz * H.speed);
+      this.varT -= dt;
+      if (this.varT <= 0) {
+        this.varT = 0.5;
+        env.hurtPlayer(H.dps * 0.5 * this.dmgScale, this.x, this.z, 'melee', 0);
+      }
+      return H.speed;
+    }
+    if (p.alive && this.state === 'attack' && dist < H.reach && this.dragRest <= 0 && Math.abs(p.y - this.y) < 1.5) {
+      this.dragT = H.hold;
+      this.dragHp = this.hp;
+      this.varT = 0;
+      this.say(env, 'zombie_groan', { pos: { x: this.x, y: 1.4, z: this.z }, volume: 1, priority: 2, rate: 0.7 });
+      // nobody to move them here (the co-op simulation): one yank toward the water, through the blow's own knock
+      if (!env.pull) env.hurtPlayer(0, this.homeX, this.homeZ, 'melee', -H.yank);
+    }
+    return -1;
+  }
+
   /** A variant's own behaviour this frame: a ground speed when it has handled the frame, -1 to run the usual AI. */
   private variantStep(dt: number, env: ZombieEnv, dist: number, dx: number, dz: number): number {
     const p = env.player;
@@ -700,6 +778,46 @@ export class Zombie {
         }
         return 0;
       }
+      // ---- (hs-bosses) HIRASAKA's deep ----
+      case 'miner': {
+        // at work on the seam until a lamp is turned on it (or a shot, a blow, a neighbour's cry: `alertNear`)
+        if (this.state !== 'idle') return -1;
+        this.vx = this.vz = 0;
+        if (this.lampOn(env, dist, HIRASAKA_HABITS.lamp.reach) || this.hp < this.maxHp) {
+          this.memory = 0;
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+          this.say(env, 'zombie_alert', { pos, volume: 1, priority: 2, rate: 0.85 });
+        }
+        return 0;
+      }
+      case 'lampeater': {
+        // it goes for the light: a lamp on it brings it on at a sprint (from twice as far as a miner sees one)
+        const lit = this.lampOn(env, dist, HIRASAKA_HABITS.lamp.reach * 2);
+        if (lit !== this.lampLit) {
+          const E = HIRASAKA_HABITS.eater;
+          this.speedScale *= lit ? E.lit / E.dark : E.dark / E.lit;
+          this.lampLit = lit;
+        }
+        if (lit && this.state === 'idle') {
+          this.lastKnownX = p.x;
+          this.lastKnownZ = p.z;
+          this.enterState('chase');
+        }
+        return -1;
+      }
+      case 'funayurei':
+        return this.funaStep(dt, env, dist, dx, dz);
+      case 'thunderling': {
+        // crackling
+        this.varT -= dt;
+        if (this.varT <= 0) {
+          this.varT = 0.5 + env.rng.f() * 0.6;
+          if (dist < 40) env.fx.sparkle({ x: this.x, y: this.y + 0.9, z: this.z }, 0x9ae8ff, 6);
+        }
+        return -1;
+      }
       case 'hag':
       case 'follower': {
         // the slope's own: they always know where you are
@@ -711,7 +829,9 @@ export class Zombie {
         return -1;
       }
       case 'overseer': {
-        // Kurogane orders the miners back to work, and they come
+        // Kurogane orders the miners back to work, and they come ((hs-bosses) not while his fight runs, which has its own
+        // adds: the fight's blow filter is on him for as long as it does)
+        if (this.hurtMul) return -1;
         this.varT -= dt;
         if (this.state === 'chase' && this.varT <= 0) {
           this.varT = this.enraged ? 16 : 22;

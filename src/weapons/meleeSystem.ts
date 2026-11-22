@@ -65,6 +65,12 @@ export class MeleeSystem {
   /** Swings landed and infected struck, for whoever is counting. */
   swings = 0;
   hits = 0;
+  /**
+   * (HIRASAKA arms) Told of every swing as it lands, hit or miss: a map's runtime checks what else it struck (an
+   * obstacle only that tool opens: `hirasaka/arms.ts`).
+   */
+  onStrike: ((id: MeleeId, heavy: boolean) => void) | null = null;
+  private readonly behindHits: SwingHit<Zombie>[] = [];
   private readonly swing = createSwing();
   private readonly events: SwingEvent[] = [];
   private readonly reach: SwingHit<Zombie>[] = [];
@@ -225,6 +231,10 @@ export class MeleeSystem {
     const env = host.zombieEnv();
     const eye = p.eyeY();
     const hits = swingReach(p.x, p.y, p.z, p.yaw, d.reach, heavy ? d.heavyArc : d.arc, this.targets(d.reach), heavy ? d.heavyTargets : d.maxTargets, this.reach, radiusOf);
+    // (HIRASAKA: the shrine tachi) a wound-up cut turns right round: what stands behind is struck too
+    if (heavy && d.behind) {
+      for (const b of swingReach(p.x, p.y, p.z, p.yaw + Math.PI, d.reach, d.heavyArc, this.targets(d.reach), d.heavyTargets, this.behindHits, radiusOf)) if (!hits.some((h) => h.target === b.target)) hits.push(b);
+    }
     // the one under the crosshair can be struck in the head
     const cy = Math.cos(p.pitch);
     this.dir.set(-Math.sin(p.yaw) * cy, Math.sin(p.pitch), -Math.cos(p.yaw) * cy);
@@ -274,6 +284,7 @@ export class MeleeSystem {
       // a brawl is heard, though nothing like a gunshot
       host.noise(heavy ? 9 : 5);
     }
+    this.onStrike?.(d.id, heavy);
   }
 
   private pushView(dt: number, d: MeleeDef | null): void {

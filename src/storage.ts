@@ -23,6 +23,9 @@ export function sanitizeSettings(raw: unknown): Settings {
     sensitivity: clamp(r.sensitivity, 0.1, 4, DEFAULT_SETTINGS.sensitivity),
     fov: clamp(r.fov, 70, 110, DEFAULT_SETTINGS.fov),
     masterVolume: clamp(r.masterVolume, 0, 1, DEFAULT_SETTINGS.masterVolume),
+    musicVolume: clamp(r.musicVolume, 0, 1, DEFAULT_SETTINGS.musicVolume),
+    voiceVolume: clamp(r.voiceVolume, 0, 1, DEFAULT_SETTINGS.voiceVolume),
+    effectsVolume: clamp(r.effectsVolume, 0, 1, DEFAULT_SETTINGS.effectsVolume),
     quality,
     // settings saved before the tiers: anything but the old default (Low) was picked by hand
     qualityAuto: typeof r.qualityAuto === 'boolean' ? r.qualityAuto : quality === DEFAULT_SETTINGS.quality,

@@ -18,6 +18,11 @@ import { CUES, LINE, LINES, type Chain } from './lines';
 const BASE = './hirasaka/';
 /** Lines that wait as long as it takes and go to the front of the queue: Genzō's tapes, the calls. */
 const KEEP: ReadonlySet<Chain> = new Set<Chain>(['tape', 'phone']);
+/**
+ * The only story lines that may be let go: shouts that belong to one moment of a fight or the flood ("It felt that!",
+ * the boss's phases, the rising water, the player's own cries). Every other line waits its turn however long it takes.
+ */
+const MOMENT = /^(nat_(hit|ku\d|rise|wave|down)|sq[fm]_)/;
 type Vec = { x: number; y: number; z: number };
 
 export interface Played {
@@ -32,6 +37,8 @@ export class HirasakaSound {
   private musicBus: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private verbIn: GainNode | null = null;
+  private voiceVerb: GainNode | null = null;
+  private sfxVerb: GainNode | null = null;
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly reversed = new Map<string, AudioBuffer>();
   private loaded = false;
@@ -56,7 +63,8 @@ export class HirasakaSound {
   /** Fetch and decode every line and cue (decoding needs no gesture: an offline context does it). */
   load(progress?: (done: number, total: number) => void): Promise<void> {
     if (this.loading) return this.loading;
-    const files = [...LINES.map((l) => `voice/${l.id}.mp3`), ...CUES.map((c) => `music/${c.id}.mp3`)];
+    // (a line marked `fresh` has no take yet: it is a caption only until its voice is made)
+    const files = [...LINES.filter((l) => !l.fresh).map((l) => `voice/${l.id}.mp3`), ...CUES.map((c) => `music/${c.id}.mp3`)];
     let done = 0;
     const off = typeof OfflineAudioContext !== 'undefined' ? new OfflineAudioContext(1, 1, 44100) : null;
     this.loading = (async () => {
@@ -95,13 +103,14 @@ export class HirasakaSound {
     this.master.connect(out);
     this.voiceBus = ctx.createGain();
     this.voiceBus.gain.value = this.volume.voice;
-    this.voiceBus.connect(this.master);
+    // each bus joins the player's matching mix bus (their volume for it, then the master); the reverb return stays here
+    this.voiceBus.connect(this.audio.bus?.('voice') ?? this.master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = this.volume.music;
-    this.musicBus.connect(this.master);
+    this.musicBus.connect(this.audio.bus?.('music') ?? this.master);
     this.sfxBus = ctx.createGain();
     this.sfxBus.gain.value = this.volume.sfx;
-    this.sfxBus.connect(this.master);
+    this.sfxBus.connect(this.audio.bus?.('effects') ?? this.master);
     // a long, dark station reverb (synthesised impulse)
     const len = Math.floor(ctx.sampleRate * 2.6);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -116,6 +125,11 @@ export class HirasakaSound {
     lp.frequency.value = 3200;
     this.verbIn = ctx.createGain();
     this.verbIn.connect(verb).connect(lp).connect(this.master);
+    // the echo of a line (or an effect) goes quiet with it: its send passes a gain that follows that volume
+    this.voiceVerb = this.audio.follow?.('voice') ?? null;
+    this.voiceVerb?.connect(this.verbIn);
+    this.sfxVerb = this.audio.follow?.('effects') ?? null;
+    this.sfxVerb?.connect(this.verbIn);
     const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
     const nd = nb.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -130,7 +144,11 @@ export class HirasakaSound {
   /** Say a line now (or as soon as the one before it is done, `story`). Returns its length, 0 if it has no file. */
   say(id: string, o: { pos?: Vec; chain?: Chain; story?: boolean; volume?: number } = {}): number {
     const buf = this.buffers.get(id);
-    if (!buf || !this.graph()) return 0;
+    if (!buf || !this.graph()) {
+      // no take (or no sound yet): the line is still read, as its caption (every rule plays with the sound off)
+      if (o.story || o.chain === 'tape' || o.chain === 'phone') this.onLine?.(id);
+      return 0;
+    }
     const now = this.ctx!.currentTime;
     if (now < this.busyUntil) {
       // a story line waits its turn (a tape or a call at the front, and never dropped); Natsuki's and the crew's asides
@@ -139,7 +157,7 @@ export class HirasakaSound {
         const keep = KEEP.has(o.chain ?? LINE[id]?.chain ?? 'dry');
         const q = { id, pos: o.pos, chain: o.chain, at: now, keep };
         if (keep) this.queue.splice(this.queue.findIndex((e) => !e.keep) < 0 ? this.queue.length : this.queue.findIndex((e) => !e.keep), 0, q);
-        else if (this.queue.length < 4) this.queue.push(q);
+        else if (!MOMENT.test(id) || this.queue.length < 4) this.queue.push(q);
         return buf.duration;
       }
       if (/^(sq[fm]_|nat_)/.test(id)) return 0;
@@ -267,7 +285,7 @@ export class HirasakaSound {
     if (wet > 0 && this.verbIn) {
       const s = ctx.createGain();
       s.gain.value = wet;
-      out.connect(s).connect(this.verbIn);
+      out.connect(s).connect(this.voiceVerb ?? this.verbIn);
     }
     src.start(now);
     if (story) {
@@ -412,7 +430,7 @@ export class HirasakaSound {
     if (this.verbIn && wet > 0) {
       const s = ctx.createGain();
       s.gain.value = wet;
-      out.connect(s).connect(this.verbIn);
+      out.connect(s).connect(this.sfxVerb ?? this.verbIn);
     }
   }
 
@@ -635,8 +653,8 @@ export class HirasakaSound {
     }
     if (this.queue.length > 0 && ctx.currentTime >= this.busyUntil) {
       const q = this.queue.shift()!;
-      // a line that waited too long has missed its moment
-      if (q.keep || ctx.currentTime - q.at < 8) this.say(q.id, { pos: q.pos, chain: q.chain, story: true });
+      // a shout that waited too long has missed its moment; every other line is said, late or not
+      if (q.keep || !MOMENT.test(q.id) || ctx.currentTime - q.at < 8) this.say(q.id, { pos: q.pos, chain: q.chain, story: true });
     }
   }
 

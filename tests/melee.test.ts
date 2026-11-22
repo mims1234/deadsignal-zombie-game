@@ -28,6 +28,8 @@ const COMMON: MeleeId[] = [...FOUND, ...BOUGHT];
 const EARNED: MeleeId[] = ['rogatina', 'fireAxe', 'serpMolot', 'shashka'];
 // and the one that only comes out of Ded Moroz's sack (`tests/zaryaSack.test.ts`)
 const SACK: MeleeId[] = ['kisten'];
+/** HIRASAKA's tools (arms wave): each opens only its own obstacles there. */
+const HIRASAKA_TOOLS: MeleeId[] = ['tsuruhashi', 'timberAxe', 'coalShovel', 'tachi'];
 
 describe('melee: the six weapons', () => {
   it('has one weapon of every type, and each has a job of its own', () => {
@@ -53,7 +55,7 @@ describe('melee: the six weapons', () => {
   });
 
   it('every weapon is in the table under its own id, with a name and a short one that fits the readout', () => {
-    expect([...MELEE_IDS].sort()).toEqual([...COMMON, ...EARNED, ...SACK].sort());
+    expect([...MELEE_IDS].sort()).toEqual([...COMMON, ...EARNED, ...SACK, ...HIRASAKA_TOOLS].sort());
     for (const id of MELEE_IDS) {
       const d = MELEE[id];
       expect(d.id).toBe(id);

@@ -199,6 +199,10 @@ export interface LoopOpts {
   fadeIn?: number;
 }
 
+/** The player's mix buses: every sound in the game goes through one of them into the master. */
+export type MixBus = 'music' | 'voice' | 'effects';
+export const MIX_BUSES: readonly MixBus[] = ['music', 'voice', 'effects'];
+
 export interface AudioEngineApi {
   /** True after a successful `init()`. */
   readonly available: boolean;
@@ -209,6 +213,18 @@ export interface AudioEngineApi {
   resume(): void;
   /** 0..1 master volume. */
   setMasterVolume(v: number): void;
+  /** 0..1 volume of one mix bus (music, voice-overs, effects), the player's setting; the master scales all three. */
+  setBusVolume?(bus: MixBus, v: number): void;
+  /**
+   * The node a map's own sound of this kind joins (in place of `input`), so it follows the player's volume for that
+   * kind and the master. Null until the context is up.
+   */
+  bus?(bus: MixBus): AudioNode | null;
+  /**
+   * A new gain that keeps following the player's volume for `bus`: put it on a reverb send taken before the bus, so the
+   * echo of a line goes quiet with the line. Null until the context is up.
+   */
+  follow?(bus: MixBus): GainNode | null;
   /** Call every frame with the camera transform. */
   setListener(pos: Vec3Like, forward: Vec3Like, up: Vec3Like): void;
   /** 'indoor' = short dense reverb + high-frequency damping of outdoor ambience; 'outdoor' = wide sparse tail. */

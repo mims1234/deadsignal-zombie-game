@@ -386,6 +386,24 @@ function embers(put: GearPut, D: Dims): void {
   for (const [j, x, y, z] of spots) put(j, mesh(g, m), x, y, z);
 }
 
+/** (hs-bosses) A funayūrei's ladle: a long handle and a cup with its bottom gone (the hole shows dark). */
+function ladle(put: GearPut, D: Dims): void {
+  const g = baked('ladle', () => [new THREE.CylinderGeometry(0.012, 0.012, 0.62, 5).translate(0, -0.28, 0), at(new THREE.CylinderGeometry(0.07, 0.06, 0.08, 10, 1, true), 0, -0.6, 0)]);
+  const m = new THREE.Group();
+  m.add(mesh(g, mat('ladleWood', 0xb89a6a, { rough: 0.8, side: THREE.DoubleSide })));
+  inHand(put, D, 'R', m, 0.9);
+}
+
+/** (hs-bosses) A thunderling: a little drum of Kurogane's on its back, lit, and the crackle in its eyes and fists. */
+function thunderDrum(put: GearPut, D: Dims): void {
+  const g = baked('thunderDrum', () => [new THREE.CylinderGeometry(0.11, 0.11, 0.12, 12).rotateX(Math.PI / 2), at(new THREE.TorusGeometry(0.11, 0.012, 4, 14), 0, 0, 0.06)]);
+  put('torso', mesh(g, mat('thunderDrum', 0x6ad8ff, { glow: 2.2 })), 0, D.torso * 0.75, 0.16);
+  const spark = geo('thunderSpark', () => new THREE.IcosahedronGeometry(0.035, 0));
+  const sm = mat('thunderSpark', 0xfff27a, { glow: 3 });
+  put('armR', mesh(spark, sm), 0, -D.upper - D.fore, 0);
+  put('armL', mesh(spark, sm), 0, -D.upper - D.fore, 0);
+}
+
 // ---------------------------------------------------------------------------------------------
 // the kinds
 // ---------------------------------------------------------------------------------------------
@@ -570,6 +588,21 @@ const HIRASAKA_LOOKS: Record<HirasakaKind, KindLook> = {
       sledge(put, D);
     },
   },
+  // (hs-bosses) the drowned of the galleries: a white kimono gone grey in the water, blue skin, hair over the face, a ladle
+  funayurei: {
+    tint: { key: 'funayurei', skin: 0x9ab8c4, cloth: 0xc8d0d0, hair: 0x08090c, eyes: 0xd0fff8, outlines: false, parts: [{ match: TOPS, color: 0xb8c4c4, flat: true }, { match: BOTTOMS, color: 0x9aa8aa, flat: true }] },
+    far: { skin: 0x9ab8c4, cloth: 0xb8c4c4 },
+    gear: (put, D) => {
+      ladle(put, D);
+      seaweed(put, D);
+    },
+  },
+  // (hs-bosses) one of Kurogane's thunders: soot-black, small, lit blue in the cracks, a drum on its back
+  thunderling: {
+    tint: { key: 'thunderling', skin: 0x1c2230, cloth: 0x101420, hair: 0x6ad8ff, eyes: 0xfff27a, outlines: false, parts: [{ match: TOPS, color: 0x141a2a, flat: true, glow: 0.35 }, { match: BOTTOMS, color: 0x0e1018, flat: true }] },
+    far: { skin: 0x1c2230, cloth: 0x141a2a },
+    gear: thunderDrum,
+  },
 };
 
 export const KIND_LOOKS: Record<SakuraKind, KindLook> = { ...SAKURA_LOOKS, ...MUJIN_LOOKS, ...HIRASAKA_LOOKS };
@@ -579,6 +612,10 @@ export const KIND_LOOKS: Record<SakuraKind, KindLook> = { ...SAKURA_LOOKS, ...MU
  * their own colour so a teammate reads at a glance across the island (`hirasaka/runtime.ts` puts the helmets on).
  */
 export const NATSUKI_TINT: AnimeTint = { key: 'natsuki', skin: 0xffffff, cloth: 0xffffff, hair: 0x5ad8d0, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0xff7a1a, flat: true }, { match: BOTTOMS, color: 0x2a3446, flat: true }] };
+/** Daigo, Genzō's grandson (wears `hoodie.vrm`): a ferryman's navy work jacket, dark hair, grey work trousers. */
+export const DAIGO_TINT: AnimeTint = { key: 'daigo', skin: 0xffffff, cloth: 0xffffff, hair: 0x15120f, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0x2f4a6a, flat: true }, { match: BOTTOMS, color: 0x4a4a46, flat: true }] };
+/** HIRASAKA's squad (`SQUADS.hirasaka`), in order: Natsuki, Daigo. */
+export const HIRASAKA_SQUAD_TINTS: readonly AnimeTint[] = [NATSUKI_TINT, DAIGO_TINT];
 export const CREW_TINTS: readonly AnimeTint[] = [
   { key: 'crew0', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0x2a9a6a, flat: true }] },
   { key: 'crew1', skin: 0xffffff, cloth: 0xffffff, hair: 0xffffff, eyes: null, outlines: true, parts: [{ match: TOPS, color: 0x3a6ad8, flat: true }] },

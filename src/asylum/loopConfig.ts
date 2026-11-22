@@ -73,4 +73,10 @@ export const WALL_PRICES: Record<WeaponId, number> = {
   ottepel: 0,
   zenit: 0,
   raketa: 0,
+  // nor HIRASAKA's built guns
+  happa: 0,
+  sakuganki: 0,
+  mori: 0,
+  kushibi: 0,
+  okamuzumi: 0,
 };

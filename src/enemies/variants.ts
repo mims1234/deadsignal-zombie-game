@@ -26,7 +26,7 @@ import type { ZombieType } from '../types';
 import { zoneAt } from '../world/zones';
 import { ZARYA_ZONES } from '../zarya/places';
 
-export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master', 'miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer', 'ryazhenye', 'svistok', 'kassirsha', 'gruzchik', 'dvornik', 'rybak', 'morzh', 'domovoi'] as const;
+export const VARIANTS = ['', 'commuter', 'bloomed', 'rooted', 'kuchisake', 'jorogumo', 'miko', 'idol', 'oni', 'court', 'empress', 'tall', 'crawler', 'shape', 'sitter', 'master', 'miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer', 'ryazhenye', 'svistok', 'kassirsha', 'gruzchik', 'dvornik', 'rybak', 'morzh', 'domovoi', 'funayurei', 'thunderling'] as const; // (new kinds go on the end: the wire sends the index)
 export type ZombieVariant = (typeof VARIANTS)[number];
 /** MUJIN's own kinds (the station, `mujin/`), not the Sakura District's field file's. */
 export const MUJIN_KINDS = ['tall', 'crawler', 'shape', 'sitter', 'master'] as const;
@@ -42,9 +42,30 @@ export type MujinKind = (typeof MUJIN_KINDS)[number];
  *   resident   the islanders as they were in 1974, the lane's and the school's
  *   follower   Mio: she follows you up the slope; nothing hurts her; every look back brings her closer
  *   overseer   Kurogane, the overseer (the boss): orders the miners back to work, and they come
+ *   funayurei  the drowned of the flooded galleries: hand one a bottomless ladle and it lets you by; without one it
+ *              takes hold and drags you back toward the water (`HIRASAKA_HABITS.drag`)
+ *   thunderling one of Kurogane's thunders, split off his body once the fan clears his gas: small, fast, crackling
+ *
+ * (The miners work the seam until a light finds them: a lamp turned on one within `HIRASAKA_HABITS.lamp` m wakes it; in
+ * the dark they hear only a shot. The lamp-eaters go for the light: a lamp turned on one brings it on at a sprint, and
+ * its blow puts the lamp out.)
  */
-export const HIRASAKA_KINDS = ['miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer'] as const;
+export const HIRASAKA_KINDS = ['miner', 'lampeater', 'drowned', 'hag', 'slag', 'resident', 'follower', 'overseer', 'funayurei', 'thunderling'] as const;
 export type HirasakaKind = (typeof HIRASAKA_KINDS)[number];
+/** The numbers of HIRASAKA's habits (`Zombie.variantStep`). */
+export const HIRASAKA_HABITS = {
+  /** A headlamp's reach and cone (cos of its half-angle): what the miners wake to and the lamp-eaters run at. */
+  lamp: { reach: 16, cone: 0.9 },
+  /** A lamp-eater with a lamp on it runs this much faster; without one, this much slower. */
+  eater: { lit: 1.45, dark: 0.75 },
+  /** A funayūrei's hold: it drags whoever it has `speed` m/s back toward the water for `hold` s, `dps` a second; then lets go for `rest` s. */
+  drag: { reach: 1.7, hold: 2.2, speed: 2.4, dps: 6, rest: 2.5, yank: 9 },
+  /** Set by the island (`hirasaka/runtime.ts`): the player's lamp is out (a lamp-eater's blow); the funayūrei's bottomless ladles are handed round. */
+  lampOut: false,
+  ladles: false,
+  /** Set by the island: the ladles are handed over, the galleries' funayūrei are gone. */
+  funaGone: false,
+};
 /**
  * ZARYA's own kinds (the closed town, `zarya/`): the shatuny are townspeople woken wrong, and they keep the habits of
  * their jobs (`Zombie.variantStep`; their looks are `zombie/zarya.ts`):
@@ -119,7 +140,10 @@ export const VARIANT_INFO: Record<Exclude<ZombieVariant, ''>, VariantInfo> = {
   slag: { name: 'Slag', hp: 2.4, speed: 0.78, damage: 1.9, scale: 1.32, def: { poise: 320 } },
   resident: { name: 'Islander', hp: 1, speed: 1, damage: 1, scale: 1 },
   follower: { name: 'Mio', hp: 40, speed: 1.05, damage: 2.4, scale: 1, def: { poise: 9999, staggerTime: 0.05, sightRange: 240, reward: 0, headshotBonus: 0, dropChance: 0 } },
-  overseer: { name: 'Kurogane', hp: 1.25, speed: 1, damage: 1.1, scale: 1 },
+  // (the size of two men: every screen draws him so, `hirasaka/bossKurogane.ts` gives him his thunders)
+  overseer: { name: 'Kurogane', hp: 1.25, speed: 1, damage: 1.25, scale: 1.45, def: { poise: 9999, staggerTime: 0.05 } },
+  funayurei: { name: 'Funayūrei', hp: 1.3, speed: 0.8, damage: 0.6, scale: 1, def: { attackRange: 1.6 } },
+  thunderling: { name: 'Thunderling', hp: 0.45, speed: 1.4, damage: 0.8, scale: 0.72, def: { attackRange: 1.5, sightRange: 60, reward: 40 } },
   ryazhenye: { name: 'Ryazheny', hp: 0.8, speed: 1.1, damage: 1, scale: 1 },
   // a uniform, not riot plate: the guard takes a bullet like anyone
   svistok: { name: 'Svistok', hp: 0.7, speed: 1.05, damage: 0.9, scale: 1, def: { bodyMul: 1, headMul: 1, poise: 60 } },
@@ -164,6 +188,8 @@ export const VARIANT_BASE: Record<Exclude<ZombieVariant, ''>, ZombieType> = {
   resident: 'shambler',
   follower: 'shambler',
   overseer: 'warden',
+  funayurei: 'shambler',
+  thunderling: 'runner',
   ryazhenye: 'runner',
   svistok: 'armored',
   kassirsha: 'shambler',
@@ -216,22 +242,25 @@ export function mujinVariant(type: ZombieType, x: number, z: number, r: () => nu
 }
 
 /**
- * HIRASAKA: what an infected of `type` spawned at (x, z) becomes. Kurogane is the boss. In the mine (east of x 110) the
- * miners and the lamp-eaters, and the slag; on the seawall the drowned; up the island the islanders. The hags and Mio
- * are placed by the island itself (`hirasaka/director.ts`), never picked here.
+ * HIRASAKA: what an infected of `type` spawned at (x, z) becomes. Kurogane is the boss. In the deep (its own cells far
+ * east: x past 256, `hirasaka/places.ts` `inDeep`) the miners and the lamp-eaters, and the slag; on the seafront the
+ * drowned; up the island the islanders. The hags, the funayūrei, the thunderlings and Mio are placed by the island itself
+ * (`hirasaka/director.ts`), never picked here.
  */
 export function hirasakaVariant(type: ZombieType, x: number, z: number, r: () => number): ZombieVariant {
   if (type === 'warden') return 'overseer';
-  if (x > 110) {
+  if (x > HIRASAKA_DEEP_X) {
     if (type === 'runner') return r() < 0.75 ? 'lampeater' : '';
     if (type === 'armored') return 'slag';
     return r() < 0.8 ? 'miner' : '';
   }
   if (type === 'armored') return r() < 0.6 ? 'slag' : '';
   if (type === 'runner') return r() < 0.5 ? 'resident' : '';
-  if (z > 36) return r() < 0.6 ? 'drowned' : 'resident';
+  if (z > 56) return r() < 0.6 ? 'drowned' : 'resident';
   return r() < 0.65 ? 'resident' : '';
 }
+/** Where HIRASAKA's deep begins (`hirasaka/places.ts`: `DEEP.x0` 262, less its margin of 6). */
+export const HIRASAKA_DEEP_X = 256;
 
 /**
  * ZARYA: what an infected of `type` spawned at (x, z) becomes, by the zone it is in (`zarya/places.ts` ZARYA_ZONES).

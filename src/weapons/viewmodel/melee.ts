@@ -259,6 +259,35 @@ const OWN: Partial<Record<MeleeId, Moves>> = {
     light: ['cutR', 'cutL'],
     heavy: 'cutDown',
   },
+  // ---- HIRASAKA's tools (arms wave) ----
+  // the pick: carried as the axe is, its forward point turned in toward the crosshair; hewn down as the axe is, and
+  // brought down overhead for the heavy blow
+  tsuruhashi: {
+    rest: [0.26, -0.2, -0.44, -0.05, 0.68, -0.73, -0.86, -0.41, -0.32],
+    guard: [0.1, -0.12, -0.46, -0.78, 0.5, -0.37, 0.57, 0.82, -0.09],
+    light: ['hewR', 'hewL'],
+    heavy: 'cleave',
+  },
+  timberAxe: {
+    rest: [0.26, -0.2, -0.44, -0.05, 0.68, -0.73, -0.86, -0.41, -0.32],
+    guard: [0.1, -0.12, -0.46, -0.78, 0.5, -0.37, 0.57, 0.82, -0.09],
+    light: ['hewR', 'hewL'],
+    heavy: 'cleave',
+  },
+  // the shovel: carried and swung as the axe is (edge first), so its broad blade shows; held across to guard like a door
+  coalShovel: {
+    rest: [0.26, -0.2, -0.44, -0.05, 0.68, -0.73, -0.86, -0.41, -0.32],
+    guard: [0.1, -0.12, -0.46, -0.78, 0.5, -0.37, 0.57, 0.82, -0.09],
+    light: ['hewR', 'hewL'],
+    heavy: 'cleave',
+  },
+  // the tachi: the shashka's cuts (a longer, straighter blade), and its wound-up cut down across the body
+  tachi: {
+    rest: [0.25, -0.17, -0.44, -0.2, 0.5, -0.84, -0.76, -0.62, -0.19],
+    guard: [0.22, -0.12, -0.48, -0.72, 0.45, -0.53, -0.5, -0.85, 0],
+    light: ['cutR', 'cutL'],
+    heavy: 'cutDown',
+  },
 };
 // which way the chain flies through its swings (it hangs straight down between them): t, x, y, z
 const CHAIN: Partial<Record<Style, number[][]>> = {
@@ -546,6 +575,49 @@ export class MeleeRig {
       this.chainSegs.push(g);
       this.chainDirs.push(new THREE.Vector3(0, -1, 0));
     }
+
+    // ---- HIRASAKA's tools (arms wave): a weapon stands along +Y, grip at the origin, its working side toward -Z ----
+    // the tsuruhashi: a long oak haft, an iron eye, and the crane's bill: two long curved points, the working one ahead
+    held('tsuruhashi', (b) => {
+      const y = 0.62;
+      b.cyl('wood', 0.015, 0.019, 0.8, 0, 0.27, 0, 'y', 10);
+      b.cyl('wood', 0.021, 0.019, 0.04, 0, -0.13, 0, 'y', 10);
+      b.box('iron', 0.042, 0.06, 0.05, 0, y, 0, 0.006);
+      b.side('iron', [[0.0, y + 0.024], [-0.1, y + 0.012], [-0.19, y - 0.018], [-0.26, y - 0.06], [-0.25, y - 0.068], [-0.18, y - 0.034], [-0.1, y - 0.016], [0.0, y - 0.022]], 0.022, 0, 0.004);
+      b.side('iron', [[0.0, y + 0.024], [0.1, y + 0.012], [0.19, y - 0.018], [0.26, y - 0.06], [0.25, y - 0.068], [0.18, y - 0.034], [0.1, y - 0.016], [0.0, y - 0.022]], 0.022, 0, 0.004);
+      b.side('steel', [[-0.25, y - 0.056], [-0.272, y - 0.07], [-0.25, y - 0.07]], 0.016, 0, 0.002);
+    });
+    // the timber axe: a plain grey head with a bright bit, a straight pale haft worn dark where the hands go
+    held('timberAxe', (b) => {
+      const y = 0.56;
+      b.cyl('wood', 0.015, 0.018, 0.76, 0, 0.26, 0, 'y', 10);
+      b.cyl('wood', 0.019, 0.019, 0.16, 0, -0.04, 0, 'y', 10);
+      b.box('iron', 0.036, 0.07, 0.05, 0, y, 0, 0.006);
+      b.side('iron', [[0.02, y - 0.03], [0.08, y - 0.06], [0.11, y - 0.085], [0.11, y + 0.075], [0.08, y + 0.055], [0.02, y + 0.03]], 0.024, 0, 0.005);
+      b.side('steel', [[0.105, y - 0.083], [0.13, y - 0.095], [0.142, y - 0.04], [0.142, y + 0.03], [0.13, y + 0.085], [0.105, y + 0.073]], 0.012, 0, 0.0055);
+      b.box('iron', 0.034, 0.04, 0.03, 0, y, 0.04, 0.005);
+    });
+    // the coal shovel: a dark shaft with a D grip, and a wide square blade. It is swung edge first, like the axe: the
+    // blade's side edge is its working side (-Z), so its broad face is turned to the eye as it is carried and swung
+    held('coalShovel', (b) => {
+      b.cyl('wood', 0.015, 0.017, 0.64, 0, 0.21, 0, 'y', 10);
+      b.torus('wood', 0.032, 0.008, 0, -0.13, 0, undefined, 12);
+      b.cyl('wood', 0.01, 0.01, 0.056, 0, -0.13, 0, 'x', 8);
+      b.cyl('iron', 0.019, 0.016, 0.08, 0, 0.56, 0, 'y', 10);
+      b.box('iron', 0.012, 0.3, 0.27, 0, 0.74, 0, 0.004);
+      b.box('iron', 0.03, 0.28, 0.012, 0.009, 0.74, -0.129, 0.003);
+      b.box('iron', 0.03, 0.28, 0.012, 0.009, 0.74, 0.129, 0.003);
+      b.box('steel', 0.016, 0.014, 0.27, 0, 0.89, 0, 0.002);
+    });
+    // the shrine tachi: a long grip bound in dark cord over white, a round brass tsuba, a long blade with a gentle curve
+    held('tachi', (b) => {
+      b.box('horn', 0.022, 0.22, 0.03, 0, 0.03, 0, 0.01);
+      for (let i = 0; i < 6; i++) b.box('leather', 0.024, 0.012, 0.032, 0, -0.06 + i * 0.034, 0, 0.003, { rx: i % 2 ? 0.5 : -0.5 });
+      b.cyl('brass', 0.017, 0.017, 0.02, 0, -0.085, 0, 'y', 10);
+      b.cyl('brass', 0.044, 0.044, 0.008, 0, 0.146, 0, 'y', 18);
+      b.box('brass', 0.022, 0.026, 0.034, 0, 0.165, 0, 0.003);
+      b.side('steel', sabrePts(0.175, 0.74, 0.03, 0.03), 0.005, 0, 0.002);
+    });
 
     // ---- out of Ded Moroz's sack ----
     // the Kisten: a short turned handle bound with leather, an iron cap and the ring the chain is forged to

@@ -63,6 +63,12 @@ export interface Traveller {
 }
 
 const MAX_FIELDS = 48;
+/**
+ * Live fields kept per area, one per goal cell, the least recently used dropped. Several hunt in one area at once (the
+ * infected toward the player, each squadmate toward their own place beside the leader): with only one kept they took
+ * turns evicting it, and a whole area's field was rebuilt two or three times a frame (HIRASAKA's deep with the squad).
+ */
+const LIVE_PER_AREA = 4;
 
 export class Floors {
   readonly areas: FloorArea[] = [];
@@ -72,8 +78,8 @@ export class Floors {
   private groundNav: NavGrid | null = null;
   /** Static fields to fixed points (link ends), by "area:cell"; recently used last. */
   private readonly fields = new Map<string, FlowField>();
-  /** Per area: a field toward a moving target (whoever is being hunted there) and the cell it was computed for. */
-  private readonly live = new Map<number, { field: FlowField; cell: number }>();
+  /** Per area: fields toward moving targets (whoever is being hunted there) and the cells they were computed for; recently used last. */
+  private readonly live = new Map<number, { field: FlowField; cell: number }[]>();
 
   constructor(groundRect: WorldBoundsXZ) {
     this.areas.push({ id: 0, name: 'street', kind: 'ground', y: 0, rect: { ...groundRect }, nav: null });
@@ -120,7 +126,7 @@ export class Floors {
   /** A door opened or shut somewhere (its area's grid refreshed): every kept field is out of date, so drop them all. */
   forgetFields(): void {
     this.fields.clear();
-    for (const e of this.live.values()) e.cell = -1;
+    for (const list of this.live.values()) for (const e of list) e.cell = -1;
   }
 
   /** The nav grid an agent in an area moves on. */
@@ -223,15 +229,25 @@ export class Floors {
     const nav = this.navOf(area);
     const cell = nav.nearestFree(x, z, 8);
     if (cell < 0) return null;
-    let e = this.live.get(area);
-    if (!e) {
-      e = { field: new FlowField(nav), cell: -1 };
-      this.live.set(area, e);
+    let list = this.live.get(area);
+    if (!list) {
+      list = [];
+      this.live.set(area, list);
     }
-    if (e.cell !== cell) {
-      e.cell = cell;
-      e.field.compute(nav.cellCenterX(cell), nav.cellCenterZ(cell));
+    const i = list.findIndex((q) => q.cell === cell);
+    if (i >= 0) {
+      const e = list[i]!;
+      if (i !== list.length - 1) {
+        list.splice(i, 1);
+        list.push(e);
+      }
+      return e.field;
     }
+    // a new goal: a fresh slot while there is room, else the least recently used one is recomputed for it
+    const e = list.length < LIVE_PER_AREA ? { field: new FlowField(nav), cell: -1 } : list.shift()!;
+    list.push(e);
+    e.cell = cell;
+    e.field.compute(nav.cellCenterX(cell), nav.cellCenterZ(cell));
     return e.field;
   }
 

@@ -25,7 +25,8 @@ describe("ZARYA's kinds: the table", () => {
   it('adds eight kinds after the ones the wire already knows, each on its type', () => {
     // the co-op wire sends a kind as its index: nothing that was there may have moved
     expect(VARIANTS.indexOf('overseer')).toBe(23);
-    expect(VARIANTS.slice(24)).toEqual([...ZARYA_KINDS]);
+    // (later maps' kinds go on after them: HIRASAKA's funayūrei and thunderlings)
+    expect(VARIANTS.slice(24, 24 + ZARYA_KINDS.length)).toEqual([...ZARYA_KINDS]);
     const base: Record<ZaryaKind, ZombieType> = { ryazhenye: 'runner', svistok: 'armored', kassirsha: 'shambler', gruzchik: 'armored', dvornik: 'armored', rybak: 'shambler', morzh: 'armored', domovoi: 'runner' };
     for (const k of ZARYA_KINDS) expect(VARIANT_BASE[k]).toBe(base[k]);
   });

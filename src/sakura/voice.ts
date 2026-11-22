@@ -78,6 +78,7 @@ export class SakuraVoice {
   private voiceBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
   private verbIn: GainNode | null = null;
+  private voiceVerb: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private readonly buffers = new Map<string, AudioBuffer>();
   private loading: Promise<void> | null = null;
@@ -211,10 +212,11 @@ export class SakuraVoice {
     this.master.connect(out);
     this.voiceBus = ctx.createGain();
     this.voiceBus.gain.value = this.volume.voice;
-    this.voiceBus.connect(this.master);
+    // each bus joins the player's matching mix bus (their volume for it, then the master); the reverb return stays here
+    this.voiceBus.connect(this.audio.bus?.('voice') ?? this.master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = this.volume.music;
-    this.musicBus.connect(this.master);
+    this.musicBus.connect(this.audio.bus?.('music') ?? this.master);
     // a soft hall (synthesised impulse): the relay's shimmer, the station's speakers, the theatre
     const len = Math.floor(ctx.sampleRate * 2.2);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -232,6 +234,9 @@ export class SakuraVoice {
     lp.frequency.value = 3600;
     this.verbIn = ctx.createGain();
     this.verbIn.connect(verb).connect(lp).connect(this.master);
+    // the echo of a line (or an effect) goes quiet with it: its send passes a gain that follows that volume
+    this.voiceVerb = this.audio.follow?.('voice') ?? null;
+    this.voiceVerb?.connect(this.verbIn);
     const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const nd = nb.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -339,7 +344,7 @@ export class SakuraVoice {
     if (wet > 0 && this.verbIn) {
       const s = ctx.createGain();
       s.gain.value = wet;
-      out.connect(s).connect(this.verbIn);
+      out.connect(s).connect(this.voiceVerb ?? this.verbIn);
     }
     src.start(now);
     this.duck(buf.duration);

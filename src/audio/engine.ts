@@ -1,8 +1,9 @@
 /**
  * Procedural audio engine.
  *
- * Graph:  voices -> [distance/behind low-pass -> PannerNode (spatial only)] -> bus (sfx | amb | ui) -> masterIn
- *                 \-> reverb send -> outdoor / indoor ConvolverNodes (synthetic impulse responses) -> masterIn
+ * Graph:  voices -> [distance/behind low-pass -> PannerNode (spatial only)] -> bus (sfx | amb | ui) -> effects
+ *                 \-> reverb send -> outdoor / indoor ConvolverNodes (synthetic impulse responses) -> effects
+ *         music | voice | effects (the player's mix buses; a map's own sound joins them via `bus()`) -> masterIn
  *         masterIn -> DynamicsCompressor (soft limiter) -> master gain -> destination
  * The 'amb' bus passes through a low-pass that closes indoors; the 'ui' bus is dry and unaffected by environment.
  *
@@ -12,8 +13,8 @@
  */
 import { AUDIO } from '../config';
 import type { Vec3Like } from '../types';
-import type { AudioEngineApi, LoopHandle, LoopId, LoopOpts, PlayOpts, SoundId } from './ids';
-import { LOOP_IDS, SOUND_IDS } from './ids';
+import type { AudioEngineApi, LoopHandle, LoopId, LoopOpts, MixBus, PlayOpts, SoundId } from './ids';
+import { LOOP_IDS, MIX_BUSES, SOUND_IDS } from './ids';
 import { mulberry32 } from './synth/dsp';
 import {
   AMBIENCE_LAYERS,
@@ -251,6 +252,7 @@ class Engine implements AudioEngineDebug {
   private disposed = false;
   private hiRate = 44100;
   private masterVol = AUDIO_DEFAULT_MASTER;
+  private readonly mixVol: Record<MixBus, number> = { music: 1, voice: 1, effects: 1 };
   private env: 'outdoor' | 'indoor' = 'outdoor';
 
   // graph
@@ -258,6 +260,9 @@ class Engine implements AudioEngineDebug {
   private comp: DynamicsCompressorNode | null = null;
   private master: GainNode | null = null;
   private buses: Partial<Record<BusName, GainNode>> = {};
+  private mix: Partial<Record<MixBus, GainNode>> = {};
+  /** Gains that follow a mix bus's volume (a map's reverb sends, see `follow()`). */
+  private followers: { bus: MixBus; node: GainNode }[] = [];
   private ambFilter: BiquadFilterNode | null = null;
   private reverbIn: GainNode | null = null;
   private retOut: GainNode | null = null;
@@ -433,6 +438,29 @@ class Engine implements AudioEngineDebug {
     if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.masterVol, this.ctx.currentTime, 0.02);
   }
 
+  setBusVolume(bus: MixBus, v: number): void {
+    const vol = clamp(Number.isFinite(v) ? v : 0, 0, 1);
+    this.mixVol[bus] = vol;
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const node = this.mix[bus];
+    if (node) node.gain.setTargetAtTime(vol, ctx.currentTime, 0.02);
+    for (const f of this.followers) if (f.bus === bus) f.node.gain.setTargetAtTime(vol, ctx.currentTime, 0.02);
+  }
+
+  bus(bus: MixBus): AudioNode | null {
+    return this.ready ? (this.mix[bus] ?? null) : null;
+  }
+
+  follow(bus: MixBus): GainNode | null {
+    const ctx = this.ctx;
+    if (!ctx || !this.ready) return null;
+    const node = ctx.createGain();
+    node.gain.value = this.mixVol[bus];
+    this.followers.push({ bus, node });
+    return node;
+  }
+
   setListener(pos: Vec3Like, forward: Vec3Like, up: Vec3Like): void {
     this.lx = pos.x;
     this.ly = pos.y;
@@ -495,19 +523,28 @@ class Engine implements AudioEngineDebug {
     this.comp = comp;
     this.master = master;
 
+    for (const name of MIX_BUSES) {
+      const g = ctx.createGain();
+      g.gain.value = this.mixVol[name];
+      g.connect(masterIn);
+      this.mix[name] = g;
+    }
+    // everything the engine synthesises is an effect (weapons, the infected, the world, the UI's blips)
+    const effects = this.mix.effects!;
+
     for (const name of ['sfx', 'amb', 'ui'] as BusName[]) {
       const g = ctx.createGain();
       g.gain.value = BUS_GAIN[name];
       this.buses[name] = g;
     }
-    this.buses.sfx!.connect(masterIn);
-    this.buses.ui!.connect(masterIn);
+    this.buses.sfx!.connect(effects);
+    this.buses.ui!.connect(effects);
     const ambFilter = ctx.createBiquadFilter();
     ambFilter.type = 'lowpass';
     ambFilter.frequency.value = 18000;
     ambFilter.Q.value = 0.5;
     this.buses.amb!.connect(ambFilter);
-    ambFilter.connect(masterIn);
+    ambFilter.connect(effects);
     this.ambFilter = ambFilter;
 
     // reverb: one send bus feeding two convolvers; the environment crossfades their returns
@@ -532,8 +569,8 @@ class Engine implements AudioEngineDebug {
     reverbIn.connect(inConv);
     outConv.connect(retOut);
     inConv.connect(retIn);
-    retOut.connect(masterIn);
-    retIn.connect(masterIn);
+    retOut.connect(effects);
+    retIn.connect(effects);
     this.reverbIn = reverbIn;
     this.retOut = retOut;
     this.retIn = retIn;
@@ -552,6 +589,8 @@ class Engine implements AudioEngineDebug {
       this.retOut,
       this.retIn,
       ...Object.values(this.buses),
+      ...Object.values(this.mix),
+      ...this.followers.map((f) => f.node),
     ];
     for (const n of nodes) {
       try {
@@ -567,6 +606,8 @@ class Engine implements AudioEngineDebug {
     this.ctx = null;
     this.masterIn = this.comp = this.master = this.ambFilter = this.reverbIn = this.retOut = this.retIn = null;
     this.buses = {};
+    this.mix = {};
+    this.followers = [];
   }
 
   // ---- synthesis ----
@@ -1103,6 +1144,22 @@ export function createAudioEngineOn(opts: EngineOptions): AudioEngineDebug {
 /** Debug-capable engine on a normal AudioContext (created inside `init()`, which must run in a user gesture). */
 export function createDebugAudioEngine(): AudioEngineDebug {
   return new Engine();
+}
+
+/** The player's volume settings, as saved with the other settings. */
+export interface VolumeSettings {
+  masterVolume: number;
+  musicVolume: number;
+  voiceVolume: number;
+  effectsVolume: number;
+}
+
+/** Apply the player's master and per-bus volumes (live: every sound in every map follows them). */
+export function applyVolumes(audio: AudioEngineApi, s: VolumeSettings): void {
+  audio.setMasterVolume(s.masterVolume);
+  audio.setBusVolume?.('music', s.musicVolume);
+  audio.setBusVolume?.('voice', s.voiceVolume);
+  audio.setBusVolume?.('effects', s.effectsVolume);
 }
 
 /** The game's entry point. */

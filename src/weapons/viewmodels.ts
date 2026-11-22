@@ -13,11 +13,14 @@ import { createRifle } from './viewmodel/rifle';
 import { createRpg } from './viewmodel/rpg';
 import { createShotgun } from './viewmodel/shotgun';
 import { ZARYA_RIGS } from './viewmodel/zarya';
+import { HIRASAKA_RIGS } from './viewmodel/hirasaka';
+import { HIRASAKA_GUN_IDS } from '../logic/hirasakaGuns';
 import type { ViewmodelRig, ViewmodelSet } from './viewmodelTypes';
 import { ZARYA_GUN_IDS } from '../logic/zaryaGuns';
-import type { ZaryaGunId } from '../types';
+import type { HirasakaGunId, ZaryaGunId } from '../types';
 
-export function createViewmodels(opts: { relics?: boolean; zarya?: boolean } = {}): ViewmodelSet {
+/** `zarya`: all of ZARYA's guns, or a few of them (HIRASAKA sells the flare pistol and the crossbow); `hirasaka`: its built guns. */
+export function createViewmodels(opts: { relics?: boolean; zarya?: boolean | readonly ZaryaGunId[]; hirasaka?: boolean } = {}): ViewmodelSet {
   const tex = acquireTextures();
   const rifle = createRifle(tex);
   const pistol = createPistol(tex);
@@ -28,7 +31,10 @@ export function createViewmodels(opts: { relics?: boolean; zarya?: boolean } = {
   const relics = opts.relics ? [createHanafubuki(tex), createRaijin(tex)] : [];
   // ZARYA's own guns, on that map only
   const zarya: Partial<Record<ZaryaGunId, ViewmodelRig>> = {};
-  if (opts.zarya) for (const id of ZARYA_GUN_IDS) zarya[id] = ZARYA_RIGS[id](tex);
+  if (opts.zarya) for (const id of opts.zarya === true ? ZARYA_GUN_IDS : opts.zarya) zarya[id] = ZARYA_RIGS[id](tex);
+  // HIRASAKA's built guns, on that map only
+  const hs: Partial<Record<HirasakaGunId, ViewmodelRig>> = {};
+  if (opts.hirasaka) for (const id of HIRASAKA_GUN_IDS) hs[id] = HIRASAKA_RIGS[id](tex);
   let disposed = false;
   return {
     rifle,
@@ -40,10 +46,11 @@ export function createViewmodels(opts: { relics?: boolean; zarya?: boolean } = {
     hanafubuki: relics[0],
     raijin: relics[1],
     ...zarya,
+    ...hs,
     dispose() {
       if (disposed) return;
       disposed = true;
-      for (const r of [rifle, pistol, shotgun, rpg, grenade, plate, ...relics, ...Object.values(zarya)]) r.dispose();
+      for (const r of [rifle, pistol, shotgun, rpg, grenade, plate, ...relics, ...Object.values(zarya), ...Object.values(hs)]) r.dispose();
       releaseTextures();
     },
   };

@@ -1,16 +1,19 @@
 // HIRASAKA's voices and score, generated through OpenRouter (run with Node 22+):
 //
-//   node --experimental-strip-types scripts/hirasaka-audio.mjs voices [ids...]   every line in src/hirasaka/lines.ts
+//   node --experimental-strip-types scripts/hirasaka-audio.mjs voices [ids...] [--stale]   lines in src/hirasaka/lines.ts
 //   node --experimental-strip-types scripts/hirasaka-audio.mjs music [ids...]    every cue
 //
-// Voices: ElevenLabs v4 (by voice name) or Fish Audio Drama 3, several takes each; every take is judged by an audio
-// model (does it say the words, are the direction tags left unspoken, does it fit), the best is trimmed, levelled and
-// saved as public/hirasaka/voice/<id>.mp3 (mono, 64 kbps). Music: Lyria 3 clips, a few takes each, the steadiest (or the
-// best built, for the cues that rise) by its loudness curve, saved as public/hirasaka/music/<id>.mp3.
+// Voices: ElevenLabs v4 Turbo (by voice name; `a+b` says it in two voices at once) or Fish Audio Drama 3, several
+// takes; every take is judged by an audio model (does it say the words, are the direction tags left unspoken, does it
+// fit), the best is trimmed, levelled to -18 LUFS (two passes) and saved as public/hirasaka/voice/<id>.mp3 (mono,
+// 64 kbps). `voices --stale` remakes only the lines whose words or voice differ from
+// research_notes/hirasaka/voice-takes.json; every run adds to research_notes/hirasaka/voice-cost-log.md.
+// Music: Lyria 3 clips, a few takes each, the steadiest (or the best built, for the cues that rise) by its loudness
+// curve, saved as public/hirasaka/music/<id>.mp3.
 //
 // The key: OPENROUTER_API_KEY, or OPENROUTER_API_KEY_BOT from the file named by OPENROUTER_ENV (it is never printed).
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CUES, LINES } from '../src/hirasaka/lines.ts';
@@ -62,8 +65,25 @@ const ff = (args) => execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error
 // voices
 // ---------------------------------------------------------------------------------------------
 
-async function speak(line) {
-  const body = line.model === 'fish' ? { model: 'fish-audio/drama-3', input: line.say ?? line.text, response_format: 'mp3' } : { model: 'elevenlabs/eleven-v4', input: line.say ?? line.text, voice: line.voice, response_format: 'mp3' };
+const VOICE_MODEL = process.env.HIRASAKA_VOICE_MODEL || 'elevenlabs/eleven-v4-turbo';
+const PRICE = { 'elevenlabs/eleven-v4-turbo': 0.00004, 'elevenlabs/eleven-v4': 0.00008, 'fish-audio/drama-3': 0.00001 };
+let spend = 0;
+let lineCount = 0;
+/** What each take on disk was made from (id -> model, voice, words): `voices --stale` remakes only what changed. */
+const TAKES = join(ROOT, 'research_notes/hirasaka/voice-takes.json');
+const takes = existsSync(TAKES) ? JSON.parse(readFileSync(TAKES, 'utf8')) : {};
+const recipe = (l) => ({ model: l.model === 'fish' ? 'fish-audio/drama-3' : VOICE_MODEL, voice: l.voice ?? null, say: l.say ?? l.text });
+const stale = (l) => {
+  const t = takes[l.id];
+  const r = recipe(l);
+  return !existsSync(join(ROOT, 'public/hirasaka/voice', `${l.id}.mp3`)) || !t || t.voice !== r.voice || t.say !== r.say;
+};
+
+async function speakOne(line, voice) {
+  const input = line.say ?? line.text;
+  const model = line.model === 'fish' ? 'fish-audio/drama-3' : VOICE_MODEL;
+  const body = line.model === 'fish' ? { model, input, response_format: 'mp3' } : { model, input, voice, response_format: 'mp3' };
+  spend += input.length * (PRICE[model] ?? 0.00004);
   const r = await fetch(`${API}/audio/speech`, { method: 'POST', headers: H, body: JSON.stringify(body) });
   if (!r.ok) throw new Error(`${line.id}: ${r.status} ${(await r.text()).slice(0, 200)}`);
   const buf = Buffer.from(await r.arrayBuffer());
@@ -71,10 +91,29 @@ async function speak(line) {
   return buf;
 }
 
+/** A take: one voice, or (`a+b`) two voices said together, the second a breath later (the funayūrei are many). Returns the files to judge. */
+async function speak(line, file) {
+  const voices = (line.voice ?? '').split('+');
+  if (voices.length < 2) {
+    writeFileSync(file, await speakOne(line, voices[0]));
+    return [file];
+  }
+  const parts = [];
+  for (const [i, v] of voices.entries()) {
+    const f = `${file}.${i}.mp3`;
+    writeFileSync(f, await speakOne(line, v));
+    parts.push(f);
+  }
+  const ins = parts.flatMap((f) => ['-i', f]);
+  const delays = parts.map((_, i) => `[${i}:a]adelay=${i * 140}|${i * 140},aresample=44100[a${i}]`).join(';');
+  ff([...ins, '-filter_complex', `${delays};${parts.map((_, i) => `[a${i}]`).join('')}amix=inputs=${parts.length}:normalize=0[m]`, '-map', '[m]', '-ac', '1', file]);
+  return parts; // (each voice is judged on its own: together they overlap and read as words said twice)
+}
+
 async function judge(line, file) {
   const b64 = readFileSync(file).toString('base64');
   const words = line.ja ?? line.text;
-  const prompt = `This is a voice-over take for a horror game. The line should say: "${words}". Wanted delivery: ${line.how}.\nAnswer as JSON only: {"transcript": "...", "spokeTags": true|false (did it read stage directions in brackets or parentheses aloud), "wordsRight": true|false, "fit": 1-10}.`;
+  const prompt = `This is a voice-over take for a horror game. The line should say: "${words}". Wanted delivery: ${line.how}.\nAnswer as JSON only: {"transcript": "...", "spokeTags": true|false (did it read stage directions in brackets or parentheses aloud), "wordsRight": true|false (every word, nothing added, nothing said twice), "fit": 1-10}.`;
   const r = await fetch(`${API}/chat/completions`, {
     method: 'POST',
     headers: H,
@@ -91,16 +130,33 @@ async function judge(line, file) {
   }
 }
 
+/** Trim the silence at either end, then level it to -18 LUFS in two passes (a short line levels badly in one). */
+function finish(src, out) {
+  const trim = 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.15,areverse';
+  const trimmed = `${src}.trim.wav`;
+  ff(['-i', src, '-af', trim, '-ac', '1', '-ar', '44100', trimmed]);
+  const err = spawnSync('ffmpeg', ['-hide_banner', '-i', trimmed, '-af', 'loudnorm=I=-18:TP=-1.5:LRA=11:print_format=json', '-f', 'null', '-'], { encoding: 'utf8' }).stderr; // (ffmpeg prints the measurement on stderr)
+  let m = null;
+  try {
+    m = JSON.parse(err.slice(err.lastIndexOf('{'), err.lastIndexOf('}') + 1));
+  } catch {
+    /* one pass, then */
+  }
+  const ln = m && Number.isFinite(Number(m.input_i)) ? `loudnorm=I=-18:TP=-1.5:LRA=11:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : 'loudnorm=I=-18:TP=-1.5:LRA=11';
+  ff(['-i', trimmed, '-af', ln, '-ac', '1', '-ar', '44100', '-b:a', '64k', out]);
+}
+
 async function voice(line) {
-  const takes = line.who === 'GENZO' || line.who === 'MIO' || line.who === 'NATSUKI' ? 3 : 2;
+  const n = Number(process.env.HIRASAKA_TAKES) || (line.who === 'GENZO' || line.who === 'MIO' || line.who === 'NATSUKI' || line.who === 'DAIGO' ? 3 : 2);
   const results = [];
-  for (let t = 0; t < takes; t++) {
+  for (let t = 0; t < n; t++) {
     try {
-      const buf = await retry(() => speak(line));
       const f = join(TMP, `${line.id}.${t}.mp3`);
-      writeFileSync(f, buf);
-      const j = await judge(line, f);
+      const parts = await retry(() => speak(line, f));
+      const verdicts = await Promise.all(parts.map((x) => judge(line, x)));
+      const j = verdicts.reduce((a, b) => (b.score < a.score ? b : a));
       results.push({ f, ...j });
+      if (j.score >= 19) break; // every word right and a 9 or 10: no need for another take
     } catch (e) {
       console.log(`  ${line.id} take ${t}: ${e.message}`);
     }
@@ -108,9 +164,9 @@ async function voice(line) {
   if (results.length === 0) return `${line.id}: FAILED`;
   results.sort((a, b) => b.score - a.score);
   const best = results[0];
-  const out = join(ROOT, 'public/hirasaka/voice', `${line.id}.mp3`);
-  // trim the silence either end, level it, mono at 64 kbps
-  ff(['-i', best.f, '-af', 'silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.05,areverse,silenceremove=start_periods=1:start_threshold=-50dB:start_silence=0.15,areverse,loudnorm=I=-17:TP=-1.5:LRA=11', '-ac', '1', '-ar', '44100', '-b:a', '64k', out]);
+  finish(best.f, join(ROOT, 'public/hirasaka/voice', `${line.id}.mp3`));
+  takes[line.id] = { ...recipe(line), judged: best.note };
+  lineCount++;
   return `${line.id}: ${best.note} (${results.length} takes)`;
 }
 
@@ -188,14 +244,20 @@ const [what, ...only] = process.argv.slice(2);
 mkdirSync(join(ROOT, 'public/hirasaka/voice'), { recursive: true });
 mkdirSync(join(ROOT, 'public/hirasaka/music'), { recursive: true });
 if (what === 'voices') {
-  const list = LINES.filter((l) => only.length === 0 || only.includes(l.id));
+  const staleOnly = only.includes('--stale');
+  const ids = only.filter((x) => !x.startsWith('--'));
+  const list = LINES.filter((l) => (ids.length === 0 || ids.includes(l.id)) && (!staleOnly || stale(l)));
   console.log(`voices: ${list.length}`);
   const res = await pool(list, 6, async (l) => {
     const r = await voice(l);
     console.log(r);
+    writeFileSync(TAKES, JSON.stringify(Object.fromEntries(Object.entries(takes).sort()), null, 1));
     return r;
   });
   writeFileSync(join(TMP, 'voices.log'), res.join('\n'));
+  const cost = `${new Date().toISOString()} voices: ${lineCount} of ${list.length} lines made, speech at list price ~$${spend.toFixed(3)} (judging extra)`;
+  console.log(cost);
+  appendFileSync(join(ROOT, 'research_notes/hirasaka/voice-cost-log.md'), `- ${cost}\n`);
 } else if (what === 'music') {
   const list = CUES.filter((c) => only.length === 0 || only.includes(c.id));
   const res = await pool(list, 3, async (c) => {

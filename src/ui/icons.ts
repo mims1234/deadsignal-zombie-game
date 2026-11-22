@@ -216,6 +216,37 @@ const WEAPON_PATHS: Record<WeaponId, string[]> = {
     'M58 12h66v7H58zM70 19h9l-3 13h-9z',
     'M124 9h8l18-5v22l-18-5h-8z',
   ],
+  // ---- HIRASAKA's built guns ----
+  happa: [
+    // the launch pipe on its stock, the charge in its mouth, the exploder box under it
+    'M30 18h96v12H30zM126 15h14v18h-14z',
+    'M20 22h12v12H20zM44 30h9l-3 14h-9zM72 30h22v10H72z',
+    'M140 18h10a6 6 0 0 1 0 12h-10z',
+  ],
+  sakuganki: [
+    // the drill body, its hammer cylinder, the long steel and the hose
+    'M24 16h50v18H24zM74 20h12v10H74z',
+    'M86 23h66v4H86zM150 21h6v8h-6z',
+    'M36 34h9l-3 12h-9zM24 25q-14 4-16 20h4q2-12 12-15z',
+  ],
+  mori: [
+    // the barrel, the barbed head, the reel under the stock
+    'M24 21h100v7H24zM124 17l22 7l-22 7z',
+    'M132 18l6-8v8zM132 31l6 8v-8z',
+    'M30 28a9 9 0 1 0 18 0a9 9 0 1 0-18 0zM56 28h9l-3 13h-9z',
+  ],
+  kushibi: [
+    // the comb's spine and its teeth, flames at their tips
+    'M30 30h100v8H30z',
+    'M36 18h4v12h-4zM48 18h4v12h-4zM60 18h4v12h-4zM72 18h4v12h-4zM84 18h4v12h-4zM96 18h4v12h-4zM108 18h4v12h-4zM120 18h4v12h-4z',
+    'M38 8q4 5 0 10q-4-5 0-10zM62 8q4 5 0 10q-4-5 0-10zM86 8q4 5 0 10q-4-5 0-10zM110 8q4 5 0 10q-4-5 0-10z',
+  ],
+  okamuzumi: [
+    // the bell-mouthed cannon, the peach in its breech, the grips
+    'M40 17h70v16H40zM110 12h12l22-6v38l-22-6h-12z',
+    'M20 25a12 12 0 1 0 24 0a12 12 0 1 0-24 0z',
+    'M58 33h9l-3 13h-9zM86 33h9l-3 10h-9z',
+  ],
 };
 
 export function weaponSilhouette(id: WeaponId, cls = ''): SVGSVGElement {

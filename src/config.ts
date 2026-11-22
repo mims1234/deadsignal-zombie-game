@@ -7,6 +7,7 @@ import type { QualityLevel, Region, Settings, WeaponId, ZombieType } from './typ
 import type { MapId } from './world/layout/data';
 import type { SoundId } from './audio/ids';
 import type { MeleeId } from './logic/melee';
+import { HIRASAKA_GUN_IDS, HIRASAKA_WEAPONS } from './logic/hirasakaGuns'; // (HIRASAKA arms: its built guns' rows)
 
 // ---------------------------------------------------------------------------------------------
 // Weapons
@@ -898,9 +899,11 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
       zaryaTier('MK III', "The factory's export model: +50% blast damage.", 5600, 1.5, 0, 0, 1),
     ],
   },
+  // ---- HIRASAKA's built guns (arms wave): their rows live with their rules, `logic/hirasakaGuns.ts` ----
+  ...HIRASAKA_WEAPONS,
 };
 
-export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit', 'raketa'];
+export const WEAPON_IDS: WeaponId[] = ['rifle', 'pistol', 'shotgun', 'rpg', 'hanafubuki', 'raijin', 'signalka', 'arbalet', 'gvozdomyot', 'salyut', 'ottepel', 'zenit', 'raketa', ...HIRASAKA_GUN_IDS];
 
 /** An upgrade tier of one of ZARYA's guns (no change to the fire rate, the recoil, the spread or the pellets). */
 function zaryaTier(label: string, description: string, cost: number, damageMul: number, magSizeAdd: number, reserveMaxAdd: number, reloadMul: number, armorPierce = 0): UpgradeTier {
@@ -1033,8 +1036,8 @@ export const ROCKET = {
  * How hard a killing blow throws the body (m/s along the shot, and up). Explosions scale with distance from the blast.
  */
 export const RAGDOLL = {
-  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, signalka: 3, arbalet: 5, gvozdomyot: 2.6, salyut: 0, ottepel: 2, zenit: 0, raketa: 7, ally: 1.8 } as Record<WeaponId | 'ally', number>,
-  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, signalka: 1, arbalet: 1.2, gvozdomyot: 0.6, salyut: 0, ottepel: 0.8, zenit: 0, raketa: 2.6, ally: 0.6 } as Record<WeaponId | 'ally', number>,
+  push: { rifle: 2.4, pistol: 2.0, shotgun: 6.5, rpg: 0, hanafubuki: 1.6, raijin: 0, signalka: 3, arbalet: 5, gvozdomyot: 2.6, salyut: 0, ottepel: 2, zenit: 0, raketa: 7, happa: 0, sakuganki: 3, mori: 6, kushibi: 1, okamuzumi: 0, ally: 1.8 } as Record<WeaponId | 'ally', number>,
+  lift: { rifle: 0.8, pistol: 0.7, shotgun: 2.6, rpg: 0, hanafubuki: 0.4, raijin: 0, signalka: 1, arbalet: 1.2, gvozdomyot: 0.6, salyut: 0, ottepel: 0.8, zenit: 0, raketa: 2.6, happa: 0, sakuganki: 0.8, mori: 1.5, kushibi: 1.2, okamuzumi: 0, ally: 0.6 } as Record<WeaponId | 'ally', number>,
   /** Explosions: speed at the centre, falling off to `blastEdge` at the edge; lift is `blastLift` times that. */
   blastCenter: 15,
   blastEdge: 5,
@@ -1451,7 +1454,7 @@ export const MYSTERY_BOX = {
   /** Relative weights of the guns a box can hold (only ones you are not carrying are offered). */
   /** The Sakura District's relics are never in its boxes (weight 0): there they are earned at Kisaragi. */
   /** ZARYA's guns are never in a box either (weight 0): they are built, bought or dropped there. */
-  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0, signalka: 0, arbalet: 0, gvozdomyot: 0, salyut: 0, ottepel: 0, zenit: 0, raketa: 0 } as Record<WeaponId, number>,
+  guns: { rifle: 3, pistol: 2, shotgun: 3, rpg: 2, hanafubuki: 0, raijin: 0, signalka: 0, arbalet: 0, gvozdomyot: 0, salyut: 0, ottepel: 0, zenit: 0, raketa: 0, happa: 0, sakuganki: 0, mori: 0, kushibi: 0, okamuzumi: 0 } as Record<WeaponId, number>,
   /** Maps whose boxes hold the relics too, and how often (MUJIN: the station they came through). */
   relicMaps: ['mujin'] as readonly MapId[],
   relics: { hanafubuki: 1, raijin: 1 } as Partial<Record<WeaponId, number>>,
@@ -1463,12 +1466,14 @@ export const MYSTERY_BOX = {
    */
   mapPrizes: {
     zarya: { guns: { raketa: 1.5 } }, // (round 3: a touch less, so the Raketa comes up as often as it did beside the Kisten)
+    // HIRASAKA's offering box (arms wave): beside the stock guns, a crossbow (the island's built guns are never boxed)
+    hirasaka: { guns: { arbalet: 1.6 } },
   } as Partial<Record<MapId, { guns?: Partial<Record<WeaponId, number>>; melee?: Partial<Record<MeleeId, number>> }>>,
   /**
    * A box that moves (ZARYA's sack): after this many openings it is gone from where it stands and turns up at another of
    * its places (`logic/boxMove.ts`; the places are the map's own, `zarya/sack.ts`).
    */
-  moves: { zarya: { every: 4 } } as Partial<Record<MapId, { every: number }>>,
+  moves: { zarya: { every: 4 }, hirasaka: { every: 4 } } as Partial<Record<MapId, { every: number }>>,
   /** A paid box (MUJIN's): what a turn costs, and the seconds after its prize is gone before the next turn. */
   paidCost: 150,
   paidRearm: 1.2,
@@ -1794,16 +1799,22 @@ export const SQUADS: Partial<Record<MapId, SquadDef>> = {
     models: ['hana.vrm', 'yuzu.vrm'],
     fillsSeats: true,
   },
-  // HIRASAKA: Natsuki Hirata, Genzō's granddaughter, comes home with you (co-op players take her place)
+  // HIRASAKA: Natsuki Arai (the structural engineer) and Daigo (Genzō's grandson, who ferried them out) fight beside
+  // you as equals (ZARYA's squadmates: a player's health and rifle, never die). Co-op players take their seats, Daigo's
+  // first. Their colours on the VRoid bodies: `HIRASAKA_SQUAD_TINTS` (`anime/looks.ts`)
   hirasaka: {
-    names: ['Natsuki'],
-    tag: 'HIRATA',
+    names: ['Natsuki', 'Daigo'],
+    tag: 'HIRASAKA',
     tagColor: '#ffa040',
-    weapons: ['rifle'],
-    helmets: [false],
-    looks: [{ female: true, outfit: 'tactical', hair: 'bob', hairColor: 0x5ad8d0, skin: 0xf3d6c2, eyes: 0x2a5a6a, accent: 0xff7a1a }],
-    models: ['victoria.vrm'],
+    weapons: ['rifle', 'shotgun'],
+    helmets: [false, false],
+    looks: [
+      { female: true, outfit: 'tactical', hair: 'bob', hairColor: 0x5ad8d0, skin: 0xf3d6c2, eyes: 0x2a5a6a, accent: 0xff7a1a },
+      { female: false, outfit: 'coat', hair: 'short', hairColor: 0x15120f, skin: 0xd2a27c, eyes: 0x2a1c12, accent: 0x2f5a7a },
+    ],
+    models: ['victoria.vrm', 'hoodie.vrm'],
     fillsSeats: true,
+    equals: true,
   },
   // ZARYA: the town's volunteer search squad. You are Mira; Timur and Vera fight beside you as equals and are part of the
   // story, so they are always there: solo, and in co-op beside every player (Mira and up to two more volunteers who came
@@ -1864,6 +1875,9 @@ export const ANIME_CAST = {
     resident: 'bibi.vrm',
     follower: 'shino.vrm',
     overseer: 'student-m.vrm',
+    // (hs-bosses) the galleries' drowned and Kurogane's thunders wear files the island already loads
+    funayurei: 'fumiriya.vrm',
+    thunderling: 'kuro.vrm',
   },
   /** The boss (the Warden's part). */
   boss: 'empress.vrm',
@@ -1981,8 +1995,7 @@ export const FREE_ROAM = {
  * only comes out of the tunnel at the very end (the surge); each loop is ~2 minutes (`MUJIN_LOOP`).
  */
 export const MUJIN_CLOCK = { deadline: 3300, surgeStart: 3000, phases: [240, 900, 1800] as readonly number[] };
-/** HIRASAKA's clock: an hour before the typhoon's eye passes and the island goes under for good. */
-export const HIRASAKA_CLOCK = { deadline: 3600, surgeStart: 3400, phases: [240, 900, 1800] as readonly number[] };
+/** (HIRASAKA has no clock: `logic/mapFeatures.ts` `noClock`.) */
 
 /** The Sakura District's clocks: the operation 35 minutes, KAIKA 75. */
 export const SAKURA_CLOCK = {
@@ -2219,6 +2232,10 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1,
   fov: 90,
   masterVolume: 0.7,
+  // a little under full so the game sounds right out of the box; voices sit clearly over the score
+  musicVolume: 0.45,
+  voiceVolume: 0.8,
+  effectsVolume: 0.6,
   // with qualityAuto the game picks the tier for the device (`logic/governor.ts`) and this is only the fallback;
   // picking one in Settings keeps it
   quality: 'low',

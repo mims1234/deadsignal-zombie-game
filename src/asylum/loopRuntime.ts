@@ -792,6 +792,12 @@ function chalkTexture(weapon: WeaponId): THREE.CanvasTexture {
     ottepel: [],
     zenit: [],
     raketa: [],
+    // nor HIRASAKA's built guns
+    happa: [],
+    sakuganki: [],
+    mori: [],
+    kushibi: [],
+    okamuzumi: [],
   };
   for (const [sx, sy, sw, sh] of shapes[weapon]) rough(sx, sy, sw, sh, 1);
   x.font = `bold 34px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`;

@@ -1,20 +1,20 @@
 /**
- * What changes on the island as the story goes (`story.ts` says what; this draws it): the waves over the
- * seawall, the sea gates' wheels, the lighthouse's beam and the island's windows coming on, the cage in the
- * headframe and at the bottom of the shaft (and smashed when the cable goes), the tapes, the photographs, the key, the
- * peaches, the hairpin, the Old Village's doors all opening, the Sealing Stone rolling home, the storm surge climbing
- * the island, and the peaches' wards.
+ * HIRASAKA's moving and story-dependent things, drawn from the story's state every frame (`runtime.ts` calls `update`):
+ * the sea rising on the climb (over the island and through the deep), the cage in its shaft and its wreck, the
+ * umibōzu's stand-in shape out past the seawall, the Chibiki-iwa hauled across the head of the Hell Stairs, the things
+ * to find (placeholders until `arms` / the look-book give them real models), the village's doors, the revived tree's
+ * peaches, the thrown gifts and their wards, the lighthouse's beam at dawn, the headlamp, and the people in the Root
+ * Hall's tree (baked once).
  *
- * Everything is built once, here, when the level loads (the game compiles it with the level: `prewarm`), and only
- * shown, moved or hidden after that, so nothing is ever built in the middle of play.
+ * Everything is built once when the level loads (`prewarm`) and only shown, moved or hidden after that.
  */
 import * as THREE from 'three';
-import { VILLAGE_HOUSES } from '../world/layout/hirasaka';
+import { VILLAGE_HOUSES } from '../world/layout/hirasakaVillage';
 import { hordeModel } from '../anime/cast';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { AnimeBody, type AnimeTint } from '../anime/vrm';
-import { WARD } from './director';
-import { HIRASAKA, PHOTOS, PLACES, ROOT_PEOPLE, ROOT_TREE, TAPES, TIERS, ISLAND_X, SEA_Y, rootTrunkR } from './places';
+import { BAMBOO, WARD } from './director';
+import { CAGE, COMB, DEEP, DEEP_SPOTS, DEEP_Y, HIRASAKA, ISLAND, JOBS, LADLES, PHOTOS, ROCK, ROOT_PEOPLE, ROOT_TREE, SEA_Y, TAPES, UMIBOZU, rootTrunkR, type Spot } from './places';
 import { HirasakaStory, type StoryView } from './story';
 
 
@@ -72,27 +72,26 @@ function foamTexture(): THREE.CanvasTexture {
 
 export class IslandLook {
   readonly root = new THREE.Group();
-  /** The headlamp the squad wears in the mine (always in the scene: switching it on rebuilds no shader). */
+  /** The headlamp the squad wears in the deep (always in the scene: switching it on rebuilds no shader). */
   readonly headlamp = new THREE.SpotLight(0xfff0d8, 0, 34, 0.55, 0.45, 1.4);
   private readonly surge: THREE.Mesh;
+  private readonly flood: THREE.Mesh;
   private readonly surgeMat: THREE.MeshStandardMaterial;
+  /** (hs-bosses) the swells' clock. */
+  private readonly swell = { value: 0 };
   private readonly foam: THREE.CanvasTexture;
-  private readonly waveSheet: THREE.Mesh;
-  private waveT = -1;
-  private readonly wheels: THREE.Mesh[] = [];
-  private readonly gateLamps: THREE.Mesh[] = [];
   private readonly beam: THREE.Mesh;
   private readonly lamp: THREE.Mesh;
-  private readonly windowsMat: THREE.MeshStandardMaterial;
   private readonly cageTop: THREE.Group;
   private readonly cageBottom: THREE.Group;
   private readonly wreck: THREE.Group;
   private cageT = -1;
-  private readonly tapes: THREE.Object3D[] = [];
-  private readonly photos: THREE.Object3D[] = [];
-  private readonly key: THREE.Object3D;
-  private readonly peaches: THREE.Mesh[] = [];
-  private readonly hairpin: THREE.Object3D;
+  private readonly umi: THREE.Mesh;
+  private umiY = -30;
+  /** The things to find: each a placeholder model, shown until the story says it is taken. */
+  private readonly finds: { o: THREE.Object3D; at: Spot; gone: (v: StoryView) => boolean; spin: boolean }[] = [];
+  /** (hs-bosses) the tree's peaches, one instanced draw (the five left once they are picked come first). */
+  private readonly peaches: THREE.InstancedMesh;
   private readonly doors: THREE.Object3D[] = [];
   private doorsT = -1;
   private readonly stone: THREE.Mesh;
@@ -101,8 +100,9 @@ export class IslandLook {
   private readonly thrown: { m: THREE.Mesh; vx: number; vy: number; vz: number; live: boolean; onLand: (x: number, y: number, z: number) => void }[] = [];
   private t = 0;
   private sea = SEA_Y;
+  private deepSea = -9;
   private readonly fwd = new THREE.Vector3();
-  /** The lighthouse's lamp is lit. */
+  /** The lighthouse's lamp is lit (at dawn, ending 1). */
   lit = false;
   /** The Root Hall's people, baked (`rootPeople`): drawn only near the tree. */
   private readonly people = new THREE.Group();
@@ -110,36 +110,34 @@ export class IslandLook {
 
   constructor() {
     this.root.name = 'HirasakaLook';
-    // ---- the storm surge over the island, and the waves over the seawall ----
+    // ---- the sea on the climb: over the island, and through the deep ----
     this.foam = foamTexture();
-    this.surgeMat = new THREE.MeshStandardMaterial({ color: 0x3a6a6c, map: this.foam, roughness: 0.12, metalness: 0.5, transparent: true, opacity: 0.9, emissive: 0x0c2224 });
-    this.surge = new THREE.Mesh(new THREE.PlaneGeometry(ISLAND_X.x1 - ISLAND_X.x0 + 6, 100, 24, 20).rotateX(-Math.PI / 2), this.surgeMat);
-    this.surge.position.set(0, SEA_Y, 0);
+    this.surgeMat = new THREE.MeshStandardMaterial({ color: 0x2a4c50, map: this.foam, roughness: 0.12, metalness: 0.5, transparent: true, opacity: 0.93, emissive: 0x081a1c });
+    // (hs-bosses) a storm sea, not a pond: long swells rolling in from the north, broken by a cross-sea (in the vertex
+    // shader: no extra draw); the foam rides the crests
+    this.surgeMat.onBeforeCompile = (sh) => {
+      sh.uniforms.uSwell = this.swell;
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nuniform float uSwell;')
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+          vec4 wp = modelMatrix * vec4(position, 1.0);
+          transformed.y += sin(wp.z * 0.21 + uSwell * 1.7) * 0.55 + sin(wp.x * 0.13 - wp.z * 0.08 + uSwell * 1.1) * 0.4 + sin((wp.x + wp.z) * 0.6 + uSwell * 3.1) * 0.08;`,
+        );
+    };
+    this.surge = new THREE.Mesh(new THREE.PlaneGeometry(ISLAND.x1 - ISLAND.x0 + 8, ISLAND.z1 - ISLAND.z0 + 8, 96, 48).rotateX(-Math.PI / 2), this.surgeMat);
+    this.surge.position.set((ISLAND.x0 + ISLAND.x1) / 2, SEA_Y, (ISLAND.z0 + ISLAND.z1) / 2);
     this.surge.visible = false;
-    this.root.add(this.surge);
-    this.waveSheet = new THREE.Mesh(new THREE.BoxGeometry(ISLAND_X.x1 - ISLAND_X.x0, 1, 2.5), new THREE.MeshStandardMaterial({ color: 0xc8dce0, roughness: 0.3, transparent: true, opacity: 0.75, emissive: 0x203034 }));
-    this.waveSheet.visible = false;
-    this.root.add(this.waveSheet);
+    this.flood = new THREE.Mesh(new THREE.PlaneGeometry(DEEP.x1 - DEEP.x0, DEEP.z1 - DEEP.z0).rotateX(-Math.PI / 2), this.surgeMat);
+    this.flood.position.set((DEEP.x0 + DEEP.x1) / 2, -9, (DEEP.z0 + DEEP.z1) / 2);
+    this.flood.visible = false;
+    this.root.add(this.surge, this.flood);
 
-    // ---- the sea gates' wheels and their lamps ----
-    const wheelGeo = new THREE.TorusGeometry(0.45, 0.06, 6, 16);
-    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x9a2a1a, roughness: 0.5, metalness: 0.6 });
-    for (const v of PLACES.valves) {
-      const w = new THREE.Mesh(wheelGeo, wheelMat);
-      w.position.set(v.x, 1.2, 43.12);
-      this.root.add(w);
-      this.wheels.push(w);
-      const l = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), new THREE.MeshStandardMaterial({ color: 0xff3020, emissive: 0xff3020, emissiveIntensity: 2 }));
-      l.position.set(v.x + 0.9, 1.6, 43.15);
-      this.root.add(l);
-      this.gateLamps.push(l);
-    }
-
-    // ---- the lighthouse's lamp and beam; the island's windows ----
+    // ---- the lighthouse's lamp and beam (lit at dawn) ----
     const LH = HIRASAKA.lighthouse;
-    const top = TIERS[4].y + 17.4;
     this.lamp = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 8), new THREE.MeshStandardMaterial({ color: 0x404040, emissive: 0xfff4d0, emissiveIntensity: 0 }));
-    this.lamp.position.set(LH.x, top, LH.z);
+    this.lamp.position.set(LH.x, 18 + 17.4, LH.z);
     this.root.add(this.lamp);
     const beamGeo = new THREE.CylinderGeometry(0.4, 6, 70, 18, 1, true).translate(0, -35, 0).rotateZ(Math.PI / 2);
     const beamMat = new THREE.ShaderMaterial({
@@ -154,21 +152,8 @@ export class IslandLook {
     this.beam.position.copy(this.lamp.position);
     this.beam.visible = false;
     this.root.add(this.beam);
-    this.windowsMat = new THREE.MeshStandardMaterial({ color: 0x1a1a18, emissive: 0xffc070, emissiveIntensity: 0, roughness: 0.4 });
-    const win = new THREE.PlaneGeometry(1.1, 1.1);
-    const spots: [number, number, number][] = [];
-    for (let i = 1; i < TIERS.length; i++) {
-      const t = TIERS[i]!;
-      const lo = TIERS[i - 1]!.y;
-      for (let x = ISLAND_X.x0 + 2.7; x < ISLAND_X.x1 - 1; x += 7.8) spots.push([x + ((i * 3) % 5), lo + 1.5, t.z1 + 0.08]);
-    }
-    for (let f = 0; f < 7; f++) for (let x = -44; x < -9; x += 5.2) spots.push([x + (f % 2) * 2.6, TIERS[3].y + 4.3 + f * 2.8, -21.92]);
-    const wins = new THREE.InstancedMesh(win, this.windowsMat, spots.length);
-    const m = new THREE.Matrix4();
-    spots.forEach(([x, y, z], i) => wins.setMatrixAt(i, m.makeTranslation(x, y, z)));
-    this.root.add(wins);
 
-    // ---- the cage: in the headframe, at the bottom of the shaft, and its wreck ----
+    // ---- the cage: at the pithead, at the bottom of the shaft, and its wreck ----
     const cage = (): THREE.Group => {
       const c = new THREE.Group();
       const bar = new THREE.MeshStandardMaterial({ color: 0x3a3a36, roughness: 0.6, metalness: 0.7 });
@@ -182,100 +167,107 @@ export class IslandLook {
       const roof = floor.clone();
       roof.position.y = 2.65;
       c.add(floor, roof);
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.2), new THREE.MeshStandardMaterial({ color: 0x302a20, emissive: 0xffc070, emissiveIntensity: 1.5 }));
-      lamp.position.y = 2.5;
-      c.add(lamp);
       const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 20, 4), new THREE.MeshStandardMaterial({ color: 0x121212, roughness: 0.8 }));
       cable.position.y = 12.7;
       c.add(cable);
       return c;
     };
     this.cageTop = cage();
-    this.cageTop.position.set(HIRASAKA.cage.x, 0, HIRASAKA.cage.z);
+    this.cageTop.position.set(CAGE.top.x, CAGE.top.y, CAGE.top.z - 4);
     this.cageBottom = cage();
-    this.cageBottom.position.set(HIRASAKA.cageBottom.x, 0, HIRASAKA.cageBottom.z);
+    this.cageBottom.position.set(CAGE.bottom.x, CAGE.bottom.y, CAGE.bottom.z);
     this.wreck = cage();
-    this.wreck.position.set(HIRASAKA.cageBottom.x + 0.6, 0.4, HIRASAKA.cageBottom.z - 0.4);
+    this.wreck.position.set(CAGE.bottom.x + 0.6, CAGE.bottom.y + 0.4, CAGE.bottom.z - 0.4);
     this.wreck.rotation.set(0.5, 0.4, 0.35);
     this.wreck.visible = false;
     this.root.add(this.cageTop, this.cageBottom, this.wreck);
 
-    // ---- the things to find ----
+    // ---- the umibōzu's stand-in: a vast dark head out past the seawall (`bosses` replaces it) ----
+    this.umi = new THREE.Mesh(new THREE.SphereGeometry(14, 18, 12), new THREE.MeshStandardMaterial({ color: 0x0a1216, roughness: 0.3, metalness: 0.2 }));
+    this.umi.scale.set(1, 1.5, 1);
+    this.umi.position.set(UMIBOZU.rise.x, -30, UMIBOZU.rise.z);
+    this.umi.visible = false;
+    this.root.add(this.umi);
+
+    // ---- the things to find (placeholders: `arms` and the look-book give them their own models) ----
     const glow = (color: number, k = 1.4): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: k, roughness: 0.5 });
+    const find = (geo: THREE.BufferGeometry, mat: THREE.Material, at: Spot, gone: (v: StoryView) => boolean, spin = true, lift = 0.95): void => {
+      const o = new THREE.Mesh(geo, mat);
+      o.position.set(at.x, at.y + lift, at.z);
+      this.root.add(o);
+      this.finds.push({ o, at, gone, spin });
+    };
     const tapeGeo = new THREE.BoxGeometry(0.22, 0.03, 0.14);
     const tapeMat = glow(0xffd070, 0.8);
-    for (const t of TAPES) {
-      const o = new THREE.Mesh(tapeGeo, tapeMat);
-      o.position.set(t.x, t.y + 0.9, t.z);
-      this.root.add(o);
-      this.tapes.push(o);
-    }
+    TAPES.forEach((t, i) => find(tapeGeo, tapeMat, t, (v) => (v.tapes & (1 << i)) !== 0));
     const photoGeo = new THREE.BoxGeometry(0.2, 0.26, 0.02);
     const photoMat = glow(0xf0f4ff, 0.9);
-    for (const p of PHOTOS) {
-      const o = new THREE.Mesh(photoGeo, photoMat);
-      o.position.set(p.x, p.y + 1, p.z);
-      this.root.add(o);
-      this.photos.push(o);
-    }
-    this.key = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.015, 5, 10), glow(0xffc040, 2));
-    this.key.position.set(PLACES.key.x - 0.3, PLACES.key.y + 1.5, PLACES.key.z);
-    this.root.add(this.key);
+    PHOTOS.forEach((p, i) => find(photoGeo, photoMat, p, (v) => (v.photos & (1 << i)) !== 0));
+    const keyMat = glow(0xffc040, 1.6);
+    find(new THREE.TorusGeometry(0.06, 0.015, 5, 10), keyMat, JOBS.key.key, (v) => HirasakaStory.isDone(v, 'key'));
+    find(new THREE.TorusGeometry(0.06, 0.015, 5, 10), keyMat, JOBS.steam.boilerKey, (v) => v.boilerKey);
+    find(new THREE.BoxGeometry(0.2, 0.02, 0.06), glow(0xd8b080, 0.6), COMB, (v) => v.kushi > 0);
+    const sackGeo = new THREE.BoxGeometry(0.9, 0.5, 0.6);
+    const sackMat = new THREE.MeshStandardMaterial({ color: 0x6a5a40, roughness: 1 });
+    JOBS.steam.coal.forEach((c, i) => find(sackGeo, sackMat, c, (v) => (v.coal & (1 << i)) !== 0, false, 0.25));
+    find(new THREE.CylinderGeometry(0.12, 0.1, 0.5, 8), glow(0xc8a070, 0.4), LADLES, (v) => v.ladles > 0, false, 0.9);
+    // (arms: the Mori's parts and the tools are drawn by `armsLook.ts`, each as a model of itself)
+    find(new THREE.SphereGeometry(0.09, 8, 6), glow(0xff2030, 2.4), DEEP_SPOTS.hairpin, (v) => v.hairpin, false, 0.5);
+
+    // ---- the revived tree's peaches (they appear once Kurogane is dead) ----
     const peachMat = glow(0xffd8e8, 2.2);
     const peachGeo = new THREE.SphereGeometry(0.14, 10, 8);
-    for (let k = 0; k < 14; k++) {
+    this.peaches = new THREE.InstancedMesh(peachGeo, peachMat, 14);
+    const order = [0, 3, 6, 9, 12, 1, 2, 4, 5, 7, 8, 10, 11, 13];
+    const at = new THREE.Object3D();
+    order.forEach((k, n) => {
       const a = k * 2.39;
-      const r = 1.6 + (k % 3) * 0.7;
-      const p = new THREE.Mesh(peachGeo, peachMat);
-      p.position.set(PLACES.peaches.x + Math.cos(a) * r, 5.6 + (k % 4) * 0.5, PLACES.peaches.z + Math.sin(a) * r);
-      this.root.add(p);
-      this.peaches.push(p);
-    }
-    this.hairpin = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 6), glow(0xff2030, 2.4));
-    this.hairpin.position.set(PLACES.hairpin.x, 0.5, PLACES.hairpin.z);
-    this.root.add(this.hairpin);
+      const r = 2.4 + (k % 3) * 0.9;
+      at.position.set(ROOT_TREE.x + Math.cos(a) * r, 4.6 + (k % 4) * 0.6, ROOT_TREE.z + Math.sin(a) * r);
+      at.updateMatrix();
+      this.peaches.setMatrixAt(n, at.matrix);
+    });
+    this.peaches.visible = false;
+    this.root.add(this.peaches);
 
     // ---- the people in the Root Hall's tree ----
     this.rootPeople();
 
-    // ---- the Old Village's doors ----
+    // ---- the Old Village's doors (they all swing open at once when the hairpin is taken) ----
     const doorGeo = new THREE.BoxGeometry(1.4, 2.2, 0.08).translate(0.7, 1.1, 0);
     const doorMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.9 });
     for (const h of VILLAGE_HOUSES) {
       const d = new THREE.Group();
-      const leaf = new THREE.Mesh(doorGeo, doorMat);
-      d.add(leaf);
-      const fx = Math.sin(h.rot) * 2.55;
-      const fz = Math.cos(h.rot) * 2.55;
-      d.position.set(h.x + fx - Math.cos(h.rot) * 0.7, 0, h.z + fz + Math.sin(h.rot) * 0.7);
-      d.rotation.y = h.rot;
-      d.userData.rest = h.rot;
+      d.add(new THREE.Mesh(doorGeo, doorMat));
+      const alongX = h.door === 'N' || h.door === 'S';
+      const x = alongX ? h.x0 + h.at - 0.7 : h.door === 'W' ? h.x0 : h.x1;
+      const z = alongX ? (h.door === 'N' ? h.z0 : h.z1) : h.z0 + h.at - 0.7;
+      d.position.set(x, DEEP_Y, z);
+      d.rotation.y = alongX ? 0 : -Math.PI / 2;
+      d.userData.rest = d.rotation.y;
       this.root.add(d);
       this.doors.push(d);
     }
 
-    // ---- the Sealing Stone ----
-    const sg = new THREE.SphereGeometry(1.9, 40, 28);
+    // ---- the Chibiki-iwa ----
+    const sg = new THREE.SphereGeometry(3, 40, 28);
     const p = sg.attributes.position!;
     for (let i = 0; i < p.count; i++) {
       const v = new THREE.Vector3().fromBufferAttribute(p, i);
-      const k = 1 + 0.09 * Math.sin(v.x * 2.1 + v.y * 1.7) + 0.06 * Math.sin(v.z * 3.3) + 0.03 * Math.sin(v.x * 7.7 + v.z * 5.1);
+      const k = 1 + 0.09 * Math.sin(v.x * 1.4 + v.y * 1.1) + 0.06 * Math.sin(v.z * 2.3) + 0.03 * Math.sin(v.x * 5.7 + v.z * 3.1);
       v.multiplyScalar(k);
       v.y *= 0.82;
       p.setXYZ(i, v.x, v.y, v.z);
     }
     sg.computeVertexNormals();
-    this.stone = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x4e4c48, roughness: 0.95, flatShading: false }));
-    this.stone.castShadow = true;
-    this.stone.position.set(HIRASAKA.stoneRest.x, TIERS[4].y + 1.45, HIRASAKA.stoneRest.z);
+    this.stone = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ color: 0x4e4c48, roughness: 0.95 }));
+    this.stone.position.set(ROCK.rest.x, ROCK.rest.y + 2.3, ROCK.rest.z);
     this.root.add(this.stone);
-    // a shimenawa round it
-    const rope = new THREE.Mesh(new THREE.TorusGeometry(2.02, 0.07, 6, 40), new THREE.MeshStandardMaterial({ color: 0xd8c89a, roughness: 1 }));
+    const rope = new THREE.Mesh(new THREE.TorusGeometry(3.15, 0.1, 6, 40), new THREE.MeshStandardMaterial({ color: 0xd8c89a, roughness: 1 }));
     rope.rotation.x = Math.PI / 2;
-    rope.position.y = 0.05;
     this.stone.add(rope);
 
-    // ---- the peaches' wards and the peaches in flight (a small pool of each) ----
+    // ---- the gifts' wards and the gifts in flight (a small pool of each) ----
     const ringGeo = new THREE.RingGeometry(WARD.r - 0.25, WARD.r, 40).rotateX(-Math.PI / 2);
     for (let k = 0; k < 6; k++) {
       const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffd8ec, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
@@ -296,17 +288,19 @@ export class IslandLook {
 
   /** What appears only later, compiled with the level (and drawn once to send it to the GPU). */
   prewarm(): THREE.Object3D[] {
-    return [this.surge, this.waveSheet, this.beam, this.wreck, ...this.wards.map((w) => w.ring), ...this.thrown.map((t) => t.m)];
+    return [this.surge, this.flood, this.beam, this.wreck, this.umi, this.peaches, ...this.wards.map((w) => w.ring), ...this.thrown.map((t) => t.m)];
   }
 
   /** A new run: everything back as it was. */
   reset(): void {
     this.surge.visible = false;
+    this.flood.visible = false;
     this.sea = SEA_Y;
-    this.waveT = -1;
+    this.deepSea = -9;
     this.cageT = -1;
     this.doorsT = -1;
     this.stoneRoll = 0;
+    this.umiY = -30;
     this.lit = false;
     this.cageTop.visible = true;
     this.cageBottom.visible = true;
@@ -319,12 +313,7 @@ export class IslandLook {
     }
   }
 
-  /** A wave comes over the seawall. */
-  wave(): void {
-    this.waveT = 0;
-  }
-
-  /** The cage goes down (from the top), and is at the bottom. */
+  /** The cage goes down (from the top). */
   ride(): void {
     this.cageT = 0;
   }
@@ -341,7 +330,7 @@ export class IslandLook {
     if (this.doorsT < 0) this.doorsT = 0;
   }
 
-  /** A peach thrown from `o` along `d`; `onLand` when it comes down. */
+  /** A gift thrown from `o` along `d`; `onLand` when it comes down. */
   throwPeach(o: THREE.Vector3, d: THREE.Vector3, onLand: (x: number, y: number, z: number) => void): void {
     const t = this.thrown.find((q) => !q.live) ?? this.thrown[0]!;
     t.live = true;
@@ -353,101 +342,81 @@ export class IslandLook {
     t.onLand = onLand;
   }
 
-  /** A ward glows where a peach landed. */
-  ward(x: number, y: number, z: number): void {
+  /** A ward glows where a gift landed (the comb's bamboo is a wider one). */
+  ward(x: number, y: number, z: number, bamboo = false): void {
     const w = this.wards.reduce((a, b) => (a.t <= b.t ? a : b));
-    w.t = WARD.t;
+    w.t = bamboo ? BAMBOO.t : WARD.t;
     w.ring.visible = true;
+    w.ring.scale.setScalar(bamboo ? BAMBOO.r / WARD.r : 1);
     w.ring.position.set(x, y + 0.05, z);
   }
 
-  /** Every frame: the story's state drawn. `ground` finds the floor under a point (for the peaches in flight). */
+  /** Every frame: the story's state drawn. `ground` finds the floor under a point (for the gifts in flight). */
   update(dt: number, v: StoryView, cam: THREE.Camera, underground: boolean, ground: (x: number, z: number, y: number) => number): void {
     this.t += dt;
     const t = this.t;
+    void underground;
     this.people.visible = Math.hypot(cam.position.x - ROOT_TREE.x, cam.position.z - ROOT_TREE.z) < 46;
-    // the surge: the water's top eases up to its level, a swell on it
+    // the sea on the climb: the water's top eases up to its level, a swell on it
     const target = HirasakaStory.seaLevel(v);
     this.sea += (target - this.sea) * Math.min(1, dt * 0.35);
-    this.surge.visible = v.surge > 0 || this.sea > SEA_Y + 0.05;
+    this.surge.visible = this.sea > SEA_Y + 0.05;
     this.surge.position.y = this.sea + Math.sin(t * 0.9) * 0.12;
-    this.surge.position.z = 2 + Math.sin(t * 0.4) * 0.6;
+    const deepTarget = HirasakaStory.seaLevel(v, true);
+    this.deepSea += (deepTarget - this.deepSea) * Math.min(1, dt * 0.35);
+    this.flood.visible = this.deepSea > -0.2;
+    this.flood.position.y = this.deepSea + Math.sin(t * 0.7) * 0.08;
     this.foam.offset.set(t * 0.012, -t * 0.03);
-    // a wave over the seawall: up over the wall, crashing down onto the promenade
-    if (this.waveT >= 0) {
-      this.waveT += dt;
-      const k = this.waveT;
-      const w = this.waveSheet;
-      w.visible = k < 3;
-      const up = Math.min(1, k / 1.3);
-      const down = Math.max(0, (k - 1.3) / 1.4);
-      w.position.set(0, -1 + up * 4.2 - down * 4.5, 46 - down * 7);
-      w.scale.set(1, 1 + up * 3 - down * 2, 1 + down * 2);
-      (w.material as THREE.MeshStandardMaterial).opacity = 0.75 * (1 - down);
-      if (k >= 3) this.waveT = -1;
-    }
-    // the sea gates
-    PLACES.valves.forEach((_, i) => {
-      const open = (v.valves & (1 << i)) !== 0;
-      if (open) this.wheels[i]!.rotation.z += dt * 3;
-      const lm = this.gateLamps[i]!.material as THREE.MeshStandardMaterial;
-      lm.emissive.setHex(open ? 0x30ff60 : 0xff3020);
-      lm.color.copy(lm.emissive);
-    });
-    // the lighthouse: the generator catching, then the beam
-    const lightOn = HirasakaStory.isDone(v, 'light');
-    this.lit = lightOn;
-    const lm = this.lamp.material as THREE.MeshStandardMaterial;
-    lm.emissiveIntensity = lightOn ? 3 : v.generating ? 0.4 + v.charge * 1.2 + 0.4 * Math.sin(t * 20) * (1 - v.charge) : 0;
-    this.beam.visible = lightOn;
+    this.swell.value = t;
+    // the lighthouse, lit at dawn
+    this.lit = v.ending === 1;
+    (this.lamp.material as THREE.MeshStandardMaterial).emissiveIntensity = this.lit ? 3 : 0;
+    this.beam.visible = this.lit;
     this.beam.rotation.y = t * 0.6;
-    this.windowsMat.emissiveIntensity += ((lightOn ? 1.6 : 0) - this.windowsMat.emissiveIntensity) * Math.min(1, dt * 0.5);
-    // the cage down the shaft, and back up for whoever is next
+    // the umibōzu's stand-in: rises with the jobs done, sinks a little with each hit, gone once beaten
+    const umiGoal = v.umi === 1 ? 4 - v.umiHits * 3 : -30;
+    this.umiY += (umiGoal - this.umiY) * Math.min(1, dt * (v.umi === 1 ? 0.25 : 0.4));
+    this.umi.visible = this.umiY > -26;
+    this.umi.position.y = this.umiY + Math.sin(t * 0.5) * 0.8;
+    // the cage down the shaft and back for whoever is next
     if (this.cageT >= 0 && !v.bossDown) {
       this.cageT += dt;
       const k = this.cageT;
       const y = k < 3 ? -k * 3 : k < 9 ? -9 : Math.min(0, -9 + (k - 9) * 3);
-      this.cageTop.position.y = y;
+      this.cageTop.position.y = CAGE.top.y + y;
       this.cageTop.visible = y > -8.9;
       if (k > 12) {
         this.cageT = -1;
-        this.cageTop.position.y = 0;
+        this.cageTop.position.y = CAGE.top.y;
         this.cageTop.visible = true;
       }
     }
     if (v.bossDown) this.cable();
     // the things to find
-    this.tapes.forEach((o, i) => {
-      o.visible = !(v.tapes & (1 << i));
-      o.rotation.y = t * 1.5 + i;
-      o.position.y = TAPES[i]!.y + 0.95 + Math.sin(t * 2 + i) * 0.05;
+    this.finds.forEach((f, i) => {
+      f.o.visible = !f.gone(v);
+      if (f.spin && f.o.visible) {
+        f.o.rotation.y = t * 1.5 + i;
+        f.o.position.y = f.at.y + 0.95 + Math.sin(t * 2 + i) * 0.05;
+      }
     });
-    this.photos.forEach((o, i) => {
-      o.visible = !(v.photos & (1 << i));
-      o.rotation.y = t * 1.2 + i;
-      o.position.y = PHOTOS[i]!.y + 1.05 + Math.sin(t * 2.2 + i) * 0.05;
-    });
-    this.key.visible = !HirasakaStory.isDone(v, 'key');
-    this.key.rotation.y = t * 2;
-    this.hairpin.visible = !v.hairpin;
-    this.peaches.forEach((p, i) => (p.visible = !v.peaches || i % 3 === 0));
+    this.peaches.visible = v.bossDown;
+    this.peaches.count = v.peaches ? 5 : 14;
     // the village's doors, all at once
-    if (v.peaches && this.doorsT < 0) this.doorsT = 0;
+    if (v.hairpin && this.doorsT < 0) this.doorsT = 0;
     if (this.doorsT >= 0 && this.doorsT < 1.5) {
       this.doorsT += dt;
       const k = Math.min(1, this.doorsT / 0.5);
       for (const d of this.doors) d.rotation.y = (d.userData.rest as number) - k * 1.7;
     }
-    // the stone rolls as it is pushed (and is home once sealed)
-    const S0 = HIRASAKA.stoneRest;
-    const S1 = HIRASAKA.stoneSeal;
-    const goal = v.ending === 1 ? 1 : v.push;
+    // the Chibiki-iwa hauled across (and home once sealed)
+    const goal = v.ending === 1 ? 1 : HirasakaStory.rock(v);
     const was = this.stoneRoll;
     this.stoneRoll += (goal - this.stoneRoll) * Math.min(1, dt * 3);
-    this.stone.position.x = S0.x + (S1.x - S0.x) * this.stoneRoll;
-    this.stone.position.z = S0.z + (S1.z - S0.z) * this.stoneRoll;
-    this.stone.rotation.z += (this.stoneRoll - was) * 3.2;
-    // the peaches in flight, and their wards
+    this.stone.position.x = ROCK.rest.x + (ROCK.seal.x - ROCK.rest.x) * this.stoneRoll;
+    this.stone.position.z = ROCK.rest.z + (ROCK.seal.z - ROCK.rest.z) * this.stoneRoll;
+    this.stone.rotation.z += (this.stoneRoll - was) * 2.2;
+    // the gifts in flight, and their wards
     for (const q of this.thrown) {
       if (!q.live) continue;
       q.vy -= 18 * dt;
@@ -484,6 +453,11 @@ export class IslandLook {
     // each body is dressed and placed once, then baked: its meshes in their rest pose, moved where it lies and merged by
     // material with everyone else's (a few dozen draws for all of them, no skinning; a skinned body each was 120)
     const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+    // (hs-bosses) every body's materials folded into two plain ones, bark and hair (they are grey as the bark already):
+    // two draws for all the people instead of one per VRoid material (57 in the Kurogane fight on Low)
+    const bark = new THREE.MeshStandardMaterial({ color: 0xb4a898, roughness: 0.95, emissive: 0x2a2638, emissiveIntensity: 0.6 });
+    const hair = new THREE.MeshStandardMaterial({ color: 0x4a4440, roughness: 0.9 });
+    const fold = (m: THREE.Material): THREE.Material => (/hair/i.test(m.name) ? hair : bark);
     const tmp = new THREE.Group();
     ROOT_PEOPLE.forEach((p, i) => {
       const t = hordeModel('shambler', 31 + i, p.kind);
@@ -513,9 +487,10 @@ export class IslandLook {
           if (!mat) continue;
           const geo = bakePart(m.geometry, gr.start, gr.count, m.matrixWorld);
           if (!geo) continue;
-          const list = byMat.get(mat) ?? [];
+          const into = fold(mat);
+          const list = byMat.get(into) ?? [];
           list.push(geo);
-          byMat.set(mat, list);
+          byMat.set(into, list);
         }
       });
       body.dispose();

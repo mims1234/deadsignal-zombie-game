@@ -487,7 +487,10 @@ if (process.env.NUM !== '0') {
       check('it drags the one in its cone in toward the player, not the one beside it', d1[0] < d0[0] - 3 && d1[0] >= 1.6 && Math.abs(d1[1] - d0[1]) < 0.05, `${d0[0]} -> ${d1[0]} m; beside ${d0[1]} -> ${d1[1]} m`);
       check('and holds it reeling', st[0].state === 'stagger', st[0].state);
       await aimAt(row[0]);
-      await D(() => { const d = window.__dead; d.releaseAll(); d.advance(2 / 60); });
+      // (rounds 2-6 leave at random inside the 12° cone, and round 1 throws the body back to ~3.3 m first, where a body
+      // is narrower than the cone: unseeded, all six land only about half the time on any build. The spread is held at
+      // the middle for this one blast, so the check measures the rounds and their damage, not the dice.)
+      await D(() => { const d = window.__dead; const rnd = Math.random; Math.random = () => 0; try { d.releaseAll(); d.advance(2 / 60); } finally { Math.random = rnd; } });
       const lost = await hpLost(row);
       const d2 = await where(row);
       check('let go, the six rounds land on it: six times 160', lost[0] >= 6 * 160 * 0.95 && lost[0] <= 6 * 160 * 1.25 + 1 && lost[1] === 0, `${lost.join(', ')}`);

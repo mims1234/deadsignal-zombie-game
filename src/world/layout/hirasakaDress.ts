@@ -9,7 +9,7 @@
 import * as THREE from 'three';
 import type { LevelBuilder } from '../builder';
 import type { MaterialLib } from '../materials';
-import { PLACES, ROOT_PEOPLE, ROOT_TREE, rootTrunkR } from '../../hirasaka/places';
+import { ROOT_PEOPLE, ROOT_TREE, rootTrunkR } from '../../hirasaka/places';
 
 // ---------------------------------------------------------------------------------------------
 // noise
@@ -293,8 +293,8 @@ export function minka(b: LevelBuilder, M: DressMats, x: number, z: number, rot: 
 // ---------------------------------------------------------------------------------------------
 
 /** The tree of white peaches in the Old Village: a twisted trunk, low wide boughs, a pale crown of blossom. */
-export function peachTree(b: LevelBuilder, M: DressMats): void {
-  const { x, z } = PLACES.peaches;
+export function peachTree(b: LevelBuilder, M: DressMats, at: { x: number; z: number }): void {
+  const { x, z } = at;
   tube(b, M.bark, [V(x, -0.4, z), V(x + 0.3, 2, z - 0.2), V(x - 0.2, 3.6, z + 0.3), V(x + 0.1, 5.2, z)], 0.85, 0.42, 71, { radial: 10, ridges: 0.2 });
   const r = rnd(72);
   const tips: THREE.Vector3[] = [];

@@ -96,6 +96,12 @@ export class LevelBuilder {
    * scenery off while the player is elsewhere (`world/zones.ts`). Colliders, lamps and navigation are not zoned.
    */
   zone: string | null = null;
+  /**
+   * (HIRASAKA final polish) Coarser plain-colour finishes for a map with a tight draw budget: every matte non-metal
+   * finish (roughness 0.5 and up) one, the rest to the nearest 0.15, metalness to the nearest 0.5, and the
+   * receive-shadow flag no longer splits a batch (it receives). Off on every other map: they bake exactly as before.
+   */
+  coarsePalette = false;
   readonly zones = new Map<string, THREE.Group>();
 
   constructor(
@@ -143,9 +149,9 @@ export class LevelBuilder {
     // a plain-coloured surface goes onto a shared palette material, its colour baked into its vertices: every
     // plain colour at the same finish draws together (each its own material, each was its own draw call per chunk)
     const tint = paletteable(own) ? (own as THREE.MeshStandardMaterial).color : null;
-    const material = tint ? paletteFor(own as THREE.MeshStandardMaterial) : own;
+    const material = tint ? paletteFor(own as THREE.MeshStandardMaterial, this.coarsePalette) : own;
     const cast = opts.cast ?? mesh.castShadow;
-    const receive = opts.receive ?? mesh.receiveShadow;
+    const receive = (tint && this.coarsePalette) || (opts.receive ?? mesh.receiveShadow);
     const src = mesh.geometry;
     const g = src.clone();
     const wantColor = !tint && (material as THREE.MeshStandardMaterial).vertexColors === true;
@@ -454,9 +460,10 @@ function paletteable(m: THREE.Material): boolean {
 const palettes = new Map<string, THREE.MeshStandardMaterial>();
 
 /** The shared palette material for a finish (roughness and metalness to the nearest 0.05, side, flat shading). */
-function paletteFor(m: THREE.MeshStandardMaterial): THREE.MeshStandardMaterial {
-  const r = Math.round(m.roughness * 20) / 20;
-  const mt = Math.round(m.metalness * 20) / 20;
+function paletteFor(m: THREE.MeshStandardMaterial, coarse = false): THREE.MeshStandardMaterial {
+  const mt = coarse ? Math.round(m.metalness * 2) / 2 : Math.round(m.metalness * 20) / 20;
+  // (coarse: every matte non-metal finish is one; glossy and metal ones to the nearest 0.15)
+  const r = !coarse ? Math.round(m.roughness * 20) / 20 : mt === 0 && m.roughness >= 0.5 ? 0.9 : Math.max(0.15, +(Math.round(m.roughness / 0.15) * 0.15).toFixed(2));
   const key = `${r}|${mt}|${m.side}|${m.flatShading ? 1 : 0}|${m.envMapIntensity}`;
   let p = palettes.get(key);
   if (!p) {

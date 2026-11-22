@@ -14,12 +14,15 @@
  * reports, and freeing someone is a request to it. (The Forge's furnaces and their embers: `forge/story.ts`.)
  */
 import { ownModel, personModel } from '../anime/cast';
-import { NATSUKI_TINT } from '../anime/looks';
+import { HIRASAKA_SQUAD_TINTS } from '../anime/looks';
+import type { AnimeTint } from '../anime/vrm';
+import type { QualityLevel } from '../types';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { squadHoldsFire } from '../asylum/story';
 import { FORGE_SQUAD, QUALITY, SQUADMATE, SQUADS, SURVIVORS, type TeamSkill } from '../config';
 import { FORGE_LINES } from '../forge/lore';
+import { mapFeatures } from '../logic/mapFeatures';
 import { vulcanLook } from '../forge/looks';
 import { Avatar, type AvatarWeapon } from '../coop/avatar';
 import type { ZombieEnv } from '../enemies/zombie';
@@ -115,6 +118,16 @@ function makeCage(): Cage {
   beam.position.y = CAGE_H;
   root.add(beam);
   return { root, door, beam, openT: 0 };
+}
+
+/**
+ * HIRASAKA's squadmates' colours (`HIRASAKA_SQUAD_TINTS`). On Low and Lite their ink outlines are left off: each outline
+ * shell is one more draw call per body part (7 a body), and the map is held to 190 draws from any view there.
+ */
+function squadTint(i: number, quality: QualityLevel): AnimeTint | null {
+  const t = HIRASAKA_SQUAD_TINTS[i];
+  if (!t) return null;
+  return quality === 'low' || quality === 'lite' ? { ...t, key: `${t.key}:plain`, outlines: false } : t;
 }
 
 export class SquadRuntime {
@@ -248,7 +261,7 @@ export class SquadRuntime {
         const vl = clan ? vulcanLook(name) : null;
         this.addAlly(
           makeAllyBody(g.level, name, 'soldier', at[i]!.x, at[i]!.z, st.yaw, at[i]!.slot, false, this.allies.length, skill),
-          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', tagNear: g.mapId === 'zarya' ? 5 : undefined, weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? (g.mapId === 'asylum' ? ownModel(def.models[i]) : personModel(def.models[i])) : null, animeTint: g.mapId === 'hirasaka' ? NATSUKI_TINT : null }),
+          new Avatar(name, i, { tag: def?.tag ?? 'SQUAD', tagColor: def?.tagColor ?? '#8fd18a', tagNear: mapFeatures(g.mapId).nearTags ? 5 : undefined, weapon: def?.weapons[i] ?? 'rifle', helmet: def?.helmets[i] ?? true, color: vl?.color ?? def?.colors?.[i], look: vl?.look ?? def?.looks?.[i], anime: def?.models ? (g.mapId === 'asylum' ? ownModel(def.models[i]) : personModel(def.models[i])) : null, animeTint: g.mapId === 'hirasaka' ? squadTint(i, g.settings.quality) : null }),
         );
       });
     }
@@ -619,9 +632,9 @@ export class SquadRuntime {
   /** The leader went through a stairwell (`floors.ts`): everyone fighting beside them comes through it too. */
   regroupAt(x: number, z: number, yaw: number, area: number): void {
     if (!this.active) return;
-    // ZARYA in co-op: the simulation moves the squadmates who were keeping up with this player (`requestRegroup`)
+    // ZARYA, HIRASAKA in co-op: the simulation moves the squadmates who were keeping up with this player (`requestRegroup`)
     if (this.follow) {
-      if (this.g.mapId === 'zarya') this.requestRegroup?.(x, z, yaw, area);
+      if (mapFeatures(this.g.mapId).squadRegroup) this.requestRegroup?.(x, z, yaw, area);
       return;
     }
     const nav = this.g.level.floors.navOf(area);

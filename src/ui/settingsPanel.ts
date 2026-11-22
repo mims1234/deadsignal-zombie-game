@@ -67,7 +67,11 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
 
   const sens = slider(root, touch ? 'LOOK SENSITIVITY' : 'MOUSE SENSITIVITY', 0.2, 3, 0.05, (v) => v.toFixed(2), (v) => change({ sensitivity: v }));
   const fov = slider(root, 'FIELD OF VIEW', 70, 110, 1, (v) => `${Math.round(v)}°`, (v) => change({ fov: Math.round(v) }));
-  const vol = slider(root, 'MASTER VOLUME', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`, (v) => change({ masterVolume: v }));
+  const pct = (v: number): string => `${Math.round(v * 100)}%`;
+  const vol = slider(root, 'MASTER VOLUME', 0, 1, 0.01, pct, (v) => change({ masterVolume: v }));
+  const music = slider(root, 'MUSIC', 0, 1, 0.01, pct, (v) => change({ musicVolume: v }));
+  const voice = slider(root, 'VOICE', 0, 1, 0.01, pct, (v) => change({ voiceVolume: v }));
+  const fx = slider(root, 'EFFECTS', 0, 1, 0.01, pct, (v) => change({ effectsVolume: v }));
 
   const qRow = el('div', 'ds-set-row', root);
   el('span', 'lbl', qRow, 'GRAPHICS QUALITY');
@@ -95,8 +99,8 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
 
   const hint = el('div', 'ds-set-hint', root);
   hint.textContent = touch
-    ? 'Auto graphics picks Lite or Low for this phone and steps down if it struggles. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
-    : 'Auto graphics picks a quality for this computer and adjusts it as you play; picking one turns it off. High turns nearby shadows on, High+ adds bloom and smoothing. Reduced motion cuts camera bob, sway and screen shake. New 3D models swaps in an animated infected and street props from an art pack (the game reloads; mid-run it loads when that game ends).';
+    ? 'Voice is story lines, tapes and radio; effects are guns, the infected and the world. Auto graphics picks Lite or Low for this phone and steps down if it struggles. Aim assist slows and steadies the view near a target. Auto fire shoots for you while the crosshair is on an enemy.'
+    : 'Voice is story lines, tapes and radio; effects are guns, the infected and the world. Auto graphics picks a quality for this computer and adjusts it as you play; picking one turns it off. High turns nearby shadows on, High+ adds bloom and smoothing. Reduced motion cuts camera bob, sway and screen shake. New 3D models swaps in an animated infected and street props from an art pack (the game reloads; mid-run it loads when that game ends).';
 
   const paintOf = (r: SliderRow): void => (r.input as HTMLInputElement & { _paint?: () => void })._paint?.();
 
@@ -106,9 +110,10 @@ export function buildSettingsPanel(change: (patch: Partial<Settings>) => void, t
       sens.input.value = String(s.sensitivity);
       fov.input.value = String(s.fov);
       vol.input.value = String(s.masterVolume);
-      paintOf(sens);
-      paintOf(fov);
-      paintOf(vol);
+      music.input.value = String(s.musicVolume);
+      voice.input.value = String(s.voiceVolume);
+      fx.input.value = String(s.effectsVolume);
+      for (const r of [sens, fov, vol, music, voice, fx]) paintOf(r);
       for (const [q, b] of qBtns) {
         const on = q === s.quality;
         b.classList.toggle('on', on);

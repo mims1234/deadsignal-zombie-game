@@ -2,6 +2,20 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.391",
+      "date": "2026-11-23",
+      "title": "HIRASAKA reborn, open to everyone; volume sliders",
+      "notes": [
+        "HIRASAKA rebuilt from the ground up and open to all: a Hashima-style island about three times bigger, twelve places on the island and six in the deep, every building enterable with 1974 rooms inside.",
+        "A new story: a survey team stranded by the typhoon, the cage bell ringing from 636 m down, Genzō's tapes, the slope to Yomi. No clock and no hold-to-win steps; dying is the only way to lose.",
+        "Solo plays with two squadmates, Natsuki and Daigo. Co-op runs the whole story.",
+        "Four tools to swing, each opening its own obstacles (pick, timber axe, coal shovel, shrine tachi), four built weapons as the strongest tier (Happa, Sakuganki, Mori, Kushi-bi into Ōkamuzumi), company price boards, an offering box that moves between shrines, and the upgrade bench riding in the cage.",
+        "Two big fights: the umibōzu beyond the seawall, sunk with the Mori, and Kurogane in three phases worked with the Root Hall's hoist, fan and pump. Then the climb with Mio behind you and the Chibiki-iwa hauled across by chain winches. Two endings.",
+        "Ten side stories, portraits and item icons, and every line voiced, with a different voice for each character.",
+        "Settings: MASTER, MUSIC, VOICE and EFFECTS volume sliders on every map, with gentler defaults."
+      ]
+    },
+    {
       "version": "0.4.390",
       "date": "2026-11-12",
       "title": "ZARYA: weapons with a job, a real witch, side stories",

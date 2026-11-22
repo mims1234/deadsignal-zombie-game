@@ -44,7 +44,7 @@ const MAPS = {
   asylum: { name: 'The Asylum', live: true },
   aurelia: { name: 'Aurelia', live: false },
   mujin: { name: 'Mujin', live: false },
-  hirasaka: { name: 'Hirasaka', live: false },
+  hirasaka: { name: 'Hirasaka', live: true },
   zarya: { name: 'Zarya', live: true },
 };
 const mapPublic = (id) => {

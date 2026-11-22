@@ -14,6 +14,7 @@ import { applyPlate, canApplyPlate, type Vitals, zombieHitDamage } from '../logi
 import { activeWeapon, type CarriedWeapon, type Inventory } from '../logic/economy';
 import { falloffMul, getWeaponStats, type WeaponStats } from '../logic/weaponStats';
 import { ZARYA_BASE, ZARYA_GUN_IDS, fanYaws, gaugeLock, inCone, isZaryaGun, nailsDue, pullToward, stepGauge, stepSpin, stepSuck } from '../logic/zaryaGuns';
+import { HIRASAKA_BASE, HIRASAKA_GUN_IDS, isHirasakaGun } from '../logic/hirasakaGuns';
 import type { Player } from '../player/player';
 import type { GameRenderer } from '../render/renderer';
 import type { HudEvent, HudWeaponInfo } from '../ui/hudTypes';
@@ -58,6 +59,42 @@ export interface WeaponModHook {
   damageMul(c: CarriedWeapon): number;
   shot(c: CarriedWeapon): void;
   hit(z: Parameters<ZombieManager['damage']>[0], c: CarriedWeapon): void;
+}
+
+/**
+ * (HIRASAKA arms) A map's own guns, fired by the map (`hirasaka/armsGuns.ts`): the round is spent and the aim basis set
+ * before `fire` is called; what it hands back is the feedback the weapon system gives as it does for its own guns.
+ */
+export interface MapGunShot {
+  c: CarriedWeapon;
+  d: WeaponDef;
+  s: WeaponStats;
+  /** The eye, the aim's forward / right / up, the muzzle in the world, this shot's spread (degrees), its tracer colour. */
+  eye: THREE.Vector3;
+  fwd: THREE.Vector3;
+  right: THREE.Vector3;
+  up: THREE.Vector3;
+  muzzle: THREE.Vector3;
+  spreadDeg: number;
+  color: number;
+}
+export interface MapGunFeedback {
+  hit?: boolean;
+  head?: boolean;
+  kill?: boolean;
+  /** The shot is already in the accuracy count (or kept out of it). */
+  counted?: boolean;
+  sound?: SoundId;
+  rate?: number;
+  volume?: number;
+  kick?: number;
+  flash?: boolean;
+  /** Muzzle smoke: strong, light, or none (null). */
+  smoke?: boolean | null;
+}
+export interface MapGunHook {
+  owns(id: WeaponId): boolean;
+  fire(shot: MapGunShot): MapGunFeedback;
 }
 
 export interface WeaponInput {
@@ -199,14 +236,16 @@ export class WeaponSystem {
   perkFireIntervalMul = 1;
   /** A map's weapon mods (`WeaponModHook`), or none. */
   mods: WeaponModHook | null = null;
+  /** (HIRASAKA arms) A map's own guns (`MapGunHook`), or none. */
+  mapGun: MapGunHook | null = null;
 
   private rigFor(id: WeaponId): ViewmodelRig {
-    return this.rigs[id] ?? (isZaryaGun(id) ? this.rigs[ZARYA_BASE[id]] : id === 'raijin' ? this.rigs.rpg : this.rigs.rifle);
+    return this.rigs[id] ?? (isZaryaGun(id) ? this.rigs[ZARYA_BASE[id]] : isHirasakaGun(id) ? this.rigs[HIRASAKA_BASE[id]] : id === 'raijin' ? this.rigs.rpg : this.rigs.rifle);
   }
 
   private allRigs(): ViewmodelRig[] {
     const r = this.rigs;
-    return [r.rifle, r.pistol, r.shotgun, r.rpg, r.grenade, r.plate, ...(r.hanafubuki ? [r.hanafubuki] : []), ...(r.raijin ? [r.raijin] : []), ...ZARYA_GUN_IDS.flatMap((id) => (r[id] ? [r[id]] : []))];
+    return [r.rifle, r.pistol, r.shotgun, r.rpg, r.grenade, r.plate, ...(r.hanafubuki ? [r.hanafubuki] : []), ...(r.raijin ? [r.raijin] : []), ...ZARYA_GUN_IDS.flatMap((id) => (r[id] ? [r[id]] : [])), ...HIRASAKA_GUN_IDS.flatMap((id) => (r[id] ? [r[id]] : []))];
   }
 
   get adsAmount(): number {
@@ -610,6 +649,11 @@ export class WeaponSystem {
       this.fireZarya(c, d, s, rig, spreadDeg);
       return;
     }
+    // ---- (HIRASAKA arms) a map's own guns fire the map's way (`fireMapGun`) ----
+    if (this.mapGun?.owns(c.id)) {
+      this.fireMapGun(c, d, s, rig, spreadDeg);
+      return;
+    }
 
     // ---- rocket ----
     if (c.id === 'rpg') {
@@ -995,6 +1039,43 @@ export class WeaponSystem {
     rig.onFire(c.tier, kick);
     if (smoke !== null) host.fx.muzzleSmoke(this.muzzleW, this.fwd, smoke);
     // noise wakes nearby infected (throttled); the crossbow makes none
+    if (d.noise > 0 && this.time - this.lastNoise > 0.2) {
+      this.lastNoise = this.time;
+      host.noise(d.noise);
+    }
+    if (c.ammo.mag === 0 && c.ammo.reserve > 0) this.dryReloadTimer = 0.45;
+  }
+
+  /** (HIRASAKA arms) One pull of a map's own gun: the map fires it, the feedback is given here as for ZARYA's. */
+  private fireMapGun(c: CarriedWeapon, d: WeaponDef, s: WeaponStats, rig: ViewmodelRig, spreadDeg: number): void {
+    const host = this.host;
+    const p = host.player;
+    const color = d.tracerColors[c.tier]!;
+    const f = this.mapGun!.fire({ c, d, s, eye: this.camPos, fwd: this.fwd, right: this.right, up: this.up, muzzle: this.muzzleW, spreadDeg, color });
+    if (!f.counted) host.recordShot(!!f.hit);
+    if (f.hit) {
+      host.hudEvent({ type: 'hit', head: !!f.head, kill: !!f.kill });
+      host.audio.play(f.kill ? 'kill_confirm' : f.head ? 'hit_head' : 'hit_body', { priority: 2, volume: f.kill ? 0.8 : 0.6 });
+    }
+    const volume = f.volume ?? 1;
+    if (volume > 0) host.audio.play(f.sound ?? 'rpg_shot', { priority: 3, rate: (f.rate ?? 1) * (0.97 + Math.random() * 0.06), volume });
+    const adsMul = 1 - 0.3 * this.adsAmount;
+    const kp = s.recoilPitch * DEG * adsMul * (0.85 + Math.random() * 0.3);
+    const ky = s.recoilYaw * DEG * adsMul * (Math.random() * 2 - 1);
+    p.kickPitch += kp;
+    p.kickYaw += ky;
+    p.pitch = Math.min(Math.PI / 2 - 0.02, p.pitch + kp * 0.35);
+    p.yaw += ky * 0.25;
+    this.bloom = Math.min(s.spreadMax, this.bloom + s.spreadPerShot);
+    if (f.flash ?? true) {
+      this.flashTimer = 0.06;
+      host.renderer.viewFlash.color.setHex(color);
+      host.renderer.flashLight.color.setHex(color);
+      host.renderer.flashLight.position.copy(this.camPos).addScaledVector(this.fwd, 1.2);
+    }
+    rig.onFire(c.tier, f.kick ?? 1);
+    const smoke = f.smoke === undefined ? false : f.smoke;
+    if (smoke !== null) host.fx.muzzleSmoke(this.muzzleW, this.fwd, smoke);
     if (d.noise > 0 && this.time - this.lastNoise > 0.2) {
       this.lastNoise = this.time;
       host.noise(d.noise);

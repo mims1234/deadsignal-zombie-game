@@ -9,7 +9,7 @@
  * No textures of their own: the stock rig's materials where they fit, plain ones for wood, copper, paper and glass.
  */
 import * as THREE from 'three';
-import type { ZaryaGunId } from '../../types';
+import type { HirasakaGunId, ZaryaGunId } from '../../types';
 import type { ViewmodelPose, ViewmodelRig } from '../viewmodelTypes';
 import type { GloveHand } from './hand';
 import { PartBuilder } from './kit';
@@ -20,20 +20,20 @@ import type { BaseRig } from './rigBase';
 import { createRpg } from './rpg';
 import { clamp01, seg, smooth } from './util';
 
-const F = (f: number): number => -f;
-type V3 = [number, number, number];
+export const F = (f: number): number => -f;
+export type V3 = [number, number, number];
 
 // where the stock rigs' hands close (their own grips' profiles, [f, y]): each of ZARYA's is built round these
-const PISTOL_GRIP: [number, number][] = [[0.04, -0.043], [0.036, -0.068], [0.011, -0.136], [-0.052, -0.142], [-0.035, -0.07], [-0.031, -0.046], [-0.04, -0.041], [-0.036, -0.035], [-0.012, -0.036]];
-const RB = -0.088; // the rifle's bore
-const RIFLE_GRIP: [number, number][] = ([[-0.046, -0.055], [-0.056, -0.1], [-0.078, -0.15], [-0.073, -0.172], [-0.042, -0.176], [-0.027, -0.15], [-0.022, -0.1], [-0.02, -0.055]] as [number, number][]).map(([f, y]) => [f, RB + y]);
-const RIFLE_FORE: [number, number][] = ([[0.195, -0.026], [0.252, -0.026], [0.247, -0.072], [0.24, -0.124], [0.224, -0.143], [0.205, -0.137], [0.197, -0.092]] as [number, number][]).map(([f, y]) => [f, RB + y]);
-const TX = 0.088; // the launcher's tube axis
-const TY = -0.074;
-const RPG_GRIP: [number, number][] = [[0.1, TY - 0.03], [0.09, TY - 0.06], [0.07, TY - 0.13], [0.03, TY - 0.13], [0.045, TY - 0.06], [0.05, TY - 0.03]];
-const RPG_FORE: [number, number][] = [[0.32, TY - 0.03], [0.31, TY - 0.12], [0.27, TY - 0.12], [0.28, TY - 0.03]];
+export const PISTOL_GRIP: [number, number][] = [[0.04, -0.043], [0.036, -0.068], [0.011, -0.136], [-0.052, -0.142], [-0.035, -0.07], [-0.031, -0.046], [-0.04, -0.041], [-0.036, -0.035], [-0.012, -0.036]];
+export const RB = -0.088; // the rifle's bore
+export const RIFLE_GRIP: [number, number][] = ([[-0.046, -0.055], [-0.056, -0.1], [-0.078, -0.15], [-0.073, -0.172], [-0.042, -0.176], [-0.027, -0.15], [-0.022, -0.1], [-0.02, -0.055]] as [number, number][]).map(([f, y]) => [f, RB + y]);
+export const RIFLE_FORE: [number, number][] = ([[0.195, -0.026], [0.252, -0.026], [0.247, -0.072], [0.24, -0.124], [0.224, -0.143], [0.205, -0.137], [0.197, -0.092]] as [number, number][]).map(([f, y]) => [f, RB + y]);
+export const TX = 0.088; // the launcher's tube axis
+export const TY = -0.074;
+export const RPG_GRIP: [number, number][] = [[0.1, TY - 0.03], [0.09, TY - 0.06], [0.07, TY - 0.13], [0.03, TY - 0.13], [0.045, TY - 0.06], [0.05, TY - 0.03]];
+export const RPG_FORE: [number, number][] = [[0.32, TY - 0.03], [0.31, TY - 0.12], [0.27, TY - 0.12], [0.28, TY - 0.03]];
 
-const mat = (color: number, roughness = 0.6, metalness = 0, emissive = 0, emissiveIntensity = 0): THREE.MeshStandardMaterial =>
+export const mat = (color: number, roughness = 0.6, metalness = 0, emissive = 0, emissiveIntensity = 0): THREE.MeshStandardMaterial =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity, envMapIntensity: 1.2 });
 
 const _y = new THREE.Vector3(0, 1, 0);
@@ -44,7 +44,7 @@ const _m = new THREE.Matrix4();
 const _one = new THREE.Vector3(1, 1, 1);
 
 /** A round rod from `a` to `b` (a strut, a fuse, a bracket). */
-function rod(pb: PartBuilder, key: string, a: V3, b: V3, r: number, sides = 6): void {
+export function rod(pb: PartBuilder, key: string, a: V3, b: V3, r: number, sides = 6): void {
   _a.set(...a);
   _b.set(...b);
   const len = _a.distanceTo(_b);
@@ -52,7 +52,7 @@ function rod(pb: PartBuilder, key: string, a: V3, b: V3, r: number, sides = 6): 
   pb.add(key, new THREE.CylinderGeometry(r, r, len, sides, 1, false), _m.compose(_a.clone().add(_b).multiplyScalar(0.5), _q, _one));
 }
 
-interface Look {
+export interface Look {
   /** Keep the stock rig's muzzle flash (a crossbow, a camera and a steam lance have none). */
   flash: boolean;
   /** The whole rig (hands and all) moved from where the stock gun is held: at the hip, and aimed. */
@@ -65,7 +65,7 @@ interface Look {
   animate?(pose: ViewmodelPose, fired: number, kick: number): void;
 }
 
-class ZaryaRig implements ViewmodelRig {
+export class ZaryaRig implements ViewmodelRig {
   readonly root: THREE.Group;
   readonly muzzle: THREE.Object3D;
   readonly ejectPort: THREE.Object3D;
@@ -76,7 +76,7 @@ class ZaryaRig implements ViewmodelRig {
   spinAngle = 0;
 
   constructor(
-    readonly id: ZaryaGunId,
+    readonly id: ZaryaGunId | HirasakaGunId, // (exported with the rest for HIRASAKA's guns, `viewmodel/hirasaka.ts`)
     private readonly inner: BaseRig,
     /** The stock gun's own parts: never drawn. */
     private readonly stock: THREE.Object3D[],
@@ -127,7 +127,7 @@ class ZaryaRig implements ViewmodelRig {
 }
 
 /** Put the stock gun away and hand back what one of ZARYA's is built with: `part` adds a merged group of its own. */
-function strip(inner: BaseRig, extra: Record<string, THREE.Material>) {
+export function strip(inner: BaseRig, extra: Record<string, THREE.Material>) {
   const hands = inner as unknown as { rh: GloveHand; lh: GloveHand; mats: RigMaterials };
   const stock = [
     ...inner.gun.children.filter((c) => c !== inner.muzzle && c !== inner.ejectPort),

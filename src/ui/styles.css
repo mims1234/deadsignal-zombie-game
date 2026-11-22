@@ -1812,7 +1812,7 @@
 }
 .ds-set-row {
   display: grid;
-  grid-template-columns: 8.6em 1fr;
+  grid-template-columns: 8.6em minmax(0, 1fr);
   align-items: center;
   gap: 0.8em;
 }

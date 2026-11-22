@@ -15,6 +15,8 @@ export interface BoxPlace {
   x: number;
   z: number;
   yaw: number;
+  /** (HIRASAKA arms) The floor it stands on there (a shrine on the summit, or in the deep); absent: the box's own. */
+  y?: number;
 }
 
 /** The place each box was first seen at: its place 0. */
@@ -24,7 +26,7 @@ const homes = new WeakMap<CrateDef, BoxPlace>();
 export function boxHome(def: CrateDef): BoxPlace {
   let h = homes.get(def);
   if (!h) {
-    h = { x: def.x, z: def.z, yaw: def.yaw };
+    h = { x: def.x, z: def.z, yaw: def.yaw, y: def.y ?? 0 };
     homes.set(def, h);
   }
   return h;
@@ -60,6 +62,7 @@ const CRATE = { hx: 0.55, hz: 0.35, y1: 0.72 } as const;
  */
 export function placeBox(world: CollisionWorld | null, def: CrateDef, to: BoxPlace): void {
   if (Math.abs(def.x - to.x) < 0.01 && Math.abs(def.z - to.z) < 0.01) return;
+  const y = to.y ?? def.y ?? 0;
   if (world) {
     world.forEachNear(def.x, def.z, 0.6, (c) => {
       if (c.tag === 'crate' && Math.hypot(c.cx - def.x, c.cz - def.z) < 0.3) c.blocksMove = c.blocksShots = false;
@@ -71,9 +74,10 @@ export function placeBox(world: CollisionWorld | null, def: CrateDef, to: BoxPla
         found = true;
       }
     });
-    if (!found) world.add({ x: to.x, z: to.z, hx: CRATE.hx, hz: CRATE.hz, rot: to.yaw, y1: CRATE.y1, mapKind: 'none', tag: 'crate', surface: 'fabric' });
+    if (!found) world.add({ x: to.x, z: to.z, hx: CRATE.hx, hz: CRATE.hz, rot: to.yaw, y1: y + CRATE.y1, mapKind: 'none', tag: 'crate', surface: 'fabric' });
   }
   def.x = to.x;
   def.z = to.z;
   def.yaw = to.yaw;
+  if (to.y !== undefined) def.y = to.y;
 }

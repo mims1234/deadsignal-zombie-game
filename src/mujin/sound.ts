@@ -30,6 +30,8 @@ export class MujinSound {
   private musicBus: GainNode | null = null;
   private sfxBus: GainNode | null = null;
   private verbIn: GainNode | null = null;
+  private voiceVerb: GainNode | null = null;
+  private sfxVerb: GainNode | null = null;
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly reversed = new Map<string, AudioBuffer>();
   private loaded = false;
@@ -91,13 +93,14 @@ export class MujinSound {
     this.master.connect(out);
     this.voiceBus = ctx.createGain();
     this.voiceBus.gain.value = this.volume.voice;
-    this.voiceBus.connect(this.master);
+    // each bus joins the player's matching mix bus (their volume for it, then the master); the reverb return stays here
+    this.voiceBus.connect(this.audio.bus?.('voice') ?? this.master);
     this.musicBus = ctx.createGain();
     this.musicBus.gain.value = this.volume.music;
-    this.musicBus.connect(this.master);
+    this.musicBus.connect(this.audio.bus?.('music') ?? this.master);
     this.sfxBus = ctx.createGain();
     this.sfxBus.gain.value = this.volume.sfx;
-    this.sfxBus.connect(this.master);
+    this.sfxBus.connect(this.audio.bus?.('effects') ?? this.master);
     // a long, dark station reverb (synthesised impulse)
     const len = Math.floor(ctx.sampleRate * 2.6);
     const ir = ctx.createBuffer(2, len, ctx.sampleRate);
@@ -112,6 +115,11 @@ export class MujinSound {
     lp.frequency.value = 3200;
     this.verbIn = ctx.createGain();
     this.verbIn.connect(verb).connect(lp).connect(this.master);
+    // the echo of a line (or an effect) goes quiet with it: its send passes a gain that follows that volume
+    this.voiceVerb = this.audio.follow?.('voice') ?? null;
+    this.voiceVerb?.connect(this.verbIn);
+    this.sfxVerb = this.audio.follow?.('effects') ?? null;
+    this.sfxVerb?.connect(this.verbIn);
     return true;
   }
 
@@ -226,7 +234,7 @@ export class MujinSound {
     if (wet > 0 && this.verbIn) {
       const s = ctx.createGain();
       s.gain.value = wet;
-      out.connect(s).connect(this.verbIn);
+      out.connect(s).connect(this.voiceVerb ?? this.verbIn);
     }
     src.start(now);
     if (story) {
@@ -381,7 +389,7 @@ export class MujinSound {
     if (this.verbIn && wet > 0) {
       const s = ctx.createGain();
       s.gain.value = wet;
-      out.connect(s).connect(this.verbIn);
+      out.connect(s).connect(this.sfxVerb ?? this.verbIn);
     }
   }
 

@@ -15,6 +15,7 @@ import type { MapId } from '../world/layout/data';
 import { createBoxMark, createGunDisplay, createMeleeDisplay, createSackMark } from '../world/models/boxDisplay';
 // (ZARYA: the paid box is Ded Moroz's gift sack, model and all)
 import { createGiftSack } from '../world/models/giftSack';
+import { createOfferingBox } from '../world/models/offeringBox';
 import type { GameCtx } from './ctx';
 
 /** closed -> (opened) spin -> offer -> gone. A box opens once per run. */
@@ -264,7 +265,8 @@ export class Entities {
     this.root.name = 'Entities';
     ctx.worldRoot.add(this.root);
     for (const def of ctx.level.data.crates) {
-      const model = isSack(ctx.level.data.id, def) ? createGiftSack() : createLootCrate(def.region, ctx.mats);
+      // (HIRASAKA arms: its paid box is a shrine's travelling offering box, `world/models/offeringBox.ts`)
+      const model = isSack(ctx.level.data.id, def) ? createGiftSack() : ctx.level.data.id === 'hirasaka' && (def.cost ?? 0) > 0 ? createOfferingBox() : createLootCrate(def.region, ctx.mats);
       model.root.position.set(def.x, def.y ?? 0, def.z); // an upper floor's box stands on that floor
       model.root.rotation.y = def.yaw;
       this.root.add(model.root);

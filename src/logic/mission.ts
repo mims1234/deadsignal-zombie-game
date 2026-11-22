@@ -1,7 +1,8 @@
 /** Mission clock, escalation phases and the contamination front (pure). */
 import { ASYLUM_CLOCK } from '../asylum/nightConfig';
-import { FORGE_STORY, HIRASAKA_CLOCK, MISSION, MUJIN_CLOCK, SAKURA_CLOCK } from '../config';
+import { FORGE_STORY, MISSION, MUJIN_CLOCK, SAKURA_CLOCK } from '../config';
 import type { MapId } from '../world/layout/data';
+import { mapFeatures } from './mapFeatures';
 
 /**
  * The timings a run is held to. Every map uses `MISSION`'s except the Asylum, whose night needs longer
@@ -15,15 +16,14 @@ export interface MissionClock {
   phases: readonly number[];
 }
 
-/** ZARYA has no clock at all: no deadline, no surge, no escalation by the minute. The only way to lose is to die. */
+/** A map with `noClock` (ZARYA, HIRASAKA; `logic/mapFeatures.ts`) has no clock at all: no deadline, no surge, no escalation by the minute. The only way to lose is to die. */
 export const NO_CLOCK: MissionClock = { deadline: Number.POSITIVE_INFINITY, surgeStart: Number.POSITIVE_INFINITY, phases: [] };
 
 export function missionClock(map: MapId, kind?: string | null): MissionClock {
   if (map === 'sakura') return SAKURA_CLOCK.kaika; // the district is KAIKA, whatever the session's kind
   void kind;
   if (map === 'mujin') return MUJIN_CLOCK;
-  if (map === 'hirasaka') return HIRASAKA_CLOCK;
-  if (map === 'zarya') return NO_CLOCK;
+  if (mapFeatures(map).noClock) return NO_CLOCK;
   return map === 'asylum' ? ASYLUM_CLOCK : map === 'forge' ? FORGE_STORY.clock : MISSION;
 }
 

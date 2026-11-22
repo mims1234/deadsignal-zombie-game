@@ -94,6 +94,12 @@ export interface ViewmodelSet {
   zenit?: ViewmodelRig;
   /** ZARYA's Raketa: out of Ded Moroz's sack only. */
   raketa?: ViewmodelRig;
+  /** HIRASAKA's built guns (`viewmodel/hirasaka.ts`; built on that map only). */
+  happa?: ViewmodelRig;
+  sakuganki?: ViewmodelRig;
+  mori?: ViewmodelRig;
+  kushibi?: ViewmodelRig;
+  okamuzumi?: ViewmodelRig;
   dispose(): void;
 }
 
