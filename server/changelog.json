@@ -2,6 +2,16 @@
   "about": "Every pushed update gets the next version (newest first). The game shows the newest one in the bottom-right corner; the admin page lists them all.",
   "versions": [
     {
+      "version": "0.4.393",
+      "date": "2026-11-26",
+      "title": "HIRASAKA: open stairs, and the deep's needs said up top",
+      "notes": [
+        "HIRASAKA: the stairs between the island's terraces were trenches between two blank walls taller than the stair itself. They are now open outdoor stairs against the retaining walls with low stepped walls either side, as the island's own were.",
+        "HIRASAKA: before the cage goes down, a TAKE DOWN WITH YOU objective names what the deep will ask for that is only found up top: the bath ladles from Block 31 and the shrine tachi from the summit shrine, the only blade that cuts the Root Hall's roots. Daigo mentions the sword when the cage starts running. Arrive below without them and the objective says where they are and points you back to the cage.",
+        "HIRASAKA: once the cage runs, a PARTS FOR BELOW line lists the parts of the guns built below that lie on the island, and the benches and the Bon fire below say which part is missing and where."
+      ]
+    },
+    {
       "version": "0.4.392",
       "date": "2026-11-23",
       "title": "HIRASAKA: the school stair fixed",

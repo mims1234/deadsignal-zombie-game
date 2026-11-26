@@ -50,11 +50,13 @@ import {
   UMIBOZU,
   inDeep,
   placeAt,
+  placeName,
   type GroupId,
   type PlaceId,
   type Spot,
 } from './places';
 import { UMODE, Umi } from './bossUmi';
+import { ARMS_PARTS } from './armsPlaces';
 import { ACT, BUILT, decodeStory, HIRASAKA_STORY, HirasakaStory, JOB_IDS, JOB_NAMES, LADLE, type JobId, type StoryView } from './story';
 import { HirasakaSound } from './sound';
 import { HirasakaBosses } from './bosses'; // (hs-bosses) the fights, the climb and the finale on this screen
@@ -378,8 +380,11 @@ export class HirasakaRuntime {
       say('nat_hit');
     }
     if (b.umi === 2 && a.umi === 1) {
-      g.banner('IT HAS GONE UNDER', 'The cage runs: ride it down from the headframe at the pithead', 'good', 7);
+      const need = this.belowNeeds(b);
+      g.banner('IT HAS GONE UNDER', need.length ? `The cage runs. Before you ride it down, take ${need.map((n) => n.short).join(' and ')}` : 'The cage runs: ride it down from the headframe at the pithead', 'good', 7);
       say('nat_ready', 2);
+      // (map analysis) the deep's roots take only the summit's sword: Daigo says where it is before anyone rides down
+      if (need.some((n) => n.id === 'tachi')) say('dg_tachi', 6);
       this.sound.signal({ x: CAGE.top.x, y: 4, z: CAGE.top.z }, 3);
     }
     if (b.cageDown && !a.cageDown && !this.underground) this.look.ride();
@@ -1039,8 +1044,13 @@ export class HirasakaRuntime {
       obj('steam', JOB_NAMES.steam, steam ? 'Done' : v.coal !== 7 ? `Coal sacks: ${HirasakaStory.count(v.coal)} of 3` : !v.boilerKey ? "The boiler key, in Block 30's caretaker's room" : HirasakaStory.open(v, 'bathDoor') ? 'Build the burner at the boiler' : "The boiler room's door is boarded (the axe)", steam, HirasakaStory.count(v.coal) / 4 + (v.boilerKey ? 0.25 : 0), steamAt);
       obj('air', JOB_NAMES.air, air ? 'Done' : HirasakaStory.open(v, 'shutter') ? 'The starter, inside the fan house' : 'The fan house shutter has rusted shut (the pick, from the lamp room)', air, HirasakaStory.open(v, 'shutter') ? 0.5 : 0, HirasakaStory.open(v, 'shutter') ? JOBS.air.fan : JOBS.air.shutter);
       obj('key', JOB_NAMES.key, key ? 'Done' : "Block 65's top floor: up the school, over the footbridge", key, 0, key ? null : this.inHeights() ? JOBS.key.key : HEIGHTS.stairFoot);
+      // (map analysis) what the deep asks for that is only up here: said before the cage goes down, never found out below
+      const need = this.belowNeeds(v);
+      if (need.length) obj('below', 'TAKE DOWN WITH YOU', need.map((n) => n.line).join('. '), false, -1, this.nearest(need.map((n) => n.at)), HirasakaStory.ready(v));
+      if (HirasakaStory.ready(v) || v.umi === 1) for (const n of need) mk(`hs-need-${n.id}`, n.at, n.label, '#ffc58a');
+      this.partsLine(v, obj);
       if (v.umi === 1) obj('umi', 'SINK IT', v.built & (1 << BUILT.mori) ? this.bosses.umiDetail(v) : `Build the Mori at the seawall winch (parts ${HirasakaStory.count(v.moriParts)} of 2)`, false, v.umiHits / HIRASAKA_STORY.umiHits, UMIBOZU.winch, true);
-      else if (HirasakaStory.ready(v)) obj('cage', 'RIDE THE CAGE DOWN', 'The headframe at the pithead', false, -1, CAGE.top, true);
+      else if (HirasakaStory.ready(v)) obj('cage', 'RIDE THE CAGE DOWN', need.length ? 'The headframe at the pithead, once you have what the deep needs' : 'The headframe at the pithead', false, -1, CAGE.top, !need.length);
       else {
         const open = list.filter((o) => o.state !== 'complete' && o.distance >= 0);
         if (open.length) open.reduce((a, b) => (a.distance <= b.distance ? a : b)).tracked = true;
@@ -1051,26 +1061,40 @@ export class HirasakaRuntime {
       if (v.umi === 1) mk('hs-winch', UMIBOZU.winch, 'THE WINCH', '#ffe08a', true);
       if (HirasakaStory.ready(v)) mk('hs-cage', CAGE.top, 'THE CAGE', '#ffe08a', true);
     } else if (v.act === ACT.deep) {
+      const need = this.belowNeeds(v);
       if (!this.underground) {
-        obj('down', 'RIDE THE CAGE DOWN', 'The others are below', false, -1, CAGE.top, true);
-        mk('hs-cage', CAGE.top, 'THE CAGE', '#ffe08a', true);
+        // (map analysis) back up for something the deep needs: point at it first, then at the cage
+        if (need.length) {
+          obj('below', 'TAKE DOWN WITH YOU', need.map((n) => n.line).join('. '), false, -1, this.nearest(need.map((n) => n.at)), true);
+          for (const n of need) mk(`hs-need-${n.id}`, n.at, n.label, '#ffc58a', true);
+        }
+        this.partsLine(v, obj);
+        obj('down', 'RIDE THE CAGE DOWN', need.length ? 'Then back down: the headframe at the pithead' : 'The others are below', false, -1, CAGE.top, !need.length);
+        mk('hs-cage', CAGE.top, 'THE CAGE', '#ffe08a', !need.length);
       } else if (v.ladles !== LADLE.given) {
-        const what = v.ladles === LADLE.none ? "Bring the bath ladles from Block 31's bath" : v.ladles === LADLE.carried ? 'Knock their bottoms out at the lamp room bench' : 'Hand them over';
-        obj('funa', 'THE FLOODED GALLERY', what, false, v.ladles / 3, v.ladles === LADLE.carried ? DEEP_SPOTS.bench : DEEP_SPOTS.funa, true);
+        // (map analysis) no ladles down here: say plainly where they are and send the player to the cage, not the drowned
+        const none = v.ladles === LADLE.none;
+        const what = none ? "The ladles are still in Block 31's bath, up top: ride the cage up for them" : v.ladles === LADLE.carried ? 'Knock their bottoms out at the lamp room bench' : 'Hand them over';
+        obj('funa', 'THE FLOODED GALLERY', what, false, v.ladles / 3, none ? CAGE.bottom : v.ladles === LADLE.carried ? DEEP_SPOTS.bench : DEEP_SPOTS.funa, true);
+        if (none) mk('hs-cage-up', CAGE.bottom, 'THE CAGE UP', '#ffc58a', true);
         mk('hs-funa', DEEP_SPOTS.funa, 'FUNAYŪREI');
       } else if (!HirasakaStory.open(v, 'drift')) {
         obj('drift', 'THE DRIFT TO THE VILLAGE', 'A seam has come down across it (the pick)', false, -1, OBSTACLES[3]!.at, true);
         mk('hs-drift', OBSTACLES[3]!.at, 'THE DRIFT');
       } else if (!v.hairpin) {
         const roots = HirasakaStory.open(v, 'roots');
-        obj('root', 'THE ROOT HALL', roots ? 'Take what is in the roots' : 'Through the village and down the stone passage; the roots need a blade', false, -1, DEEP_SPOTS.hairpin, true);
+        const noBlade = need.some((n) => n.id === 'tachi');
+        obj('root', 'THE ROOT HALL', roots ? 'Take what is in the roots' : noBlade ? 'The roots take only the shrine tachi, and it is still at the summit shrine: ride the cage up for it' : 'Through the village and down the stone passage; cut the roots with the shrine tachi', false, -1, noBlade ? CAGE.bottom : DEEP_SPOTS.hairpin, true);
         mk('hs-root', DEEP_SPOTS.hairpin, 'THE ROOTS', '#ff8a9a');
+        if (noBlade) mk('hs-cage-up', CAGE.bottom, 'THE CAGE UP', '#ffc58a', true);
       } else {
         const b = this.g.zombies.boss;
         obj('ku', 'PUT DOWN KUROGANE', b?.alive ? this.bosses.kuDetail(v) : 'He is down', !b?.alive, HirasakaStory.count(v.thunders) / 8, b?.alive ? (this.bosses.kuAt(v) ?? b) : null, true);
         if (b?.alive) mk('hs-ku', b, 'KUROGANE', '#ff5a4d', true);
         this.bosses.markers(v, md, this.underground);
       }
+      // (map analysis) down here without the sword: say so from the landing on, not first at the roots
+      if (this.underground && !v.hairpin && need.some((n) => n.id === 'tachi') && !list.some((o) => o.id === 'hs-root')) obj('tachi', 'THE SHRINE TACHI', "Only it cuts the Root Hall's roots. It is at the summit shrine, up top", false, -1, CAGE.bottom);
     } else if (v.act === ACT.climb) {
       const lead = Math.max(v.lead, this.underground ? -1 : 1);
       const next = CLIMB_MARKS[Math.min(CLIMB_MARKS.length - 1, lead + 1)]!;
@@ -1102,6 +1126,41 @@ export class HirasakaRuntime {
 
   private inHeights(): boolean {
     return this.g.player.y > HEIGHTS.y - 1;
+  }
+
+  /**
+   * (map analysis) What the deep asks for that is only found on the island and nobody has taken yet: the bath ladles
+   * (the funayūrei in the flooded gallery) and the shrine tachi (the only blade that cuts the Root Hall's roots).
+   */
+  private belowNeeds(v: StoryView): { id: string; short: string; line: string; label: string; at: Spot }[] {
+    const out: { id: string; short: string; line: string; label: string; at: Spot }[] = [];
+    if (v.ladles === LADLE.none) out.push({ id: 'ladles', short: 'the bath ladles', line: "The bath ladles (Block 31's bath): the drowned below want them", label: 'LADLES', at: LADLES });
+    if (!HirasakaStory.hasTool(v, TOOL_IDS.indexOf('tachi')) && !HirasakaStory.open(v, 'roots')) out.push({ id: 'tachi', short: 'the shrine tachi', line: "The shrine tachi (the summit shrine): only it cuts the Root Hall's roots", label: 'TACHI', at: TOOLS.tachi });
+    return out;
+  }
+
+  /** (map analysis) The parts of the guns built below that lie up here, once the cage runs: one quiet line, no markers. */
+  private partsLine(v: StoryView, obj: (id: string, title: string, detail: string, done: boolean, progress: number, at: { x: number; z: number } | null) => void): void {
+    if (!HirasakaStory.ready(v)) return;
+    const up = ARMS_PARTS.map((p, i) => ({ p, i })).filter(({ p, i }) => !inDeep(p.at.x) && !(v.parts & (1 << i)));
+    if (!up.length) return;
+    obj('parts', 'PARTS FOR BELOW', up.map(({ p }) => `${p.name.replace(/^(THE|A) /, '').toLowerCase()} (${placeName(p.at)})`).join(', '), false, -1, this.nearest(up.map(({ p }) => p.at)));
+  }
+
+  /** The nearest of some spots on this side of the water (for an objective's distance), or null. */
+  private nearest(at: readonly Spot[]): Spot | null {
+    const p = this.g.player;
+    let best: Spot | null = null;
+    let d = Infinity;
+    for (const s of at) {
+      if (inDeep(s.x) !== this.underground) continue;
+      const k = Math.hypot(s.x - p.x, s.z - p.z);
+      if (k < d) {
+        d = k;
+        best = s;
+      }
+    }
+    return best ?? at[0] ?? null;
   }
 
   // ---------------------------------------------------------------------------------------------

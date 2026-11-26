@@ -57,7 +57,6 @@ import {
   TREAD,
   WALL_BUYS,
   Y,
-  flightRect,
   flightRun,
   slopeY,
   type Flight,
@@ -112,12 +111,11 @@ function parapet(c: Ctx, alongX: boolean, fixed: number, a: number, e: number, y
   }
 }
 
-/** A flight of steps (`FLIGHTS`): treads built on the lower pad, rising to the edge; cheeks from the ground up. */
+/** A flight of steps (`FLIGHTS`): treads built on the lower pad, rising to the edge; balustrades either side. */
 function flight(c: Ctx, f: Flight): void {
   const { b } = c;
   const n = Math.round((f.hi - f.lo) / STEP_H);
   const run = flightRun(f);
-  const r = flightRect(f);
   const alongZ = f.up === 'n' || f.up === 's';
   const sgn = f.up === 'n' || f.up === 'w' ? -1 : 1; // the way "up" runs along its axis
   const edge = alongZ ? f.z : f.x;
@@ -134,17 +132,28 @@ function flight(c: Ctx, f: Flight): void {
     b.collide({ x: cx, z: cz, hx: alongZ ? f.w / 2 : len / 2, hz: alongZ ? len / 2 : f.w / 2, y0: Math.max(0, top - 0.6), y1: top, floor: true, surface: 'concrete', mapKind: 'none', tag: 'step' });
     box(b, named ? H.concreteWet : H.concrete, cx, (f.lo + top) / 2, cz, alongZ ? f.w : len, top - f.lo, alongZ ? len : f.w, 0, false);
   }
-  // the cheeks either side: solid from the ground to a rail above the steps
+  // the balustrades either side: an open outdoor stair against the retaining wall, as the island's were (not a trench).
+  // Each side steps up with the treads, a rail's height above them, in lengths of CHEEK_TREADS treads: solid from the
+  // ground (the y0 = 0 rule: nobody walks under the stair or off its side), its top always ~1 m above the steps beside it.
+  const CHEEK_TREADS = 3;
   for (const s of [-1, 1]) {
-    const off = s * (f.w / 2 + 0.18);
-    const x0 = alongZ ? f.x + off - 0.18 : r.x0;
-    const x1 = alongZ ? f.x + off + 0.18 : r.x1;
-    const z0 = alongZ ? r.z0 : f.z + off - 0.18;
-    const z1 = alongZ ? r.z1 : f.z + off + 0.18;
-    stop(c, x0, z0, x1, z1, f.hi + 0.9, 'cheek');
-    box(b, H.concreteDark, (x0 + x1) / 2, (f.lo + f.hi) / 2 + 0.2, (z0 + z1) / 2, x1 - x0, f.hi - f.lo + 0.4, z1 - z0, 0, false);
+    const off = s * (f.w / 2 + 0.15);
+    for (let i0 = 0; i0 < n; i0 += CHEEK_TREADS) {
+      const i1 = Math.min(n, i0 + CHEEK_TREADS);
+      const top = f.lo + i1 * STEP_H + 1.0;
+      // along the stair's axis: from tread i0's low edge to tread i1's (the last length reaches the pad's edge)
+      const a = edge - sgn * (run - i0 * TREAD);
+      const e = i1 === n ? edge : edge - sgn * (run - i1 * TREAD);
+      const lo = Math.min(a, e);
+      const hi = Math.max(a, e);
+      const x0 = alongZ ? f.x + off - 0.15 : lo;
+      const x1 = alongZ ? f.x + off + 0.15 : hi;
+      const z0 = alongZ ? lo : f.z + off - 0.15;
+      const z1 = alongZ ? hi : f.z + off + 0.15;
+      stop(c, x0, z0, x1, z1, top, 'cheek');
+      box(b, H.concreteDark, (x0 + x1) / 2, (f.lo + top) / 2, (z0 + z1) / 2, x1 - x0, top - f.lo, z1 - z0, 0, false);
+    }
   }
-  void run;
 }
 
 export function buildHirasaka(c: Ctx): { transmitter: TransmitterHandle; spire: SpireHandle; handles: HirasakaHandles } {

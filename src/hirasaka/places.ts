@@ -264,6 +264,33 @@ export function placeAt(x: number, z: number): PlaceId | null {
   return p ? PAD_PLACE[p.id] : null;
 }
 
+/** Each place as a sentence names it (the objectives' "where"). */
+export const PLACE_SHORT: Record<PlaceId, string> = {
+  seawall: 'the seawall',
+  shiofuri: 'Shio-furi Street',
+  nikkyu: 'Nikkyū Row',
+  block30: 'Block 30',
+  block31: 'Block 31',
+  market: 'Market Lane',
+  block65: 'Block 65',
+  hospital: 'the hospital',
+  school: 'the school',
+  summit: 'the summit',
+  hellstairs: 'the Hell Stairs',
+  pithead: 'the pithead',
+  landing: 'the cage landing',
+  galleries: 'the flooded galleries',
+  face: 'the coal face',
+  village: 'the Old Village',
+  kofun: 'the kofun passage',
+  roothall: 'the Root Hall',
+};
+/** Where a spot is, as a sentence names it. */
+export function placeName(s: { x: number; z: number }): string {
+  const at = placeAt(s.x, s.z);
+  return at ? PLACE_SHORT[at] : 'the island';
+}
+
 /** Is (x, z) in the deep? */
 export const inDeep = (x: number): boolean => x > DEEP.x0 - 6;
 /** Back-compatible name (the old mine). */

@@ -31,7 +31,15 @@ import type { HirasakaGunId, WeaponId } from '../types';
 import { HirasakaGuns } from './armsGuns';
 import { armsIcon, ITEM_MODEL, Marks, OBSTACLE_AT, OBSTACLE_LOOKS } from './armsLook';
 import { ARMS_PARTS, BENCH, BOX_EVERY, BOX_PLACES, CACHES, KUSHI, OBSTACLE_HITS, OBSTACLE_REACH, PROP_ROOF, recipeMask, recipeProgress, shrineOpen, TOOL_MELEE, TOOL_VERB, WALL_GUNS, WALL_REACH, WORKSHOP, type RecipeId } from './armsPlaces';
-import { CAGE, OBSTACLES, SHRINES, TOOL_IDS, TOOLS, UMIBOZU, WALL_BUYS, type Spot } from './places';
+import { CAGE, OBSTACLES, placeName, SHRINES, TOOL_IDS, TOOLS, UMIBOZU, WALL_BUYS, type Spot } from './places';
+
+/** (map analysis) A recipe's parts still missing, each with where it lies: "air hose (the pithead)". */
+function missingParts(parts: number, r: RecipeId): string {
+  return ARMS_PARTS.map((p, i) => ({ p, i }))
+    .filter(({ p, i }) => p.recipe === r && !(parts & (1 << i)))
+    .map(({ p }) => `${p.name.replace(/^(THE|A) /, '').toLowerCase()} (${placeName(p.at)})`)
+    .join(', ');
+}
 import { BUILT, HirasakaStory, type StoryView } from './story';
 
 type Act = (a: string, i?: number, x?: number, z?: number) => void;
@@ -425,7 +433,7 @@ export class HirasakaArms {
       if (!bit(v.built, i)) {
         const has = b === 'mori' ? v.moriParts === 3 : (v.parts & recipeMask(b as RecipeId)) === recipeMask(b as RecipeId);
         const pr = b === 'mori' ? { have: HirasakaStory.count(v.moriParts), need: 2 } : recipeProgress(v.parts, b as RecipeId);
-        push(`build:${b}`, at, 2.4, has ? `BUILD ${BENCH_NAME[b]}` : `${BENCH_NAME[b]}'S BENCH`, has ? 'Every part is here' : `Its parts: ${pr.have} of ${pr.need}`, () => {
+        push(`build:${b}`, at, 2.4, has ? `BUILD ${BENCH_NAME[b]}` : `${BENCH_NAME[b]}'S BENCH`, has ? 'Every part is here' : b === 'mori' ? `Its parts: ${pr.have} of ${pr.need}` : `Still to find: ${missingParts(v.parts, b as RecipeId)}`, () => {
           this.owed.add(b);
           this.act('built', i);
         }, { enabled: has, hold: 1.4 });
@@ -439,7 +447,7 @@ export class HirasakaArms {
     if (v.kushi >= 1 && v.kushi < 2) {
       const pr = recipeProgress(v.parts, 'kushibi');
       const ok = pr.have >= pr.need;
-      push('kushi:light', KUSHI.light, 2.6, ok ? "LIGHT GENZŌ'S COMB AT THE FIRE" : "GENZŌ'S COMB WILL NOT TAKE THE FLAME", ok ? 'Tooth by tooth' : `It wants oil and a wick (${pr.have} of ${pr.need})`, () => {
+      push('kushi:light', KUSHI.light, 2.6, ok ? "LIGHT GENZŌ'S COMB AT THE FIRE" : "GENZŌ'S COMB WILL NOT TAKE THE FLAME", ok ? 'Tooth by tooth' : `It wants oil and a wick: ${missingParts(v.parts, 'kushibi')}`, () => {
         this.owed.add('kushibi');
         this.act('kushi', 2);
       }, { enabled: ok, hold: 1.4 });
